@@ -152,6 +152,12 @@ dependencies:
   volume_controller:
   xml:
 
+hooks:
+  user_defines:
+    icu4x:
+      buildMode: local
+      localPath: local_native/icu4x/x86_64-linux-android/libicu4x.so
+
 dependency_overrides:
   media_kit_video:
     git:
