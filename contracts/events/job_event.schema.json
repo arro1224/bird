@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bird Box job event draft",
+  "type": "object",
+  "required": ["event_type", "payload"],
+  "properties": {
+    "event_type": {"enum": ["job_updated", "job_progress", "job_state_changed"]},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "payload": {
+      "type": "object",
+      "required": ["job_id", "job_state"],
+      "properties": {
+        "job_id": {"type": "string"},
+        "job_state": {"enum": ["idle", "running", "paused", "completed", "failed", "cancelled"]},
+        "progress": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    }
+  }
+}

@@ -78,6 +78,7 @@ dependencies:
   csv:
   decorated_icon:
   device_info_plus:
+  dio: ^5.8.0+1
   dlna_dart:
   dynamic_color:
   equatable:
@@ -88,6 +89,8 @@ dependencies:
   flex_color_picker:
   floating:
   fluster:
+  flutter_bloc: ^9.1.1
+  flutter_cache_manager:
   flutter_displaymode:
   flutter_highlight:
   flutter_localizations_plus:
@@ -102,6 +105,8 @@ dependencies:
   get_it:
   gpx:
   highlight:
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
   http:
   intl:
   intl4x: 1.0.0-alpha.1
@@ -111,6 +116,8 @@ dependencies:
   material_color_utilities:
   flutter_material_design_icons:
   material_symbols_icons:
+  mobile_scanner: ^7.0.0
+  multicast_dns: ^0.3.2+7
   network_info_plus:
   overlay_support:
     git:
@@ -121,6 +128,7 @@ dependencies:
     git:
       url: https://github.com/deckerst/aves_panorama.git
       ref: aves
+  path_provider: ^2.1.5
   path:
   pattern_lock:
   pdf:
@@ -133,6 +141,7 @@ dependencies:
   printing:
   proj4dart:
   provider:
+  cached_network_image: ^3.4.1
   screen_brightness:
   shamsi_date:
   shared_preferences:
@@ -150,6 +159,7 @@ dependencies:
   vector_math:
   vector_tile_renderer:
   volume_controller:
+  web_socket_channel: ^3.0.3
   xml:
 
 hooks:

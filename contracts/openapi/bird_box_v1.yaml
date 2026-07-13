@@ -1,0 +1,36 @@
+openapi: 3.0.3
+info:
+  title: Bird Box v1 API draft
+  version: 0.1.0-draft
+  description: |
+    App-side contract draft. It is not a substitute for confirmation by the
+    real box team; incompatible changes must update this file and its tests.
+paths:
+  /api/v1/device/status:
+    get:
+      summary: Read current device and current-task summary
+      responses:
+        '200': {description: Device status}
+  /api/v1/projects/{batchId}/files:
+    get:
+      parameters:
+        - {name: batchId, in: path, required: true, schema: {type: string}}
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
+        - {name: search, in: query, schema: {type: string}, description: Search filename, recognized species, and user tags}
+        - {name: sort, in: query, schema: {type: string, enum: [captured_at_desc, score_desc, confidence_desc]}}
+      responses:
+        '200': {description: Cursor-page of files}
+  /api/v1/files/{fileId}/decision:
+    post:
+      summary: Save one manual review decision
+      responses:
+        '200': {description: Decision accepted, response must contain version}
+        '409': {description: Version conflict, body contains error_code VERSION_CONFLICT}
+  /api/v1/jobs/{jobId}/actions:
+    post:
+      summary: Control one running job
+      responses:
+        '200': {description: Updated job snapshot}
+        '409': {description: Action is not valid in current state}
+        '503': {description: Box unavailable; do not queue task controls offline}

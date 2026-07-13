@@ -1,0 +1,22 @@
+abstract final class ApiEndpoints {
+  static const deviceStatus = '/api/v1/device/status';
+  static const devicePair = '/api/v1/device/pair';
+  static const taskControl = '/api/v1/jobs/{jobId}/actions';
+  static const events = '/api/v1/events';
+  static const batches = '/api/v1/projects';
+  static const currentBatch = '/api/v1/projects/current';
+  static const batchResume = '/api/v1/projects/{batchId}/resume';
+  static const photos = '/api/v1/projects/{batchId}/files';
+  static const batchPhotoOperation = '/api/v1/projects/{batchId}/files/actions';
+  static const groups = '/api/v1/projects/{batchId}/groups';
+  static const photoDetail = '/api/v1/files/{fileId}';
+  static const photoDecision = '/api/v1/files/{fileId}/decision';
+  static const photoHistory = '/api/v1/files/{fileId}/history';
+  static const copyEstimate = '/api/v1/projects/{batchId}/copy/estimate';
+  static const copyCreate = '/api/v1/projects/{batchId}/copy';
+  static const jobs = '/api/v1/jobs';
+  static const jobDetail = '/api/v1/jobs/{jobId}';
+  static const jobFailures = '/api/v1/jobs/{jobId}/failures';
+  static const jobDelete = '/api/v1/jobs/{jobId}';
+  static const logExport = '/api/v1/logs/export';
+}

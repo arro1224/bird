@@ -104,6 +104,12 @@ android {
             dimension = "store"
             applicationIdSuffix = ".libre"
         }
+
+        create("bird") {
+            // 拍鸟伴侣独立构建变体。通过 `flutter run --flavor bird -t lib/main_bird.dart` 启动。
+            dimension = "store"
+            applicationIdSuffix = ".bird"
+        }
     }
 
     buildFeatures {
