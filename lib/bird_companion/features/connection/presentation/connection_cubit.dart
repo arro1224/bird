@@ -6,6 +6,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 enum ConnectionPhase { initial, loading, connecting, connected, failure }
 
+enum _ConnectionRequest { load, discover, connect }
+
 class DeviceConnectionState extends Equatable {
   const DeviceConnectionState({
     this.phase = ConnectionPhase.initial,
@@ -13,6 +15,7 @@ class DeviceConnectionState extends Equatable {
     this.recentDevices = const [],
     this.status,
     this.error,
+    this.connectionAttemptFailed = false,
   });
 
   final ConnectionPhase phase;
@@ -20,6 +23,7 @@ class DeviceConnectionState extends Equatable {
   final List<DeviceConnection> recentDevices;
   final DeviceStatus? status;
   final Object? error;
+  final bool connectionAttemptFailed;
 
   DeviceConnectionState copyWith({
     ConnectionPhase? phase,
@@ -27,6 +31,7 @@ class DeviceConnectionState extends Equatable {
     List<DeviceConnection>? recentDevices,
     DeviceStatus? status,
     Object? error,
+    bool? connectionAttemptFailed,
     bool clearError = false,
   }) {
     return DeviceConnectionState(
@@ -35,49 +40,190 @@ class DeviceConnectionState extends Equatable {
       recentDevices: recentDevices ?? this.recentDevices,
       status: status ?? this.status,
       error: clearError ? null : error ?? this.error,
+      connectionAttemptFailed: connectionAttemptFailed ?? this.connectionAttemptFailed,
     );
   }
 
   @override
-  List<Object?> get props => [phase, discoveredDevices, recentDevices, status, error];
+  List<Object?> get props => [
+    phase,
+    discoveredDevices,
+    recentDevices,
+    status,
+    error,
+    connectionAttemptFailed,
+  ];
 }
 
 class ConnectionCubit extends Cubit<DeviceConnectionState> {
-  ConnectionCubit(this._repository, this._sessionCubit) : super(const DeviceConnectionState());
+  ConnectionCubit(
+    this._repository,
+    this._sessionCubit, {
+    this.preserveExistingSession = false,
+  }) : super(const DeviceConnectionState());
 
   final ConnectionRepository _repository;
   final DeviceSessionCubit _sessionCubit;
+  final bool preserveExistingSession;
+  _ConnectionRequest _lastRequest = _ConnectionRequest.load;
+  Uri? _lastUri;
+  NetworkMode? _lastMode;
+  var _connectionGeneration = 0;
 
   Future<void> load() async {
-    emit(state.copyWith(phase: ConnectionPhase.loading, clearError: true));
+    if (isClosed) return;
+    _lastRequest = _ConnectionRequest.load;
+    emit(
+      state.copyWith(
+        phase: ConnectionPhase.loading,
+        discoveredDevices: const [],
+        connectionAttemptFailed: false,
+        clearError: true,
+      ),
+    );
     try {
       final recent = await _repository.recentDevices();
-      emit(state.copyWith(phase: ConnectionPhase.initial, recentDevices: recent));
+      if (isClosed) return;
+      emit(state.copyWith(recentDevices: recent));
+      _lastRequest = _ConnectionRequest.discover;
+      final devices = await _repository.discover();
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          phase: ConnectionPhase.initial,
+          discoveredDevices: _withoutRecent(devices, recent),
+          recentDevices: recent,
+        ),
+      );
     } catch (error) {
-      emit(state.copyWith(phase: ConnectionPhase.failure, error: error));
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          phase: ConnectionPhase.failure,
+          error: error,
+          connectionAttemptFailed: false,
+        ),
+      );
     }
   }
 
   Future<void> discover() async {
-    emit(state.copyWith(phase: ConnectionPhase.loading, clearError: true));
+    if (isClosed) return;
+    _lastRequest = _ConnectionRequest.discover;
+    emit(
+      state.copyWith(
+        phase: ConnectionPhase.loading,
+        discoveredDevices: const [],
+        connectionAttemptFailed: false,
+        clearError: true,
+      ),
+    );
     try {
       final devices = await _repository.discover();
-      emit(state.copyWith(phase: ConnectionPhase.initial, discoveredDevices: devices));
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          phase: ConnectionPhase.initial,
+          discoveredDevices: _withoutRecent(devices, state.recentDevices),
+        ),
+      );
     } catch (error) {
-      emit(state.copyWith(phase: ConnectionPhase.failure, error: error));
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          phase: ConnectionPhase.failure,
+          error: error,
+          connectionAttemptFailed: false,
+        ),
+      );
     }
   }
 
   Future<void> connect(Uri uri, NetworkMode mode) async {
-    emit(state.copyWith(phase: ConnectionPhase.connecting, clearError: true));
-    _sessionCubit.connecting();
+    if (isClosed) return;
+    final generation = ++_connectionGeneration;
+    _lastRequest = _ConnectionRequest.connect;
+    _lastUri = uri;
+    _lastMode = mode;
+    emit(
+      state.copyWith(
+        phase: ConnectionPhase.connecting,
+        connectionAttemptFailed: false,
+        clearError: true,
+      ),
+    );
+    if (!preserveExistingSession) _sessionCubit.connecting();
     try {
       final status = await _repository.connect(uri, networkMode: mode);
+      if (isClosed || generation != _connectionGeneration) return;
       await _sessionCubit.setConnectedFromStatus(status);
-      emit(state.copyWith(phase: ConnectionPhase.connected, status: status));
+      if (isClosed || generation != _connectionGeneration) return;
+      emit(
+        state.copyWith(
+          phase: ConnectionPhase.connected,
+          status: status,
+          connectionAttemptFailed: false,
+        ),
+      );
     } catch (error) {
-      _sessionCubit.disconnected('连接盒子失败。');
-      emit(state.copyWith(phase: ConnectionPhase.failure, error: error));
+      if (isClosed || generation != _connectionGeneration) return;
+      if (!preserveExistingSession) {
+        _sessionCubit.disconnected('连接盒子失败。');
+      }
+      emit(
+        state.copyWith(
+          phase: ConnectionPhase.failure,
+          error: error,
+          connectionAttemptFailed: true,
+        ),
+      );
     }
+  }
+
+  void cancelConnection() {
+    if (isClosed || state.phase != ConnectionPhase.connecting) return;
+    _connectionGeneration++;
+    if (!preserveExistingSession) _sessionCubit.disconnected();
+    emit(
+      state.copyWith(
+        phase: ConnectionPhase.initial,
+        connectionAttemptFailed: false,
+        clearError: true,
+      ),
+    );
+  }
+
+  void resetAfterFailure() {
+    if (isClosed || state.phase != ConnectionPhase.failure) return;
+    emit(
+      state.copyWith(
+        phase: ConnectionPhase.initial,
+        connectionAttemptFailed: false,
+        clearError: true,
+      ),
+    );
+  }
+
+  Future<void> retry() => switch (_lastRequest) {
+    _ConnectionRequest.load => load(),
+    _ConnectionRequest.discover => discover(),
+    _ConnectionRequest.connect when _lastUri != null && _lastMode != null => connect(_lastUri!, _lastMode!),
+    _ => load(),
+  };
+
+  List<DeviceConnection> _withoutRecent(List<DeviceConnection> devices, List<DeviceConnection> recent) {
+    final recentIds = recent.map(_deviceKey).toSet();
+    return devices.where((device) => !recentIds.contains(_deviceKey(device))).toList();
+  }
+
+  String _deviceKey(DeviceConnection device) => device.id.isEmpty ? device.baseUri.toString() : device.id;
+
+  @override
+  Future<void> close() {
+    if (state.phase == ConnectionPhase.connecting) {
+      _connectionGeneration++;
+      if (!preserveExistingSession) _sessionCubit.disconnected();
+    }
+    return super.close();
   }
 }

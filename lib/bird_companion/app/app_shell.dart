@@ -1,18 +1,20 @@
-import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
+import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/widgets/disconnected_banner.dart';
-import 'package:aves/bird_companion/features/device/presentation/device_status_page.dart';
-import 'package:aves/bird_companion/features/batches/presentation/batch_list_page.dart';
+import 'package:aves/bird_companion/core/widgets/lazy_indexed_stack.dart';
+import 'package:aves/bird_companion/features/gallery/presentation/album_home_page.dart';
 import 'package:aves/bird_companion/features/jobs/presentation/job_center_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/settings_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class BirdAppShell extends StatefulWidget {
-  const BirdAppShell({super.key, this.initialIndex = 0});
+  const BirdAppShell({super.key, this.initialIndex = 0, this.onGenerateRoute});
   final int initialIndex;
+  final RouteFactory? onGenerateRoute;
 
   @override
   State<BirdAppShell> createState() => _BirdAppShellState();
@@ -20,69 +22,116 @@ class BirdAppShell extends StatefulWidget {
 
 class _BirdAppShellState extends State<BirdAppShell> {
   late int _selectedIndex;
+  late final ValueNotifier<int> _selectedTab;
+  final _navigatorKeys = List.generate(3, (_) => GlobalKey<NavigatorState>());
 
   @override
   void initState() {
     super.initState();
-    _selectedIndex = widget.initialIndex.clamp(0, 3).toInt();
+    _selectedIndex = widget.initialIndex.clamp(0, 2).toInt();
+    _selectedTab = ValueNotifier(_selectedIndex);
+  }
+
+  @override
+  void dispose() {
+    _selectedTab.dispose();
+    super.dispose();
   }
 
   static const _destinations = <NavigationDestination>[
-    NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: '首页'),
-    NavigationDestination(icon: Icon(Icons.grid_view_outlined), selectedIcon: Icon(Icons.grid_view_rounded), label: '图库'),
-    NavigationDestination(icon: Icon(Icons.check_rounded), selectedIcon: Icon(Icons.check_circle_rounded), label: '任务'),
-    NavigationDestination(icon: Icon(Icons.person_outline_rounded), selectedIcon: Icon(Icons.person_rounded), label: '我的'),
+    NavigationDestination(icon: Icon(Icons.photo_outlined), selectedIcon: Icon(Icons.photo), label: '相册'),
+    NavigationDestination(icon: Icon(Icons.task_outlined), selectedIcon: Icon(Icons.task), label: '任务'),
+    NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final pages = <Widget>[
-      const DeviceStatusPage(),
-      const BatchListPage(),
-      const JobCenterPage(),
-      const SettingsPage(),
-    ];
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('拍鸟伴侣'),
-        actions: [
-          IconButton(
-            tooltip: '重新连接',
-            onPressed: () => Navigator.of(context).pushNamed(BirdRoutes.connection),
-            icon: const Icon(Icons.wifi_find_outlined),
-          ),
-        ],
-      ),
       body: BirdShellNavigation(
-        selectTab: (index) => setState(() => _selectedIndex = index.clamp(0, 3).toInt()),
+        selectTab: _selectTab,
         child: Column(
           children: [
-            BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
-              bloc: BirdCompanionScope.of(context).deviceSessionCubit,
-              builder: (context, state) => DisconnectedBanner(
-                isConnected: state.isConnected,
-                lastUpdatedAt: state.lastUpdatedAt,
-                onReconnect: () => BirdCompanionScope.of(context).deviceSessionCubit.reconnect(),
+            if (_selectedIndex != 0)
+              BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
+                bloc: BirdCompanionScope.of(context).deviceSessionCubit,
+                builder: (context, state) => DisconnectedBanner(
+                  isConnected: state.isConnected,
+                  lastUpdatedAt: state.lastUpdatedAt,
+                  onReconnect: () => BirdCompanionScope.of(context).deviceSessionCubit.reconnect(),
+                ),
               ),
-            ),
             Expanded(
-              child: IndexedStack(index: _selectedIndex, children: pages),
+              child: LazyIndexedStack(
+                index: _selectedIndex,
+                itemCount: _destinations.length,
+                itemBuilder: (_, index) => _TabNavigator(
+                  index: index,
+                  selectedTab: _selectedTab,
+                  navigatorKey: _navigatorKeys[index],
+                  onGenerateRoute: widget.onGenerateRoute,
+                  root: switch (index) {
+                    0 => const AlbumHomePage(),
+                    1 => const JobCenterPage(),
+                    _ => const SettingsPage(),
+                  },
+                ),
+              ),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: BirdBottomNavigation(
         selectedIndex: _selectedIndex,
         destinations: _destinations,
-        onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+        onDestinationSelected: _selectTab,
       ),
     );
   }
+
+  void _selectTab(int index) {
+    final next = index.clamp(0, 2).toInt();
+    if (next == _selectedIndex) {
+      _navigatorKeys[next].currentState?.popUntil((route) => route.isFirst);
+      return;
+    }
+    setState(() => _selectedIndex = next);
+    _selectedTab.value = next;
+  }
 }
 
-/// Lets homepage shortcuts switch the existing IndexedStack tab instead of
-/// pushing a second copy of a main page (and a second set of network listeners).
+class _TabNavigator extends StatelessWidget {
+  const _TabNavigator({required this.index, required this.selectedTab, required this.navigatorKey, required this.root, this.onGenerateRoute});
+
+  final int index;
+  final ValueListenable<int> selectedTab;
+  final GlobalKey<NavigatorState> navigatorKey;
+  final Widget root;
+  final RouteFactory? onGenerateRoute;
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<int>(
+    valueListenable: selectedTab,
+    builder: (context, selected, _) => NavigatorPopHandler<Object?>(
+      enabled: selected == index,
+      onPopWithResult: (result) => navigatorKey.currentState?.pop(result),
+      child: Navigator(
+        key: navigatorKey,
+        onGenerateRoute: (settings) {
+          if (settings.name == Navigator.defaultRouteName) {
+            return MaterialPageRoute<void>(settings: settings, builder: (_) => root);
+          }
+          final route = onGenerateRoute?.call(settings);
+          return route ??
+              MaterialPageRoute<void>(
+                settings: settings,
+                builder: (_) => const Scaffold(body: Center(child: Text('页面暂不可用'))),
+              );
+        },
+      ),
+    ),
+  );
+}
+
 class BirdShellNavigation extends InheritedWidget {
   const BirdShellNavigation({super.key, required this.selectTab, required super.child});
   final ValueChanged<int> selectTab;

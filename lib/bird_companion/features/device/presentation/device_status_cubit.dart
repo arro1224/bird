@@ -32,23 +32,22 @@ class DeviceStatusState extends Equatable {
 }
 
 class DeviceStatusCubit extends Cubit<DeviceStatusState> {
-  DeviceStatusCubit(this._repository, this._sessionCubit, [SessionRefreshCoordinator? refreshCoordinator, AppDataChangeBus? dataChanges])
-    : _refreshCoordinator = refreshCoordinator,
-      _dataChanges = dataChanges,
-      super(const DeviceStatusState()) {
+  DeviceStatusCubit(this._repository, this._sessionCubit, [SessionRefreshCoordinator? refreshCoordinator, AppDataChangeBus? dataChanges]) : _dataChanges = dataChanges, super(const DeviceStatusState()) {
     _refreshSubscription = refreshCoordinator?.changes.listen((_) => load());
     _dataSubscription = dataChanges?.changes.where((change) => change.affects(AppDataResource.device) || change.affects(AppDataResource.jobs)).listen((_) => load());
   }
 
   final DeviceRepository _repository;
   final DeviceSessionCubit _sessionCubit;
-  final SessionRefreshCoordinator? _refreshCoordinator;
   final AppDataChangeBus? _dataChanges;
   StreamSubscription<DeviceStatus>? _subscription;
   StreamSubscription<int>? _refreshSubscription;
   StreamSubscription<AppDataChange>? _dataSubscription;
+  bool _loadInFlight = false;
 
   Future<void> load() async {
+    if (_loadInFlight) return;
+    _loadInFlight = true;
     emit(state.copyWith(phase: DeviceStatusPhase.loading, clearError: true));
     try {
       final status = await _repository.fetchStatus();
@@ -65,6 +64,8 @@ class DeviceStatusCubit extends Cubit<DeviceStatusState> {
     } catch (error) {
       _sessionCubit.disconnected('无法读取盒子状态。');
       emit(state.copyWith(phase: DeviceStatusPhase.failure, error: error));
+    } finally {
+      _loadInFlight = false;
     }
   }
 

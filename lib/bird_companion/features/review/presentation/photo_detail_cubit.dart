@@ -26,16 +26,20 @@ class PhotoDetailState {
 }
 
 class PhotoDetailCubit extends Cubit<PhotoDetailState> {
-  PhotoDetailCubit(this._repository, [this._refreshCoordinator, this._dataChanges]) : super(const PhotoDetailState());
+  PhotoDetailCubit(this._repository, [SessionRefreshCoordinator? refreshCoordinator, this._dataChanges]) : super(const PhotoDetailState());
   final ReviewRepository _repository;
-  final SessionRefreshCoordinator? _refreshCoordinator;
   final AppDataChangeBus? _dataChanges;
+  bool _loadInFlight = false;
   Future<void> load(String id) async {
+    if (_loadInFlight) return;
+    _loadInFlight = true;
     emit(state.copyWith(loading: true));
     try {
       emit(PhotoDetailState(detail: await _repository.detail(id), undoEntry: state.undoEntry));
     } catch (error) {
       emit(state.copyWith(loading: false, message: error.toString()));
+    } finally {
+      _loadInFlight = false;
     }
   }
 

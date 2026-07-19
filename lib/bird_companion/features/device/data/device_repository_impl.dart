@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/event_client.dart';
@@ -16,11 +18,40 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Stream<DeviceStatus> watchStatus() {
-    return _eventClient.events
-        .where((event) => event.type == 'device_status' || event.type == 'status_changed')
-        .map(
-          (event) => DeviceStatus.fromJson(event.payload, fallbackBaseUri: _apiClient.baseUri),
-        );
+    late StreamController<DeviceStatus> controller;
+    StreamSubscription<DeviceEvent>? eventSubscription;
+    Timer? fallbackTimer;
+    var fallbackInFlight = false;
+
+    Future<void> pollWhenEventsUnavailable() async {
+      if (_eventClient.currentState == EventConnectionState.connected || fallbackInFlight) return;
+      fallbackInFlight = true;
+      try {
+        controller.add(await _api.fetchStatus());
+      } catch (_) {
+        // Keep the last valid status visible; the normal page retry and
+        // diagnostics screen surface persistent API failures to the user.
+      } finally {
+        fallbackInFlight = false;
+      }
+    }
+
+    controller = StreamController<DeviceStatus>(
+      onListen: () {
+        eventSubscription = _eventClient.events
+            .where((event) => event.type == 'device_status_changed' || event.type == 'device_status' || event.type == 'status_changed')
+            .listen(
+              (event) => controller.add(DeviceStatus.fromJson(event.payload, fallbackBaseUri: _apiClient.baseUri)),
+              onError: (_) {},
+            );
+        fallbackTimer = Timer.periodic(const Duration(seconds: 5), (_) => pollWhenEventsUnavailable());
+      },
+      onCancel: () async {
+        fallbackTimer?.cancel();
+        await eventSubscription?.cancel();
+      },
+    );
+    return controller.stream;
   }
 
   @override

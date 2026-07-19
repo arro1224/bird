@@ -1,6 +1,7 @@
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
+import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/core/widgets/page_back_button.dart';
 import 'package:aves/bird_companion/core/widgets/progress_summary.dart';
@@ -29,6 +30,7 @@ class _JobDetailView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: AppColors.paper,
     appBar: AppBar(
       leading: const BirdPageBackButton(),
       title: const Text('任务详情'),
@@ -44,15 +46,59 @@ class _JobDetailView extends StatelessWidget {
         return ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            ProgressSummary(completed: job.finishedCount, total: job.totalCount, label: job.type.label),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: AppColors.brandLight,
+                          child: Icon(_jobIcon(job.type), color: AppColors.brand),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text('${job.type.label}任务', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                        ),
+                        Text(
+                          job.state.label,
+                          style: TextStyle(color: _jobColor(job), fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    ProgressSummary(completed: job.finishedCount, total: job.totalCount, label: job.type.label),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 16),
-            _InfoRow(label: '当前文件', value: job.currentFile?.isNotEmpty == true ? job.currentFile! : '等待盒子返回'),
-            _InfoRow(label: '状态', value: job.state.label),
-            if (job.speedBytesPerSecond != null) _InfoRow(label: '速度', value: '${(job.speedBytesPerSecond! / 1024 / 1024).toStringAsFixed(1)} MB/s'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  children: [
+                    _InfoRow(label: '当前文件', value: job.currentFile?.isNotEmpty == true ? job.currentFile! : '等待盒子返回'),
+                    _InfoRow(label: '任务编号', value: job.id),
+                    if (job.speedBytesPerSecond != null) _InfoRow(label: '当前速度', value: '${(job.speedBytesPerSecond! / 1024 / 1024).toStringAsFixed(1)} MB/s'),
+                  ],
+                ),
+              ),
+            ),
             if (state.failures.isNotEmpty)
-              ExpansionTile(
-                title: Text('失败项 ${state.failures.length}'),
-                children: state.failures.map((item) => ListTile(title: Text(item.fileId), subtitle: Text(item.reason))).toList(),
+              Card(
+                color: AppColors.amberLight.withValues(alpha: .45),
+                child: ExpansionTile(
+                  leading: const Icon(Icons.error_outline, color: AppColors.danger),
+                  title: Text(
+                    '失败项 ${state.failures.length}',
+                    style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: const Text('展开查看失败原因，可使用下方重试操作'),
+                  children: state.failures.map((item) => ListTile(title: Text(item.fileId), subtitle: Text(item.reason))).toList(),
+                ),
               ),
             if (state.error != null)
               Padding(
@@ -76,12 +122,21 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 10),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    child: Row(
       children: [
-        Text(label, style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 4),
-        Text(value, style: Theme.of(context).textTheme.titleMedium),
+        SizedBox(
+          width: 88,
+          child: Text(label, style: const TextStyle(color: AppColors.inkMuted)),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
       ],
     ),
   );
@@ -129,3 +184,18 @@ class _JobActions extends StatelessWidget {
     ],
   );
 }
+
+IconData _jobIcon(BirdJobType type) => switch (type) {
+  BirdJobType.copy => Icons.storage_outlined,
+  BirdJobType.analysis => Icons.psychology_outlined,
+  BirdJobType.import => Icons.download_outlined,
+  BirdJobType.sync => Icons.sync_rounded,
+  BirdJobType.unknown => Icons.assignment_outlined,
+};
+
+Color _jobColor(BirdJobStatus job) => switch (job.state) {
+  BirdJobState.failed => AppColors.danger,
+  BirdJobState.completed => AppColors.success,
+  BirdJobState.paused => AppColors.amber,
+  _ => AppColors.brand,
+};

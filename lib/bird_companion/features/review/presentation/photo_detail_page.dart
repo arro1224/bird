@@ -1,41 +1,60 @@
 import 'package:aves/bird_companion/app/app_dependencies.dart';
-import 'package:aves/bird_companion/app/theme/bird_ui.dart';
+import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/app/bird_route_args.dart';
+import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
+import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:aves/bird_companion/core/widgets/page_back_button.dart';
+import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/features/review/presentation/photo_detail_cubit.dart';
+import 'package:aves/bird_companion/features/review/presentation/review_edit_page.dart';
+import 'package:aves/bird_companion/features/review/presentation/version_history_page.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/conflict_dialog.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/exif_panel.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/rating_reason_panel.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/recognition_panel.dart';
-import 'package:aves/bird_companion/features/review/presentation/widgets/review_editor.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/subject_overlay_view.dart';
-import 'package:aves/bird_companion/features/review/presentation/widgets/version_history_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class PhotoDetailPage extends StatelessWidget {
-  const PhotoDetailPage({super.key, required this.fileId});
+  const PhotoDetailPage({super.key, required this.fileId, this.displayIndex, this.totalCount, this.sequence = const []});
   final String fileId;
+  final int? displayIndex;
+  final int? totalCount;
+  final List<String> sequence;
+
   @override
   Widget build(BuildContext context) => BlocProvider(
-    create: (_) => PhotoDetailCubit(BirdCompanionScope.of(context).reviewRepository, BirdCompanionScope.of(context).refreshCoordinator, BirdCompanionScope.of(context).dataChangeBus)..load(fileId),
-    child: _View(fileId: fileId),
+    create: (_) => PhotoDetailCubit(
+      BirdCompanionScope.of(context).reviewRepository,
+      BirdCompanionScope.of(context).refreshCoordinator,
+      BirdCompanionScope.of(context).dataChangeBus,
+    )..load(fileId),
+    child: _View(fileId: fileId, displayIndex: displayIndex, totalCount: totalCount, sequence: sequence),
   );
 }
 
 class _View extends StatefulWidget {
-  const _View({required this.fileId});
+  const _View({required this.fileId, this.displayIndex, this.totalCount, required this.sequence});
   final String fileId;
+  final int? displayIndex;
+  final int? totalCount;
+  final List<String> sequence;
+
   @override
   State<_View> createState() => _ViewState();
 }
 
 class _ViewState extends State<_View> {
   KeepState _keep = KeepState.pending;
+  String? _speciesId;
   final _species = TextEditingController();
   final _score = TextEditingController();
   final _tags = TextEditingController();
   String? _appliedRevision;
+  var _showSubjects = false;
+
   @override
   void dispose() {
     _species.dispose();
@@ -44,29 +63,61 @@ class _ViewState extends State<_View> {
     super.dispose();
   }
 
-  void _applyExisting(dynamic detail) {
-    // A save, undo or "use box version" reloads the detail while this State
-    // instance remains mounted. Synchronize the editor when that server
-    // revision changes so stale text cannot be saved back over the new value.
+  void _applyExisting(ReviewDetail detail) {
     final revision = '${detail.decision?.version ?? 0}-${detail.history.length}-${detail.decision?.updatedAt?.millisecondsSinceEpoch ?? 0}';
     if (_appliedRevision == revision) return;
-    final d = detail.decision;
-    _keep = d?.keepState ?? KeepState.pending;
+    final decision = detail.decision;
     final candidates = detail.photo.summary.recognition?.candidates ?? const [];
-    _species.text = d?.userSpecies ?? (candidates.isEmpty ? '' : candidates.first.name);
-    _score.text = d?.userScore?.toString() ?? detail.photo.summary.rating?.totalScore.toString() ?? '';
-    _tags.text = d?.userTags.join(', ') ?? detail.photo.tags.map((tag) => tag.name).join(', ');
+    _keep = decision?.keepState ?? KeepState.pending;
+    _speciesId = decision?.userSpeciesId;
+    _species.text = decision?.userSpecies ?? (candidates.isEmpty ? '' : candidates.first.name);
+    _score.text = decision?.userScore?.toString() ?? detail.photo.summary.rating?.totalScore.toString() ?? '';
+    _tags.text = decision?.userTags.join(', ') ?? detail.photo.tags.map((tag) => tag.name).join(', ');
     _appliedRevision = revision;
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: AppColors.paper,
     appBar: AppBar(
       leading: const BirdPageBackButton(),
-      title: const Text('照片详情'),
+      title: Text(widget.displayIndex == null ? widget.fileId : '${widget.displayIndex} / ${widget.totalCount ?? '—'}'),
       actions: [
         BlocBuilder<PhotoDetailCubit, PhotoDetailState>(
-          builder: (context, state) => IconButton(tooltip: '撤销最近修改', onPressed: state.canUndo ? () => context.read<PhotoDetailCubit>().undo() : null, icon: const Icon(Icons.undo)),
+          builder: (context, state) => PopupMenuButton<String>(
+            tooltip: '更多操作',
+            icon: const Icon(Icons.more_horiz_rounded),
+            onSelected: (value) => _handleMenu(context, state, value),
+            itemBuilder: (_) => [
+              if (_previousId != null)
+                const PopupMenuItem(
+                  value: 'previous',
+                  child: ListTile(leading: Icon(Icons.chevron_left_rounded), title: Text('上一张')),
+                ),
+              if (_nextId != null)
+                const PopupMenuItem(
+                  value: 'next',
+                  child: ListTile(leading: Icon(Icons.chevron_right_rounded), title: Text('下一张')),
+                ),
+              const PopupMenuItem(
+                value: 'featured',
+                child: ListTile(leading: Icon(Icons.star_outline_rounded), title: Text('设为精选')),
+              ),
+              const PopupMenuItem(
+                value: 'pending',
+                child: ListTile(leading: Icon(Icons.help_outline_rounded), title: Text('标记待确认')),
+              ),
+              const PopupMenuItem(
+                value: 'history',
+                child: ListTile(leading: Icon(Icons.history_rounded), title: Text('版本历史')),
+              ),
+              if (state.canUndo)
+                const PopupMenuItem(
+                  value: 'undo',
+                  child: ListTile(leading: Icon(Icons.undo_rounded), title: Text('撤销最近修改')),
+                ),
+            ],
+          ),
         ),
       ],
     ),
@@ -85,55 +136,293 @@ class _ViewState extends State<_View> {
         final detail = state.detail;
         if (detail == null) return Center(child: state.message == null ? const CircularProgressIndicator() : Text(state.message!));
         _applyExisting(detail);
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text('照片详情', style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w900)),
-                ),
-                BirdPill(label: _keep == KeepState.pending ? '待人工确认' : '已人工确认'),
-              ],
-            ),
-            const SizedBox(height: 16),
-            SubjectOverlayView(photo: detail.photo, subjects: detail.photo.subjects),
-            const SizedBox(height: 16),
-            Text(detail.photo.summary.filename, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 4),
-            Text(
-              '拍摄时间：${_formatCapturedAt(detail.photo.summary.capturedAt)}',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 20),
-            Text('AI 识别', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 12),
-            RecognitionPanel(value: detail.photo.summary.recognition),
-            RatingReasonPanel(value: detail.photo.summary.rating),
-            const SizedBox(height: 24),
-            ReviewEditor(keepState: _keep, speciesController: _species, scoreController: _score, tagsController: _tags, onKeepChanged: (value) => setState(() => _keep = value)),
-            const SizedBox(height: 8),
-            FilledButton(
-              onPressed: state.saving
-                  ? null
-                  : () => context.read<PhotoDetailCubit>().save(
-                      UserDecision(
-                        fileId: widget.fileId,
-                        keepState: _keep,
-                        userSpecies: _species.text.trim().isEmpty ? null : _species.text.trim(),
-                        userScore: double.tryParse(_score.text),
-                        userTags: _tags.text.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList(),
-                        updatedAt: DateTime.now(),
-                        version: detail.decision?.version,
+        return NaturalBackdrop(
+          dense: true,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
+            children: [
+              SubjectOverlayView(photo: detail.photo, subjects: _showSubjects ? detail.photo.subjects : const []),
+              const SizedBox(height: 12),
+              _RecognitionSummary(
+                detail: detail,
+                species: _species.text,
+                onEdit: () => _openEditor(context, detail),
+              ),
+              const SizedBox(height: 12),
+              _QuickActions(
+                saving: state.saving,
+                keepState: _keep,
+                onDiscard: () => _save(context, detail, KeepState.discard),
+                onTags: () => _editTags(context, detail),
+                onKeep: () => _save(context, detail, KeepState.keep),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Column(
+                  children: [
+                    ExpansionTile(
+                      leading: const Icon(Icons.bar_chart_rounded, color: AppColors.brand),
+                      title: const Text(
+                        '详细指标',
+                        style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.brandDark),
                       ),
+                      childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      children: [
+                        RecognitionPanel(value: detail.photo.summary.recognition),
+                        const SizedBox(height: 10),
+                        RatingReasonPanel(value: detail.photo.summary.rating),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('显示主体框'),
+                          value: _showSubjects,
+                          onChanged: (value) => setState(() => _showSubjects = value),
+                        ),
+                      ],
                     ),
-              child: Text(state.saving ? '正在保存…' : '保存人工修改'),
-            ),
-            ExifPanel(exif: detail.photo.exif),
-            VersionHistoryPanel(items: detail.history),
-          ],
+                    const Divider(),
+                    ExpansionTile(
+                      leading: const Icon(Icons.info_outline_rounded, color: AppColors.brand),
+                      title: const Text(
+                        '更多信息',
+                        style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.brandDark),
+                      ),
+                      childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      children: [
+                        ListTile(title: const Text('文件名'), trailing: Text(detail.photo.summary.filename)),
+                        ListTile(title: const Text('拍摄时间'), trailing: Text(_formatCapturedAt(detail.photo.summary.capturedAt))),
+                        ExifPanel(exif: detail.photo.exif),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => VersionHistoryPage(items: detail.history))),
+                            icon: const Icon(Icons.history_rounded),
+                            label: const Text('查看版本历史'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         );
       },
+    ),
+  );
+
+  String? get _previousId {
+    final index = widget.sequence.indexOf(widget.fileId);
+    return index > 0 ? widget.sequence[index - 1] : null;
+  }
+
+  String? get _nextId {
+    final index = widget.sequence.indexOf(widget.fileId);
+    return index >= 0 && index + 1 < widget.sequence.length ? widget.sequence[index + 1] : null;
+  }
+
+  void _handleMenu(BuildContext context, PhotoDetailState state, String value) {
+    final detail = state.detail;
+    if (detail == null) return;
+    if (value == 'undo') {
+      context.read<PhotoDetailCubit>().undo();
+      return;
+    }
+    if (value == 'history') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => VersionHistoryPage(items: detail.history)));
+      return;
+    }
+    if (value == 'featured') {
+      _save(context, detail, KeepState.featured);
+      return;
+    }
+    if (value == 'pending') {
+      _save(context, detail, KeepState.pending);
+      return;
+    }
+    final id = value == 'previous' ? _previousId : _nextId;
+    if (id == null) return;
+    final index = widget.sequence.indexOf(id);
+    Navigator.of(context).pushReplacementNamed(
+      BirdRoutes.photoDetail,
+      arguments: PhotoDetailArgs(id, displayIndex: index + 1, totalCount: widget.totalCount, sequence: widget.sequence),
+    );
+  }
+
+  Future<void> _save(BuildContext context, ReviewDetail detail, KeepState value) async {
+    setState(() => _keep = value);
+    await context.read<PhotoDetailCubit>().save(_decision(detail, keepState: value));
+  }
+
+  UserDecision _decision(ReviewDetail detail, {KeepState? keepState}) => UserDecision(
+    fileId: widget.fileId,
+    keepState: keepState ?? _keep,
+    userSpeciesId: _speciesId,
+    userSpecies: _species.text.trim().isEmpty ? null : _species.text.trim(),
+    userScore: double.tryParse(_score.text),
+    userTags: _tags.text.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList(),
+    updatedAt: DateTime.now(),
+    version: detail.decision?.version,
+  );
+
+  Future<void> _editTags(BuildContext context, ReviewDetail detail) async {
+    final controller = TextEditingController(text: _tags.text);
+    final value = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.viewInsetsOf(sheetContext).bottom + 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('添加标签', style: Theme.of(sheetContext).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(hintText: '例如：翠鸟，水鸟，枝头'),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(onPressed: () => Navigator.pop(sheetContext, controller.text), child: const Text('保存标签')),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (value == null || !mounted) return;
+    setState(() => _tags.text = value);
+    await context.read<PhotoDetailCubit>().save(_decision(detail));
+  }
+
+  Future<void> _openEditor(BuildContext context, ReviewDetail detail) async {
+    final result = await Navigator.of(context).push<ReviewEditResult>(
+      MaterialPageRoute(
+        builder: (_) => ReviewEditPage(
+          keepState: _keep,
+          species: _species.text,
+          score: _score.text,
+          tags: _tags.text,
+          initialCandidates: detail.photo.summary.recognition?.candidates ?? const [],
+          previewUri: detail.photo.summary.preview.previewUri,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _keep = result.keepState;
+      _speciesId = result.speciesId;
+      _species.text = result.species;
+      _score.text = result.score;
+      _tags.text = result.tags;
+    });
+    await context.read<PhotoDetailCubit>().save(_decision(detail));
+  }
+}
+
+class _RecognitionSummary extends StatelessWidget {
+  const _RecognitionSummary({required this.detail, required this.species, required this.onEdit});
+  final ReviewDetail detail;
+  final String species;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = detail.photo.summary;
+    final candidate = summary.recognition?.candidates.firstOrNull;
+    final confidence = candidate == null ? null : (candidate.confidence * 100).round();
+    final score = summary.rating?.totalScore;
+    final quality = score == null
+        ? '待评估'
+        : score >= 4.5
+        ? '优秀'
+        : score >= 3.5
+        ? '良好'
+        : '一般';
+    return Card(
+      child: InkWell(
+        onTap: onEdit,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      species.isEmpty ? '待确认鸟种' : species,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: AppColors.brandDark, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  if (summary.isRecommended) const Chip(label: Text('建议保留')),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.edit_outlined, color: AppColors.brand),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(confidence == null ? '相似度：待确认' : '相似度：$confidence%', style: Theme.of(context).textTheme.titleLarge),
+              if (confidence != null) ...[
+                const SizedBox(height: 10),
+                LinearProgressIndicator(value: confidence / 100, minHeight: 7, borderRadius: BorderRadius.circular(99)),
+              ],
+              const SizedBox(height: 14),
+              Text('总体质量：$quality', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppColors.brand)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickActions extends StatelessWidget {
+  const _QuickActions({required this.saving, required this.keepState, required this.onDiscard, required this.onTags, required this.onKeep});
+  final bool saving;
+  final KeepState keepState;
+  final VoidCallback onDiscard;
+  final VoidCallback onTags;
+  final VoidCallback onKeep;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6)),
+              onPressed: saving ? null : onDiscard,
+              icon: const Icon(Icons.delete_outline_rounded, size: 20),
+              label: const Text('弃用', style: TextStyle(fontSize: 12)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+              onPressed: saving ? null : onTags,
+              icon: const Icon(Icons.sell_outlined, size: 19),
+              label: const Text('添加标签', maxLines: 1, style: TextStyle(fontSize: 11)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 5)),
+              onPressed: saving ? null : onKeep,
+              icon: const Icon(Icons.check_circle_outline_rounded, size: 20),
+              label: Text(keepState == KeepState.keep ? '已保留' : '保留', maxLines: 1, style: const TextStyle(fontSize: 12)),
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }

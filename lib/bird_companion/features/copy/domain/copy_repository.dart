@@ -18,5 +18,5 @@ class CopyEstimate {
 
 abstract interface class CopyRepository {
   Future<CopyEstimate> estimate(String batchId, String mode);
-  Future<BirdJobStatus> create(String batchId, String mode, String targetId);
+  Future<BirdJobStatus> create(String batchId, String mode, String targetId, {required bool xmpEnabled});
 }

@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:aves/bird_companion/core/network/api_client.dart';
+import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
 import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
+import 'package:aves/bird_companion/core/storage/cache_metrics_service.dart';
 import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/files/log_download_service.dart';
 import 'package:aves/bird_companion/core/sync/conflict_resolver.dart';
@@ -62,6 +64,7 @@ class BirdCompanionDependencies {
     required this.refreshCoordinator,
     required this.logDownloadService,
     required this.dataChangeBus,
+    required this.cacheMetricsService,
   });
 
   final ApiClient apiClient;
@@ -83,6 +86,7 @@ class BirdCompanionDependencies {
   final SessionRefreshCoordinator refreshCoordinator;
   final LogDownloadService logDownloadService;
   final AppDataChangeBus dataChangeBus;
+  final CacheMetricsService cacheMetricsService;
 
   static Future<BirdCompanionDependencies> create() async {
     final cache = await LocalCache.open();
@@ -96,8 +100,8 @@ class BirdCompanionDependencies {
     final connectivityMonitor = ConnectivityMonitor();
     final pendingOperationStore = PendingOperationStore(cache);
     final refreshCoordinator = SessionRefreshCoordinator();
-    final birdSyncService = BirdSyncService(connectivityMonitor, SyncCoordinator(pendingOperationStore), apiClient);
     final dataChangeBus = AppDataChangeBus();
+    final birdSyncService = BirdSyncService(connectivityMonitor, SyncCoordinator(pendingOperationStore), apiClient, dataChangeBus);
     final deviceSessionCubit = DeviceSessionCubit(
       connectionRepository,
       connectivityMonitor,
@@ -117,9 +121,9 @@ class BirdCompanionDependencies {
       conflictResolver: const ConflictResolver(),
       connectionRepository: connectionRepository,
       deviceRepository: DeviceRepositoryImpl(DeviceStatusApi(apiClient), eventClient, apiClient),
-      batchRepository: BatchRepositoryImpl(BatchApi(apiClient)),
-      photoRepository: PhotoRepositoryImpl(PhotoApi(apiClient), connectivityMonitor, pendingOperationStore),
-      reviewRepository: ReviewRepositoryImpl(ReviewApi(apiClient), connectivityMonitor, pendingOperationStore),
+      batchRepository: BatchRepositoryImpl(BatchApi(apiClient), cache, () => deviceSessionCubit.state.device?.id ?? apiClient.baseUri?.authority ?? 'unbound'),
+      photoRepository: PhotoRepositoryImpl(PhotoApi(apiClient), connectivityMonitor, pendingOperationStore, cache, () => deviceSessionCubit.state.device?.id ?? apiClient.baseUri?.authority ?? 'unbound'),
+      reviewRepository: ReviewRepositoryImpl(ReviewApi(apiClient), connectivityMonitor, pendingOperationStore, cache, () => deviceSessionCubit.state.device?.id ?? apiClient.baseUri?.authority ?? 'unbound'),
       copyRepository: CopyRepositoryImpl(CopyApi(apiClient)),
       jobRepository: JobRepositoryImpl(JobApi(apiClient)),
       deviceSessionCubit: deviceSessionCubit,
@@ -127,8 +131,22 @@ class BirdCompanionDependencies {
       refreshCoordinator: refreshCoordinator,
       logDownloadService: LogDownloadService(apiClient),
       dataChangeBus: dataChangeBus,
+      cacheMetricsService: CacheMetricsService(),
     );
     dependencies.birdSyncService.start();
+    const testBaseUrl = String.fromEnvironment('BIRD_TEST_BASE_URL');
+    if (testBaseUrl.isNotEmpty) {
+      final uri = Uri.tryParse(testBaseUrl);
+      if (uri != null && uri.hasScheme && uri.host.isNotEmpty) {
+        try {
+          final status = await connectionRepository.connect(uri, networkMode: NetworkMode.manual);
+          await deviceSessionCubit.setConnectedFromStatus(status);
+        } catch (_) {
+          // The regular connection page remains available when a test box is
+          // not running. Production builds do not define this value.
+        }
+      }
+    }
     return dependencies;
   }
 

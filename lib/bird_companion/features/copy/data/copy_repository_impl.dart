@@ -8,5 +8,5 @@ class CopyRepositoryImpl implements CopyRepository {
   @override
   Future<CopyEstimate> estimate(String b, String m) => _api.estimate(b, m);
   @override
-  Future<BirdJobStatus> create(String b, String m, String t) => _api.create(b, m, t);
+  Future<BirdJobStatus> create(String b, String m, String t, {required bool xmpEnabled}) => _api.create(b, m, t, xmpEnabled: xmpEnabled);
 }

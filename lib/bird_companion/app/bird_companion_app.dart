@@ -18,7 +18,7 @@ class BirdCompanionApp extends StatelessWidget {
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
         themeMode: ThemeMode.system,
-        initialRoute: BirdRoutes.connection,
+        initialRoute: dependencies.deviceSessionCubit.state.isConnected ? BirdRoutes.shell : BirdRoutes.connection,
         onGenerateRoute: BirdAppRouter.onGenerateRoute,
       ),
     );

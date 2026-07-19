@@ -12,6 +12,8 @@ class AnalysisPlaceholder extends StatelessWidget {
         AnalysisState.processing => '分析中',
         AnalysisState.failed => '分析失败',
         AnalysisState.skipped => '已跳过',
+        AnalysisState.lowConfidence => '低置信度',
+        AnalysisState.completed => '已完成',
         _ => '待分析',
       }),
     ),

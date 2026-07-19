@@ -9,6 +9,8 @@ abstract final class ApiEndpoints {
   static const photos = '/api/v1/projects/{batchId}/files';
   static const batchPhotoOperation = '/api/v1/projects/{batchId}/files/actions';
   static const groups = '/api/v1/projects/{batchId}/groups';
+  static const scenes = '/api/v1/projects/{batchId}/scenes';
+  static const speciesSearch = '/api/v1/species';
   static const photoDetail = '/api/v1/files/{fileId}';
   static const photoDecision = '/api/v1/files/{fileId}/decision';
   static const photoHistory = '/api/v1/files/{fileId}/history';

@@ -1,4 +1,0 @@
-enum SettingsAction {
-  export,
-  import,
-}

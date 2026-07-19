@@ -8,7 +8,11 @@ class BatchApi {
   final ApiClient _client;
 
   Future<BatchPage> page({String? state, String? sort, String? cursor}) async {
-    final data = await _client.get(ApiEndpoints.batches, queryParameters: {'page_size': 30, if (state != null) 'state': state, if (sort != null) 'sort': sort, if (cursor != null) 'cursor': cursor});
+    final query = <String, dynamic>{'page_size': 30};
+    if (state != null) query['state'] = state;
+    if (sort != null) query['sort'] = sort;
+    if (cursor != null) query['cursor'] = cursor;
+    final data = await _client.get(ApiEndpoints.batches, queryParameters: query);
     final items = data['items'] as List? ?? data['batches'] as List? ?? const [];
     return BatchPage(items: items.whereType<Map>().map((item) => BatchSummary.fromJson(Map<String, dynamic>.from(item))).toList(), hasMore: data['has_more'] == true, nextCursor: data['next_cursor']?.toString());
   }

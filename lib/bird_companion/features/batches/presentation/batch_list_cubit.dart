@@ -25,12 +25,14 @@ class BatchListState {
     String? resumeId,
     bool clearError = false,
     bool clearResume = false,
+    bool clearCurrent = false,
+    bool clearFilter = false,
   }) => BatchListState(
     loading: loading ?? this.loading,
     loadingMore: loadingMore ?? this.loadingMore,
     items: items ?? this.items,
-    current: current ?? this.current,
-    filter: filter ?? this.filter,
+    current: clearCurrent ? null : current ?? this.current,
+    filter: clearFilter ? null : filter ?? this.filter,
     nextCursor: nextCursor ?? this.nextCursor,
     hasMore: hasMore ?? this.hasMore,
     error: clearError ? null : error ?? this.error,
@@ -48,11 +50,21 @@ class BatchListCubit extends Cubit<BatchListState> {
   StreamSubscription<AppDataChange>? _dataSubscription;
 
   Future<void> load({String? filter}) async {
-    emit(state.copyWith(loading: true, filter: filter, clearError: true));
+    emit(state.copyWith(loading: true, filter: filter, clearFilter: filter == null, clearError: true));
     try {
       final results = await Future.wait([_repository.page(state: filter, sort: 'created_at_desc'), _repository.current()]);
       final page = results[0] as dynamic;
-      emit(state.copyWith(loading: false, items: page.items, hasMore: page.hasMore, nextCursor: page.nextCursor, current: results[1] as BatchSummary?));
+      final current = results[1] as BatchSummary?;
+      emit(
+        state.copyWith(
+          loading: false,
+          items: page.items,
+          hasMore: page.hasMore,
+          nextCursor: page.nextCursor,
+          current: current,
+          clearCurrent: current == null,
+        ),
+      );
     } catch (error) {
       emit(state.copyWith(loading: false, error: error));
     }

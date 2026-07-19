@@ -28,6 +28,7 @@ class JobCenterCubit extends Cubit<JobCenterState> {
   StreamSubscription<int>? _refreshSubscription;
   StreamSubscription<DeviceEvent>? _eventSubscription;
   StreamSubscription<AppDataChange>? _dataSubscription;
+  bool _loadInFlight = false;
 
   void _mergeEvent(Map<String, dynamic> payload) {
     final updated = BirdJobStatus.fromJson(payload);
@@ -43,12 +44,16 @@ class JobCenterCubit extends Cubit<JobCenterState> {
   }
 
   Future<void> load() async {
+    if (_loadInFlight) return;
+    _loadInFlight = true;
     emit(state.copyWith(loading: true, clearError: true));
     try {
       final jobs = await _repository.list();
       emit(state.copyWith(loading: false, jobs: jobs));
     } catch (error) {
       emit(state.copyWith(loading: false, jobs: const [], error: error));
+    } finally {
+      _loadInFlight = false;
     }
   }
 

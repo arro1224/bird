@@ -15,12 +15,19 @@ class LocalCache {
 
   T? read<T>(String key) => _box.get(key) as T?;
 
+  List<String> keysWithPrefix(String prefix) => _box.keys.map((key) => key.toString()).where((key) => key.startsWith(prefix)).toList(growable: false);
+
   Future<void> write(String key, Object? value) => _box.put(key, value);
 
   Future<void> remove(String key) => _box.delete(key);
 
   Future<void> clearImageMetadata() async {
     final keys = _box.keys.where((key) => key.toString().startsWith('image:')).toList();
+    await _box.deleteAll(keys);
+  }
+
+  Future<void> clearAlbumSnapshots() async {
+    final keys = _box.keys.where((key) => key.toString().startsWith('album:')).toList();
     await _box.deleteAll(keys);
   }
 

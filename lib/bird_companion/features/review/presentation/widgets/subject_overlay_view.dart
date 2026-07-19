@@ -26,8 +26,10 @@ class SubjectOverlayView extends StatelessWidget {
               if (photo.summary.preview.previewUri?.toString().isNotEmpty == true)
                 CachedNetworkImage(
                   imageUrl: photo.summary.preview.previewUri.toString(),
-                  fit: BoxFit.fill,
-                  errorWidget: (_, __, ___) => const ColoredBox(color: Color(0xff24352d)),
+                  fit: BoxFit.cover,
+                  memCacheWidth: (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(320, 1440),
+                  memCacheHeight: (height * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(240, 1080),
+                  errorWidget: (_, _, _) => const ColoredBox(color: Color(0xff24352d)),
                 )
               else
                 const ColoredBox(color: Color(0xff24352d)),

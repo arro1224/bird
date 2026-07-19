@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('photo list preserves review state returned after a batch operation', () {
-    final photo = PhotoSummary.fromJson({
+    final photo = PhotoSummary.fromJson(const {
       'file_id': 'photo-1',
       'filename': 'DSC_0001.NEF',
       'format': 'RAW',

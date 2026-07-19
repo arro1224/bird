@@ -16,7 +16,7 @@ class ReviewSaveResult {
 }
 
 abstract interface class ReviewRepository {
-  Future<List<BirdGroup>> groups(String batchId);
+  Future<List<BirdGroup>> groups(String batchId, {String? sceneId});
   Future<ReviewDetail> detail(String fileId);
   Future<ReviewSaveResult> save(UserDecision value);
 }

@@ -31,9 +31,17 @@ class EventClient {
   Timer? _retryTimer;
   bool _manualDisconnect = false;
   int _attempt = 0;
+  EventConnectionState _currentState = EventConnectionState.disconnected;
 
   Stream<DeviceEvent> get events => _events.stream;
   Stream<EventConnectionState> get connectionStates => _connectionStates.stream;
+  EventConnectionState get currentState => _currentState;
+
+  void _emitState(EventConnectionState value) {
+    if (_currentState == value) return;
+    _currentState = value;
+    _connectionStates.add(value);
+  }
 
   Future<void> connect(Uri uri) async {
     _endpoint = uri;
@@ -45,7 +53,7 @@ class EventClient {
   Future<void> _open({required bool isReconnect}) async {
     final endpoint = _endpoint;
     if (endpoint == null || _manualDisconnect) return;
-    _connectionStates.add(isReconnect ? EventConnectionState.reconnecting : EventConnectionState.connecting);
+    _emitState(isReconnect ? EventConnectionState.reconnecting : EventConnectionState.connecting);
     await _subscription?.cancel();
     await _channel?.sink.close();
     try {
@@ -53,8 +61,8 @@ class EventClient {
       _channel = channel;
       await channel.ready.timeout(const Duration(seconds: 5));
       _attempt = 0;
-      _connectionStates.add(EventConnectionState.connected);
-      _subscription = channel.stream.listen(_onMessage, onError: (_, __) => _scheduleReconnect(), onDone: _scheduleReconnect, cancelOnError: false);
+      _emitState(EventConnectionState.connected);
+      _subscription = channel.stream.listen(_onMessage, onError: (_, _) => _scheduleReconnect(), onDone: _scheduleReconnect, cancelOnError: false);
     } catch (_) {
       _scheduleReconnect();
     }
@@ -71,11 +79,11 @@ class EventClient {
 
   void _scheduleReconnect() {
     if (_manualDisconnect || _endpoint == null || _attempt >= _reconnectPolicy.maxAttempts) {
-      _connectionStates.add(EventConnectionState.disconnected);
+      _emitState(EventConnectionState.disconnected);
       return;
     }
     final delay = _reconnectPolicy.delayFor(_attempt++);
-    _connectionStates.add(EventConnectionState.reconnecting);
+    _emitState(EventConnectionState.reconnecting);
     _retryTimer?.cancel();
     _retryTimer = Timer(delay, () => _open(isReconnect: true));
   }
@@ -87,7 +95,7 @@ class EventClient {
     _subscription = null;
     await _channel?.sink.close();
     _channel = null;
-    _connectionStates.add(EventConnectionState.disconnected);
+    _emitState(EventConnectionState.disconnected);
   }
 
   Future<void> dispose() async {

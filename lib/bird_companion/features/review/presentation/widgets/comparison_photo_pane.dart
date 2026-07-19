@@ -1,75 +1,168 @@
+import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 class ComparisonPhotoPane extends StatelessWidget {
-  const ComparisonPhotoPane({super.key, required this.detail, required this.rank, required this.saving, required this.onMark, this.transformationController});
+  const ComparisonPhotoPane({
+    super.key,
+    required this.detail,
+    required this.rank,
+    this.selected = false,
+    required this.saving,
+    this.onTap,
+    this.onMark,
+    this.transformationController,
+  });
+
   final ReviewDetail detail;
   final int rank;
+  final bool selected;
   final bool saving;
-  final ValueChanged<KeepState> onMark;
+  final VoidCallback? onTap;
+  final ValueChanged<KeepState>? onMark;
   final TransformationController? transformationController;
+
   @override
   Widget build(BuildContext context) {
     final photo = detail.photo.summary;
     final url = photo.preview.previewUri?.toString();
-    final species = photo.recognition?.candidates.isNotEmpty == true ? photo.recognition!.candidates.first.name : '待识别';
-    return Card(
+    final reasons = photo.rating?.reasonTags ?? const <String>[];
+    return GestureDetector(
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: InteractiveViewer(
-              transformationController: transformationController,
-              minScale: 1,
-              maxScale: 5,
-              child: url?.isNotEmpty == true
-                  ? CachedNetworkImage(
-                      imageUrl: url!,
-                      fit: BoxFit.contain,
-                      errorWidget: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined)),
-                    )
-                  : const Center(child: Icon(Icons.photo_outlined, size: 48)),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                DecoratedBox(
-                  decoration: const ShapeDecoration(color: Color(0xFFD9F0D8), shape: StadiumBorder()),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    child: Text(
-                      '${String.fromCharCode(65 + rank)} · ${rank == 0
-                          ? '精选'
-                          : rank == 1
-                          ? '保留'
-                          : rank == 2
-                          ? '待确认'
-                          : '弃用'}',
-                      style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF175642)),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: selected ? AppColors.brandMid : AppColors.outline, width: selected ? 2.5 : 1),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  InteractiveViewer(
+                    transformationController: transformationController,
+                    minScale: 1,
+                    maxScale: 5,
+                    child: url?.isNotEmpty == true
+                        ? CachedNetworkImage(
+                            imageUrl: url!,
+                            fit: BoxFit.cover,
+                            errorWidget: (_, _, _) => const ColoredBox(color: AppColors.mist, child: Icon(Icons.broken_image_outlined)),
+                          )
+                        : const ColoredBox(color: AppColors.mist, child: Icon(Icons.photo_outlined, size: 44)),
+                  ),
+                  Positioned(
+                    left: 12,
+                    top: 12,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: rank == 0 ? AppColors.brandDark.withValues(alpha: .9) : AppColors.paperStrong.withValues(alpha: .76),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        child: Text(
+                          'Top ${rank + 1}',
+                          style: TextStyle(color: rank == 0 ? Colors.white : AppColors.brandDark, fontWeight: FontWeight.w800),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text('${photo.rating?.totalScore.toStringAsFixed(0) ?? '-'} 分 · $species', style: const TextStyle(fontWeight: FontWeight.w900)),
-              ],
+                  if (selected)
+                    const Positioned(
+                      right: 10,
+                      top: 10,
+                      child: CircleAvatar(
+                        radius: 13,
+                        backgroundColor: AppColors.brand,
+                        child: Icon(Icons.check_rounded, color: Colors.white, size: 17),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
-          if (saving) const LinearProgressIndicator(),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              IconButton(tooltip: '保留', onPressed: saving ? null : () => onMark(KeepState.keep), icon: const Icon(Icons.check_circle_outline)),
-              IconButton(tooltip: '弃用', onPressed: saving ? null : () => onMark(KeepState.discard), icon: const Icon(Icons.cancel_outlined)),
-              IconButton(tooltip: '精选', onPressed: saving ? null : () => onMark(KeepState.featured), icon: const Icon(Icons.star_outline)),
-            ],
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            decoration: BoxDecoration(
+              color: AppColors.paperStrong,
+              border: Border.all(color: AppColors.outline),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final score = Text(
+                      photo.rating?.totalScore.toStringAsFixed(1) ?? '—',
+                      style: TextStyle(fontSize: constraints.maxWidth < 110 ? 26 : 32, fontWeight: FontWeight.w900, color: selected ? AppColors.brand : AppColors.inkMuted),
+                    );
+                    if (constraints.maxWidth < 110) return score;
+                    return Row(
+                      children: [
+                        score,
+                        const Spacer(),
+                        Flexible(
+                          child: Text(
+                            reasons.isEmpty ? '暂无评分说明' : reasons.first,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: AppColors.inkMuted),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                const Divider(height: 20),
+                if (photo.rating?.eyeScore != null) _Metric(icon: Icons.remove_red_eye_outlined, label: '鸟眼', value: photo.rating!.eyeScore!),
+                if (photo.rating?.compositionScore != null) _Metric(icon: Icons.crop_free_rounded, label: '构图', value: photo.rating!.compositionScore!),
+                if (saving) const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator(minHeight: 2)),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
+}
+
+class _Metric extends StatelessWidget {
+  const _Metric({required this.icon, required this.label, required this.value});
+  final IconData icon;
+  final String label;
+  final double value;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 15,
+            backgroundColor: AppColors.brandLight,
+            child: Icon(icon, size: 17, color: AppColors.brand),
+          ),
+          const SizedBox(width: 6),
+          if (constraints.maxWidth >= 110)
+            Expanded(
+              child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+            )
+          else
+            const Spacer(),
+          Text(
+            value.toStringAsFixed(1),
+            style: const TextStyle(color: AppColors.brand, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    ),
+  );
 }

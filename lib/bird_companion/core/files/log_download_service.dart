@@ -10,9 +10,8 @@ class DownloadedLog {
   final File file;
 }
 
-/// Downloads a box-produced diagnostic archive into this application's private
-/// cache. The returned path is valid on a physical Android device and can later
-/// be handed to a share/save action without exposing a box-local URL to users.
+/// Downloads a box-produced diagnostic archive to a persistent, user-visible
+/// downloads/documents location when the platform exposes one.
 class LogDownloadService {
   LogDownloadService(this._client, {Dio? dio}) : _dio = dio ?? Dio();
   final ApiClient _client;
@@ -26,9 +25,9 @@ class LogDownloadService {
     final response = await _dio.getUri<List<int>>(resolved, options: Options(responseType: ResponseType.bytes));
     final bytes = response.data;
     if (bytes == null || bytes.isEmpty) throw StateError('下载的日志文件为空。');
-    final dir = await getTemporaryDirectory();
+    final dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
     final filename = _filename(response.headers.value('content-disposition'));
-    final file = File('${dir.path}${Platform.pathSeparator}$filename');
+    final file = File('${dir.path}${Platform.pathSeparator}${DateTime.now().millisecondsSinceEpoch}-$filename');
     await file.writeAsBytes(Uint8List.fromList(bytes), flush: true);
     return DownloadedLog(file);
   }

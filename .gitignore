@@ -32,7 +32,6 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
-/local_native/
 
 # Symbolication related
 app.*.symbols
@@ -45,9 +44,3 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# screenshot generation
-/test_driver/assets/screenshots/
-/screenshots/
-
-# generated files
-/lib/l10ngen/app_localizations*

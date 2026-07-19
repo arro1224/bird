@@ -1,5 +1,0 @@
-<i>Aves</i> tipik JPEG və MP4 faylları da daxil olmaqla, hər cür şəkil və videoları, eləcə də <b>çoxsəhifəli TIFF, SVG, köhnə AVI və daha çox ekzotik şeyləri emal edə bilir! O, <b>hərəkətli fotoları</b>, <b>panoramaları</b> (yəni foto sferaları), <b>360° videoları</b>, eləcə də <b>GeoTIFF</b> fayllarını müəyyən etmək üçün media kolleksiyanızı skanlayır.
-
-Naviqasiya və axtarış Aves-in vacib hissəsidir. Məqsəd istifadəçilərin albomlardan fotoşəkillərə, etiketlərdən xəritələrə və s. asanlıqla keçid etməsidir.
-
-<i>Aves</i>, <b>vidjetlər</b>, <b>tətbiq qısayolları</b>, <b>ekran qoruyucusu</b> və <b>qlobal axtarış</b> idarəetməsi kimi xüsusiyyətlərlə Android (Android TV daxil olmaqla) ilə inteqrasiya olunur. O, həmçinin <b>media görüntüləyicisi və seçicisi</b> kimi də işləyir.

@@ -1,36 +1,433 @@
 openapi: 3.0.3
 info:
-  title: Bird Box v1 API draft
-  version: 0.1.0-draft
-  description: |
-    App-side contract draft. It is not a substitute for confirmation by the
-    real box team; incompatible changes must update this file and its tests.
+  title: Bird Box v1 API
+  version: 1.0.0-app-contract
+  description: App 与真实/模拟拍鸟盒子共用的 v1 契约；双方变更需同步更新契约测试。
+servers:
+  - url: http://bird-box.local
 paths:
   /api/v1/device/status:
     get:
-      summary: Read current device and current-task summary
+      summary: 设备状态与当前任务摘要
       responses:
-        '200': {description: Device status}
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DeviceStatus'}}}}
+  /api/v1/projects:
+    get:
+      summary: 批次列表
+      parameters:
+        - {$ref: '#/components/parameters/Cursor'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - {name: state, in: query, schema: {type: string}}
+        - {name: sort, in: query, schema: {type: string}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BatchPage'}}}}
+  /api/v1/projects/current:
+    get:
+      summary: 当前批次
+      responses:
+        '200':
+          description: 当前批次；没有活动批次时返回空对象
+          content: {application/json: {schema: {$ref: '#/components/schemas/Batch'}}}
+  /api/v1/projects/{batchId}/resume:
+    post:
+      summary: 恢复批次
+      parameters: [{$ref: '#/components/parameters/BatchId'}]
+      responses:
+        '200': {description: Resumed}
   /api/v1/projects/{batchId}/files:
     get:
+      summary: 图片分页、搜索、筛选与排序
       parameters:
-        - {name: batchId, in: path, required: true, schema: {type: string}}
-        - {name: cursor, in: query, schema: {type: string}}
-        - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
-        - {name: search, in: query, schema: {type: string}, description: Search filename, recognized species, and user tags}
-        - {name: sort, in: query, schema: {type: string, enum: [captured_at_desc, score_desc, confidence_desc]}}
+        - {$ref: '#/components/parameters/BatchId'}
+        - {$ref: '#/components/parameters/Cursor'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - {name: search, in: query, schema: {type: string}, description: 文件名、鸟种或用户标签}
+        - {name: sort, in: query, schema: {type: string, enum: [captured_at_desc, score_desc, confidence_desc, recommended_desc]}}
+        - {name: species, in: query, schema: {type: string}}
+        - {name: min_score, in: query, schema: {type: number, minimum: 0, maximum: 10}}
+        - {name: min_confidence, in: query, schema: {type: number, minimum: 0, maximum: 1}}
+        - {name: tags, in: query, schema: {type: string}, description: 逗号分隔}
+        - {name: keep_state, in: query, schema: {type: string, enum: [keep, discard, pending, featured]}}
+        - {name: analysis_state, in: query, schema: {type: string}}
+        - {name: clarity_state, in: query, schema: {type: string, enum: [clear, average, blurred]}}
+        - {name: recognition_state, in: query, schema: {type: string, enum: [recognized, needs_review, unknown]}}
+        - {name: recommended_only, in: query, schema: {type: boolean}}
+        - {name: group_id, in: query, schema: {type: string}}
+        - {name: scene_id, in: query, schema: {type: string}}
       responses:
-        '200': {description: Cursor-page of files}
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/PhotoPage'}}}}
+  /api/v1/projects/{batchId}/files/actions:
+    post:
+      summary: 批量人工状态或标签操作
+      parameters: [{$ref: '#/components/parameters/BatchId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file_ids, operation]
+              properties:
+                file_ids: {type: array, items: {type: string}, minItems: 1}
+                operation: {type: string, enum: [keep, discard, pending, featured, add_tags, remove_tags]}
+                value: {}
+      responses:
+        '200': {description: 允许部分成功, content: {application/json: {schema: {$ref: '#/components/schemas/BatchOperationOutcome'}}}}
+  /api/v1/projects/{batchId}/groups:
+    get:
+      summary: 分组审阅列表
+      parameters:
+        - {$ref: '#/components/parameters/BatchId'}
+        - {name: scene_id, in: query, schema: {type: string}}
+        - {$ref: '#/components/parameters/Cursor'}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BirdGroupPage'}}}}
+  /api/v1/projects/{batchId}/scenes:
+    get:
+      summary: 批次拍摄场景列表
+      parameters: [{$ref: '#/components/parameters/BatchId'}]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/Scene'}}
+  /api/v1/species:
+    get:
+      summary: 鸟种词典搜索
+      parameters:
+        - {name: search, in: query, required: true, schema: {type: string, minLength: 1}}
+        - {$ref: '#/components/parameters/PageSize'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/SpeciesCandidate'}}
+  /api/v1/files/{fileId}:
+    get:
+      summary: 照片详情、EXIF、识别、评分和主体框
+      parameters: [{$ref: '#/components/parameters/FileId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ReviewDetail'}}}}
+  /api/v1/files/{fileId}/history:
+    get:
+      summary: 人工审阅历史
+      parameters: [{$ref: '#/components/parameters/FileId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/VersionHistoryPage'}}}}
   /api/v1/files/{fileId}/decision:
     post:
-      summary: Save one manual review decision
+      summary: 保存单张人工复核决策
+      parameters: [{$ref: '#/components/parameters/FileId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/UserDecision'}}}
       responses:
-        '200': {description: Decision accepted, response must contain version}
-        '409': {description: Version conflict, body contains error_code VERSION_CONFLICT}
+        '200': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/DecisionSaveResponse'}}}}
+        '409': {description: VERSION_CONFLICT, content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+  /api/v1/projects/{batchId}/copy/estimate:
+    get:
+      summary: 复制空间估算与可用目标
+      parameters:
+        - {$ref: '#/components/parameters/BatchId'}
+        - {name: mode, in: query, required: true, schema: {type: string, enum: [keep, all, dual]}}
+      responses:
+        '200': {description: OK}
+  /api/v1/projects/{batchId}/copy:
+    post:
+      summary: 创建复制任务
+      parameters: [{$ref: '#/components/parameters/BatchId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode, target_id, xmp_enabled]
+              properties:
+                mode: {type: string, enum: [keep, all, dual]}
+                target_id: {type: string}
+                xmp_enabled: {type: boolean}
+      responses:
+        '200': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Job'}}}}
+        '409': {description: Target offline or insufficient space}
+  /api/v1/jobs:
+    get:
+      summary: 任务列表
+      responses:
+        '200': {description: OK}
+  /api/v1/jobs/{jobId}:
+    get:
+      summary: 任务详情
+      parameters: [{$ref: '#/components/parameters/JobId'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Job'}}}}
+    delete:
+      summary: 删除终态任务
+      parameters: [{$ref: '#/components/parameters/JobId'}]
+      responses:
+        '200': {description: Deleted}
+        '409': {description: Running/paused task cannot be deleted}
+  /api/v1/jobs/{jobId}/failures:
+    get:
+      summary: 任务失败项
+      parameters: [{$ref: '#/components/parameters/JobId'}]
+      responses:
+        '200': {description: OK}
   /api/v1/jobs/{jobId}/actions:
     post:
-      summary: Control one running job
+      summary: 暂停、恢复、取消或重试任务
+      parameters: [{$ref: '#/components/parameters/JobId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [action], properties: {action: {type: string, enum: [pause, resume, cancel, retry]}}}}}
       responses:
         '200': {description: Updated job snapshot}
-        '409': {description: Action is not valid in current state}
-        '503': {description: Box unavailable; do not queue task controls offline}
+        '409': {description: Invalid state transition}
+        '503': {description: Box unavailable; controls are not queued offline}
+  /api/v1/logs/export:
+    post:
+      summary: 生成诊断日志包
+      responses:
+        '200': {description: Object containing download_url}
+  /api/v1/events:
+    get:
+      summary: WebSocket 设备与任务事件流
+      responses:
+        '101': {description: Switching Protocols}
+components:
+  parameters:
+    BatchId: {name: batchId, in: path, required: true, schema: {type: string}}
+    FileId: {name: fileId, in: path, required: true, schema: {type: string}}
+    JobId: {name: jobId, in: path, required: true, schema: {type: string}}
+    Cursor: {name: cursor, in: query, schema: {type: string}}
+    PageSize: {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
+  schemas:
+    DeviceStatus:
+      type: object
+      required: [device_id, device_name, api_version]
+      properties:
+        device_id: {type: string}
+        device_name: {type: string}
+        api_version: {type: string}
+        battery_percent: {type: integer, minimum: 0, maximum: 100}
+        temperature_celsius: {type: number}
+        free_bytes: {type: integer}
+        current_job: {$ref: '#/components/schemas/Job'}
+    PreviewRef:
+      type: object
+      description: 图片地址必须为 App 可直接访问的绝对 URI；如需鉴权，盒子应返回有时效签名的 URI。
+      properties:
+        thumb_ref: {type: string, format: uri, nullable: true}
+        preview_ref: {type: string, format: uri, nullable: true}
+        width: {type: integer, minimum: 1, nullable: true}
+        height: {type: integer, minimum: 1, nullable: true}
+    BatchPage:
+      type: object
+      required: [items, has_more]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Batch'}}
+        has_more: {type: boolean}
+        next_cursor: {type: string, nullable: true}
+    Batch:
+      type: object
+      required: [project_id, name, created_at, total_files, analyzed_count, pending_review_count, keep_count, discard_count]
+      properties:
+        project_id: {type: string}
+        name: {type: string}
+        created_at: {type: string, format: date-time}
+        total_files: {type: integer, minimum: 0}
+        analyzed_count: {type: integer, minimum: 0}
+        pending_review_count: {type: integer, minimum: 0}
+        review_count: {type: integer, minimum: 0, deprecated: true, description: 旧固件兼容字段，语义等同 pending_review_count}
+        keep_count: {type: integer, minimum: 0}
+        discard_count: {type: integer, minimum: 0}
+        featured_count: {type: integer, minimum: 0}
+        pending_copy_count: {type: integer, minimum: 0}
+        copy_state: {type: string}
+        scene_count: {type: integer, minimum: 0}
+        burst_group_count: {type: integer, minimum: 0}
+        cover: {$ref: '#/components/schemas/PreviewRef'}
+    PhotoPage:
+      type: object
+      required: [items, has_more]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Photo'}}
+        has_more: {type: boolean}
+        next_cursor: {type: string, nullable: true}
+    Photo:
+      type: object
+      required: [file_id, filename, format, analysis_state]
+      properties:
+        file_id: {type: string}
+        filename: {type: string}
+        format: {type: string}
+        thumb_ref: {type: string, format: uri, nullable: true}
+        preview_ref: {type: string, format: uri, nullable: true}
+        width: {type: integer, minimum: 1, nullable: true}
+        height: {type: integer, minimum: 1, nullable: true}
+        analysis_state: {type: string, enum: [queued, processing, completed, low_confidence, skipped, failed]}
+        captured_at: {type: string, format: date-time, nullable: true}
+        keep_state: {type: string, nullable: true}
+        scene_id: {type: string, nullable: true}
+        group_id: {type: string, nullable: true}
+        clarity_state: {type: string, enum: [clear, average, blurred, unknown]}
+        is_recommended: {type: boolean, description: 由盒子算法明确给出的推荐标记，不由 App 根据评分猜测}
+        user_tags: {type: array, items: {type: string}}
+        recognition:
+          type: object
+          properties:
+            species_topn: {type: array, items: {$ref: '#/components/schemas/SpeciesCandidate'}}
+            low_confidence: {type: boolean}
+            model_version: {type: string, nullable: true}
+        rating:
+          type: object
+          properties:
+            total_score: {type: number}
+            quality_score: {type: number, nullable: true}
+            eye_score: {type: number, nullable: true}
+            composition_score: {type: number, nullable: true}
+            reason_tags: {type: array, items: {type: string}}
+    BirdGroupPage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/BirdGroup'}}
+    BirdGroup:
+      type: object
+      required: [group_id, group_type, representative_file_id, member_file_ids, members]
+      properties:
+        group_id: {type: string}
+        group_type: {type: string}
+        representative_file_id: {type: string}
+        member_file_ids: {type: array, items: {type: string}}
+        rank_order: {type: array, items: {type: string}}
+        members: {type: array, items: {$ref: '#/components/schemas/Photo'}}
+        recommendation_reasons: {type: array, items: {type: string}}
+        scene_id: {type: string, nullable: true}
+        captured_from: {type: string, format: date-time, nullable: true}
+        captured_to: {type: string, format: date-time, nullable: true}
+    ReviewDetail:
+      type: object
+      required: [file]
+      properties:
+        file: {$ref: '#/components/schemas/Photo'}
+        subjects: {type: array, items: {$ref: '#/components/schemas/SubjectBox'}}
+        tags: {type: array, items: {$ref: '#/components/schemas/BirdTag'}}
+        exif: {type: object, additionalProperties: true}
+        decision: {$ref: '#/components/schemas/UserDecision'}
+    SubjectBox:
+      type: object
+      properties:
+        bbox:
+          type: object
+          properties:
+            x: {type: number}
+            y: {type: number}
+            width: {type: number}
+            height: {type: number}
+        confidence: {type: number, minimum: 0, maximum: 1}
+        subject_type: {type: string}
+    BirdTag:
+      type: object
+      required: [tag_id, tag_name, source]
+      properties:
+        tag_id: {type: string}
+        tag_name: {type: string}
+        source: {type: string}
+        editable: {type: boolean}
+    UserDecision:
+      type: object
+      required: [file_id, keep_state]
+      properties:
+        file_id: {type: string}
+        keep_state: {type: string, enum: [keep, discard, pending, featured]}
+        user_score: {type: number, minimum: 0, maximum: 10, nullable: true}
+        user_species_id: {type: string, nullable: true}
+        user_species: {type: string, nullable: true}
+        user_tags: {type: array, items: {type: string}}
+        updated_at: {type: string, format: date-time, nullable: true}
+        version: {type: integer, minimum: 0, nullable: true}
+    VersionHistoryPage:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/VersionHistory'}}
+    VersionHistory:
+      type: object
+      required: [version, source, updated_at]
+      properties:
+        version: {type: integer, minimum: 0}
+        source: {type: string}
+        updated_at: {type: string, format: date-time}
+        summary: {type: string, nullable: true}
+    DecisionSaveResponse:
+      type: object
+      required: [accepted, version]
+      properties:
+        accepted: {type: boolean}
+        version: {type: integer, minimum: 0}
+        decision: {$ref: '#/components/schemas/UserDecision'}
+    BatchOperationOutcome:
+      type: object
+      required: [succeeded_ids, failed]
+      properties:
+        succeeded_ids: {type: array, items: {type: string}}
+        failed:
+          type: array
+          items:
+            type: object
+            required: [file_id, reason]
+            properties:
+              file_id: {type: string}
+              reason: {type: string}
+    ErrorEnvelope:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string}
+        message: {type: string}
+        local_version: {type: integer, nullable: true}
+        remote_version: {type: integer, nullable: true}
+    SpeciesCandidate:
+      type: object
+      required: [species_id, name, confidence]
+      properties:
+        species_id: {type: string}
+        name: {type: string}
+        english_name: {type: string, nullable: true}
+        latin_name: {type: string, nullable: true}
+        confidence: {type: number, minimum: 0, maximum: 1}
+    Scene:
+      type: object
+      required: [scene_id, project_id, name, photo_count, burst_group_count]
+      properties:
+        scene_id: {type: string}
+        project_id: {type: string}
+        name: {type: string}
+        photo_count: {type: integer, minimum: 0}
+        burst_group_count: {type: integer, minimum: 0}
+        captured_from: {type: string, format: date-time, nullable: true}
+        captured_to: {type: string, format: date-time, nullable: true}
+        cover:
+          $ref: '#/components/schemas/PreviewRef'
+    Job:
+      type: object
+      required: [job_id, job_type, job_state, progress]
+      properties:
+        job_id: {type: string}
+        job_type: {type: string, enum: [import, analysis, copy, sync]}
+        job_state: {type: string, enum: [idle, running, paused, completed, failed, cancelled]}
+        progress: {type: number, minimum: 0, maximum: 1}
+        total_count: {type: integer, minimum: 0}
+        finished_count: {type: integer, minimum: 0}
+        failed_count: {type: integer, minimum: 0}

@@ -7,8 +7,11 @@ import 'package:aves/bird_companion/features/review/domain/review_repository.dar
 class ReviewApi {
   ReviewApi(this._client);
   final ApiClient _client;
-  Future<List<BirdGroup>> groups(String id) async {
-    final data = await _client.get(ApiEndpoints.groups.replaceFirst('{batchId}', id));
+  Future<List<BirdGroup>> groups(String id, {String? sceneId}) async {
+    final data = await _client.get(
+      ApiEndpoints.groups.replaceFirst('{batchId}', id),
+      queryParameters: {if (sceneId?.isNotEmpty == true) 'scene_id': sceneId},
+    );
     final items = data['items'] as List? ?? const [];
     return items.whereType<Map>().map((x) => BirdGroup.fromJson(Map<String, dynamic>.from(x))).toList();
   }
@@ -38,6 +41,7 @@ class ReviewApi {
             fileId: id,
             keepState: KeepStateWireValue.fromWire(decisionMap['keep_state']?.toString()),
             userScore: (decisionMap['user_score'] as num?)?.toDouble(),
+            userSpeciesId: decisionMap['user_species_id']?.toString(),
             userSpecies: decisionMap['user_species']?.toString(),
             userTags: (decisionMap['user_tags'] as List? ?? const []).map((tag) => tag.toString()).toList(),
             version: (decisionMap['version'] as num?)?.toInt(),

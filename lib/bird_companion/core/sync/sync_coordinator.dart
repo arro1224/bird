@@ -1,5 +1,6 @@
 import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
+import 'package:aves/bird_companion/core/network/api_exception.dart';
 
 class SyncResult {
   const SyncResult({required this.syncedCount, required this.failedOperations});
@@ -22,7 +23,12 @@ class SyncCoordinator {
         await _store.remove(operation.id);
         syncedCount++;
       } catch (error) {
-        final retried = operation.copyWith(retryCount: operation.retryCount + 1, status: PendingOperationStatus.failed, failureReason: error.toString());
+        final conflict = error is ApiException && error.statusCode == 409;
+        final retried = operation.copyWith(
+          retryCount: operation.retryCount + 1,
+          status: conflict ? PendingOperationStatus.conflict : PendingOperationStatus.failed,
+          failureReason: error.toString(),
+        );
         await _store.save(retried);
         failed.add(retried);
       }

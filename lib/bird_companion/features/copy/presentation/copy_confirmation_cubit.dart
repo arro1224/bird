@@ -3,13 +3,14 @@ import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class CopyConfirmationState {
-  const CopyConfirmationState({this.mode = 'keep', this.loading = false, this.estimate, this.targetId, this.error, this.submitted = false, this.jobId});
+  const CopyConfirmationState({this.mode = 'keep', this.loading = false, this.estimate, this.targetId, this.error, this.submitted = false, this.jobId, this.xmpEnabled = true});
   final String mode;
   final bool loading, submitted;
   final CopyEstimate? estimate;
   final String? targetId;
   final Object? error;
   final String? jobId;
+  final bool xmpEnabled;
   StorageTarget? get selectedTarget => estimate?.targets.where((target) => target.id == targetId).firstOrNull;
   bool get hasEnoughSpace => selectedTarget != null && selectedTarget!.online && selectedTarget!.freeBytes >= (estimate?.requiredBytes ?? 0);
   String? get submissionBlockReason => targetId == null
@@ -17,7 +18,7 @@ class CopyConfirmationState {
       : !hasEnoughSpace
       ? '目标盘空间不足或已断开，请更换存储盘后再创建任务'
       : null;
-  CopyConfirmationState copyWith({String? mode, bool? loading, CopyEstimate? estimate, String? targetId, Object? error, bool clearError = false, bool? submitted, String? jobId}) => CopyConfirmationState(
+  CopyConfirmationState copyWith({String? mode, bool? loading, CopyEstimate? estimate, String? targetId, Object? error, bool clearError = false, bool? submitted, String? jobId, bool? xmpEnabled}) => CopyConfirmationState(
     mode: mode ?? this.mode,
     loading: loading ?? this.loading,
     estimate: estimate ?? this.estimate,
@@ -25,6 +26,7 @@ class CopyConfirmationState {
     error: clearError ? null : error ?? this.error,
     submitted: submitted ?? this.submitted,
     jobId: jobId ?? this.jobId,
+    xmpEnabled: xmpEnabled ?? this.xmpEnabled,
   );
 }
 
@@ -48,15 +50,32 @@ class CopyConfirmationCubit extends Cubit<CopyConfirmationState> {
   Future<void> submit() async {
     final target = state.targetId;
     if (target == null || state.loading || state.submitted || !state.hasEnoughSpace) return;
-    emit(state.copyWith(loading: true));
+    emit(state.copyWith(loading: true, clearError: true));
     try {
-      final job = await _repository.create(batchId, state.mode, target);
+      // Capacity and target availability may have changed while the user was
+      // reviewing the confirmation page. Always validate against a fresh
+      // estimate immediately before creating the task.
+      final estimate = await _repository.estimate(batchId, state.mode);
+      final refreshedTarget = estimate.targets.where((item) => item.id == target).firstOrNull;
+      if (refreshedTarget == null || !refreshedTarget.online || refreshedTarget.freeBytes < estimate.requiredBytes) {
+        emit(
+          state.copyWith(
+            loading: false,
+            estimate: estimate,
+            error: StateError('目标盘已断开或剩余空间不足，请重新选择后再试。'),
+          ),
+        );
+        return;
+      }
+      final job = await _repository.create(batchId, state.mode, target, xmpEnabled: state.xmpEnabled);
       _dataChanges?.publish({AppDataResource.jobs, AppDataResource.device, AppDataResource.batches}, reason: 'copy_job_created');
-      emit(state.copyWith(loading: false, submitted: true, jobId: job.id));
+      emit(state.copyWith(loading: false, estimate: estimate, submitted: true, jobId: job.id));
     } catch (error) {
       emit(state.copyWith(loading: false, error: error));
     }
   }
 
   void selectTarget(String id) => emit(state.copyWith(targetId: id));
+
+  void setXmpEnabled(bool value) => emit(state.copyWith(xmpEnabled: value));
 }

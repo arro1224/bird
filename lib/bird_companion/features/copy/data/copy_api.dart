@@ -12,5 +12,10 @@ class CopyApi {
     return CopyEstimate(mode: mode, fileCount: (d['file_count'] as num?)?.toInt() ?? 0, requiredBytes: (d['required_bytes'] as num?)?.toInt() ?? 0, pendingCount: (d['pending_count'] as num?)?.toInt() ?? 0, targets: t);
   }
 
-  Future<BirdJobStatus> create(String i, String m, String t) => _c.post(ApiEndpoints.copyCreate.replaceFirst('{batchId}', i), data: {'mode': m, 'target_id': t}).then(BirdJobStatus.fromJson);
+  Future<BirdJobStatus> create(String i, String m, String t, {required bool xmpEnabled}) => _c
+      .post(
+        ApiEndpoints.copyCreate.replaceFirst('{batchId}', i),
+        data: {'mode': m, 'target_id': t, 'xmp_enabled': xmpEnabled},
+      )
+      .then(BirdJobStatus.fromJson);
 }

@@ -30,6 +30,10 @@ class JobDetailState {
 class JobDetailCubit extends Cubit<JobDetailState> {
   JobDetailCubit(this._repository, this._events, this.jobId, [this._refreshCoordinator, this._dataChanges]) : super(const JobDetailState()) {
     _eventSubscription = _events.events.where((event) => event.type == 'job_updated' || event.type == 'job_progress' || event.type == 'job_state_changed').listen(_onEvent);
+    _connectionSubscription = _events.connectionStates.listen((_) {
+      final job = state.job;
+      if (job != null) _configurePolling(job);
+    });
   }
 
   final JobRepository _repository;
@@ -38,9 +42,12 @@ class JobDetailCubit extends Cubit<JobDetailState> {
   final SessionRefreshCoordinator? _refreshCoordinator;
   final AppDataChangeBus? _dataChanges;
   StreamSubscription<DeviceEvent>? _eventSubscription;
+  StreamSubscription<EventConnectionState>? _connectionSubscription;
   Timer? _pollTimer;
+  bool _loadInFlight = false;
 
   Future<void> load() async {
+    if (_loadInFlight) return;
     final id = jobId;
     if (id == null) {
       emit(
@@ -50,6 +57,7 @@ class JobDetailCubit extends Cubit<JobDetailState> {
       );
       return;
     }
+    _loadInFlight = true;
     emit(state.copyWith(loading: true, clearError: true, clearMessage: true));
     try {
       final job = await _repository.detail(id);
@@ -66,6 +74,8 @@ class JobDetailCubit extends Cubit<JobDetailState> {
       _configurePolling(job);
     } catch (error) {
       emit(state.copyWith(loading: false, error: error));
+    } finally {
+      _loadInFlight = false;
     }
   }
 
@@ -107,7 +117,7 @@ class JobDetailCubit extends Cubit<JobDetailState> {
 
   void _configurePolling(BirdJobStatus job) {
     _pollTimer?.cancel();
-    if (job.state == BirdJobState.running) {
+    if (job.state == BirdJobState.running && _events.currentState != EventConnectionState.connected) {
       _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => load());
     }
   }
@@ -124,6 +134,7 @@ class JobDetailCubit extends Cubit<JobDetailState> {
   Future<void> close() async {
     _pollTimer?.cancel();
     await _eventSubscription?.cancel();
+    await _connectionSubscription?.cancel();
     return super.close();
   }
 }

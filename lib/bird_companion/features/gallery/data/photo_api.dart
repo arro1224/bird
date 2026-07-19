@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/models/scene_models.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
@@ -15,6 +16,18 @@ class PhotoApi {
       hasMore: data['has_more'] == true,
       nextCursor: data['next_cursor']?.toString(),
     );
+  }
+
+  Future<List<SceneSummary>> scenes(String batchId) async {
+    final data = await _client.get(ApiEndpoints.scenes.replaceFirst('{batchId}', batchId));
+    final list = data['items'] as List? ?? const [];
+    return list.whereType<Map>().map((item) => SceneSummary.fromJson(Map<String, dynamic>.from(item))).toList();
+  }
+
+  Future<List<SpeciesCandidate>> searchSpecies(String query) async {
+    final data = await _client.get(ApiEndpoints.speciesSearch, queryParameters: {'search': query, 'page_size': 20});
+    final list = data['items'] as List? ?? const [];
+    return list.whereType<Map>().map((item) => SpeciesCandidate.fromJson(Map<String, dynamic>.from(item))).toList();
   }
 
   Future<BatchOperationOutcome> batchOperation(String batchId, List<String> ids, String operation, {Object? value}) async {

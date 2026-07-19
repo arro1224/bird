@@ -8,14 +8,12 @@ import 'package:aves/bird_companion/features/connection/domain/connection_reposi
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class DeviceSessionCubit extends Cubit<DeviceSessionState> {
-  DeviceSessionCubit(this._repository, this._connectivityMonitor, this._eventClient, this._refreshCoordinator, {Future<void> Function()? onConnectionRecovered})
-    : _onConnectionRecovered = onConnectionRecovered,
-      super(const DeviceSessionState()) {
+  DeviceSessionCubit(this._repository, this._connectivityMonitor, this._eventClient, this._refreshCoordinator, {this.onConnectionRecovered}) : super(const DeviceSessionState()) {
     _networkSubscription = _connectivityMonitor.onNetworkChanged.listen((available) {
-      if (available && state.phase == DeviceSessionPhase.disconnected && state.device != null) reconnect();
+      if (!isClosed && available && state.phase == DeviceSessionPhase.disconnected && state.device != null) reconnect();
     });
     _eventSubscription = _eventClient.connectionStates.listen((eventState) {
-      if (eventState == EventConnectionState.disconnected && state.device != null) {
+      if (!isClosed && eventState == EventConnectionState.disconnected && state.device != null) {
         // HTTP 状态查询仍可正常工作；模拟盒子或旧版真实盒子未提供 WebSocket 时，
         // 不应把整台设备误判为断线。
         emit(state.copyWith(message: '实时事件连接暂不可用，页面会在刷新时读取最新状态。'));
@@ -27,13 +25,16 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   final ConnectivityMonitor _connectivityMonitor;
   final EventClient _eventClient;
   final SessionRefreshCoordinator _refreshCoordinator;
-  final Future<void> Function()? _onConnectionRecovered;
+  final Future<void> Function()? onConnectionRecovered;
   late final StreamSubscription<bool> _networkSubscription;
   late final StreamSubscription<EventConnectionState> _eventSubscription;
 
-  void connecting() => emit(state.copyWith(phase: DeviceSessionPhase.connecting, clearMessage: true));
+  void connecting() {
+    if (!isClosed) emit(state.copyWith(phase: DeviceSessionPhase.connecting, clearMessage: true));
+  }
 
   Future<void> connected(DeviceSessionState next) async {
+    if (isClosed) return;
     emit(next);
     _refreshCoordinator.requestRefresh();
     await _synchronizeAfterConnection();
@@ -45,14 +46,14 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
 
   Future<void> _synchronizeAfterConnection() async {
     try {
-      await _onConnectionRecovered?.call();
+      await onConnectionRecovered?.call();
       // Retained writes may have changed gallery and review data after the
       // first refresh emitted by connected(). Ask mounted feature cubits for a
       // second, final read once synchronization is complete.
       _refreshCoordinator.requestRefresh();
     } catch (_) {
       // The session is healthy even if retained writes cannot be replayed yet.
-      emit(state.copyWith(message: '已连接盒子，部分离线修改将在下次刷新时同步。'));
+      if (!isClosed) emit(state.copyWith(message: '已连接盒子，部分离线修改将在下次刷新时同步。'));
     }
   }
 
@@ -62,17 +63,20 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   }
 
   Future<void> reconnect() async {
-    if (state.phase == DeviceSessionPhase.reconnecting || state.device == null) return;
+    if (isClosed || state.phase == DeviceSessionPhase.reconnecting || state.device == null) return;
     emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '正在重新连接盒子…'));
     try {
       final status = await _repository.reconnect();
+      if (isClosed) return;
       await setConnectedFromStatus(status);
     } catch (_) {
-      emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: '自动重连失败，可手动重新连接。'));
+      if (!isClosed) emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: '自动重连失败，可手动重新连接。'));
     }
   }
 
-  void disconnected([String? message]) => emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: message));
+  void disconnected([String? message]) {
+    if (!isClosed) emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: message));
+  }
 
   @override
   Future<void> close() async {
