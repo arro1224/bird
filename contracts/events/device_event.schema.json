@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bird Box device event v1",
+  "type": "object",
+  "required": ["event_type", "payload"],
+  "properties": {
+    "event_type": {"enum": ["device_status_changed", "device_status", "status_changed", "storage_changed", "project_changed"]},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "payload": {
+      "type": "object",
+      "properties": {
+        "device_id": {"type": "string"},
+        "battery_percent": {"type": "integer", "minimum": 0, "maximum": 100},
+        "temperature_celsius": {"type": "number"},
+        "free_bytes": {"type": "integer", "minimum": 0},
+        "project_id": {"type": "string"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}
