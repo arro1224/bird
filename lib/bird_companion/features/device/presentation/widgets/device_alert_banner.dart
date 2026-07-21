@@ -34,7 +34,7 @@ class DeviceAlertBanner extends StatelessWidget {
 
   String? get _alert {
     if (status.hasError) return status.errorMessage ?? '盒子报告错误：${status.errorCode}';
-    if (!status.card.inserted) return '未插入存储卡。你仍可查看历史批次和任务记录。';
+    if (!status.card.inserted) return '未插入存储卡。你仍可查看过去拍摄的照片和处理记录。';
     if ((status.temperatureCelsius ?? 0) >= 70) return '盒子温度较高，任务可能暂停或降载。';
     if ((status.batteryPercent ?? 100) <= 15 && !status.isExternalPower) return '电量不足，请连接电源后继续复制或深度分析。';
     return null;

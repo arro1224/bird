@@ -14,12 +14,12 @@ class ConflictDialog extends StatelessWidget {
       borderRadius: BorderRadius.circular(28),
       side: const BorderSide(color: AppColors.brandLight),
     ),
-    title: const Text('检测到版本冲突'),
-    content: const Text('盒子端已有较新的修改。你可以采用盒子端结果，或以当前本地修改再次提交。'),
+    title: const Text('这张照片在别处被修改过'),
+    content: const Text('盒子里保存的内容比手机上的更新。请选择使用盒子里的内容，或者保留手机上的修改。'),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context, ConflictChoice.cancel), child: const Text('取消')),
-      TextButton(onPressed: () => Navigator.pop(context, ConflictChoice.remote), child: const Text('采用盒子结果')),
-      FilledButton(onPressed: () => Navigator.pop(context, ConflictChoice.local), child: const Text('保留本地修改')),
+      TextButton(onPressed: () => Navigator.pop(context, ConflictChoice.remote), child: const Text('使用盒子内容')),
+      FilledButton(onPressed: () => Navigator.pop(context, ConflictChoice.local), child: const Text('保留手机修改')),
     ],
   );
 }

@@ -39,7 +39,7 @@ class RatingReasonPanel extends StatelessWidget {
               children: [
                 if (value!.qualityScore != null) _Metric(icon: Icons.high_quality_outlined, label: '总体质量', value: value!.qualityScore!),
                 if (value!.eyeScore != null) _Metric(icon: Icons.remove_red_eye_outlined, label: '鸟眼', value: value!.eyeScore!),
-                if (value!.compositionScore != null) _Metric(icon: Icons.crop_free_rounded, label: '构图', value: value!.compositionScore!),
+                if (value!.compositionScore != null) _Metric(icon: Icons.crop_free_rounded, label: '画面安排', value: value!.compositionScore!),
               ],
             ),
             if (value!.reasonTags.isNotEmpty) ...[

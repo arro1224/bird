@@ -47,7 +47,7 @@ class JobCard extends StatelessWidget {
                   _Metric(value: '${job.finishedCount} / ${job.totalCount}', label: '已处理 / 总数'),
                   _Metric(value: '${(progress * 100).round()}%', label: '进度'),
                   _Metric(value: _speed(job.speedBytesPerSecond), label: '当前速度'),
-                  _Metric(value: '${job.failedCount}', label: '失败'),
+                  _Metric(value: '${job.failedCount}', label: '未完成'),
                 ],
               ),
               const SizedBox(height: 14),
@@ -55,7 +55,7 @@ class JobCard extends StatelessWidget {
               if (job.currentFile?.isNotEmpty == true) ...[
                 const SizedBox(height: 11),
                 Text(
-                  '当前文件：${job.currentFile}',
+                  '正在处理：${job.currentFile}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: AppColors.inkMuted),
@@ -63,7 +63,7 @@ class JobCard extends StatelessWidget {
               ],
               if (job.state == BirdJobState.failed) ...[
                 const SizedBox(height: 12),
-                Text(job.errorMessage ?? '任务执行失败', style: const TextStyle(color: AppColors.danger)),
+                Text(job.errorMessage ?? '照片处理没有完成，请重试', style: const TextStyle(color: AppColors.danger)),
               ],
               if (busy) const Padding(padding: EdgeInsets.only(top: 10), child: LinearProgressIndicator()),
               if (!busy && (job.canPause || job.canResume || job.canRestore || job.canRetry || job.canDelete)) ...[
@@ -75,7 +75,7 @@ class JobCard extends StatelessWidget {
                     if (job.canPause) OutlinedButton(onPressed: () => onControl?.call('pause'), child: const Text('暂停')),
                     if (job.canResume) FilledButton(onPressed: () => onControl?.call('resume'), child: const Text('继续')),
                     if (job.canRetry) FilledButton(onPressed: () => onControl?.call('retry'), child: const Text('重试')),
-                    if (job.canRestore) OutlinedButton(onPressed: () => onControl?.call('restore'), child: const Text('恢复任务')),
+                    if (job.canRestore) OutlinedButton(onPressed: () => onControl?.call('restore'), child: const Text('继续处理')),
                     if (job.canPause || job.canResume) TextButton(onPressed: () => onControl?.call('cancel'), child: const Text('取消')),
                     if (job.canDelete) TextButton.icon(onPressed: onDelete, icon: const Icon(Icons.delete_outline, size: 18), label: const Text('删除')),
                   ],
@@ -130,10 +130,10 @@ class _StatePill extends StatelessWidget {
 
 String _title(BirdJobStatus job) => switch (job.type) {
   BirdJobType.copy => '复制原始照片',
-  BirdJobType.analysis => 'AI 分析',
+  BirdJobType.analysis => '识别照片',
   BirdJobType.import => '导入照片',
-  BirdJobType.sync => '同步审阅结果',
-  BirdJobType.unknown => '未知任务',
+  BirdJobType.sync => '更新照片修改',
+  BirdJobType.unknown => '其他照片处理',
 };
 
 IconData _icon(BirdJobType type) => switch (type) {

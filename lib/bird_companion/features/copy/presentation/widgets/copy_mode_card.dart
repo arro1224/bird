@@ -20,7 +20,7 @@ class CopyModeCard extends StatelessWidget {
     };
     final subtitle = switch (mode) {
       'keep' => '仅复制经过审阅并标记为保留或精选的照片',
-      'all' => '复制批次中的所有照片，不做筛选',
+      'all' => '复制这次拍摄中的所有照片，不做筛选',
       'dual' => '复制保留照片，同时创建完整备份',
       _ => '由盒子重新估算复制范围',
     };

@@ -5,20 +5,29 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 class PhotoTile extends StatelessWidget {
-  const PhotoTile({super.key, required this.photo, required this.selected, required this.onTap, required this.onLongPress, this.compact = false});
+  const PhotoTile({
+    super.key,
+    required this.photo,
+    required this.selected,
+    required this.onTap,
+    required this.onLongPress,
+    this.compact = false,
+    this.operationFailed = false,
+  });
 
   final PhotoSummary photo;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final bool compact;
+  final bool operationFailed;
 
   @override
   Widget build(BuildContext context) {
     final image = photo.preview.thumbnailUri;
     final score = photo.rating?.totalScore;
     final state = photo.keepState ?? 'pending';
-    final isFeatured = state == 'featured';
+    final isFeatured = state == 'featured' || photo.isRecommended;
     final needsReview = state == 'pending' || photo.analysisState == AnalysisState.lowConfidence || photo.recognition?.isLowConfidence == true;
 
     return LayoutBuilder(
@@ -41,7 +50,7 @@ class PhotoTile extends StatelessWidget {
                     CachedNetworkImage(
                       imageUrl: image.toString(),
                       fit: BoxFit.cover,
-                      cacheKey: 'bird-photo-${photo.id}',
+                      cacheKey: 'bird-photo-${photo.id}-${image.pathSegments.last}',
                       memCacheWidth: cacheWidth,
                       memCacheHeight: cacheHeight,
                       maxWidthDiskCache: cacheWidth * 2,
@@ -90,11 +99,20 @@ class PhotoTile extends StatelessWidget {
                             shadows: const [Shadow(color: Colors.black38, blurRadius: 4)],
                           ),
                   ),
-                  if (!compact && photo.analysisState == AnalysisState.failed)
+                  if (operationFailed)
+                    const Positioned(
+                      left: 7,
+                      top: 7,
+                      child: _StatusBadge(
+                        label: '操作失败',
+                        color: AppColors.danger,
+                      ),
+                    ),
+                  if (!operationFailed && !compact && photo.analysisState == AnalysisState.failed)
                     const Positioned(
                       left: 8,
                       top: 8,
-                      child: _StatusBadge(label: '分析失败', color: AppColors.danger),
+                      child: _StatusBadge(label: '识别未完成', color: AppColors.danger),
                     )
                   else if (!compact && photo.clarityState == ClarityState.blurred)
                     const Positioned(
@@ -106,13 +124,13 @@ class PhotoTile extends StatelessWidget {
                     const Positioned(
                       right: 7,
                       bottom: 7,
-                      child: _StatusBadge(label: '待复核', color: AppColors.amber),
+                      child: _StatusBadge(label: '需要确认', color: AppColors.amber),
                     )
                   else if (!compact && photo.isRecommended)
                     const Positioned(
                       right: 7,
                       bottom: 7,
-                      child: _StatusBadge(label: 'AI 推荐', color: AppColors.brandDark),
+                      child: _StatusBadge(label: '系统推荐', color: AppColors.brandDark),
                     ),
                 ],
               ),

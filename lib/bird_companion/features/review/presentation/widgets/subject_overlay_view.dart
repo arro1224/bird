@@ -9,9 +9,9 @@ class SubjectOverlayView extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final imageWidth = (photo.summary.preview.width ?? 4).toDouble();
-      final imageHeight = (photo.summary.preview.height ?? 3).toDouble();
-      final naturalHeight = constraints.maxWidth * imageHeight / imageWidth;
+      // Keep the approved near-square review viewport on every camera format.
+      // The original dimensions still drive cache decoding below.
+      final naturalHeight = constraints.maxWidth / 1.22;
       // Do not use the original camera resolution as physical widget height.
       // A capped responsive preview keeps the review controls reachable on a
       // 390×844 phone as well as on larger Android screens.
@@ -29,6 +29,10 @@ class SubjectOverlayView extends StatelessWidget {
                   fit: BoxFit.cover,
                   memCacheWidth: (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(320, 1440),
                   memCacheHeight: (height * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(240, 1080),
+                  placeholder: (_, _) => const ColoredBox(
+                    color: Color(0xffdfe7d8),
+                    child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  ),
                   errorWidget: (_, _, _) => const ColoredBox(color: Color(0xff24352d)),
                 )
               else

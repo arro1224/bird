@@ -87,7 +87,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('进入当前批次'), findsOneWidget);
+    expect(find.text('进入本次拍摄'), findsOneWidget);
     expect(find.text('按场景浏览 · 4 个'), findsNothing);
     expect(tester.takeException(), isNull);
   });

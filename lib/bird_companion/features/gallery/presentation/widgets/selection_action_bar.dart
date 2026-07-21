@@ -11,6 +11,7 @@ class SelectionActionBar extends StatefulWidget {
     required this.onAddTags,
     required this.onRemoveTags,
     required this.onClear,
+    this.failedCount = 0,
   });
 
   final int count;
@@ -19,6 +20,7 @@ class SelectionActionBar extends StatefulWidget {
   final VoidCallback onAddTags;
   final VoidCallback onRemoveTags;
   final VoidCallback onClear;
+  final int failedCount;
 
   @override
   State<SelectionActionBar> createState() => _SelectionActionBarState();
@@ -57,7 +59,7 @@ class _SelectionActionBarState extends State<SelectionActionBar> {
               crossAxisCount: 2,
               mainAxisSpacing: AppSpacing.xs,
               crossAxisSpacing: AppSpacing.xs,
-              childAspectRatio: 1.15,
+              childAspectRatio: 1.36,
               children: [
                 _Action(icon: Icons.check_rounded, label: '确认保留', subtitle: '保留选中的照片', color: AppColors.keep, selected: _pendingAction == 'keep', onTap: widget.busy ? null : () => _choose('keep')),
                 _Action(icon: Icons.close_rounded, label: '确认弃用', subtitle: '排除选中的照片', color: AppColors.danger, selected: _pendingAction == 'discard', onTap: widget.busy ? null : () => _choose('discard')),
@@ -85,8 +87,15 @@ class _SelectionActionBarState extends State<SelectionActionBar> {
                   const SizedBox(width: AppSpacing.xs),
                   Expanded(
                     child: Text(
-                      _pendingAction == null ? '请先选择操作；完成后会在照片上显示结果。' : '已选择“${_label(_pendingAction!)}”，将处理 ${widget.count} 张照片。',
-                      style: const TextStyle(fontSize: 12, color: AppColors.brand),
+                      widget.failedCount > 0
+                          ? '有 ${widget.failedCount} 张操作失败，可重试或取消选择。'
+                          : _pendingAction == null
+                          ? '请先选择操作；完成后会在照片上显示结果。'
+                          : '已选择“${_label(_pendingAction!)}”，将处理 ${widget.count} 张照片。',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: widget.failedCount > 0 ? AppColors.danger : AppColors.brand,
+                      ),
                     ),
                   ),
                 ],
@@ -99,12 +108,16 @@ class _SelectionActionBarState extends State<SelectionActionBar> {
                 onPressed: widget.busy || _pendingAction == null
                     ? null
                     : () {
-                        final action = _pendingAction!;
-                        setState(() => _pendingAction = null);
-                        widget.onAction(action);
+                        widget.onAction(_pendingAction!);
                       },
                 icon: widget.busy ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.check_circle_outline_rounded),
-                label: Text(widget.busy ? '正在处理 ${widget.count} 张…' : '确认操作'),
+                label: Text(
+                  widget.busy
+                      ? '正在处理 ${widget.count} 张…'
+                      : widget.failedCount > 0
+                      ? '重新尝试'
+                      : '确认操作',
+                ),
               ),
             ),
           ],
@@ -143,15 +156,19 @@ class _Action extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.sm),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircleAvatar(
+              radius: 17,
               backgroundColor: color.withValues(alpha: .10),
               child: Icon(icon, color: onTap == null ? AppColors.inkFaint : color),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(height: 2),
             Text(
@@ -220,18 +237,22 @@ class _PassiveAction extends StatelessWidget {
       side: const BorderSide(color: AppColors.outline),
     ),
     child: Padding(
-      padding: const EdgeInsets.all(AppSpacing.sm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           CircleAvatar(
+            radius: 17,
             backgroundColor: AppColors.brand.withValues(alpha: .10),
             child: Icon(
               icon,
               color: enabled ? AppColors.brand : AppColors.inkFaint,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 2),
           Text(

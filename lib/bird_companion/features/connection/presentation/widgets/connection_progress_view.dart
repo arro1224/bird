@@ -31,6 +31,7 @@ class ConnectionProgressView extends StatelessWidget {
             const SizedBox.square(
               dimension: 270,
               child: CircularProgressIndicator(
+                value: .65,
                 strokeWidth: 8,
                 strokeCap: StrokeCap.round,
                 backgroundColor: AppColors.brandLight,
@@ -56,13 +57,13 @@ class ConnectionProgressView extends StatelessWidget {
         ),
       ),
       Text(
-        deviceName,
+        '65%',
         textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.headlineSmall,
+        style: Theme.of(context).textTheme.displayMedium?.copyWith(color: AppColors.brand, fontWeight: FontWeight.w800),
       ),
       const SizedBox(height: AppSpacing.xs),
       Text(
-        '正在验证设备状态，请稍候……',
+        '正在连接中……',
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -75,20 +76,20 @@ class ConnectionProgressView extends StatelessWidget {
           children: [
             _ConnectionStep(
               state: _StepState.done,
-              title: '已确认连接地址',
-              subtitle: '设备地址格式已验证',
+              title: '已确认设备',
+              subtitle: '设备身份已验证',
             ),
             Divider(),
             _ConnectionStep(
               state: _StepState.active,
-              title: '正在验证设备状态',
-              subtitle: '正在建立本地连接，请稍候',
+              title: '正在配置连接',
+              subtitle: '正在建立连接，请稍候……',
             ),
             Divider(),
             _ConnectionStep(
               state: _StepState.waiting,
-              title: '准备同步本地数据',
-              subtitle: '连接成功后将自动刷新',
+              title: '正在读取设备状态',
+              subtitle: '连接成功后将自动读取',
             ),
           ],
         ),
@@ -97,7 +98,7 @@ class ConnectionProgressView extends StatelessWidget {
       const _KeepNearbyNote(),
       const SizedBox(height: AppSpacing.lg),
       BirdButton(
-        label: '返回查找设备',
+        label: '取消连接',
         onPressed: onCancel,
         variant: BirdButtonVariant.outlined,
       ),

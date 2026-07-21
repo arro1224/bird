@@ -42,7 +42,7 @@ class _JobCenterViewState extends State<_JobCenterView> {
     backgroundColor: AppColors.paper,
     body: BlocConsumer<JobCenterCubit, JobCenterState>(
       listenWhen: (before, after) => before.error != after.error && after.error != null,
-      listener: (context, state) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('任务操作失败：${state.error}'))),
+      listener: (context, state) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('操作没有完成：${state.error}'))),
       builder: (context, state) {
         if (state.loading && state.jobs.isEmpty) return const Center(child: CircularProgressIndicator());
         final jobs = state.jobs.where((job) => _showCompleted ? _ended(job) : !_ended(job)).toList();
@@ -59,11 +59,11 @@ class _JobCenterViewState extends State<_JobCenterView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text('下午好', style: TextStyle(color: AppColors.inkMuted, fontSize: 16)),
-                        Text('任务', style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w900)),
+                        Text('处理进度', style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w900)),
                       ],
                     ),
                   ),
-                  IconButton.filledTonal(onPressed: () => context.read<JobCenterCubit>().load(), icon: const Icon(Icons.refresh_rounded), tooltip: '刷新任务'),
+                  IconButton.filledTonal(onPressed: () => context.read<JobCenterCubit>().load(), icon: const Icon(Icons.refresh_rounded), tooltip: '刷新进度'),
                 ],
               ),
               const SizedBox(height: 18),
@@ -79,7 +79,7 @@ class _JobCenterViewState extends State<_JobCenterView> {
               const SizedBox(height: 18),
               if (state.isDemo)
                 MaterialBanner(
-                  content: const Text('当前为演示任务，未连接盒子端。'),
+                  content: const Text('当前显示的是示例进度，尚未连接盒子。'),
                   actions: [TextButton(onPressed: () => context.read<JobCenterCubit>().load(), child: const Text('退出演示'))],
                 ),
               if (jobs.isEmpty)
@@ -87,9 +87,9 @@ class _JobCenterViewState extends State<_JobCenterView> {
                   padding: const EdgeInsets.only(top: 80),
                   child: EmptyState(
                     icon: _showCompleted ? Icons.task_alt_rounded : Icons.assignment_outlined,
-                    title: _showCompleted ? '暂无已完成任务' : (state.error == null ? '暂无进行中的任务' : '暂时无法读取任务'),
-                    message: state.error == null ? '分析、复制或同步任务会显示在这里。' : '请检查盒子连接后重试。',
-                    actionLabel: state.error == null ? '刷新' : '查看演示任务',
+                    title: _showCompleted ? '暂无已完成的处理' : (state.error == null ? '现在没有正在处理的照片' : '暂时无法读取处理进度'),
+                    message: state.error == null ? '照片识别、读取和保存进度会显示在这里。' : '请检查盒子连接后重试。',
+                    actionLabel: state.error == null ? '刷新' : '查看示例进度',
                     onAction: state.error == null ? () => context.read<JobCenterCubit>().load() : context.read<JobCenterCubit>().showDemo,
                   ),
                 )
@@ -114,7 +114,7 @@ class _JobCenterViewState extends State<_JobCenterView> {
                       children: [
                         Icon(Icons.info_outline, color: AppColors.brand),
                         SizedBox(width: 10),
-                        Expanded(child: Text('可以退出 App，盒子会继续在后台执行任务')),
+                        Expanded(child: Text('可以退出软件，盒子仍会继续处理照片')),
                       ],
                     ),
                   ),
@@ -130,8 +130,8 @@ class _JobCenterViewState extends State<_JobCenterView> {
     final approved = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('删除已结束任务？'),
-        content: const Text('只清理任务记录，不会删除已经复制的照片。'),
+        title: const Text('删除这条处理记录？'),
+        content: const Text('只清理进度记录，不会删除已经保存的照片。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('删除')),

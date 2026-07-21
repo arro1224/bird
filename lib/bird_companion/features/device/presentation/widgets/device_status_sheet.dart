@@ -17,6 +17,7 @@ Future<void> showDeviceStatusSheet(
   context: context,
   isScrollControlled: true,
   useSafeArea: true,
+  showDragHandle: true,
   builder: (context) => DeviceStatusSheet(
     status: status,
     session: session,
@@ -44,7 +45,7 @@ class DeviceStatusSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => FractionallySizedBox(
-    heightFactor: .78,
+    heightFactor: .62,
     child: Column(
       children: [
         Padding(
@@ -56,8 +57,9 @@ class DeviceStatusSheet extends StatelessWidget {
           ),
           child: Row(
             children: [
+              const SizedBox(width: 48),
               Expanded(
-                child: Text(status.connection.name, style: Theme.of(context).textTheme.headlineSmall),
+                child: Text(status.connection.name, textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
               ),
               IconButton(
                 tooltip: '关闭',

@@ -40,7 +40,7 @@ abstract final class UserMessageMapper {
         }
       }
       return switch (error.code) {
-        'card_not_inserted' => const UserMessage(title: '未插入存储卡', message: '请插入存储卡后重试，或查看历史批次。'),
+        'card_not_inserted' => const UserMessage(title: '未插入存储卡', message: '请插入存储卡后重试，或查看过去拍摄的照片。'),
         'card_read_failed' => const UserMessage(title: '存储卡读取失败', message: '请重新插卡或检查存储卡格式。', actionLabel: '重试'),
         'storage_insufficient' => const UserMessage(title: '目标空间不足', message: '请更换目标盘或减少复制范围。'),
         'device_overheated' => const UserMessage(title: '盒子温度较高', message: '请等待降温，必要时暂停当前任务。'),

@@ -27,7 +27,7 @@ class DisconnectedBanner extends StatelessWidget {
             Icon(Icons.wifi_off_rounded, color: scheme.onErrorContainer),
             const SizedBox(width: AppSpacing.xs),
             Expanded(
-              child: Text('与盒子的连接已断开，盒子任务仍会继续执行。$lastUpdated', style: TextStyle(color: scheme.onErrorContainer)),
+              child: Text('与盒子的连接已断开，盒子仍会继续处理照片。$lastUpdated', style: TextStyle(color: scheme.onErrorContainer)),
             ),
             if (onReconnect != null) TextButton(onPressed: onReconnect, child: const Text('重连')),
           ],

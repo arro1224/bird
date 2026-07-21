@@ -33,8 +33,8 @@ class _JobDetailView extends StatelessWidget {
     backgroundColor: AppColors.paper,
     appBar: AppBar(
       leading: const BirdPageBackButton(),
-      title: const Text('任务详情'),
-      actions: [IconButton(onPressed: () => context.read<JobDetailCubit>().load(), icon: const Icon(Icons.refresh), tooltip: '刷新任务状态')],
+      title: const Text('处理详情'),
+      actions: [IconButton(onPressed: () => context.read<JobDetailCubit>().load(), icon: const Icon(Icons.refresh), tooltip: '刷新处理进度')],
     ),
     body: BlocConsumer<JobDetailCubit, JobDetailState>(
       listenWhen: (before, after) => before.message != after.message && after.message != null,
@@ -42,7 +42,7 @@ class _JobDetailView extends StatelessWidget {
       builder: (context, state) {
         if (state.loading && state.job == null) return const Center(child: CircularProgressIndicator());
         final job = state.job;
-        if (job == null) return Center(child: Text('无法读取任务详情：${state.error ?? '请返回任务中心重试'}'));
+        if (job == null) return Center(child: Text('无法读取处理详情：${state.error ?? '请返回处理进度页重试'}'));
         return ListView(
           padding: const EdgeInsets.all(20),
           children: [
@@ -60,7 +60,7 @@ class _JobDetailView extends StatelessWidget {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: Text('${job.type.label}任务', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                          child: Text(job.type.label, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
                         ),
                         Text(
                           job.state.label,
@@ -80,9 +80,9 @@ class _JobDetailView extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Column(
                   children: [
-                    _InfoRow(label: '当前文件', value: job.currentFile?.isNotEmpty == true ? job.currentFile! : '等待盒子返回'),
-                    _InfoRow(label: '任务编号', value: job.id),
-                    if (job.speedBytesPerSecond != null) _InfoRow(label: '当前速度', value: '${(job.speedBytesPerSecond! / 1024 / 1024).toStringAsFixed(1)} MB/s'),
+                    _InfoRow(label: '正在处理', value: job.currentFile?.isNotEmpty == true ? job.currentFile! : '等待盒子更新'),
+                    _InfoRow(label: '记录编号', value: job.id),
+                    if (job.speedBytesPerSecond != null) _InfoRow(label: '处理速度', value: '${(job.speedBytesPerSecond! / 1024 / 1024).toStringAsFixed(1)} MB/s'),
                   ],
                 ),
               ),
@@ -155,17 +155,17 @@ class _JobActions extends StatelessWidget {
       if (job.canPause) OutlinedButton(onPressed: () => context.read<JobDetailCubit>().control('pause'), child: const Text('暂停')),
       if (job.canResume) FilledButton(onPressed: () => context.read<JobDetailCubit>().control('resume'), child: const Text('继续')),
       if (job.canRetry) FilledButton(onPressed: () => context.read<JobDetailCubit>().control('retry'), child: const Text('重试')),
-      if (job.state == BirdJobState.running || job.state == BirdJobState.paused) TextButton(onPressed: () => context.read<JobDetailCubit>().control('cancel'), child: const Text('取消任务')),
+      if (job.state == BirdJobState.running || job.state == BirdJobState.paused) TextButton(onPressed: () => context.read<JobDetailCubit>().control('cancel'), child: const Text('停止处理')),
       if (job.canDelete)
         TextButton.icon(
           icon: const Icon(Icons.delete_outline),
-          label: const Text('删除任务'),
+          label: const Text('删除记录'),
           onPressed: () async {
             final approved = await showDialog<bool>(
               context: context,
               builder: (dialogContext) => AlertDialog(
-                title: const Text('删除此任务？'),
-                content: const Text('只移除任务记录，不会删除已经复制的照片。'),
+                title: const Text('删除这条处理记录？'),
+                content: const Text('只移除进度记录，不会删除已经保存的照片。'),
                 actions: [
                   TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
                   FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('删除')),
@@ -179,7 +179,7 @@ class _JobActions extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: () => Navigator.of(context).pushReplacementNamed(BirdRoutes.gallery, arguments: GalleryArgs(sourceBatchId!)),
           icon: const Icon(Icons.photo_library_outlined),
-          label: const Text('返回当前批次'),
+          label: const Text('返回本次拍摄'),
         ),
     ],
   );

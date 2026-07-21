@@ -84,8 +84,8 @@ class _View extends StatelessWidget {
                   Card(
                     child: SwitchListTile(
                       secondary: const Icon(Icons.description_outlined, color: AppColors.brand),
-                      title: const Text('生成同名 XMP', style: TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: const Text('将评分、标签、物种信息和保留状态写入旁车文件'),
+                      title: const Text('同时保存照片编辑信息', style: TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: const Text('方便在其他照片软件中继续使用评分、标签和鸟种信息'),
                       value: state.xmpEnabled,
                       onChanged: state.loading ? null : context.read<CopyConfirmationCubit>().setXmpEnabled,
                     ),

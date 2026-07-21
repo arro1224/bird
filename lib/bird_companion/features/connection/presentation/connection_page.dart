@@ -70,7 +70,8 @@ class _ConnectionViewState extends State<_ConnectionView> {
 
       if (connecting) {
         return _stateScaffold(
-          title: '正在连接',
+          title: '正在连接$deviceName',
+          showBack: false,
           child: ConnectionProgressView(
             deviceName: deviceName,
             onCancel: context.read<ConnectionCubit>().cancelConnection,
@@ -97,6 +98,12 @@ class _ConnectionViewState extends State<_ConnectionView> {
       if (state.phase == ConnectionPhase.connected && state.status != null) {
         return _stateScaffold(
           title: '设备已连接',
+          showBack: false,
+          bottomNavigationBar: BirdBottomNavigation(
+            selectedIndex: 0,
+            destinations: _connectionDestinations,
+            onDestinationSelected: _finishConnection,
+          ),
           child: ConnectionSuccessView(
             status: state.status!,
             onOpenGallery: () => _finishConnection(0),
@@ -213,13 +220,19 @@ class _ConnectionViewState extends State<_ConnectionView> {
 
   void _showManualForm() => setState(() => _showManualAddress = true);
 
-  Widget _stateScaffold({required String title, required Widget child}) => Scaffold(
+  Widget _stateScaffold({
+    required String title,
+    required Widget child,
+    bool showBack = true,
+    Widget? bottomNavigationBar,
+  }) => Scaffold(
     backgroundColor: AppColors.paper,
+    bottomNavigationBar: bottomNavigationBar,
     body: ConnectionBackground(
       child: SafeArea(
         child: Column(
           children: [
-            _ConnectionTopBar(title: title, onHelp: () => _showHelp(context)),
+            _ConnectionTopBar(title: title, onHelp: () => _showHelp(context), showBack: showBack),
             Expanded(child: child),
           ],
         ),
@@ -290,17 +303,17 @@ class _ConnectionViewState extends State<_ConnectionView> {
               BirdListItem(
                 leading: Icon(Icons.wifi_rounded),
                 title: '连接同一网络',
-                subtitle: '确保手机和拍鸟伴侣接入同一局域网。',
+                subtitle: '确保手机和拍鸟伴侣连接到同一个 Wi-Fi。',
               ),
               BirdListItem(
                 leading: Icon(Icons.qr_code_scanner_rounded),
                 title: '扫描设备二维码',
-                subtitle: '二维码会提供设备的本地连接地址。',
+                subtitle: '扫描盒子上的二维码即可连接。',
               ),
               BirdListItem(
                 leading: Icon(Icons.edit_outlined),
                 title: '手动输入地址',
-                subtitle: '也可以输入盒子的 IP 地址和端口。',
+                subtitle: '也可以手动输入盒子的连接地址。',
               ),
             ],
           ),
@@ -311,10 +324,11 @@ class _ConnectionViewState extends State<_ConnectionView> {
 }
 
 class _ConnectionTopBar extends StatelessWidget {
-  const _ConnectionTopBar({required this.title, required this.onHelp});
+  const _ConnectionTopBar({required this.title, required this.onHelp, this.showBack = true});
 
   final String title;
   final VoidCallback onHelp;
+  final bool showBack;
 
   @override
   Widget build(BuildContext context) {
@@ -327,7 +341,7 @@ class _ConnectionTopBar extends StatelessWidget {
           children: [
             SizedBox(
               width: AppSpacing.minimumTouchTarget,
-              child: canPop
+              child: canPop && showBack
                   ? IconButton(
                       tooltip: '返回',
                       onPressed: () => Navigator.of(context).pop(),
@@ -353,6 +367,12 @@ class _ConnectionTopBar extends StatelessWidget {
     );
   }
 }
+
+const _connectionDestinations = <NavigationDestination>[
+  NavigationDestination(icon: Icon(Icons.photo_outlined), selectedIcon: Icon(Icons.photo), label: '相册'),
+  NavigationDestination(icon: Icon(Icons.task_outlined), selectedIcon: Icon(Icons.task), label: '处理进度'),
+  NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
+];
 
 class _SearchingView extends StatelessWidget {
   const _SearchingView();

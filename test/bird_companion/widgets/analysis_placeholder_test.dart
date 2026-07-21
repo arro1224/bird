@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('低置信度状态会显示专用提示', (tester) async {
+  testWidgets('识别结果不确定时会显示普通用户提示', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(body: AnalysisPlaceholder(state: AnalysisState.lowConfidence)),
       ),
     );
-    expect(find.text('低置信度'), findsOneWidget);
+    expect(find.text('识别结果不确定'), findsOneWidget);
   });
 }

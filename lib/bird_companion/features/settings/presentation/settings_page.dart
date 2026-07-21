@@ -58,26 +58,26 @@ class SettingsPage extends StatelessWidget {
                           _SettingsTile(
                             icon: Icons.link_rounded,
                             title: '重新连接设备',
-                            subtitle: '刷新连接与待同步操作',
+                            subtitle: '重新连接，并更新手机上尚未传回盒子的修改',
                             enabled: !state.loading,
                             onTap: () => context.read<SettingsCubit>().reconnect(),
                           ),
                         ],
                       ),
                       const SizedBox(height: 18),
-                      const _SectionTitle('本地数据'),
+                      const _SectionTitle('手机存储'),
                       CacheManagementCard(
                         bytes: state.cacheBytes,
                         onClear: state.loading ? null : () => context.read<SettingsCubit>().clearCache(),
                       ),
                       const SizedBox(height: 18),
-                      const _SectionTitle('诊断'),
+                      const _SectionTitle('遇到问题'),
                       _SettingsGroup(
                         children: [
                           _SettingsTile(
                             icon: Icons.monitor_heart_outlined,
-                            title: '设备诊断',
-                            subtitle: '检查连接、设备 API 和待同步操作',
+                            title: '检查连接问题',
+                            subtitle: '检查盒子连接和尚未更新的修改',
                             onTap: () => Navigator.of(context).pushNamed(BirdRoutes.diagnostics),
                           ),
                           _SettingsTile(
@@ -112,7 +112,7 @@ class SettingsPage extends StatelessWidget {
       builder: (dialogContext) => AlertDialog(
         icon: const Icon(Icons.link_off_rounded, color: AppColors.danger),
         title: const Text('忘记当前盒子？'),
-        content: const Text('将断开连接并删除本机保存的盒子地址。照片和待同步的人工审阅数据不会被删除。'),
+        content: const Text('将断开连接并删除手机上保存的盒子地址。照片和尚未传回盒子的修改不会被删除。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('忘记')),
@@ -168,9 +168,9 @@ class _DeviceHero extends StatelessWidget {
               ],
             ),
             const Divider(height: 26),
-            _DeviceRow(label: '软件/API 版本', value: device?.apiVersion ?? '盒子未提供'),
+            _DeviceRow(label: '软件兼容信息', value: device?.apiVersion ?? '盒子未提供'),
             _DeviceRow(label: '连接方式', value: device?.networkMode.label ?? '未连接'),
-            _DeviceRow(label: 'IP 地址', value: device?.baseUri.host.isNotEmpty == true ? device!.baseUri.host : '未连接'),
+            _DeviceRow(label: '连接地址', value: device?.baseUri.host.isNotEmpty == true ? device!.baseUri.host : '未连接'),
           ],
         ),
       ),

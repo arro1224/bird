@@ -136,8 +136,8 @@ class _DeviceStatusViewState extends State<_DeviceStatusView> {
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.photo_library_outlined, color: AppColors.brand),
-                    title: const Text('暂无当前或最近批次'),
-                    subtitle: const Text('新批次开始后会显示在这里'),
+                    title: const Text('暂无最近的拍摄记录'),
+                    subtitle: const Text('开始导入照片后会显示在这里'),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => Navigator.of(context).pushNamed(BirdRoutes.batches),
                   ),
@@ -145,15 +145,15 @@ class _DeviceStatusViewState extends State<_DeviceStatusView> {
               else
                 CurrentBatchCard(
                   batch: _batchOverview.primary!,
-                  contextLabel: _batchOverview.primaryIsActive ? '当前批次' : '最近批次',
-                  actionLabel: _batchOverview.primaryIsActive ? '进入当前批次' : '查看最近批次',
+                  contextLabel: _batchOverview.primaryIsActive ? '本次拍摄' : '最近拍摄',
+                  actionLabel: _batchOverview.primaryIsActive ? '进入本次拍摄' : '查看最近拍摄',
                   onOpen: () => Navigator.of(context).pushNamed(BirdRoutes.gallery, arguments: GalleryArgs(_batchOverview.primary!.id)),
                 ),
               const SizedBox(height: AppSpacing.md),
               Row(
                 children: [
                   Expanded(
-                    child: _Shortcut(icon: Icons.history_rounded, label: '历史批次', onTap: () => Navigator.of(context).pushNamed(BirdRoutes.batches)),
+                    child: _Shortcut(icon: Icons.history_rounded, label: '过去拍摄', onTap: () => Navigator.of(context).pushNamed(BirdRoutes.batches)),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -177,7 +177,7 @@ class _DeviceStatusViewState extends State<_DeviceStatusView> {
                     children: [
                       _VersionRow(label: '盒子版本', value: status.softwareVersion ?? '—'),
                       const Divider(height: 16),
-                      _VersionRow(label: '模型版本', value: status.modelVersion ?? '—'),
+                      _VersionRow(label: '识别功能版本', value: status.modelVersion ?? '—'),
                     ],
                   ),
                 ),

@@ -23,7 +23,7 @@ extension NetworkModeWireValue on NetworkMode {
 
   String get label => switch (this) {
     NetworkMode.hotspot => '盒子热点',
-    NetworkMode.lan => '同一局域网',
+    NetworkMode.lan => '同一个 Wi-Fi',
     NetworkMode.manual => '手动地址',
     NetworkMode.qr => '扫码连接',
     NetworkMode.unknown => '未知连接方式',

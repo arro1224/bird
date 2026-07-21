@@ -11,8 +11,7 @@ class BatchFilterBar extends StatelessWidget {
       segments: const [
         ButtonSegment(value: null, label: Text('全部')),
         ButtonSegment(value: 'in_progress', label: Text('进行中')),
-        ButtonSegment(value: 'review', label: Text('待审阅')),
-        ButtonSegment(value: 'copy', label: Text('待复制')),
+        ButtonSegment(value: 'review', label: Text('待挑选')),
         ButtonSegment(value: 'failed', label: Text('异常')),
       ],
       selected: {value},

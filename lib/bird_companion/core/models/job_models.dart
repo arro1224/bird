@@ -14,11 +14,11 @@ extension BirdJobTypeWireValue on BirdJobType {
   };
 
   String get label => switch (this) {
-    BirdJobType.import => '导入',
-    BirdJobType.analysis => '分析',
-    BirdJobType.copy => '复制',
-    BirdJobType.sync => '同步',
-    BirdJobType.unknown => '未知任务',
+    BirdJobType.import => '读取照片',
+    BirdJobType.analysis => '识别照片',
+    BirdJobType.copy => '保存照片',
+    BirdJobType.sync => '更新修改',
+    BirdJobType.unknown => '其他处理',
   };
 }
 
@@ -34,13 +34,13 @@ extension BirdJobStateWireValue on BirdJobState {
   };
 
   String get label => switch (this) {
-    BirdJobState.idle => '空闲',
-    BirdJobState.running => '运行中',
+    BirdJobState.idle => '等待开始',
+    BirdJobState.running => '正在处理',
     BirdJobState.paused => '已暂停',
     BirdJobState.completed => '已完成',
-    BirdJobState.failed => '异常',
+    BirdJobState.failed => '处理失败',
     BirdJobState.cancelled => '已取消',
-    BirdJobState.unknown => '状态未知',
+    BirdJobState.unknown => '暂时无法确认',
   };
 }
 

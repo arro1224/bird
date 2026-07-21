@@ -33,7 +33,7 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
   Future<void> load(String id) async {
     if (_loadInFlight) return;
     _loadInFlight = true;
-    emit(state.copyWith(loading: true));
+    emit(PhotoDetailState(loading: true, undoEntry: state.undoEntry));
     try {
       emit(PhotoDetailState(detail: await _repository.detail(id), undoEntry: state.undoEntry));
     } catch (error) {

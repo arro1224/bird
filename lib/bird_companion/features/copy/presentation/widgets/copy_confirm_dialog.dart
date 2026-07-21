@@ -29,7 +29,7 @@ class CopyConfirmDialog extends StatelessWidget {
             children: [
               _Row(label: '目标存储', value: targetName),
               _Row(label: '预计用量', value: _formatBytes(requiredBytes)),
-              _Row(label: 'XMP 设置', value: xmpEnabled ? '生成同名 XMP' : '不生成'),
+              _Row(label: '照片编辑信息', value: xmpEnabled ? '同时保存' : '不保存'),
             ],
           ),
         ),

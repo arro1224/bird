@@ -29,7 +29,7 @@ void main() {
     expect(find.text('拍鸟伴侣 K7'), findsOneWidget);
     expect(find.text('电量 78%'), findsOneWidget);
     expect(find.text('685GB 可用 · 总容量 894GB'), findsOneWidget);
-    expect(find.text('运行中 · 65%'), findsOneWidget);
+    expect(find.text('正在处理 · 65%'), findsOneWidget);
   });
 
   testWidgets('点击设备指标卡会打开状态入口回调', (tester) async {

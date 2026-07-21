@@ -46,7 +46,11 @@ class GroupReviewCubit extends Cubit<GroupReviewState> {
       final results = await Future.wait(group.memberFileIds.map((fileId) => _repository.save(UserDecision(fileId: fileId, keepState: keepState, updatedAt: DateTime.now()))));
       final message = _resultMessage(results, success: '整组状态已更新');
       _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'group_review_saved');
-      emit(state.copyWith(clearAction: true, message: message));
+      final savedIds = <String>[
+        for (var index = 0; index < results.length; index++)
+          if (!results[index].conflict) group.memberFileIds[index],
+      ];
+      emit(state.copyWith(groups: _withDecision(group.id, savedIds, keepState), clearAction: true, message: message));
     } catch (error) {
       emit(state.copyWith(error: error, clearAction: true));
     }
@@ -59,7 +63,7 @@ class GroupReviewCubit extends Cubit<GroupReviewState> {
       final result = await _repository.save(UserDecision(fileId: fileId, keepState: keepState, updatedAt: DateTime.now()));
       final message = _resultMessage([result], success: '照片状态已更新');
       _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'group_photo_review_saved');
-      emit(state.copyWith(clearAction: true, message: message));
+      emit(state.copyWith(groups: result.conflict ? state.groups : _withDecision(group.id, [fileId], keepState), clearAction: true, message: message));
     } catch (error) {
       emit(state.copyWith(error: error, clearAction: true));
     }
@@ -79,7 +83,10 @@ class GroupReviewCubit extends Cubit<GroupReviewState> {
       );
       final message = _resultMessage(results, success: '每组首选照片已保留');
       _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'top_recommendations_saved');
-      emit(state.copyWith(clearAction: true, message: message));
+      final decisions = <String, KeepState>{
+        for (final group in state.groups) (group.rankOrder.isNotEmpty ? group.rankOrder.first : group.representativeFileId): KeepState.keep,
+      };
+      emit(state.copyWith(groups: _withDecisions(decisions), clearAction: true, message: message));
     } catch (error) {
       emit(state.copyWith(error: error, clearAction: true));
     }
@@ -92,4 +99,19 @@ class GroupReviewCubit extends Cubit<GroupReviewState> {
     if (queued != null) return queued.message ?? '设备离线，修改将在重连后同步';
     return success;
   }
+
+  List<BirdGroup> _withDecision(String groupId, Iterable<String> fileIds, KeepState keepState) => _withDecisions(
+    {for (final fileId in fileIds) fileId: keepState},
+    groupId: groupId,
+  );
+
+  List<BirdGroup> _withDecisions(Map<String, KeepState> decisions, {String? groupId}) => state.groups
+      .map(
+        (group) => groupId != null && group.id != groupId
+            ? group
+            : group.copyWith(
+                members: group.members.map((photo) => decisions[photo.id] == null ? photo : photo.copyWith(keepState: decisions[photo.id]!.wireValue)).toList(growable: false),
+              ),
+      )
+      .toList(growable: false);
 }

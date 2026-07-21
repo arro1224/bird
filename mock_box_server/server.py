@@ -12,6 +12,7 @@ import struct
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 BATCH_ID = "batch-demo-001"
@@ -24,13 +25,40 @@ SPECIES = [
     {"species_id": "ardeola-bacchus", "name": "池鹭", "english_name": "Chinese Pond Heron", "latin_name": "Ardeola bacchus", "confidence": 1.0},
     {"species_id": "nycticorax-nycticorax", "name": "夜鹭", "english_name": "Black-crowned Night Heron", "latin_name": "Nycticorax nycticorax", "confidence": 1.0},
 ]
-jobs = [{"job_id": JOB_ID, "job_type": "analysis", "job_state": "running", "progress": 0.5, "total_count": 1200, "finished_count": 600, "failed_count": 0, "current_file": "DSC_0600.NEF"}]
+jobs = [{"job_id": JOB_ID, "job_type": "analysis", "job_state": "running", "progress": 0.65, "total_count": 3672, "finished_count": 2384, "failed_count": 0, "current_file": "DSC_2384.NEF"}]
+BURST_IDS = ("burst-024", "burst-031", "burst-047", "burst-058")
+
+
+def recognition_for(index: int) -> dict:
+    """Return candidates that match the generated photograph variant."""
+    scene_variant = (index - 1) % 4
+    if scene_variant in (0, 3):
+        candidates = [
+            {"species_id": "alcedo-atthis", "name": "普通翠鸟", "confidence": 0.92},
+            {"species_id": "halcyon-pileata", "name": "蓝翡翠", "confidence": 0.05},
+            {"species_id": "halcyon-smyrnensis", "name": "白胸翡翠", "confidence": 0.02},
+            {"species_id": "other", "name": "其他鸟类", "confidence": 0.01},
+        ]
+    elif scene_variant == 1:
+        candidates = [
+            {"species_id": "egretta-garzetta", "name": "白鹭", "confidence": 0.91},
+            {"species_id": "ardeola-bacchus", "name": "池鹭", "confidence": 0.06},
+            {"species_id": "nycticorax-nycticorax", "name": "夜鹭", "confidence": 0.03},
+        ]
+    else:
+        candidates = [
+            {"species_id": "acrocephalus-orientalis", "name": "东方大苇莺", "confidence": 0.89},
+            {"species_id": "other", "name": "其他鸟类", "confidence": 0.11},
+        ]
+    return {"species_topn": candidates, "low_confidence": index % 5 == 0, "model_version": "bird-demo-1.1"}
+
+
 photos = [
-    {"file_id": f"photo-demo-{index:03d}", "filename": f"DSC_{index:04d}.NEF", "format": "RAW", "captured_at": f"2026-07-12T06:{index % 60:02d}:{index % 60:02d}Z", "analysis_state": "completed" if index % 5 else "low_confidence", "thumb_ref": f"__MOCK_ORIGIN__/mock-media/thumb/{index}.bmp", "preview_ref": f"__MOCK_ORIGIN__/mock-media/preview/{index}.bmp", "width": 6000, "height": 4000,
-     "group_id": "group-demo-001" if index < 5 else "group-demo-002", "scene_id": f"scene-demo-{((index - 1) % 4) + 1:03d}",
+    {"file_id": f"photo-demo-{index:03d}", "filename": f"DSC_{index:04d}.NEF", "format": "RAW", "captured_at": f"2026-07-16T06:{index % 60:02d}:{index % 60:02d}+08:00", "analysis_state": "completed" if index % 5 else "low_confidence", "thumb_ref": f"__MOCK_ORIGIN__/mock-media/thumb/{((((index - 1) % 4) % 3) + 1)}.png", "preview_ref": f"__MOCK_ORIGIN__/mock-media/preview/{((((index - 1) % 4) % 3) + 1)}.png", "width": 6000, "height": 4000,
+     "group_id": BURST_IDS[(index - 1) % 4], "scene_id": f"scene-demo-{((index - 1) % 4) + 1:03d}",
      "clarity_state": "blurred" if index % 9 == 0 else ("average" if index % 5 == 0 else "clear"), "is_recommended": index % 7 == 1,
-     "recognition": {"species_topn": [{"species_id": "egretta-garzetta" if index % 2 else "alcedo-atthis", "name": "白鹭" if index % 2 else "普通翠鸟", "confidence": 0.93 if index % 5 else 0.52}, {"species_id": "ardeola-bacchus", "name": "池鹭", "confidence": 0.08}, {"species_id": "nycticorax-nycticorax", "name": "夜鹭", "confidence": 0.03}], "low_confidence": index % 5 == 0, "model_version": "bird-demo-1.1"},
-     "rating": {"total_score": round(min(5.0, 3.5 + (index % 16) / 10), 1), "quality_score": round(min(10.0, 7.2 + (index % 12) / 5), 1), "eye_score": round(min(10.0, 7.0 + (index % 10) / 4), 1), "composition_score": round(min(10.0, 7.4 + (index % 11) / 4), 1), "reason_tags": ["主体清晰", "眼部清晰", "背景干净"]}}
+     "recognition": recognition_for(index),
+     "rating": {"total_score": (4.8, 4.6, 4.4, 4.1)[((index - 1) // 4) % 4], "quality_score": (9.4, 8.8, 8.3, 7.9)[((index - 1) // 4) % 4], "eye_score": (9.2, 7.8, 8.6, 7.4)[((index - 1) // 4) % 4], "composition_score": (9.1, 8.6, 8.4, 7.8)[((index - 1) // 4) % 4], "reason_tags": ["鸟眼清晰", "主体完整", "姿态自然"]}}
     for index in range(1, 10001)
 ]
 decisions: dict[str, dict] = {}
@@ -86,11 +114,20 @@ MOCK_MEDIA = {
     for index in range(6)
 }
 
+PHOTO_MEDIA = {
+    1: (Path(__file__).parent / "assets" / "bird_photos" / "kingfisher.png").read_bytes(),
+    2: (Path(__file__).parent / "assets" / "bird_photos" / "egret.png").read_bytes(),
+    3: (Path(__file__).parent / "assets" / "bird_photos" / "reed_warbler.png").read_bytes(),
+}
+
 
 def output_photo(photo: dict) -> dict:
     """Merge review state into every list/detail response, just as the box API does."""
     decision = decisions.get(photo["file_id"], {})
-    return {**photo, "keep_state": decision.get("keep_state", "pending"), "user_tags": decision.get("user_tags", [])}
+    index = int(photo["file_id"].rsplit("-", 1)[-1])
+    review_slot = ((index - 1) // 60) % 3
+    default_state = ("pending", "keep", "discard")[review_slot]
+    return {**photo, "keep_state": decision.get("keep_state", default_state), "user_tags": decision.get("user_tags", [])}
 
 
 def current_job() -> dict | None:
@@ -125,7 +162,7 @@ def read_page(query: dict):
         required_tags = {tag.strip().lower() for tag in query["tags"][0].split(",") if tag.strip()}
         filtered = [photo for photo in filtered if required_tags.issubset({tag.lower() for tag in decisions.get(photo["file_id"], {}).get("user_tags", [])})]
     if query.get("keep_state"):
-        filtered = [photo for photo in filtered if decisions.get(photo["file_id"], {}).get("keep_state", "pending") == query["keep_state"][0]]
+        filtered = [photo for photo in filtered if output_photo(photo)["keep_state"] == query["keep_state"][0]]
     sort = query.get("sort", ["captured_at_desc"])[0]
     if sort == "score_desc":
         filtered.sort(key=lambda photo: photo["rating"]["total_score"], reverse=True)
@@ -142,9 +179,9 @@ def read_page(query: dict):
 
 def payload(path: str, method: str, query: dict, body: dict):
     if path == "/api/v1/device/status":
-        storage_free = 2_000_000_000 if SCENARIO == "storage-full" else 600_000_000_000
-        return {"device_id": "birdbox-demo-01", "device_name": "模拟拍鸟盒子", "network_mode": "lan", "api_version": "v1", "battery_percent": 82, "temperature": 43.5, "storage_total": 1000000000000, "storage_free": storage_free, "card_inserted": True, "card_readable": True, "software_version": "mock-1.1", "model_version": "bird-demo-1.0", "current_task": current_job()}
-    if path == "/api/v1/projects/current": return {"project_id": BATCH_ID, "name": "2026.07.16 崇明东滩", "created_at": "2026-07-16T06:00:00Z", "total_files": len(photos), "analyzed_count": len(photos), "pending_review_count": 18, "review_count": 18, "keep_count": 9, "discard_count": 4, "featured_count": 2, "pending_copy_count": 9, "copy_state": "pending", "scene_count": 4, "burst_group_count": 64, "cover": {"thumb_ref": "__MOCK_ORIGIN__/mock-media/thumb/1.bmp", "preview_ref": "__MOCK_ORIGIN__/mock-media/preview/1.bmp"}}
+        storage_free = 2_000_000_000 if SCENARIO == "storage-full" else 685 * 1024**3
+        return {"device_id": "7B2A-9C31", "device_name": "拍鸟伴侣 K7", "network_mode": "lan", "api_version": "v1", "battery_percent": 78, "temperature": 36.0, "storage_total": 894 * 1024**3, "storage_free": storage_free, "card_inserted": True, "card_readable": True, "card_name": "SanDisk 128GB · U3 · V30", "software_version": "mock-1.1", "model_version": "bird-demo-1.0", "current_task": current_job()}
+    if path == "/api/v1/projects/current": return {"project_id": BATCH_ID, "name": "2026.07.16 崇明东滩", "created_at": "2026-07-16T06:00:00Z", "total_files": 3672, "analyzed_count": 2384, "pending_review_count": 1284, "review_count": 1284, "keep_count": 2012, "discard_count": 376, "featured_count": 48, "pending_copy_count": 2012, "copy_state": "pending", "scene_count": 4, "burst_group_count": 64, "cover": {"thumb_ref": "__MOCK_ORIGIN__/mock-media/thumb/1.png", "preview_ref": "__MOCK_ORIGIN__/mock-media/preview/1.png"}}
     if path == "/api/v1/projects": return {"items": [payload("/api/v1/projects/current", "GET", {}, {})], "has_more": False, "next_cursor": None}
     if path == f"/api/v1/projects/{BATCH_ID}/resume" and method == "POST": return {"accepted": True, "project_id": BATCH_ID}
     if path == f"/api/v1/projects/{BATCH_ID}/files": return read_page(query)
@@ -165,20 +202,30 @@ def payload(path: str, method: str, query: dict, body: dict):
             history.setdefault(file_id, []).append({"version": len(history.get(file_id, [])) + 1, "source": "app", "updated_at": "2026-07-12T00:00:00Z", "summary": f"批量操作：{operation}"})
         return {"succeeded_ids": succeeded, "failed": failed}
     if path == f"/api/v1/projects/{BATCH_ID}/groups":
-        definitions = [
-            ("group-demo-001", "burst", ["photo-demo-001", "photo-demo-002", "photo-demo-003", "photo-demo-004"], ["photo-demo-001", "photo-demo-003", "photo-demo-002", "photo-demo-004"], ["主体清晰", "眼部锐利", "姿态自然"]),
-            ("group-demo-002", "scene", ["photo-demo-006", "photo-demo-007", "photo-demo-008"], ["photo-demo-006", "photo-demo-007", "photo-demo-008"], ["构图完整", "背景干净"]),
+        definitions = []
+        scene_configs = [
+            (1, 0, 24, 22, ["鸟眼清晰", "主体完整", "姿态自然"], "2026-07-16T06:42:18+08:00", "2026-07-16T06:42:21+08:00"),
+            (2, 22, 46, 18, ["构图完整", "背景干净", "主体清晰"], "2026-07-16T07:31:10+08:00", "2026-07-16T07:31:14+08:00"),
+            (3, 40, 64, 14, ["眼部锐利", "枝头自然", "背景柔和"], "2026-07-16T09:18:03+08:00", "2026-07-16T09:18:07+08:00"),
+            (4, 54, 78, 10, ["主体完整", "光线自然", "构图稳定"], "2026-07-16T10:11:22+08:00", "2026-07-16T10:11:25+08:00"),
         ]
+        for scene_index, slot_start, burst_start, group_count, reasons, captured_from, captured_to in scene_configs:
+            for group_offset in range(group_count):
+                member_ids = [
+                    f"photo-demo-{scene_index + 4 * ((slot_start + group_offset) * 14 + member_offset):03d}"
+                    for member_offset in range(14)
+                ]
+                definitions.append((f"burst-{burst_start + group_offset:03d}", "burst", member_ids, member_ids, reasons, captured_from, captured_to))
         items = []
-        for group_id, group_type, member_ids, ranking, reasons in definitions:
+        for group_id, group_type, member_ids, ranking, reasons, captured_from, captured_to in definitions:
             members = [output_photo(photo) for photo in photos if photo["file_id"] in member_ids]
             scene_id = members[0].get("scene_id") if members else None
-            items.append({"group_id": group_id, "group_type": group_type, "representative_file_id": ranking[0], "member_file_ids": member_ids, "rank_order": ranking, "members": members, "recommendation_reasons": reasons, "scene_id": scene_id, "captured_from": "2026-07-10T06:00:00Z", "captured_to": "2026-07-10T06:00:03Z"})
+            items.append({"group_id": group_id, "group_type": group_type, "representative_file_id": ranking[0], "member_file_ids": member_ids, "rank_order": ranking, "members": members, "recommendation_reasons": reasons, "scene_id": scene_id, "captured_from": captured_from, "captured_to": captured_to})
         scene_id = query.get("scene_id", [None])[0]
         return {"items": [item for item in items if scene_id is None or item["scene_id"] == scene_id]}
     if path == f"/api/v1/projects/{BATCH_ID}/scenes":
-        definitions = [("清晨芦苇荡", 6, 12), ("潮滩水面", 7, 18), ("林缘枝头", 9, 14), ("返程沿线", 10, 10)]
-        return {"items": [{"scene_id": f"scene-demo-{index:03d}", "project_id": BATCH_ID, "name": name, "captured_from": f"2026-07-16T0{hour}:12:00Z", "captured_to": f"2026-07-16T0{hour}:48:00Z", "photo_count": sum(1 for photo in photos if photo["scene_id"] == f"scene-demo-{index:03d}"), "burst_group_count": group_count, "cover": {"thumb_ref": f"__MOCK_ORIGIN__/mock-media/thumb/{index}.bmp", "preview_ref": f"__MOCK_ORIGIN__/mock-media/preview/{index}.bmp"}} for index, (name, hour, group_count) in enumerate(definitions, 1)]}
+        definitions = [("清晨芦苇荡", "06:12", "07:18", 1248, 22), ("潮滩水面", "07:25", "08:46", 986, 18), ("林缘枝头", "09:02", "09:48", 812, 14), ("返程沿线", "10:05", "10:22", 626, 10)]
+        return {"items": [{"scene_id": f"scene-demo-{index:03d}", "project_id": BATCH_ID, "name": name, "captured_from": f"2026-07-16T{captured_from}:00+08:00", "captured_to": f"2026-07-16T{captured_to}:00+08:00", "photo_count": photo_count, "burst_group_count": group_count, "cover": {"thumb_ref": f"__MOCK_ORIGIN__/mock-media/thumb/{((index - 1) % 3) + 1}.png", "preview_ref": f"__MOCK_ORIGIN__/mock-media/preview/{((index - 1) % 3) + 1}.png"}} for index, (name, captured_from, captured_to, photo_count, group_count) in enumerate(definitions, 1)]}
     if path == "/api/v1/species":
         search = query.get("search", [""])[0].strip().lower()
         items = [item for item in SPECIES if search in item["name"].lower() or search in item["english_name"].lower() or search in item["latin_name"].lower()]
@@ -224,6 +271,9 @@ class Handler(BaseHTTPRequestHandler):
             parts = parsed.path.split("/")
             try: index = int(parts[-1].split(".")[0])
             except ValueError: index = 1
+            if parsed.path.endswith(".png"):
+                data = PHOTO_MEDIA[((index - 1) % len(PHOTO_MEDIA)) + 1]
+                self.send_response(HTTPStatus.OK); self.send_header("Content-Type", "image/png"); self.send_header("Cache-Control", "public, max-age=86400"); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data); return
             preview = "preview" in parts
             data = MOCK_MEDIA[(preview, index % 6)]
             self.send_response(HTTPStatus.OK); self.send_header("Content-Type", "image/bmp"); self.send_header("Cache-Control", "public, max-age=86400"); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data); return

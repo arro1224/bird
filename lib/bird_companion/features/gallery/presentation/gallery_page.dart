@@ -7,6 +7,7 @@ import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
+import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/core/widgets/page_back_button.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
@@ -16,6 +17,8 @@ import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_cubit.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/selection_cubit.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/filter_sheet.dart';
+import 'package:aves/bird_companion/features/gallery/presentation/widgets/album_add_device_button.dart';
+import 'package:aves/bird_companion/features/gallery/presentation/widgets/gallery_search_dialog.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/photo_tile.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/selection_action_bar.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/sort_sheet.dart';
@@ -23,12 +26,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class GalleryPage extends StatelessWidget {
-  const GalleryPage({super.key, required this.batchId, this.batchName, this.totalCount, this.initialQuery = const PhotoQuery(), this.rootMode = false});
+  const GalleryPage({
+    super.key,
+    required this.batchId,
+    this.batchName,
+    this.createdAt,
+    this.totalCount,
+    this.pendingCount,
+    this.keepCount,
+    this.discardCount,
+    this.initialQuery = const PhotoQuery(),
+    this.rootMode = false,
+    this.reviewContext,
+  });
   final String batchId;
   final String? batchName;
+  final DateTime? createdAt;
   final int? totalCount;
+  final int? pendingCount;
+  final int? keepCount;
+  final int? discardCount;
   final PhotoQuery initialQuery;
   final bool rootMode;
+  final ReviewContext? reviewContext;
 
   @override
   Widget build(BuildContext context) => MultiBlocProvider(
@@ -53,229 +73,306 @@ class GalleryPage extends StatelessWidget {
           )..load(),
         ),
     ],
-    child: _GalleryView(batchId: batchId, batchName: batchName, totalCount: totalCount, rootMode: rootMode),
+    child: _GalleryView(
+      batchId: batchId,
+      batchName: batchName,
+      createdAt: createdAt,
+      totalCount: totalCount,
+      pendingCount: pendingCount,
+      keepCount: keepCount,
+      discardCount: discardCount,
+      rootMode: rootMode,
+      reviewContext: reviewContext,
+    ),
   );
 }
 
 class _GalleryView extends StatelessWidget {
-  const _GalleryView({required this.batchId, this.batchName, this.totalCount, required this.rootMode});
+  const _GalleryView({
+    required this.batchId,
+    this.batchName,
+    this.createdAt,
+    this.totalCount,
+    this.pendingCount,
+    this.keepCount,
+    this.discardCount,
+    required this.rootMode,
+    this.reviewContext,
+  });
   final String batchId;
   final String? batchName;
+  final DateTime? createdAt;
   final int? totalCount;
+  final int? pendingCount;
+  final int? keepCount;
+  final int? discardCount;
   final bool rootMode;
+  final ReviewContext? reviewContext;
+
+  ReviewContext get _reviewContext => reviewContext ?? ReviewContext(batchId: batchId, batchName: batchName);
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: AppColors.paper,
-    appBar: PreferredSize(
-      preferredSize: const Size.fromHeight(kToolbarHeight),
-      child: BlocBuilder<SelectionCubit, SelectionState>(
-        builder: (context, selection) => AppBar(
-          automaticallyImplyLeading: !rootMode,
-          leading: selection.ids.isEmpty
-              ? rootMode
-                    ? null
-                    : const BirdPageBackButton()
-              : IconButton(tooltip: '退出多选', onPressed: context.read<SelectionCubit>().clear, icon: const Icon(Icons.close_rounded)),
-          centerTitle: selection.ids.isNotEmpty,
-          title: selection.ids.isNotEmpty
-              ? Text('已选择 ${selection.ids.length} 张')
-              : rootMode
-              ? Text(
-                  '相册',
-                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(color: AppColors.brandDark, fontWeight: FontWeight.w800),
-                )
-              : BlocBuilder<GalleryCubit, GalleryState>(
-                  buildWhen: (previous, current) => previous.items.length != current.items.length,
-                  builder: (_, state) => Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(batchName ?? batchId, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      Text(
-                        totalCount == null ? '已加载 ${state.items.length} 张' : '$totalCount 张照片',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: AppColors.inkMuted),
-                      ),
-                    ],
-                  ),
-                ),
-          actions: selection.ids.isNotEmpty
-              ? [TextButton(onPressed: selection.submitting ? null : context.read<SelectionCubit>().clear, child: const Text('取消'))]
-              : [
-                  if (rootMode)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: IconButton.filled(
-                        tooltip: '新增或切换设备',
-                        onPressed: () => Navigator.of(context, rootNavigator: true).pushNamed(
-                          BirdRoutes.connection,
-                          arguments: const ConnectionArgs(entryMode: ConnectionEntryMode.addOrSwitch),
+  Widget build(BuildContext context) => BlocListener<SelectionCubit, SelectionState>(
+    listenWhen: (previous, current) => previous.ids.isEmpty != current.ids.isEmpty,
+    listener: (context, selection) => BirdShellNavigation.maybeOf(
+      context,
+    )?.setBottomNavigationVisible(selection.ids.isEmpty),
+    child: BlocSelector<SelectionCubit, SelectionState, bool>(
+      selector: (state) => state.ids.isEmpty,
+      builder: (context, selectionIsEmpty) => PopScope(
+        canPop: selectionIsEmpty,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && !selectionIsEmpty) {
+            context.read<SelectionCubit>().clear();
+          }
+        },
+        child: Scaffold(
+          backgroundColor: AppColors.paper,
+          appBar: PreferredSize(
+            preferredSize: const Size.fromHeight(kToolbarHeight),
+            child: BlocBuilder<SelectionCubit, SelectionState>(
+              builder: (context, selection) => AppBar(
+                automaticallyImplyLeading: !rootMode,
+                leading: selection.ids.isEmpty
+                    ? rootMode
+                          ? null
+                          : const BirdPageBackButton()
+                    : IconButton(tooltip: '退出多选', onPressed: context.read<SelectionCubit>().clear, icon: const Icon(Icons.close_rounded)),
+                centerTitle: selection.ids.isNotEmpty,
+                title: selection.ids.isNotEmpty
+                    ? Text('已选择 ${selection.ids.length} 张')
+                    : rootMode
+                    ? Text(
+                        '相册',
+                        style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                          color: AppColors.brandDark,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
                         ),
-                        icon: const Icon(Icons.add_rounded),
-                      ),
-                    ),
-                  if (!rootMode)
-                    IconButton(
-                      tooltip: '搜索照片',
-                      icon: const Icon(Icons.search_rounded),
-                      onPressed: () => _showGallerySearch(context),
-                    ),
-                  if (!rootMode)
-                    IconButton(
-                      tooltip: '筛选照片',
-                      icon: const Icon(Icons.filter_alt_outlined),
-                      onPressed: () => showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        builder: (_) => FilterSheet(
-                          initial: context.read<GalleryCubit>().state.query,
-                          onApply: (query) => context.read<GalleryCubit>().refresh(query: query),
+                      )
+                    : BlocBuilder<GalleryCubit, GalleryState>(
+                        buildWhen: (previous, current) => previous.items.length != current.items.length,
+                        builder: (_, state) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(batchName ?? batchId, maxLines: 1, overflow: TextOverflow.ellipsis),
+                            Text(
+                              totalCount == null ? '已加载 ${state.items.length} 张' : '$totalCount 张照片',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: AppColors.inkMuted),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  if (!rootMode)
-                    PopupMenuButton<String>(
-                      tooltip: '更多操作',
-                      onSelected: (value) {
-                        if (value == 'copy') {
-                          Navigator.of(context).pushNamed(BirdRoutes.copyConfirmation, arguments: CopyConfirmationArgs(batchId));
-                        } else if (value == 'review') {
-                          Navigator.of(context).pushNamed(BirdRoutes.groupReview, arguments: GroupReviewArgs(batchId));
-                        } else if (value == 'scenes') {
-                          Navigator.of(context).pushNamed(
-                            BirdRoutes.scenes,
-                            arguments: SceneListArgs(batchId, batchName: batchName, totalCount: totalCount),
-                          );
-                        } else {
-                          showModalBottomSheet(
-                            context: context,
-                            builder: (_) => SortSheet(
-                              value: context.read<GalleryCubit>().state.query.sort,
-                              onChanged: (sort) => context.read<GalleryCubit>().refresh(
-                                query: context.read<GalleryCubit>().state.query.copyWith(sort: sort, clearCursor: true),
+                actions: selection.ids.isNotEmpty
+                    ? [TextButton(onPressed: selection.submitting ? null : context.read<SelectionCubit>().clear, child: const Text('取消'))]
+                    : [
+                        if (rootMode)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 12),
+                            child: AlbumAddDeviceButton(
+                              onPressed: () => Navigator.of(context, rootNavigator: true).pushNamed(
+                                BirdRoutes.connection,
+                                arguments: const ConnectionArgs(entryMode: ConnectionEntryMode.addOrSwitch),
                               ),
                             ),
-                          );
-                        }
-                      },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(
-                          value: 'scenes',
-                          child: ListTile(leading: Icon(Icons.account_tree_outlined), title: Text('按场景浏览')),
-                        ),
-                        PopupMenuItem(
-                          value: 'review',
-                          child: ListTile(leading: Icon(Icons.auto_awesome_mosaic_outlined), title: Text('分组审阅')),
-                        ),
-                        PopupMenuItem(
-                          value: 'sort',
-                          child: ListTile(leading: Icon(Icons.sort_rounded), title: Text('排序方式')),
-                        ),
-                        PopupMenuItem(
-                          value: 'copy',
-                          child: ListTile(leading: Icon(Icons.copy_all_outlined), title: Text('复制照片')),
-                        ),
+                          ),
+                        if (!rootMode)
+                          IconButton(
+                            tooltip: '搜索照片',
+                            icon: const Icon(Icons.search_rounded),
+                            onPressed: () => _showGallerySearch(context),
+                          ),
+                        if (!rootMode)
+                          IconButton(
+                            tooltip: '筛选照片',
+                            icon: const Icon(Icons.filter_alt_outlined),
+                            onPressed: () => showModalBottomSheet(
+                              context: context,
+                              useRootNavigator: true,
+                              isScrollControlled: true,
+                              builder: (_) => FilterSheet(
+                                initial: context.read<GalleryCubit>().state.query,
+                                onApply: (query) => context.read<GalleryCubit>().refresh(query: query),
+                              ),
+                            ),
+                          ),
+                        if (!rootMode)
+                          PopupMenuButton<String>(
+                            tooltip: '更多操作',
+                            onSelected: (value) {
+                              if (value == 'review') {
+                                Navigator.of(context).pushNamed(
+                                  BirdRoutes.groupReview,
+                                  arguments: GroupReviewArgs(
+                                    batchId,
+                                    reviewContext: _reviewContext,
+                                  ),
+                                );
+                              } else if (value == 'scenes') {
+                                Navigator.of(context).pushNamed(
+                                  BirdRoutes.scenes,
+                                  arguments: SceneListArgs(
+                                    batchId,
+                                    batchName: batchName,
+                                    totalCount: totalCount,
+                                    reviewContext: _reviewContext,
+                                  ),
+                                );
+                              } else {
+                                showModalBottomSheet(
+                                  context: context,
+                                  useRootNavigator: true,
+                                  useSafeArea: true,
+                                  isScrollControlled: true,
+                                  backgroundColor: Colors.transparent,
+                                  builder: (_) => SortSheet(
+                                    value: context.read<GalleryCubit>().state.query.sort,
+                                    onChanged: (sort) => context.read<GalleryCubit>().refresh(
+                                      query: context.read<GalleryCubit>().state.query.copyWith(sort: sort, clearCursor: true),
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                value: 'scenes',
+                                child: ListTile(leading: Icon(Icons.account_tree_outlined), title: Text('按场景浏览')),
+                              ),
+                              PopupMenuItem(
+                                value: 'review',
+                                child: ListTile(leading: Icon(Icons.auto_awesome_mosaic_outlined), title: Text('挑选连拍照片')),
+                              ),
+                              PopupMenuItem(
+                                value: 'sort',
+                                child: ListTile(leading: Icon(Icons.sort_rounded), title: Text('排序方式')),
+                              ),
+                            ],
+                          ),
                       ],
-                    ),
-                ],
-        ),
-      ),
-    ),
-    body: BlocBuilder<GalleryCubit, GalleryState>(
-      builder: (context, state) {
-        if (state.loading && state.items.isEmpty) return const Center(child: CircularProgressIndicator());
-        return NaturalBackdrop(
-          child: Stack(
-            children: [
-              RefreshIndicator(
-                onRefresh: () => context.read<GalleryCubit>().refresh(),
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: (notification) {
-                    if (notification.metrics.extentAfter < 360) context.read<GalleryCubit>().loadMore();
-                    return false;
-                  },
-                  child: CustomScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: _GalleryHeader(
-                          state: state,
-                          rootMode: rootMode,
-                          batchId: batchId,
-                          batchName: batchName,
-                          totalCount: totalCount,
+              ),
+            ),
+          ),
+          body: BlocBuilder<GalleryCubit, GalleryState>(
+            builder: (context, state) {
+              if (state.loading && state.items.isEmpty) return const Center(child: CircularProgressIndicator());
+              return NaturalBackdrop(
+                child: Stack(
+                  children: [
+                    RefreshIndicator(
+                      onRefresh: () => context.read<GalleryCubit>().refresh(),
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: (notification) {
+                          if (notification.metrics.extentAfter < 360) context.read<GalleryCubit>().loadMore();
+                          return false;
+                        },
+                        child: CustomScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          slivers: [
+                            SliverToBoxAdapter(
+                              child: _GalleryHeader(
+                                state: state,
+                                rootMode: rootMode,
+                                batchId: batchId,
+                                batchName: batchName,
+                                createdAt: createdAt,
+                                totalCount: totalCount,
+                                pendingCount: pendingCount,
+                                keepCount: keepCount,
+                                discardCount: discardCount,
+                                reviewContext: _reviewContext,
+                              ),
+                            ),
+                            if (state.query.activeLabels.isNotEmpty)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                                  child: Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    children: [
+                                      ...state.query.activeLabels.map((label) => Chip(label: Text(label))),
+                                      TextButton(
+                                        onPressed: () => context.read<GalleryCubit>().refresh(query: const PhotoQuery()),
+                                        child: const Text('清除'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            if (state.items.isEmpty)
+                              SliverFillRemaining(
+                                hasScrollBody: false,
+                                child: _GalleryEmptyState(onReset: () => context.read<GalleryCubit>().refresh(query: const PhotoQuery())),
+                              )
+                            else
+                              SliverPadding(
+                                padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+                                sliver: SliverGrid(
+                                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 3,
+                                    crossAxisSpacing: 6,
+                                    mainAxisSpacing: 6,
+                                    childAspectRatio: rootMode ? .79 : 1,
+                                  ),
+                                  delegate: SliverChildBuilderDelegate(
+                                    (context, index) {
+                                      if (index >= state.items.length) return Center(child: state.loading ? const CircularProgressIndicator() : const SizedBox.shrink());
+                                      final photo = state.items[index];
+                                      return _SelectablePhotoTile(
+                                        photo: photo,
+                                        compact: rootMode,
+                                        onTap: () {
+                                          final selection = context.read<SelectionCubit>();
+                                          if (selection.state.ids.isEmpty) {
+                                            final photoIds = state.items.map((item) => item.id).toList(growable: false);
+                                            final photoContext = _reviewContext.openPhotos(
+                                              photoIds,
+                                              initialIndex: index,
+                                            );
+                                            Navigator.of(context).pushNamed(
+                                              BirdRoutes.photoDetail,
+                                              arguments: PhotoDetailArgs.fromReview(
+                                                photoContext,
+                                                fileId: photo.id,
+                                                totalCount: totalCount,
+                                              ),
+                                            );
+                                          } else {
+                                            selection.toggle(photo.id);
+                                          }
+                                        },
+                                        onLongPress: () => context.read<SelectionCubit>().toggle(photo.id),
+                                      );
+                                    },
+                                    childCount: state.items.length + (state.loading || state.hasMore ? 1 : 0),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                      if (state.query.activeLabels.isNotEmpty)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-                            child: Wrap(
-                              spacing: 6,
-                              runSpacing: 4,
-                              children: [
-                                ...state.query.activeLabels.map((label) => Chip(label: Text(label))),
-                                TextButton(
-                                  onPressed: () => context.read<GalleryCubit>().refresh(query: const PhotoQuery()),
-                                  child: const Text('清除'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      if (state.items.isEmpty)
-                        SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: _GalleryEmptyState(onReset: () => context.read<GalleryCubit>().refresh(query: const PhotoQuery())),
-                        )
-                      else
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
-                          sliver: SliverGrid(
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              crossAxisSpacing: 6,
-                              mainAxisSpacing: 6,
-                              childAspectRatio: 1,
-                            ),
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) {
-                                if (index >= state.items.length) return Center(child: state.loading ? const CircularProgressIndicator() : const SizedBox.shrink());
-                                final photo = state.items[index];
-                                return _SelectablePhotoTile(
-                                  photo: photo,
-                                  compact: rootMode,
-                                  onTap: () {
-                                    final selection = context.read<SelectionCubit>();
-                                    if (selection.state.ids.isEmpty) {
-                                      Navigator.of(context).pushNamed(
-                                        BirdRoutes.photoDetail,
-                                        arguments: PhotoDetailArgs(
-                                          photo.id,
-                                          displayIndex: index + 1,
-                                          totalCount: totalCount,
-                                          sequence: state.items.map((item) => item.id).toList(growable: false),
-                                        ),
-                                      );
-                                    } else {
-                                      selection.toggle(photo.id);
-                                    }
-                                  },
-                                  onLongPress: () => context.read<SelectionCubit>().toggle(photo.id),
-                                );
-                              },
-                              childCount: state.items.length + (state.loading || state.hasMore ? 1 : 0),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                    ),
+                    if (rootMode)
+                      BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
+                        bloc: BirdCompanionScope.of(context).deviceSessionCubit,
+                        builder: (context, session) => state.fromCache || !session.isConnected
+                            ? const Positioned(
+                                left: 12,
+                                right: 12,
+                                bottom: 12,
+                                child: _OfflinePreservedNotice(),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    _SelectionActionOverlay(batchId: batchId),
+                  ],
                 ),
-              ),
-              _SelectionActionOverlay(batchId: batchId),
-            ],
+              );
+            },
           ),
-        );
-      },
+        ),
+      ),
     ),
   );
 }
@@ -289,13 +386,17 @@ class _SelectablePhotoTile extends StatelessWidget {
   final bool compact;
 
   @override
-  Widget build(BuildContext context) => BlocSelector<SelectionCubit, SelectionState, bool>(
-    selector: (state) => state.ids.contains(photo.id),
-    builder: (_, selected) => PhotoTile(
+  Widget build(BuildContext context) => BlocSelector<SelectionCubit, SelectionState, ({bool selected, bool failed})>(
+    selector: (state) => (
+      selected: state.ids.contains(photo.id),
+      failed: state.failed.containsKey(photo.id),
+    ),
+    builder: (_, selection) => PhotoTile(
       key: ValueKey(photo.id),
       photo: photo,
       compact: compact,
-      selected: selected,
+      selected: selection.selected,
+      operationFailed: selection.failed,
       onTap: onTap,
       onLongPress: onLongPress,
     ),
@@ -318,6 +419,7 @@ class _SelectionActionOverlay extends StatelessWidget {
         child: SelectionActionBar(
           count: selection.ids.length,
           busy: selection.submitting,
+          failedCount: selection.failed.length,
           onClear: () => context.read<SelectionCubit>().clear(),
           onAddTags: () => _showTagDialog(context, batchId, selection.ids.toList(), remove: false),
           onRemoveTags: () => _showTagDialog(context, batchId, selection.ids.toList(), remove: true),
@@ -329,65 +431,165 @@ class _SelectionActionOverlay extends StatelessWidget {
 }
 
 class _GalleryHeader extends StatelessWidget {
-  const _GalleryHeader({required this.state, required this.rootMode, required this.batchId, this.batchName, this.totalCount});
+  const _GalleryHeader({
+    required this.state,
+    required this.rootMode,
+    required this.batchId,
+    this.batchName,
+    this.createdAt,
+    this.totalCount,
+    this.pendingCount,
+    this.keepCount,
+    this.discardCount,
+    required this.reviewContext,
+  });
   final GalleryState state;
   final bool rootMode;
   final String batchId;
   final String? batchName;
+  final DateTime? createdAt;
   final int? totalCount;
+  final int? pendingCount;
+  final int? keepCount;
+  final int? discardCount;
+  final ReviewContext reviewContext;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (rootMode) ...[
-          const _AlbumDeviceStatus(),
-          const SizedBox(height: 12),
-          const _DeviceHint(),
-          const SizedBox(height: 18),
-          _AlbumBatchHeading(
-            batchId: batchId,
-            batchName: batchName,
-            totalCount: totalCount,
-          ),
-          const SizedBox(height: 14),
-        ],
-        if (state.fromCache) ...[
-          _OfflineSnapshotNotice(cachedAt: state.cachedAt),
-          const SizedBox(height: 12),
-        ],
-        _QuickFilters(query: state.query),
-        const SizedBox(height: 12),
-        Row(
+  Widget build(BuildContext context) => BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
+    bloc: BirdCompanionScope.of(context).deviceSessionCubit,
+    builder: (context, session) {
+      final offline = !session.isConnected || state.fromCache;
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Text(
-                '按${_sortLabel(state.query.sort)}',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.brandDark, fontWeight: FontWeight.w600),
+            if (rootMode) ...[
+              _AlbumDeviceArea(offline: offline),
+              const SizedBox(height: 16),
+              _QuickFilters(
+                query: state.query,
+                pendingCount: pendingCount,
+                keepCount: keepCount,
+                offline: offline,
               ),
-            ),
-            IconButton(
-              tooltip: '调整排序',
-              onPressed: () => showModalBottomSheet(
-                context: context,
-                builder: (_) => SortSheet(
-                  value: state.query.sort,
-                  onChanged: (sort) => context.read<GalleryCubit>().refresh(query: state.query.copyWith(sort: sort, clearCursor: true)),
-                ),
+              const SizedBox(height: 18),
+              _AlbumBatchHeading(
+                batchId: batchId,
+                batchName: batchName,
+                createdAt: createdAt,
+                totalCount: totalCount,
+                reviewContext: reviewContext,
+                offline: offline,
               ),
-              icon: const Icon(Icons.grid_view_rounded),
-            ),
+              const SizedBox(height: 8),
+            ] else ...[
+              if (state.fromCache) ...[
+                _OfflineSnapshotNotice(cachedAt: state.cachedAt),
+                const SizedBox(height: 12),
+              ],
+              _QuickFilters(query: state.query),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '按${_sortLabel(state.query.sort)}',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppColors.brandDark,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '调整排序',
+                    onPressed: () => showModalBottomSheet(
+                      context: context,
+                      useRootNavigator: true,
+                      useSafeArea: true,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => SortSheet(
+                        value: state.query.sort,
+                        onChanged: (sort) => context.read<GalleryCubit>().refresh(
+                          query: state.query.copyWith(sort: sort, clearCursor: true),
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.grid_view_rounded),
+                  ),
+                ],
+              ),
+            ],
           ],
+        ),
+      );
+    },
+  );
+}
+
+class _AlbumDeviceArea extends StatelessWidget {
+  const _AlbumDeviceArea({required this.offline});
+
+  final bool offline;
+
+  @override
+  Widget build(BuildContext context) {
+    if (offline) {
+      return _OfflineConnectionBanner(
+        onReconnect: BirdCompanionScope.of(context).deviceSessionCubit.reconnect,
+      );
+    }
+    return const _AlbumDeviceAlert();
+  }
+}
+
+class _OfflineConnectionBanner extends StatelessWidget {
+  const _OfflineConnectionBanner({required this.onReconnect});
+
+  final VoidCallback onReconnect;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+    decoration: BoxDecoration(
+      color: AppColors.dangerSoft,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: AppColors.danger.withValues(alpha: .28)),
+    ),
+    child: Row(
+      children: [
+        const CircleAvatar(
+          radius: 18,
+          backgroundColor: AppColors.danger,
+          child: Icon(Icons.link_off_rounded, color: Colors.white, size: 20),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(
+          child: Text(
+            '设备连接已断开',
+            style: TextStyle(
+              color: AppColors.danger,
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        TextButton.icon(
+          onPressed: onReconnect,
+          iconAlignment: IconAlignment.end,
+          icon: const Icon(Icons.chevron_right_rounded),
+          label: const Text('重新连接'),
+          style: TextButton.styleFrom(foregroundColor: AppColors.danger),
         ),
       ],
     ),
   );
 }
 
-class _AlbumDeviceStatus extends StatelessWidget {
-  const _AlbumDeviceStatus();
+class _AlbumDeviceAlert extends StatelessWidget {
+  const _AlbumDeviceAlert();
 
   @override
   Widget build(BuildContext context) {
@@ -397,148 +599,250 @@ class _AlbumDeviceStatus extends StatelessWidget {
         bloc: dependencies.deviceSessionCubit,
         builder: (context, session) {
           final status = statusState.status;
-          if (status != null) {
-            return DeviceStatusPills(
-              status: status,
-              session: session,
-              onTap: () => _showAlbumStatusSheet(context, status, session),
-            );
+          final message = _message(status, session);
+          if (status == null) {
+            return const _AlbumStatusLoading();
           }
-          return OutlinedButton.icon(
-            onPressed: statusState.phase == DeviceStatusPhase.loading ? null : context.read<DeviceStatusCubit>().load,
-            icon: statusState.phase == DeviceStatusPhase.loading
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh_rounded),
-            label: Text(
-              statusState.phase == DeviceStatusPhase.loading ? '正在读取设备状态' : '设备状态暂不可用，点按重试',
-            ),
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              DeviceStatusPills(
+                status: status,
+                session: session,
+                onTap: () => showDeviceStatusSheet(
+                  context,
+                  status: status,
+                  session: session,
+                  onReconnect: () {
+                    Navigator.of(context).pop();
+                    dependencies.deviceSessionCubit.reconnect();
+                  },
+                  onOpenDetails: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).pushNamed(BirdRoutes.deviceStatus);
+                  },
+                  onOpenTask: status.currentJob == null
+                      ? null
+                      : () {
+                          Navigator.of(context).pop();
+                          BirdShellNavigation.maybeOf(context)?.selectTab(1);
+                        },
+                ),
+              ),
+              if (message != null) ...[
+                const SizedBox(height: 10),
+                _AlbumExceptionBanner(message: message),
+              ],
+            ],
           );
         },
       ),
     );
   }
 
-  void _showAlbumStatusSheet(
-    BuildContext context,
-    DeviceStatus status,
-    DeviceSessionState session,
-  ) {
-    showDeviceStatusSheet(
-      context,
-      status: status,
-      session: session,
-      onReconnect: () {
-        Navigator.of(context).pop();
-        BirdCompanionScope.of(context).deviceSessionCubit.reconnect();
-      },
-      onOpenDetails: () {
-        Navigator.of(context).pop();
-        Navigator.of(context).pushNamed(BirdRoutes.deviceStatus);
-      },
-      onOpenTask: status.currentJob == null
-          ? null
-          : () {
-              Navigator.of(context).pop();
-              BirdShellNavigation.maybeOf(context)?.selectTab(1);
-            },
-    );
+  String? _message(DeviceStatus? status, DeviceSessionState session) {
+    if (!session.isConnected) return '设备连接已断开';
+    if (status == null) return null;
+    if (status.hasError) return status.errorMessage ?? '设备发生异常，请检查后重试';
+    if (status.temperatureCelsius != null && status.temperatureCelsius! >= 70) {
+      return '设备温度偏高，请暂停处理并检查散热';
+    }
+    if (!status.card.inserted || !status.card.readable) return '存储卡不可用，请检查后重试';
+    return null;
   }
 }
 
+class _AlbumStatusLoading extends StatelessWidget {
+  const _AlbumStatusLoading();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 42,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: AppColors.paperStrong,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: AppColors.outline),
+    ),
+    child: const Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+        SizedBox(width: 10),
+        Text('正在读取盒子状态'),
+      ],
+    ),
+  );
+}
+
+class _AlbumExceptionBanner extends StatelessWidget {
+  const _AlbumExceptionBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    decoration: BoxDecoration(
+      color: AppColors.dangerSoft,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: AppColors.danger.withValues(alpha: .28)),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.error_outline_rounded, color: AppColors.danger),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            message,
+            style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class _AlbumBatchHeading extends StatelessWidget {
-  const _AlbumBatchHeading({required this.batchId, this.batchName, this.totalCount});
+  const _AlbumBatchHeading({
+    required this.batchId,
+    this.batchName,
+    this.createdAt,
+    this.totalCount,
+    required this.reviewContext,
+    this.offline = false,
+  });
 
   final String batchId;
   final String? batchName;
+  final DateTime? createdAt;
   final int? totalCount;
+  final ReviewContext reviewContext;
+  final bool offline;
 
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  batchName ?? batchId,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  totalCount == null ? '当前批次' : '$totalCount 张照片',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.inkMuted),
-                ),
-              ],
-            ),
-          ),
-          TextButton.icon(
-            onPressed: () => Navigator.of(context).pushNamed(BirdRoutes.batches),
-            icon: const Icon(Icons.chevron_right_rounded),
-            iconAlignment: IconAlignment.end,
-            label: const Text('批次'),
-          ),
-        ],
-      ),
-      const SizedBox(height: 8),
-      Align(
-        alignment: Alignment.centerRight,
-        child: TextButton(
-          onPressed: () => Navigator.of(context).pushNamed(
-            BirdRoutes.scenes,
-            arguments: SceneListArgs(batchId, batchName: batchName, totalCount: totalCount),
-          ),
-          child: const Text('批次  >  场景  >  连拍组  >'),
+      Text(
+        _displayName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+          color: AppColors.brandDark,
+          fontSize: 20,
         ),
       ),
+      const SizedBox(height: 2),
+      if (offline)
+        Text(
+          '这些照片已保存在手机上；重新连接后会自动更新你的修改',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
+        )
+      else
+        Row(
+          children: [
+            Text(
+              totalCount == null ? '本次拍摄' : '${_formatCount(totalCount!)} 张照片',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppColors.inkMuted,
+                fontSize: 14,
+              ),
+            ),
+            const Spacer(),
+            _AlbumReviewPath(
+              onBatch: () => Navigator.of(context).pushNamed(BirdRoutes.batches),
+              onScene: () => Navigator.of(context).pushNamed(
+                BirdRoutes.scenes,
+                arguments: SceneListArgs(
+                  batchId,
+                  batchName: batchName,
+                  totalCount: totalCount,
+                  reviewContext: reviewContext,
+                ),
+              ),
+            ),
+          ],
+        ),
+    ],
+  );
+
+  String get _displayName {
+    final name = batchName?.trim().isNotEmpty == true ? batchName!.trim() : batchId;
+    final date = createdAt?.toLocal();
+    if (offline && date != null && date.year >= 2000) {
+      final cleanName = name.replaceFirst(RegExp(r'^\d{4}[./-]\d{2}[./-]\d{2}\s*'), '');
+      return '$cleanName · ${date.month}月${date.day}日';
+    }
+    if (date == null || date.year < 2000 || name.contains('${date.year}')) return name;
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${date.year}.${two(date.month)}.${two(date.day)} $name';
+  }
+}
+
+class _AlbumReviewPath extends StatelessWidget {
+  const _AlbumReviewPath({required this.onBatch, required this.onScene});
+
+  final VoidCallback onBatch;
+  final VoidCallback onScene;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      _AlbumPathButton(label: '拍摄记录', onTap: onBatch),
+      const _AlbumPathChevron(),
+      _AlbumPathButton(label: '场景', onTap: onScene),
+      const _AlbumPathChevron(),
+      const Text(
+        '连拍照片',
+        style: TextStyle(
+          color: AppColors.inkMuted,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      const _AlbumPathChevron(),
     ],
   );
 }
 
-class _DeviceHint extends StatefulWidget {
-  const _DeviceHint();
+class _AlbumPathButton extends StatelessWidget {
+  const _AlbumPathButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
 
   @override
-  State<_DeviceHint> createState() => _DeviceHintState();
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(8),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 8),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppColors.inkMuted,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    ),
+  );
 }
 
-class _DeviceHintState extends State<_DeviceHint> {
-  var _visible = true;
+class _AlbumPathChevron extends StatelessWidget {
+  const _AlbumPathChevron();
 
   @override
-  Widget build(BuildContext context) {
-    if (!_visible) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
-      decoration: BoxDecoration(
-        color: AppColors.paperStrong.withValues(alpha: .86),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.outline),
-      ),
-      child: Row(
-        children: [
-          const Text('•', style: TextStyle(color: AppColors.brand, fontSize: 22)),
-          const SizedBox(width: 8),
-          const Expanded(
-            child: Text('点这里查看设备温度、存储和任务状态', style: TextStyle(color: AppColors.inkMuted)),
-          ),
-          IconButton(
-            tooltip: '关闭提示',
-            onPressed: () => setState(() => _visible = false),
-            icon: const Icon(Icons.close_rounded, size: 19, color: AppColors.inkMuted),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const Icon(
+    Icons.chevron_right_rounded,
+    size: 17,
+    color: AppColors.inkMuted,
+  );
 }
 
 class _OfflineSnapshotNotice extends StatelessWidget {
@@ -548,7 +852,7 @@ class _OfflineSnapshotNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final suffix = cachedAt == null ? '' : ' · 缓存于 ${_time(cachedAt!)}';
+    final suffix = cachedAt == null ? '' : ' · 保存于 ${_time(cachedAt!)}';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -569,7 +873,7 @@ class _OfflineSnapshotNotice extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text('设备暂不可用，正在浏览本机缓存$suffix', style: const TextStyle(color: AppColors.danger)),
+                child: Text('设备暂时无法连接，当前显示手机上已保存的照片$suffix', style: const TextStyle(color: AppColors.danger)),
               ),
             ],
           ),
@@ -591,19 +895,67 @@ class _OfflineSnapshotNotice extends StatelessWidget {
   }
 }
 
+class _OfflinePreservedNotice extends StatelessWidget {
+  const _OfflinePreservedNotice();
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: AppColors.paperStrong.withValues(alpha: .97),
+    elevation: 3,
+    shadowColor: AppColors.brandDark.withValues(alpha: .14),
+    borderRadius: BorderRadius.circular(14),
+    child: Container(
+      height: 54,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.outline),
+      ),
+      child: const Row(
+        children: [
+          CircleAvatar(
+            radius: 15,
+            backgroundColor: AppColors.brand,
+            child: Icon(Icons.check_rounded, color: AppColors.cream, size: 20),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '已保留当前浏览与筛选状态',
+              style: TextStyle(
+                color: AppColors.brandDark,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class _QuickFilters extends StatelessWidget {
-  const _QuickFilters({required this.query});
+  const _QuickFilters({
+    required this.query,
+    this.pendingCount,
+    this.keepCount,
+    this.offline = false,
+  });
 
   final PhotoQuery query;
+  final int? pendingCount;
+  final int? keepCount;
+  final bool offline;
 
   @override
   Widget build(BuildContext context) {
-    final values = <(String, String?)>[
-      ('全部', null),
-      ('待确认', 'pending'),
-      ('已保留', 'keep'),
-      ('已弃用', 'discard'),
-      ('精选', 'featured'),
+    final values = <(String, String?, int?, Color?, IconData?)>[
+      ('全部', null, null, null, null),
+      ('待确认', 'pending', offline ? null : pendingCount, offline ? null : AppColors.pending, offline ? null : Icons.circle),
+      ('已保留', 'keep', offline ? null : keepCount, offline ? null : AppColors.brand, offline ? null : Icons.circle),
+      ('已弃用', 'discard', null, null, null),
+      if (!offline) ('精选', 'featured', null, AppColors.amber, Icons.star_rounded),
     ];
     final selected = query.recommendedOnly ? '__ai__' : query.keepState;
     return SingleChildScrollView(
@@ -616,16 +968,31 @@ class _QuickFilters extends StatelessWidget {
               padding: const EdgeInsets.only(right: 8),
               child: ChoiceChip(
                 selected: active,
-                label: Text(entry.$1),
+                showCheckmark: false,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: const VisualDensity(horizontal: -1, vertical: -2),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                labelStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: active ? AppColors.cream : AppColors.ink,
+                  fontSize: 13,
+                ),
+                avatar: entry.$5 == null ? null : Icon(entry.$5, size: entry.$5 == Icons.star_rounded ? 18 : 9, color: entry.$4),
+                label: Text(
+                  entry.$3 == null ? entry.$1 : '${entry.$1} ${_formatCount(entry.$3!)}',
+                ),
                 onSelected: (_) => context.read<GalleryCubit>().refresh(query: _quickQuery(query, entry.$2)),
               ),
             );
           }),
           ActionChip(
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: const VisualDensity(horizontal: -1, vertical: -2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
             avatar: const Icon(Icons.tune_rounded, size: 18),
             label: const Text('筛选'),
             onPressed: () => showModalBottomSheet(
               context: context,
+              useRootNavigator: true,
               isScrollControlled: true,
               builder: (_) => FilterSheet(
                 initial: context.read<GalleryCubit>().state.query,
@@ -641,27 +1008,12 @@ class _QuickFilters extends StatelessWidget {
 
 Future<void> _showGallerySearch(BuildContext context) async {
   final cubit = context.read<GalleryCubit>();
-  final controller = TextEditingController(text: cubit.state.query.search ?? '');
   final value = await showDialog<String>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('搜索照片'),
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        textInputAction: TextInputAction.search,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: '文件名、鸟种或标签'),
-        onSubmitted: (text) => Navigator.pop(dialogContext, text),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
-        FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text), child: const Text('搜索')),
-      ],
-    ),
+    builder: (_) => GallerySearchDialog(initialValue: cubit.state.query.search ?? ''),
   );
-  controller.dispose();
   if (value == null || !context.mounted) return;
-  await cubit.refresh(query: cubit.state.query.copyWith(search: value.trim(), clearCursor: true));
+  await cubit.refresh(query: cubit.state.query.copyWith(search: value, clearCursor: true));
 }
 
 PhotoQuery _quickQuery(PhotoQuery source, String? value) => PhotoQuery(
@@ -681,11 +1033,21 @@ PhotoQuery _quickQuery(PhotoQuery source, String? value) => PhotoQuery(
 );
 
 String _sortLabel(String sort) => switch (sort) {
-  'score_desc' => '评分从高到低',
-  'confidence_desc' => '置信度从高到低',
-  'recommended_desc' => 'AI 推荐优先',
+  'score_desc' => '照片质量从高到低',
+  'confidence_desc' => '识别度从高到低',
+  'recommended_desc' => '系统推荐优先',
   _ => '拍摄时间最新',
 };
+
+String _formatCount(int value) {
+  final digits = value.abs().toString();
+  final buffer = StringBuffer(value.isNegative ? '-' : '');
+  for (var index = 0; index < digits.length; index++) {
+    if (index > 0 && (digits.length - index) % 3 == 0) buffer.write(',');
+    buffer.write(digits[index]);
+  }
+  return buffer.toString();
+}
 
 class _GalleryEmptyState extends StatelessWidget {
   const _GalleryEmptyState({required this.onReset});
@@ -724,14 +1086,22 @@ Future<void> _batchAction(BuildContext context, String batchId, List<String> ids
   }
   if (!context.mounted) return;
   await context.read<GalleryCubit>().refresh();
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        outcome.queued ? '操作已加入待同步队列' : '已更新 ${outcome.succeededIds.length} 张照片${outcome.failed.isEmpty ? '' : '，${outcome.failed.length} 张失败'}',
-      ),
-      action: outcome.queued || outcome.succeededIds.isEmpty ? null : SnackBarAction(label: '撤销', onPressed: () => _undoBatch(context, batchId)),
-    ),
-  );
+  if (outcome.queued) {
+    BirdFeedback.queued(context, '修改已保存在手机上，重新连接后会自动更新');
+  } else if (outcome.succeededIds.isEmpty) {
+    BirdFeedback.error(context, '${outcome.failed.length} 张照片操作失败，请重试');
+  } else if (outcome.failed.isNotEmpty) {
+    BirdFeedback.error(
+      context,
+      '已更新 ${outcome.succeededIds.length} 张，${outcome.failed.length} 张失败',
+    );
+  } else {
+    BirdFeedback.undo(
+      context,
+      '已更新 ${outcome.succeededIds.length} 张照片',
+      onUndo: () => _undoBatch(context, batchId),
+    );
+  }
 }
 
 Future<void> _requestBatchAction(
@@ -792,14 +1162,22 @@ Future<void> _showTagDialog(BuildContext context, String batchId, List<String> i
   }
   if (!context.mounted) return;
   await context.read<GalleryCubit>().refresh();
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        outcome.queued ? '标签操作已加入待同步队列' : '已${remove ? '删除' : '添加'} ${outcome.succeededIds.length} 张照片的标签${outcome.failed.isEmpty ? '' : '，${outcome.failed.length} 张失败'}',
-      ),
-      action: outcome.queued || outcome.succeededIds.isEmpty ? null : SnackBarAction(label: '撤销', onPressed: () => _undoBatch(context, batchId)),
-    ),
-  );
+  if (outcome.queued) {
+    BirdFeedback.queued(context, '标签已保存在手机上，重新连接后会自动更新');
+  } else if (outcome.succeededIds.isEmpty) {
+    BirdFeedback.error(context, '${outcome.failed.length} 张照片标签操作失败');
+  } else if (outcome.failed.isNotEmpty) {
+    BirdFeedback.error(
+      context,
+      '已${remove ? '删除' : '添加'} ${outcome.succeededIds.length} 张的标签，${outcome.failed.length} 张失败',
+    );
+  } else {
+    BirdFeedback.undo(
+      context,
+      '已${remove ? '删除' : '添加'} ${outcome.succeededIds.length} 张照片的标签',
+      onUndo: () => _undoBatch(context, batchId),
+    );
+  }
 }
 
 Future<void> _undoBatch(BuildContext context, String batchId) async {
@@ -823,7 +1201,12 @@ Future<void> _undoBatch(BuildContext context, String batchId) async {
   selection.complete(succeededIds: succeeded, failed: failed);
   if (!context.mounted) return;
   await context.read<GalleryCubit>().refresh();
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(failed.isEmpty ? '已撤销最近一次批量操作' : '已撤销 ${succeeded.length} 张，${failed.length} 张撤销失败')),
-  );
+  if (failed.isEmpty) {
+    BirdFeedback.success(context, '已撤销最近一次批量操作');
+  } else {
+    BirdFeedback.error(
+      context,
+      '已撤销 ${succeeded.length} 张，${failed.length} 张撤销失败',
+    );
+  }
 }

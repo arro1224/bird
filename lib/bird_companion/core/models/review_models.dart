@@ -70,6 +70,19 @@ class BirdGroup extends Equatable {
     if (capturedTo != null) 'captured_to': capturedTo!.toIso8601String(),
   };
 
+  BirdGroup copyWith({List<PhotoSummary>? members}) => BirdGroup(
+    id: id,
+    type: type,
+    representativeFileId: representativeFileId,
+    memberFileIds: memberFileIds,
+    rankOrder: rankOrder,
+    members: members ?? this.members,
+    recommendationReasons: recommendationReasons,
+    sceneId: sceneId,
+    capturedFrom: capturedFrom,
+    capturedTo: capturedTo,
+  );
+
   @override
   List<Object?> get props => [id, type, representativeFileId, memberFileIds, rankOrder, members, recommendationReasons, sceneId, capturedFrom, capturedTo];
 }

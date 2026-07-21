@@ -50,7 +50,7 @@ class ConnectionEmptyView extends StatelessWidget {
               number: 2,
               icon: Icons.router_outlined,
               title: '确认盒子网络状态',
-              description: '让手机与盒子连接到同一局域网',
+              description: '让手机与盒子连接到同一个 Wi-Fi',
             ),
             Divider(),
             _GuideStep(

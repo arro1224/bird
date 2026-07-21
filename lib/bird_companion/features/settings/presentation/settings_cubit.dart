@@ -45,7 +45,7 @@ class SettingsCubit extends Cubit<SettingsState> {
     PaintingBinding.instance.imageCache.clearLiveImages();
     _dependencies.dataChangeBus.publish({AppDataResource.cache, AppDataResource.photos}, reason: 'cache_cleared');
     final bytes = await _dependencies.cacheMetricsService.imageCacheBytes();
-    emit(state.copyWith(loading: false, cacheBytes: bytes, message: '已清理缩略图和离线相册快照；待同步操作未受影响。'));
+    emit(state.copyWith(loading: false, cacheBytes: bytes, message: '已清理手机上保存的预览图；你做过的照片修改不会丢失。'));
   }
 
   Future<void> reconnect() async {

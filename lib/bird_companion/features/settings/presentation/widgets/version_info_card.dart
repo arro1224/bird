@@ -11,8 +11,8 @@ class VersionInfoCard extends StatelessWidget {
   Widget build(BuildContext c) => Card(
     child: ListTile(
       leading: const Icon(Icons.info_outline_rounded, color: AppColors.brand),
-      title: const Text('版本信息'),
-      subtitle: Text('App：$appVersion\n盒子 API：${session.device?.apiVersion ?? '未连接'}\n连接方式：${session.device?.networkMode.label ?? '未连接'}'),
+      title: const Text('软件信息'),
+      subtitle: Text('手机软件：$appVersion\n盒子兼容信息：${session.device?.apiVersion ?? '未连接'}\n连接方式：${session.device?.networkMode.label ?? '未连接'}'),
     ),
   );
 }

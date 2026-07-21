@@ -3,6 +3,7 @@ import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/widgets/disconnected_banner.dart';
+import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/core/widgets/lazy_indexed_stack.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/album_home_page.dart';
 import 'package:aves/bird_companion/features/jobs/presentation/job_center_page.dart';
@@ -23,6 +24,7 @@ class BirdAppShell extends StatefulWidget {
 class _BirdAppShellState extends State<BirdAppShell> {
   late int _selectedIndex;
   late final ValueNotifier<int> _selectedTab;
+  var _bottomNavigationVisible = true;
   final _navigatorKeys = List.generate(3, (_) => GlobalKey<NavigatorState>());
 
   @override
@@ -40,7 +42,7 @@ class _BirdAppShellState extends State<BirdAppShell> {
 
   static const _destinations = <NavigationDestination>[
     NavigationDestination(icon: Icon(Icons.photo_outlined), selectedIcon: Icon(Icons.photo), label: '相册'),
-    NavigationDestination(icon: Icon(Icons.task_outlined), selectedIcon: Icon(Icons.task), label: '任务'),
+    NavigationDestination(icon: Icon(Icons.task_outlined), selectedIcon: Icon(Icons.task), label: '处理进度'),
     NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
   ];
 
@@ -49,6 +51,7 @@ class _BirdAppShellState extends State<BirdAppShell> {
     return Scaffold(
       body: BirdShellNavigation(
         selectTab: _selectTab,
+        setBottomNavigationVisible: _setBottomNavigationVisible,
         child: Column(
           children: [
             if (_selectedIndex != 0)
@@ -80,15 +83,18 @@ class _BirdAppShellState extends State<BirdAppShell> {
           ],
         ),
       ),
-      bottomNavigationBar: BirdBottomNavigation(
-        selectedIndex: _selectedIndex,
-        destinations: _destinations,
-        onDestinationSelected: _selectTab,
-      ),
+      bottomNavigationBar: _bottomNavigationVisible
+          ? BirdBottomNavigation(
+              selectedIndex: _selectedIndex,
+              destinations: _destinations,
+              onDestinationSelected: _selectTab,
+            )
+          : null,
     );
   }
 
   void _selectTab(int index) {
+    BirdFeedback.dismissAll();
     final next = index.clamp(0, 2).toInt();
     if (next == _selectedIndex) {
       _navigatorKeys[next].currentState?.popUntil((route) => route.isFirst);
@@ -96,6 +102,11 @@ class _BirdAppShellState extends State<BirdAppShell> {
     }
     setState(() => _selectedIndex = next);
     _selectedTab.value = next;
+  }
+
+  void _setBottomNavigationVisible(bool visible) {
+    if (_bottomNavigationVisible == visible || !mounted) return;
+    setState(() => _bottomNavigationVisible = visible);
   }
 }
 
@@ -116,6 +127,7 @@ class _TabNavigator extends StatelessWidget {
       onPopWithResult: (result) => navigatorKey.currentState?.pop(result),
       child: Navigator(
         key: navigatorKey,
+        observers: [BirdFeedbackNavigatorObserver()],
         onGenerateRoute: (settings) {
           if (settings.name == Navigator.defaultRouteName) {
             return MaterialPageRoute<void>(settings: settings, builder: (_) => root);
@@ -133,11 +145,17 @@ class _TabNavigator extends StatelessWidget {
 }
 
 class BirdShellNavigation extends InheritedWidget {
-  const BirdShellNavigation({super.key, required this.selectTab, required super.child});
+  const BirdShellNavigation({
+    super.key,
+    required this.selectTab,
+    required this.setBottomNavigationVisible,
+    required super.child,
+  });
   final ValueChanged<int> selectTab;
+  final ValueChanged<bool> setBottomNavigationVisible;
 
   static BirdShellNavigation? maybeOf(BuildContext context) => context.dependOnInheritedWidgetOfExactType<BirdShellNavigation>();
 
   @override
-  bool updateShouldNotify(BirdShellNavigation oldWidget) => selectTab != oldWidget.selectTab;
+  bool updateShouldNotify(BirdShellNavigation oldWidget) => selectTab != oldWidget.selectTab || setBottomNavigationVisible != oldWidget.setBottomNavigationVisible;
 }

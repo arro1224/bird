@@ -35,7 +35,7 @@ class BatchSummary extends Equatable {
 
   factory BatchSummary.fromJson(Map<String, dynamic> json) => BatchSummary(
     id: json['project_id']?.toString() ?? '',
-    name: json['name']?.toString() ?? json['project_name']?.toString() ?? '未命名批次',
+    name: json['name']?.toString() ?? json['project_name']?.toString() ?? '未命名拍摄记录',
     createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
     totalFiles: (json['total_files'] as num?)?.toInt() ?? 0,
     analyzedCount: (json['analyzed_count'] as num?)?.toInt() ?? 0,

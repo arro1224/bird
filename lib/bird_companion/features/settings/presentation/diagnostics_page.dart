@@ -33,9 +33,9 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
     setState(() {
       _checkingApi = true;
       _results = [
-        DiagnosticResult(label: '连接会话', passed: session.isConnected, detail: session.device?.baseUri.toString() ?? '尚未连接设备'),
-        const DiagnosticResult(label: '事件通道', passed: false, detail: '正在检查实时事件连接…'),
-        DiagnosticResult(label: '本地待同步操作', passed: true, detail: '${dependencies.pendingOperationStore.readAll().length} 项'),
+        DiagnosticResult(label: '盒子连接', passed: session.isConnected, detail: session.isConnected ? '已连接' : '尚未连接设备'),
+        const DiagnosticResult(label: '状态更新', passed: false, detail: '正在检查盒子的状态更新…'),
+        DiagnosticResult(label: '尚未传回盒子的修改', passed: true, detail: '${dependencies.pendingOperationStore.readAll().length} 项'),
       ];
     });
     final eventState = dependencies.eventClient.currentState;
@@ -46,9 +46,9 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
         _checkingApi = false;
         _results = [
           _results[0],
-          DiagnosticResult(label: '事件通道', passed: eventState == EventConnectionState.connected, detail: eventState == EventConnectionState.connected ? '实时事件已连接' : '当前使用 HTTP 刷新，实时事件不可用'),
+          DiagnosticResult(label: '状态更新', passed: eventState == EventConnectionState.connected, detail: eventState == EventConnectionState.connected ? '盒子状态可以自动更新' : '盒子状态需要手动刷新'),
           _results[2],
-          DiagnosticResult(label: '设备 API', passed: true, detail: '盒子 ${status.softwareVersion ?? '未知'} · API ${status.connection.apiVersion ?? 'v1'} · 模型 ${status.modelVersion ?? '未知'}'),
+          DiagnosticResult(label: '盒子软件', passed: true, detail: '盒子软件 ${status.softwareVersion ?? '未知'} · 兼容信息 ${status.connection.apiVersion ?? 'v1'}'),
         ];
       });
     } catch (error) {
@@ -57,9 +57,9 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
         _checkingApi = false;
         _results = [
           _results[0],
-          DiagnosticResult(label: '事件通道', passed: eventState == EventConnectionState.connected, detail: eventState == EventConnectionState.connected ? '实时事件已连接' : '当前使用 HTTP 刷新，实时事件不可用'),
+          DiagnosticResult(label: '状态更新', passed: eventState == EventConnectionState.connected, detail: eventState == EventConnectionState.connected ? '盒子状态可以自动更新' : '盒子状态需要手动刷新'),
           _results[2],
-          DiagnosticResult(label: '设备 API', passed: false, detail: error.toString()),
+          const DiagnosticResult(label: '盒子软件', passed: false, detail: '暂时无法读取盒子信息，请重新连接后再试'),
         ];
       });
     }
@@ -71,7 +71,7 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
     final result = await dependencies.birdSyncService.synchronize();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已同步 ${result.syncedCount} 项，${result.failedOperations.length} 项仍需处理')),
+      SnackBar(content: Text('已更新 ${result.syncedCount} 项，${result.failedOperations.length} 项仍需处理')),
     );
     await _run();
   }
@@ -90,7 +90,7 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
       backgroundColor: AppColors.brand,
       appBar: AppBar(
         leading: const BirdPageBackButton(),
-        title: const Text('设置诊断'),
+        title: const Text('连接检查'),
         actions: [IconButton(onPressed: _checkingApi ? null : _run, icon: const Icon(Icons.refresh))],
       ),
       body: BirdDarkTheme(
@@ -101,9 +101,9 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                 children: [
                   const BirdConnectionLine(),
                   const SizedBox(height: 28),
-                  Text('设置诊断', style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w900)),
+                  Text('连接检查', style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w900)),
                   const SizedBox(height: 8),
-                  Text('检查本地连接、盒子服务与待同步操作', style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  Text('检查手机与盒子的连接，以及尚未传回盒子的修改', style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 24),
                   for (final result in _results)
                     Card(
@@ -125,8 +125,8 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                       margin: const EdgeInsets.only(bottom: 12),
                       child: ExpansionTile(
                         leading: const Icon(Icons.sync_problem_outlined, color: AppColors.warning),
-                        title: Text('待同步操作 ${pending.length} 项'),
-                        subtitle: const Text('可查看失败原因并手动重试'),
+                        title: Text('尚未传回盒子的修改 ${pending.length} 项'),
+                        subtitle: const Text('可以查看原因并重新尝试'),
                         children: [
                           for (final operation in pending)
                             ListTile(
@@ -166,7 +166,7 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                       }
                     },
                     icon: const Icon(Icons.file_download_outlined),
-                    label: const Text('导出诊断日志'),
+                    label: const Text('导出问题报告'),
                   ),
                 ],
               ),

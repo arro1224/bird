@@ -14,5 +14,10 @@ void main() {
 
     expect(photo.keepState, 'keep');
     expect(photo.userTags, ['水鸟', '晨拍']);
+
+    final updated = photo.copyWith(keepState: 'featured');
+    expect(updated.keepState, 'featured');
+    expect(updated.id, photo.id);
+    expect(updated.userTags, photo.userTags);
   });
 }

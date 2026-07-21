@@ -15,8 +15,8 @@ class CacheManagementCard extends StatelessWidget {
   Widget build(BuildContext c) => Card(
     child: ListTile(
       leading: const Icon(Icons.photo_library_outlined, color: AppColors.brand),
-      title: const Text('照片与离线相册缓存'),
-      subtitle: Text('当前图片缓存约 $_size；清理后会移除离线相册快照，但不会删除待同步的人工修改。'),
+      title: const Text('手机上保存的照片'),
+      subtitle: Text('当前约占用 $_size；清理后，设备断开时可能无法查看部分照片，但不会删除你做过的修改。'),
       trailing: TextButton(onPressed: onClear, child: const Text('清理')),
     ),
   );

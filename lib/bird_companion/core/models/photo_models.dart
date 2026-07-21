@@ -277,6 +277,27 @@ class PhotoSummary extends Equatable {
     if (capturedAt != null) 'captured_at': capturedAt!.toIso8601String(),
   };
 
+  /// Returns a local view of this photo after a review decision is saved.
+  ///
+  /// The review flows update this immediately so their selected-state controls
+  /// never wait for a later gallery reload to reflect a successful action.
+  PhotoSummary copyWith({String? keepState}) => PhotoSummary(
+    id: id,
+    filename: filename,
+    format: format,
+    preview: preview,
+    analysisState: analysisState,
+    recognition: recognition,
+    rating: rating,
+    groupId: groupId,
+    sceneId: sceneId,
+    keepState: keepState ?? this.keepState,
+    clarityState: clarityState,
+    isRecommended: isRecommended,
+    userTags: userTags,
+    capturedAt: capturedAt,
+  );
+
   @override
   List<Object?> get props => [id, filename, format, preview, analysisState, recognition, rating, groupId, sceneId, keepState, clarityState, isRecommended, userTags, capturedAt];
 }

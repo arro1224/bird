@@ -53,7 +53,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       _refreshCoordinator.requestRefresh();
     } catch (_) {
       // The session is healthy even if retained writes cannot be replayed yet.
-      if (!isClosed) emit(state.copyWith(message: '已连接盒子，部分离线修改将在下次刷新时同步。'));
+      if (!isClosed) emit(state.copyWith(message: '已连接盒子，手机上保存的修改会自动传回盒子。'));
     }
   }
 

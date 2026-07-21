@@ -9,10 +9,10 @@ class AnalysisPlaceholder extends StatelessWidget {
     color: Theme.of(c).colorScheme.surfaceContainerHighest,
     child: Center(
       child: Text(switch (state) {
-        AnalysisState.processing => '分析中',
-        AnalysisState.failed => '分析失败',
+        AnalysisState.processing => '正在识别',
+        AnalysisState.failed => '未能完成识别',
         AnalysisState.skipped => '已跳过',
-        AnalysisState.lowConfidence => '低置信度',
+        AnalysisState.lowConfidence => '识别结果不确定',
         AnalysisState.completed => '已完成',
         _ => '待分析',
       }),

@@ -4,8 +4,10 @@ import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/presentation/user_facing_text.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
-import 'package:aves/bird_companion/core/widgets/page_back_button.dart';
+import 'package:aves/bird_companion/core/widgets/bird_navigation.dart';
+import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -69,84 +71,87 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: AppColors.paper,
-    appBar: AppBar(leading: const BirdPageBackButton(), title: const Text('修改识别结果')),
-    body: SafeArea(
-      top: false,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(AppSpacing.ml, AppSpacing.md, AppSpacing.ml, AppSpacing.xxl),
-        children: [
-          TextField(
-            controller: _species,
-            onChanged: (value) {
-              if (_candidateForName(value)?.speciesId != _speciesId) _speciesId = null;
-              _scheduleSearch(value);
-            },
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search_rounded),
-              hintText: '搜索鸟种名称',
-              suffixIcon: _searching ? const Padding(padding: EdgeInsets.all(14), child: CircularProgressIndicator(strokeWidth: 2)) : null,
+    appBar: BirdSecondaryAppBar(title: '修改识别结果'),
+    body: NaturalBackdrop(
+      dense: true,
+      child: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.ml, AppSpacing.md, AppSpacing.ml, AppSpacing.xxl),
+          children: [
+            TextField(
+              controller: _species,
+              onChanged: (value) {
+                if (_candidateForName(value)?.speciesId != _speciesId) _speciesId = null;
+                _scheduleSearch(value);
+              },
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search_rounded),
+                hintText: '搜索鸟种名称',
+                suffixIcon: _searching ? const Padding(padding: EdgeInsets.all(14), child: CircularProgressIndicator(strokeWidth: 2)) : null,
+              ),
             ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          if (widget.previewUri != null) _CurrentResultCard(uri: widget.previewUri!, species: _species.text, candidate: _selectedCandidate),
-          const SizedBox(height: AppSpacing.lg),
-          Text('候选结果', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
-          const SizedBox(height: AppSpacing.sm),
-          if (_searchMessage != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-              child: Text(_searchMessage!, style: const TextStyle(color: AppColors.inkMuted)),
-            )
-          else if (_candidates.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-              child: Text('盒子没有返回候选鸟种，可直接输入名称保存。', style: TextStyle(color: AppColors.inkMuted)),
-            )
-          else
-            Card(
-              child: Column(
-                children: [
-                  for (var index = 0; index < _candidates.length; index++) ...[
-                    _CandidateTile(
-                      candidate: _candidates[index],
-                      selected: _species.text.trim() == _candidates[index].name,
-                      onTap: () => setState(() {
-                        _species.text = _candidates[index].name;
-                        _speciesId = _candidates[index].speciesId;
-                      }),
-                    ),
-                    if (index != _candidates.length - 1) const Divider(height: 1, indent: 20, endIndent: 20),
+            const SizedBox(height: AppSpacing.lg),
+            if (widget.previewUri != null) _CurrentResultCard(uri: widget.previewUri!, species: _species.text, candidate: _selectedCandidate),
+            const SizedBox(height: AppSpacing.lg),
+            Text('可能的鸟种', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
+            const SizedBox(height: AppSpacing.sm),
+            if (_searchMessage != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                child: Text(_searchMessage!, style: const TextStyle(color: AppColors.inkMuted)),
+              )
+            else if (_candidates.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                child: Text('系统没有找到相似鸟种，你可以直接输入名称。', style: TextStyle(color: AppColors.inkMuted)),
+              )
+            else
+              Card(
+                child: Column(
+                  children: [
+                    for (var index = 0; index < _candidates.length; index++) ...[
+                      _CandidateTile(
+                        candidate: _candidates[index],
+                        selected: _species.text.trim() == _candidates[index].name,
+                        onTap: () => setState(() {
+                          _species.text = _candidates[index].name;
+                          _speciesId = _candidates[index].speciesId;
+                        }),
+                      ),
+                      if (index != _candidates.length - 1) const Divider(height: 1, indent: 20, endIndent: 20),
+                    ],
                   ],
-                ],
-              ),
-            ),
-          const SizedBox(height: AppSpacing.lg),
-          Text('人工标签', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.xs,
-            runSpacing: AppSpacing.xs,
-            children: [
-              for (final tag in _tagValues)
-                InputChip(
-                  avatar: const Icon(Icons.eco_outlined, size: 17),
-                  label: Text(tag),
-                  onDeleted: () => _removeTag(tag),
                 ),
-              ActionChip(
-                avatar: const Icon(Icons.add_circle_outline_rounded, size: 18),
-                label: const Text('添加标签'),
-                side: const BorderSide(color: AppColors.outlineStrong, style: BorderStyle.solid),
-                onPressed: _addTag,
               ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          SizedBox(
-            height: AppSpacing.largeButtonHeight,
-            child: FilledButton.icon(onPressed: _save, icon: const Icon(Icons.save_outlined), label: const Text('保存修改')),
-          ),
-        ],
+            const SizedBox(height: AppSpacing.lg),
+            Text('人工标签', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
+            const SizedBox(height: AppSpacing.sm),
+            Wrap(
+              spacing: AppSpacing.xs,
+              runSpacing: AppSpacing.xs,
+              children: [
+                for (final tag in _tagValues)
+                  InputChip(
+                    avatar: const Icon(Icons.eco_outlined, size: 17),
+                    label: Text(tag),
+                    onDeleted: () => _removeTag(tag),
+                  ),
+                ActionChip(
+                  avatar: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                  label: const Text('添加标签'),
+                  side: const BorderSide(color: AppColors.outlineStrong, style: BorderStyle.solid),
+                  onPressed: _addTag,
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            SizedBox(
+              height: AppSpacing.largeButtonHeight,
+              child: FilledButton.icon(onPressed: _save, icon: const Icon(Icons.save_outlined), label: const Text('保存修改')),
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -256,6 +261,10 @@ class _CurrentResultCard extends StatelessWidget {
               child: CachedNetworkImage(
                 imageUrl: uri.toString(),
                 fit: BoxFit.cover,
+                placeholder: (_, _) => const ColoredBox(
+                  color: AppColors.brandLight,
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
                 errorWidget: (_, _, _) => const ColoredBox(color: AppColors.brandLight, child: Icon(Icons.photo_outlined)),
               ),
             ),
@@ -268,7 +277,7 @@ class _CurrentResultCard extends StatelessWidget {
                 Text(species.isEmpty ? '待确认鸟种' : species, style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
                 if (candidate != null) ...[
                   const SizedBox(height: AppSpacing.xs),
-                  Text('相似度 ${(candidate!.confidence * 100).round()}%', style: const TextStyle(color: AppColors.inkMuted)),
+                  Text('识别度：${UserFacingText.recognitionCertaintyWithPercent(candidate!.confidence)}', style: const TextStyle(color: AppColors.inkMuted)),
                 ],
                 const SizedBox(height: AppSpacing.sm),
                 const Chip(label: Text('当前结果')),
@@ -293,7 +302,7 @@ class _CandidateTile extends StatelessWidget {
     minVerticalPadding: AppSpacing.sm,
     leading: Icon(selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, color: AppColors.brand),
     title: Text(candidate.name),
-    subtitle: candidate.latinName == null ? null : Text(candidate.latinName!),
+    subtitle: Text('识别度：${UserFacingText.recognitionCertainty(candidate.confidence)}'),
     trailing: Text(
       '${(candidate.confidence * 100).round()}%',
       style: TextStyle(color: selected ? AppColors.brand : AppColors.inkMuted, fontWeight: FontWeight.w700),

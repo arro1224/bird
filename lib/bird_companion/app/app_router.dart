@@ -51,25 +51,31 @@ abstract final class BirdAppRouter {
         final args = settings.arguments;
         final id = _batchId(args);
         page = id == null
-            ? _invalid('图库', '缺少批次编号')
+            ? _invalid('相册', '缺少拍摄记录')
             : GalleryPage(
                 batchId: id,
                 batchName: args is GalleryArgs ? args.batchName : null,
+                createdAt: args is GalleryArgs ? args.createdAt : null,
                 totalCount: args is GalleryArgs ? args.totalCount : null,
+                pendingCount: args is GalleryArgs ? args.pendingCount : null,
+                keepCount: args is GalleryArgs ? args.keepCount : null,
+                discardCount: args is GalleryArgs ? args.discardCount : null,
                 initialQuery: args is GalleryArgs ? args.initialQuery : const PhotoQuery(),
+                reviewContext: args is GalleryArgs ? args.context : null,
               );
       case BirdRoutes.scenes:
         final args = settings.arguments;
-        page = args is SceneListArgs ? SceneListPage(args: args) : _invalid('拍摄场景', '缺少批次信息');
+        page = args is SceneListArgs ? SceneListPage(args: args) : _invalid('拍摄场景', '缺少拍摄记录');
       case BirdRoutes.groupReview:
         final args = settings.arguments;
         final id = _groupBatchId(args);
         page = id == null
-            ? _invalid('分组审阅', '缺少批次编号')
+            ? _invalid('挑选连拍照片', '缺少拍摄记录')
             : GroupReviewPage(
                 batchId: id,
                 sceneId: args is GroupReviewArgs ? args.sceneId : null,
                 sceneName: args is GroupReviewArgs ? args.sceneName : null,
+                reviewContext: args is GroupReviewArgs ? args.context : null,
               );
       case BirdRoutes.comparisonReview:
         final args = settings.arguments;
@@ -84,10 +90,11 @@ abstract final class BirdAppRouter {
                 displayIndex: args is PhotoDetailArgs ? args.displayIndex : null,
                 totalCount: args is PhotoDetailArgs ? args.totalCount : null,
                 sequence: args is PhotoDetailArgs ? args.sequence : const [],
+                reviewContext: args is PhotoDetailArgs ? args.reviewContext : null,
               );
       case BirdRoutes.copyConfirmation:
         final id = _copyBatchId(settings.arguments);
-        page = id == null ? _invalid('复制确认', '缺少批次编号') : CopyConfirmationPage(batchId: id);
+        page = id == null ? _invalid('复制确认', '缺少拍摄记录') : CopyConfirmationPage(batchId: id);
       case BirdRoutes.jobDetail:
         final args = settings.arguments;
         final id = args is JobDetailArgs

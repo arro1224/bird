@@ -1,5 +1,6 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/presentation/user_facing_text.dart';
 import 'package:flutter/material.dart';
 
 class RecognitionPanel extends StatelessWidget {
@@ -21,7 +22,7 @@ class RecognitionPanel extends StatelessWidget {
               children: [
                 Icon(Icons.eco_outlined, color: AppColors.brand),
                 SizedBox(width: 8),
-                Text('AI 分析结果', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                Text('鸟种识别结果', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
               ],
             ),
             const Divider(height: 24),
@@ -38,15 +39,16 @@ class RecognitionPanel extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('识别物种', style: TextStyle(color: AppColors.inkMuted)),
+                        const Text('可能是', style: TextStyle(color: AppColors.inkMuted)),
                         const SizedBox(height: 8),
                         Text(first.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
                         const SizedBox(height: 16),
-                        const Text('置信度', style: TextStyle(color: AppColors.inkMuted)),
+                        const Text('识别度', style: TextStyle(color: AppColors.inkMuted)),
                         Text(
-                          '${(first.confidence * 100).round()}%',
-                          style: const TextStyle(fontSize: 30, color: AppColors.brand, fontWeight: FontWeight.w800),
+                          UserFacingText.recognitionCertainty(first.confidence),
+                          style: const TextStyle(fontSize: 24, color: AppColors.brand, fontWeight: FontWeight.w800),
                         ),
+                        Text('${(first.confidence * 100).round()}%', style: const TextStyle(color: AppColors.inkMuted)),
                       ],
                     ),
                   ),
@@ -57,7 +59,7 @@ class RecognitionPanel extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Top 3 候选', style: TextStyle(color: AppColors.inkMuted)),
+                        const Text('其他可能的鸟种', style: TextStyle(color: AppColors.inkMuted)),
                         const SizedBox(height: 5),
                         for (var index = 0; index < candidates.length; index++)
                           ListTile(
@@ -70,7 +72,7 @@ class RecognitionPanel extends StatelessWidget {
                               child: Text('${index + 1}', style: const TextStyle(fontSize: 11)),
                             ),
                             title: Text(candidates[index].name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            trailing: Text('${(candidates[index].confidence * 100).round()}%'),
+                            trailing: Text(UserFacingText.recognitionCertainty(candidates[index].confidence)),
                           ),
                       ],
                     ),
@@ -86,7 +88,7 @@ class RecognitionPanel extends StatelessWidget {
                   children: [
                     Icon(Icons.info_outline, color: AppColors.pending),
                     SizedBox(width: 8),
-                    Expanded(child: Text('当前识别置信度较低，建议结合原图和其他候选鸟种人工确认。')),
+                    Expanded(child: Text('系统不太确定这是什么鸟，建议结合原图和其他结果自行确认。')),
                   ],
                 ),
               ),

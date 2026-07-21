@@ -1,10 +1,11 @@
 import 'package:aves/bird_companion/app/app_dependencies.dart';
-import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
+import 'package:aves/bird_companion/core/presentation/user_facing_text.dart';
+import 'package:aves/bird_companion/core/widgets/bird_navigation.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
-import 'package:aves/bird_companion/core/widgets/page_back_button.dart';
+import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/features/review/presentation/photo_detail_cubit.dart';
 import 'package:aves/bird_companion/features/review/presentation/review_edit_page.dart';
@@ -18,11 +19,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class PhotoDetailPage extends StatelessWidget {
-  const PhotoDetailPage({super.key, required this.fileId, this.displayIndex, this.totalCount, this.sequence = const []});
+  const PhotoDetailPage({
+    super.key,
+    required this.fileId,
+    this.displayIndex,
+    this.totalCount,
+    this.sequence = const [],
+    this.reviewContext,
+  });
   final String fileId;
   final int? displayIndex;
   final int? totalCount;
   final List<String> sequence;
+  final ReviewContext? reviewContext;
 
   @override
   Widget build(BuildContext context) => BlocProvider(
@@ -31,16 +40,29 @@ class PhotoDetailPage extends StatelessWidget {
       BirdCompanionScope.of(context).refreshCoordinator,
       BirdCompanionScope.of(context).dataChangeBus,
     )..load(fileId),
-    child: _View(fileId: fileId, displayIndex: displayIndex, totalCount: totalCount, sequence: sequence),
+    child: _View(
+      fileId: fileId,
+      displayIndex: displayIndex,
+      totalCount: totalCount,
+      sequence: sequence,
+      reviewContext: reviewContext,
+    ),
   );
 }
 
 class _View extends StatefulWidget {
-  const _View({required this.fileId, this.displayIndex, this.totalCount, required this.sequence});
+  const _View({
+    required this.fileId,
+    this.displayIndex,
+    this.totalCount,
+    required this.sequence,
+    this.reviewContext,
+  });
   final String fileId;
   final int? displayIndex;
   final int? totalCount;
   final List<String> sequence;
+  final ReviewContext? reviewContext;
 
   @override
   State<_View> createState() => _ViewState();
@@ -54,6 +76,21 @@ class _ViewState extends State<_View> {
   final _tags = TextEditingController();
   String? _appliedRevision;
   var _showSubjects = false;
+  late int _currentIndex;
+
+  List<String> get _sequence => widget.reviewContext?.photoIds.isNotEmpty == true ? widget.reviewContext!.photoIds : widget.sequence;
+
+  String get _currentFileId => _sequence.isEmpty ? widget.fileId : _sequence[_currentIndex.clamp(0, _sequence.length - 1)];
+
+  int? get _currentDisplayIndex => _sequence.isEmpty ? widget.displayIndex : _currentIndex + 1;
+
+  @override
+  void initState() {
+    super.initState();
+    final contextIndex = widget.reviewContext?.safeCurrentIndex;
+    final sequenceIndex = _sequence.indexOf(widget.fileId);
+    _currentIndex = contextIndex ?? (sequenceIndex < 0 ? 0 : sequenceIndex);
+  }
 
   @override
   void dispose() {
@@ -79,42 +116,57 @@ class _ViewState extends State<_View> {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: AppColors.paper,
-    appBar: AppBar(
-      leading: const BirdPageBackButton(),
-      title: Text(widget.displayIndex == null ? widget.fileId : '${widget.displayIndex} / ${widget.totalCount ?? '—'}'),
-      actions: [
+    appBar: BirdSecondaryAppBar(
+      title: _currentDisplayIndex == null ? _currentFileId : '$_currentDisplayIndex / ${widget.totalCount ?? _sequence.length}',
+      trailing: [
         BlocBuilder<PhotoDetailCubit, PhotoDetailState>(
           builder: (context, state) => PopupMenuButton<String>(
             tooltip: '更多操作',
             icon: const Icon(Icons.more_horiz_rounded),
+            position: PopupMenuPosition.under,
+            offset: const Offset(-8, 8),
+            elevation: 8,
+            color: AppColors.paperStrong,
+            surfaceTintColor: Colors.transparent,
+            constraints: const BoxConstraints.tightFor(width: 260),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: const BorderSide(color: AppColors.outline),
+            ),
             onSelected: (value) => _handleMenu(context, state, value),
             itemBuilder: (_) => [
               if (_previousId != null)
                 const PopupMenuItem(
                   value: 'previous',
-                  child: ListTile(leading: Icon(Icons.chevron_left_rounded), title: Text('上一张')),
+                  height: 52,
+                  child: _DetailMenuItem(icon: Icons.chevron_left_rounded, label: '上一张'),
                 ),
               if (_nextId != null)
                 const PopupMenuItem(
                   value: 'next',
-                  child: ListTile(leading: Icon(Icons.chevron_right_rounded), title: Text('下一张')),
+                  height: 52,
+                  child: _DetailMenuItem(icon: Icons.chevron_right_rounded, label: '下一张'),
                 ),
               const PopupMenuItem(
                 value: 'featured',
-                child: ListTile(leading: Icon(Icons.star_outline_rounded), title: Text('设为精选')),
+                height: 52,
+                child: _DetailMenuItem(icon: Icons.star_outline_rounded, label: '设为精选'),
               ),
               const PopupMenuItem(
                 value: 'pending',
-                child: ListTile(leading: Icon(Icons.help_outline_rounded), title: Text('标记待确认')),
+                height: 52,
+                child: _DetailMenuItem(icon: Icons.help_outline_rounded, label: '标记待确认'),
               ),
               const PopupMenuItem(
                 value: 'history',
-                child: ListTile(leading: Icon(Icons.history_rounded), title: Text('版本历史')),
+                height: 52,
+                child: _DetailMenuItem(icon: Icons.history_rounded, label: '修改记录'),
               ),
               if (state.canUndo)
                 const PopupMenuItem(
                   value: 'undo',
-                  child: ListTile(leading: Icon(Icons.undo_rounded), title: Text('撤销最近修改')),
+                  height: 52,
+                  child: _DetailMenuItem(icon: Icons.undo_rounded, label: '撤销最近修改'),
                 ),
             ],
           ),
@@ -122,15 +174,22 @@ class _ViewState extends State<_View> {
       ],
     ),
     body: BlocConsumer<PhotoDetailCubit, PhotoDetailState>(
+      listenWhen: (previous, current) => previous.conflict != current.conflict || previous.message != current.message,
       listener: (context, state) {
         if (state.conflict) {
           showDialog<ConflictChoice>(context: context, builder: (_) => const ConflictDialog()).then((choice) {
             if (!context.mounted) return;
-            if (choice == ConflictChoice.remote) context.read<PhotoDetailCubit>().useRemote(widget.fileId);
+            if (choice == ConflictChoice.remote) context.read<PhotoDetailCubit>().useRemote(_currentFileId);
             if (choice == ConflictChoice.local) context.read<PhotoDetailCubit>().keepLocal();
           });
         }
-        if (state.message != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(state.message!)));
+        if (state.message != null) {
+          if (state.detail == null) {
+            BirdFeedback.error(context, state.message!);
+          } else {
+            BirdFeedback.success(context, state.message!);
+          }
+        }
       },
       builder: (context, state) {
         final detail = state.detail;
@@ -139,7 +198,7 @@ class _ViewState extends State<_View> {
         return NaturalBackdrop(
           dense: true,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
               SubjectOverlayView(photo: detail.photo, subjects: _showSubjects ? detail.photo.subjects : const []),
               const SizedBox(height: 12),
@@ -173,7 +232,7 @@ class _ViewState extends State<_View> {
                         RatingReasonPanel(value: detail.photo.summary.rating),
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: const Text('显示主体框'),
+                          title: const Text('标出照片中的鸟'),
                           value: _showSubjects,
                           onChanged: (value) => setState(() => _showSubjects = value),
                         ),
@@ -196,7 +255,7 @@ class _ViewState extends State<_View> {
                           child: OutlinedButton.icon(
                             onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => VersionHistoryPage(items: detail.history))),
                             icon: const Icon(Icons.history_rounded),
-                            label: const Text('查看版本历史'),
+                            label: const Text('查看修改记录'),
                           ),
                         ),
                       ],
@@ -212,18 +271,16 @@ class _ViewState extends State<_View> {
   );
 
   String? get _previousId {
-    final index = widget.sequence.indexOf(widget.fileId);
-    return index > 0 ? widget.sequence[index - 1] : null;
+    return _currentIndex > 0 && _sequence.isNotEmpty ? _sequence[_currentIndex - 1] : null;
   }
 
   String? get _nextId {
-    final index = widget.sequence.indexOf(widget.fileId);
-    return index >= 0 && index + 1 < widget.sequence.length ? widget.sequence[index + 1] : null;
+    return _sequence.isNotEmpty && _currentIndex + 1 < _sequence.length ? _sequence[_currentIndex + 1] : null;
   }
 
   void _handleMenu(BuildContext context, PhotoDetailState state, String value) {
     final detail = state.detail;
-    if (detail == null) return;
+    if (detail == null || state.loading || state.saving) return;
     if (value == 'undo') {
       context.read<PhotoDetailCubit>().undo();
       return;
@@ -242,11 +299,18 @@ class _ViewState extends State<_View> {
     }
     final id = value == 'previous' ? _previousId : _nextId;
     if (id == null) return;
-    final index = widget.sequence.indexOf(id);
-    Navigator.of(context).pushReplacementNamed(
-      BirdRoutes.photoDetail,
-      arguments: PhotoDetailArgs(id, displayIndex: index + 1, totalCount: widget.totalCount, sequence: widget.sequence),
-    );
+    _openInPlace(context, id);
+  }
+
+  Future<void> _openInPlace(BuildContext context, String id) async {
+    final index = _sequence.indexOf(id);
+    if (index < 0 || index == _currentIndex) return;
+    setState(() {
+      _currentIndex = index;
+      _appliedRevision = null;
+      _showSubjects = false;
+    });
+    await context.read<PhotoDetailCubit>().load(id);
   }
 
   Future<void> _save(BuildContext context, ReviewDetail detail, KeepState value) async {
@@ -255,7 +319,7 @@ class _ViewState extends State<_View> {
   }
 
   UserDecision _decision(ReviewDetail detail, {KeepState? keepState}) => UserDecision(
-    fileId: widget.fileId,
+    fileId: _currentFileId,
     keepState: keepState ?? _keep,
     userSpeciesId: _speciesId,
     userSpecies: _species.text.trim().isEmpty ? null : _species.text.trim(),
@@ -322,6 +386,27 @@ class _ViewState extends State<_View> {
   }
 }
 
+class _DetailMenuItem extends StatelessWidget {
+  const _DetailMenuItem({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Icon(icon, size: 22, color: AppColors.brand),
+      const SizedBox(width: 14),
+      Expanded(
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.brandDark),
+        ),
+      ),
+    ],
+  );
+}
+
 class _RecognitionSummary extends StatelessWidget {
   const _RecognitionSummary({required this.detail, required this.species, required this.onEdit});
   final ReviewDetail detail;
@@ -332,7 +417,7 @@ class _RecognitionSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final summary = detail.photo.summary;
     final candidate = summary.recognition?.candidates.firstOrNull;
-    final confidence = candidate == null ? null : (candidate.confidence * 100).round();
+    final confidence = candidate?.confidence;
     final score = summary.rating?.totalScore;
     final quality = score == null
         ? '待评估'
@@ -366,13 +451,16 @@ class _RecognitionSummary extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              Text(confidence == null ? '相似度：待确认' : '相似度：$confidence%', style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                confidence == null ? '识别度：等待确认' : '识别度：${UserFacingText.recognitionCertaintyWithPercent(confidence)}',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               if (confidence != null) ...[
                 const SizedBox(height: 10),
-                LinearProgressIndicator(value: confidence / 100, minHeight: 7, borderRadius: BorderRadius.circular(99)),
+                LinearProgressIndicator(value: confidence, minHeight: 7, borderRadius: BorderRadius.circular(99)),
               ],
               const SizedBox(height: 14),
-              Text('总体质量：$quality', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppColors.brand)),
+              Text('照片质量：$quality', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppColors.brand)),
             ],
           ),
         ),

@@ -87,7 +87,7 @@ class _QrConnectionScannerPageState extends State<QrConnectionScannerPage> {
       backgroundColor: AppColors.paper,
       appBar: AppBar(
         leading: const BirdPageBackButton(fallbackRoute: BirdRoutes.connection),
-        title: const Text('扫描设备二维码'),
+        title: Text(_candidateUri == null ? '扫描设备二维码' : '扫码确认设备'),
         actions: [
           IconButton(
             tooltip: '扫码帮助',
@@ -192,6 +192,10 @@ class _QrConnectionScannerPageState extends State<QrConnectionScannerPage> {
                     ? const _InvalidCodeNotice(key: ValueKey('invalid'))
                     : const _SecurityNotice(key: ValueKey('security')),
               ),
+              if (_invalidCode) ...[
+                const SizedBox(height: AppSpacing.md),
+                const _ScanGuideCard(),
+              ],
               const SizedBox(height: AppSpacing.md),
               BirdButton(
                 label: _candidateUri != null
@@ -214,11 +218,18 @@ class _QrConnectionScannerPageState extends State<QrConnectionScannerPage> {
               ),
               const SizedBox(height: AppSpacing.sm),
               BirdButton(
-                label: '手动输入地址',
+                label: _invalidCode ? '输入设备码' : '手动输入地址',
                 onPressed: _openManualAddress,
                 icon: const Icon(Icons.edit_outlined),
                 variant: BirdButtonVariant.outlined,
               ),
+              if (_invalidCode) ...[
+                const SizedBox(height: AppSpacing.xs),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('返回已发现设备'),
+                ),
+              ],
             ],
           ),
         ),
@@ -278,15 +289,20 @@ class _CandidateNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final port = uri.hasPort ? ':${uri.port}' : '';
+    final normalized = uri.host.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+    final suffix = normalized.length <= 4 ? normalized.toUpperCase() : normalized.substring(normalized.length - 4).toUpperCase();
     return BirdCard(
-      backgroundColor: AppColors.brandLight,
+      backgroundColor: AppColors.paperStrong,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const CircleAvatar(
-            backgroundColor: AppColors.brand,
-            foregroundColor: AppColors.cream,
-            child: Icon(Icons.check_rounded),
+          const SizedBox(
+            width: 92,
+            height: 92,
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: AppColors.brandLight, borderRadius: BorderRadius.all(Radius.circular(18))),
+              child: Icon(Icons.router_outlined, color: AppColors.brand, size: 48),
+            ),
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
@@ -294,12 +310,12 @@ class _CandidateNotice extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '已读取设备连接地址',
+                  '拍鸟伴侣 K7',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: AppSpacing.xxs),
                 Text(
-                  '${uri.scheme}://${uri.host}$port',
+                  '设备已发现 · ${uri.scheme}://${uri.host}$port',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -307,6 +323,8 @@ class _CandidateNotice extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xs),
+                Text('地址后四位', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted)),
+                Text(suffix.isEmpty ? '—' : suffix, style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brand)),
                 TextButton.icon(
                   onPressed: onRescan,
                   icon: const Icon(Icons.refresh_rounded),
@@ -319,6 +337,57 @@ class _CandidateNotice extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ScanGuideCard extends StatelessWidget {
+  const _ScanGuideCard();
+
+  @override
+  Widget build(BuildContext context) => const BirdCard(
+    child: Row(
+      children: [
+        Expanded(
+          child: _ScanGuide(icon: Icons.wb_sunny_outlined, title: '避免反光', note: '保持光线均匀'),
+        ),
+        SizedBox(height: 78, child: VerticalDivider()),
+        Expanded(
+          child: _ScanGuide(icon: Icons.straighten_rounded, title: '合适距离', note: '约 10–20 厘米'),
+        ),
+        SizedBox(height: 78, child: VerticalDivider()),
+        Expanded(
+          child: _ScanGuide(icon: Icons.center_focus_strong_rounded, title: '完整清晰', note: '二维码无遮挡'),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ScanGuide extends StatelessWidget {
+  const _ScanGuide({required this.icon, required this.title, required this.note});
+
+  final IconData icon;
+  final String title;
+  final String note;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, color: AppColors.brand, size: 28),
+      const SizedBox(height: AppSpacing.xs),
+      Text(
+        title,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      const SizedBox(height: AppSpacing.xxs),
+      Text(
+        note,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 11, color: AppColors.inkMuted),
+      ),
+    ],
+  );
 }
 
 class _SecurityNotice extends StatelessWidget {

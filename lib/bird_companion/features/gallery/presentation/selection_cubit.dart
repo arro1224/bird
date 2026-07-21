@@ -7,17 +7,34 @@ class BatchUndoAction {
   final Object? value;
 }
 
+enum SelectionPhase { idle, selecting, submitting, partialFailure }
+
 class SelectionState {
-  const SelectionState({this.ids = const {}, this.submitting = false, this.failed = const {}, this.undoActions = const []});
+  const SelectionState({
+    this.ids = const {},
+    this.phase = SelectionPhase.idle,
+    this.failed = const {},
+    this.undoActions = const [],
+  });
   final Set<String> ids;
-  final bool submitting;
+  final SelectionPhase phase;
   final Map<String, String> failed;
   final List<BatchUndoAction> undoActions;
+  bool get submitting => phase == SelectionPhase.submitting;
+  bool get isSelecting => ids.isNotEmpty;
+  bool get hasPartialFailure => phase == SelectionPhase.partialFailure;
   bool get canUndo => undoActions.isNotEmpty && !submitting;
 
-  SelectionState copyWith({Set<String>? ids, bool? submitting, Map<String, String>? failed, List<BatchUndoAction>? undoActions, bool clearFailed = false, bool clearUndo = false}) => SelectionState(
+  SelectionState copyWith({
+    Set<String>? ids,
+    SelectionPhase? phase,
+    Map<String, String>? failed,
+    List<BatchUndoAction>? undoActions,
+    bool clearFailed = false,
+    bool clearUndo = false,
+  }) => SelectionState(
     ids: ids ?? this.ids,
-    submitting: submitting ?? this.submitting,
+    phase: phase ?? this.phase,
     failed: clearFailed ? const {} : failed ?? this.failed,
     undoActions: clearUndo ? const [] : undoActions ?? this.undoActions,
   );
@@ -30,14 +47,34 @@ class SelectionCubit extends Cubit<SelectionState> {
     if (state.submitting) return;
     final next = {...state.ids};
     next.contains(id) ? next.remove(id) : next.add(id);
-    emit(state.copyWith(ids: next));
+    emit(
+      state.copyWith(
+        ids: next,
+        phase: next.isEmpty ? SelectionPhase.idle : SelectionPhase.selecting,
+        clearFailed: state.ids.isEmpty,
+      ),
+    );
   }
 
-  void begin({bool preserveUndo = false}) => emit(state.copyWith(submitting: true, clearFailed: true, clearUndo: !preserveUndo));
+  void begin({bool preserveUndo = false}) => emit(
+    state.copyWith(
+      phase: SelectionPhase.submitting,
+      clearFailed: true,
+      clearUndo: !preserveUndo,
+    ),
+  );
 
   void complete({required List<String> succeededIds, required Map<String, String> failed}) {
-    final remaining = {...state.ids}..removeAll(succeededIds);
-    emit(state.copyWith(ids: remaining, submitting: false, failed: failed));
+    final attempted = {...state.ids};
+    final failedIds = attempted.where(failed.containsKey).toSet();
+    final allFailed = attempted.isNotEmpty && succeededIds.isEmpty && failedIds.isNotEmpty;
+    emit(
+      state.copyWith(
+        ids: allFailed ? failedIds : const {},
+        phase: allFailed ? SelectionPhase.partialFailure : SelectionPhase.idle,
+        failed: failed,
+      ),
+    );
   }
 
   void setUndoActions(List<BatchUndoAction> actions) => emit(state.copyWith(undoActions: actions));

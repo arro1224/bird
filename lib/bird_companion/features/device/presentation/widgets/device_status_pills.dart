@@ -23,25 +23,43 @@ class DeviceStatusPills extends StatelessWidget {
     child: InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
-      child: Wrap(
-        spacing: AppSpacing.xs,
-        runSpacing: AppSpacing.xs,
-        children: [
-          _StatusPill(
-            icon: session.isConnected ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-            label: session.isConnected ? '已连接' : '连接中断',
-            warning: !session.isConnected,
-          ),
-          _StatusPill(
-            icon: Icons.battery_5_bar_rounded,
-            label: status.batteryPercent == null ? '电量 —' : '电量 ${status.batteryPercent}%',
-          ),
-          _StatusPill(
-            icon: Icons.storage_rounded,
-            label: _storageLabel(status),
-            warning: status.card.inserted && !status.card.readable,
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 390;
+          final pills = <Widget>[
+            _StatusPill(
+              icon: session.isConnected ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+              label: session.isConnected ? '已连接' : '连接中断',
+              warning: !session.isConnected,
+              compact: compact,
+            ),
+            _StatusPill(
+              icon: Icons.battery_5_bar_rounded,
+              label: status.batteryPercent == null ? '电量 —' : '电量 ${status.batteryPercent}%',
+              compact: compact,
+            ),
+            _StatusPill(
+              icon: Icons.storage_rounded,
+              label: _storageLabel(status),
+              warning: status.card.inserted && !status.card.readable,
+              compact: compact,
+            ),
+          ];
+          if (compact) {
+            return Row(
+              children: [
+                for (var index = 0; index < pills.length; index++) ...[
+                  if (index > 0) const SizedBox(width: 6),
+                  Expanded(child: pills[index]),
+                ],
+              ],
+            );
+          }
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: pills,
+          );
+        },
       ),
     ),
   );
@@ -68,11 +86,13 @@ class _StatusPill extends StatelessWidget {
     required this.icon,
     required this.label,
     this.warning = false,
+    this.compact = false,
   });
 
   final IconData icon;
   final String label;
   final bool warning;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
@@ -88,20 +108,27 @@ class _StatusPill extends StatelessWidget {
         horizontal: AppSpacing.sm,
         vertical: AppSpacing.xs,
       ),
-      child: Wrap(
-        spacing: AppSpacing.xs,
-        runSpacing: AppSpacing.xxs,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Row(
+        mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             icon,
-            size: 20,
+            size: compact ? 17 : 20,
             color: warning ? AppColors.danger : AppColors.brand,
           ),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: warning ? AppColors.danger : AppColors.brandDark,
+          SizedBox(width: compact ? 4 : AppSpacing.xs),
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  fontSize: compact ? 13.5 : null,
+                  color: warning ? AppColors.danger : AppColors.brandDark,
+                ),
+              ),
             ),
           ),
         ],

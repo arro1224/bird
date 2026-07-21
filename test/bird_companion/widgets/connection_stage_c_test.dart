@@ -14,7 +14,8 @@ void main() {
       const ConnectionProgressView(deviceName: '拍鸟伴侣 K7', onCancel: _noop),
     );
     expect(tester.takeException(), isNull);
-    expect(find.text('正在验证设备状态，请稍候……'), findsOneWidget);
+    expect(find.text('65%'), findsOneWidget);
+    expect(find.text('正在连接中……'), findsOneWidget);
   });
 
   testWidgets('连接失败视图在 360x800 不溢出', (tester) async {

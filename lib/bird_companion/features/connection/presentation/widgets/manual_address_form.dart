@@ -42,7 +42,7 @@ class _ManualAddressFormState extends State<ManualAddressForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('输入盒子的本地服务地址，例如热点默认地址或局域网 IP。', style: Theme.of(context).textTheme.bodyMedium),
+          Text('输入盒子的连接地址。通常可以在盒子屏幕或说明书中找到。', style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: AppSpacing.md),
           TextFormField(
             controller: _addressController,
@@ -54,7 +54,7 @@ class _ManualAddressFormState extends State<ManualAddressForm> {
               if (raw.isEmpty) return '请输入盒子地址';
               if (!raw.startsWith('http://') && !raw.startsWith('https://')) raw = 'http://$raw';
               final uri = Uri.tryParse(raw);
-              if (uri == null || uri.host.isEmpty) return '请输入有效的 IP 或主机名';
+              if (uri == null || uri.host.isEmpty) return '请输入有效的连接地址';
               return null;
             },
             onFieldSubmitted: (_) => _submit(),

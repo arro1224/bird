@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -52,6 +53,10 @@ class ComparisonPhotoPane extends StatelessWidget {
                         ? CachedNetworkImage(
                             imageUrl: url!,
                             fit: BoxFit.cover,
+                            placeholder: (_, _) => const ColoredBox(
+                              color: AppColors.brandLight,
+                              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                            ),
                             errorWidget: (_, _, _) => const ColoredBox(color: AppColors.mist, child: Icon(Icons.broken_image_outlined)),
                           )
                         : const ColoredBox(color: AppColors.mist, child: Icon(Icons.photo_outlined, size: 44)),
@@ -67,7 +72,7 @@ class ComparisonPhotoPane extends StatelessWidget {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                         child: Text(
-                          'Top ${rank + 1}',
+                          '推荐 ${rank + 1}',
                           style: TextStyle(color: rank == 0 ? Colors.white : AppColors.brandDark, fontWeight: FontWeight.w800),
                         ),
                       ),
@@ -110,10 +115,10 @@ class ComparisonPhotoPane extends StatelessWidget {
                         const Spacer(),
                         Flexible(
                           child: Text(
-                            reasons.isEmpty ? '暂无评分说明' : reasons.first,
+                            _qualityLabel(photo.clarityState, reasons, compact: constraints.maxWidth < 140),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: AppColors.inkMuted),
+                            style: TextStyle(color: AppColors.inkMuted, fontSize: constraints.maxWidth < 140 ? 12 : 14),
                           ),
                         ),
                       ],
@@ -122,7 +127,7 @@ class ComparisonPhotoPane extends StatelessWidget {
                 ),
                 const Divider(height: 20),
                 if (photo.rating?.eyeScore != null) _Metric(icon: Icons.remove_red_eye_outlined, label: '鸟眼', value: photo.rating!.eyeScore!),
-                if (photo.rating?.compositionScore != null) _Metric(icon: Icons.crop_free_rounded, label: '构图', value: photo.rating!.compositionScore!),
+                if (photo.rating?.compositionScore != null) _Metric(icon: Icons.crop_free_rounded, label: '画面安排', value: photo.rating!.compositionScore!),
                 if (saving) const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator(minHeight: 2)),
               ],
             ),
@@ -131,6 +136,14 @@ class ComparisonPhotoPane extends StatelessWidget {
       ),
     );
   }
+}
+
+String _qualityLabel(ClarityState clarity, List<String> reasons, {required bool compact}) {
+  if (clarity == ClarityState.blurred || clarity == ClarityState.average) {
+    return compact ? '轻微模糊' : '轻微运动模糊';
+  }
+  if (reasons.isEmpty) return '暂无照片质量说明';
+  return reasons.first == '鸟眼清晰' ? '眼部清晰' : reasons.first;
 }
 
 class _Metric extends StatelessWidget {
