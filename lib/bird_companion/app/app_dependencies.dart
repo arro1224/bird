@@ -101,8 +101,22 @@ class BirdCompanionDependencies {
     final pendingOperationStore = PendingOperationStore(cache);
     final refreshCoordinator = SessionRefreshCoordinator();
     final dataChangeBus = AppDataChangeBus();
-    final birdSyncService = BirdSyncService(connectivityMonitor, SyncCoordinator(pendingOperationStore), apiClient, dataChangeBus);
-    final deviceSessionCubit = DeviceSessionCubit(
+    late final DeviceSessionCubit deviceSessionCubit;
+    String? activeDeviceId() {
+      final id = deviceSessionCubit.state.device?.id.trim();
+      return id == null || id.isEmpty ? null : id;
+    }
+
+    String activeDeviceNamespace() => activeDeviceId() ?? apiClient.baseUri?.authority ?? 'unbound';
+
+    final birdSyncService = BirdSyncService(
+      connectivityMonitor,
+      SyncCoordinator(pendingOperationStore),
+      apiClient,
+      dataChangeBus,
+      activeDeviceId,
+    );
+    deviceSessionCubit = DeviceSessionCubit(
       connectionRepository,
       connectivityMonitor,
       eventClient,
@@ -121,9 +135,23 @@ class BirdCompanionDependencies {
       conflictResolver: const ConflictResolver(),
       connectionRepository: connectionRepository,
       deviceRepository: DeviceRepositoryImpl(DeviceStatusApi(apiClient), eventClient, apiClient),
-      batchRepository: BatchRepositoryImpl(BatchApi(apiClient), cache, () => deviceSessionCubit.state.device?.id ?? apiClient.baseUri?.authority ?? 'unbound'),
-      photoRepository: PhotoRepositoryImpl(PhotoApi(apiClient), connectivityMonitor, pendingOperationStore, cache, () => deviceSessionCubit.state.device?.id ?? apiClient.baseUri?.authority ?? 'unbound'),
-      reviewRepository: ReviewRepositoryImpl(ReviewApi(apiClient), connectivityMonitor, pendingOperationStore, cache, () => deviceSessionCubit.state.device?.id ?? apiClient.baseUri?.authority ?? 'unbound'),
+      batchRepository: BatchRepositoryImpl(BatchApi(apiClient), cache, activeDeviceNamespace),
+      photoRepository: PhotoRepositoryImpl(
+        PhotoApi(apiClient),
+        connectivityMonitor,
+        pendingOperationStore,
+        cache,
+        activeDeviceNamespace,
+        activeDeviceId,
+      ),
+      reviewRepository: ReviewRepositoryImpl(
+        ReviewApi(apiClient),
+        connectivityMonitor,
+        pendingOperationStore,
+        cache,
+        activeDeviceNamespace,
+        activeDeviceId,
+      ),
       copyRepository: CopyRepositoryImpl(CopyApi(apiClient)),
       jobRepository: JobRepositoryImpl(JobApi(apiClient)),
       deviceSessionCubit: deviceSessionCubit,
@@ -146,6 +174,9 @@ class BirdCompanionDependencies {
           // not running. Production builds do not define this value.
         }
       }
+    }
+    if (!deviceSessionCubit.state.isConnected) {
+      await deviceSessionCubit.restoreSavedSession();
     }
     return dependencies;
   }

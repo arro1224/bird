@@ -9,12 +9,21 @@ import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 
 class ReviewRepositoryImpl implements ReviewRepository {
-  ReviewRepositoryImpl(this._api, this._connectivity, this._pending, this._cache, [String Function()? cacheNamespace]) : _cacheNamespace = cacheNamespace ?? (() => 'default');
+  ReviewRepositoryImpl(
+    this._api,
+    this._connectivity,
+    this._pending,
+    this._cache, [
+    String Function()? cacheNamespace,
+    String? Function()? deviceId,
+  ]) : _cacheNamespace = cacheNamespace ?? (() => 'default'),
+       _deviceId = deviceId ?? (() => null);
   final ReviewApi _api;
   final ConnectivityMonitor _connectivity;
   final PendingOperationStore _pending;
   final LocalCache _cache;
   final String Function() _cacheNamespace;
+  final String? Function() _deviceId;
 
   @override
   Future<List<BirdGroup>> groups(String id, {String? sceneId}) async {
@@ -57,12 +66,24 @@ class ReviewRepositoryImpl implements ReviewRepository {
   }
 
   Future<ReviewSaveResult> _queue(UserDecision value, String message) async {
-    final operation = PendingOperation(id: 'review-${value.fileId}-${DateTime.now().microsecondsSinceEpoch}', type: PendingOperationType.updateReview, payload: value.toJson(), createdAt: DateTime.now(), version: value.version);
+    final operation = PendingOperation(
+      id: 'review-${value.fileId}-${DateTime.now().microsecondsSinceEpoch}',
+      type: PendingOperationType.updateReview,
+      payload: value.toJson(),
+      createdAt: DateTime.now(),
+      version: value.version,
+      deviceId: _activeDeviceId,
+    );
     await _pending.save(operation);
     final cacheKey = 'album:detail:${_cacheNamespace()}:${value.fileId}';
     final cached = _cache.read<Map>(cacheKey);
     if (cached != null) await _cache.write(cacheKey, {...Map<String, dynamic>.from(cached), 'decision': value.toJson()});
     return ReviewSaveResult(queued: true, message: message);
+  }
+
+  String? get _activeDeviceId {
+    final value = _deviceId()?.trim();
+    return value == null || value.isEmpty ? null : value;
   }
 
   Map<String, dynamic> _detailToJson(ReviewDetail detail) => {

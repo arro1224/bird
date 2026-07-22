@@ -1,46 +1,82 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
+# ============================================================
+# Operating systems and temporary files
+# ============================================================
 .DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
+Thumbs.db
+Desktop.ini
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
 
-# IntelliJ related
+# ============================================================
+# IDEs and editors
+# ============================================================
+.idea/
 *.iml
 *.ipr
 *.iws
-.idea/
+.atom/
+.history/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# VS Code launch/tasks/settings are often useful to the whole team, so the
+# directory remains trackable. Uncomment this rule if all settings are local.
+# .vscode/
 
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# ============================================================
+# Dart, Flutter and Pub generated files
+# ============================================================
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
-/build/
-/coverage/
+build/
+coverage/
+**/doc/api/
+**/ios/Flutter/.last_build_id
 
-# Symbolication related
+# Generated test failure images (golden test diagnostics)
+test/**/failures/
+
+# Flutter symbolication and obfuscation outputs
 app.*.symbols
-
-# Obfuscation related
 app.*.map.json
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# ============================================================
+# Android and Gradle generated/local files
+# ============================================================
+.gradle/
+.kotlin/
+.cxx/
+.externalNativeBuild/
+captures/
+local.properties
+GeneratedPluginRegistrant.java
+
+# APK/AAB output directories created by Android Studio
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# Local signing configuration and private keys
+key.properties
+*.jks
+*.keystore
+
+# ============================================================
+# Other generated tool files
+# ============================================================
+*.class
+*.pyc
+__pycache__/
+.build/
+.buildlog/
+.svn/
+.swiftpm/
+migrate_working_dir/
 

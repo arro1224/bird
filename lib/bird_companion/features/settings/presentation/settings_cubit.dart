@@ -66,6 +66,7 @@ class SettingsCubit extends Cubit<SettingsState> {
 
   Future<void> forgetDevice() async {
     await _dependencies.connectionRepository.forgetDevice();
+    _dependencies.deviceSessionCubit.disconnected(null, true);
     _dependencies.deviceSessionCubit.disconnected('已忘记当前设备');
     emit(state.copyWith(message: '已清除已保存的拍鸟盒子连接信息。'));
   }

@@ -11,11 +11,18 @@ import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 /// Each request reuses the operation id as its idempotency key, so a reconnect
 /// cannot create a duplicate review or batch action on the box.
 class BirdSyncService {
-  BirdSyncService(this._connectivity, this._coordinator, this._client, [this._dataChanges]);
+  BirdSyncService(
+    this._connectivity,
+    this._coordinator,
+    this._client, [
+    this._dataChanges,
+    String? Function()? deviceId,
+  ]) : _deviceId = deviceId ?? (() => null);
   final ConnectivityMonitor _connectivity;
   final SyncCoordinator _coordinator;
   final ApiClient _client;
   final AppDataChangeBus? _dataChanges;
+  final String? Function() _deviceId;
   StreamSubscription<bool>? _subscription;
 
   void start() {
@@ -23,6 +30,10 @@ class BirdSyncService {
   }
 
   Future<SyncResult> synchronize() async {
+    final activeDeviceId = _deviceId()?.trim();
+    if (activeDeviceId == null || activeDeviceId.isEmpty || _client.baseUri == null) {
+      return const SyncResult(syncedCount: 0, failedOperations: []);
+    }
     final result = await _coordinator.synchronize((operation) async {
       switch (operation.type) {
         case PendingOperationType.updateReview:
@@ -40,7 +51,7 @@ class BirdSyncService {
           // would remove it even though the box did not receive the operation.
           throw StateError('任务控制与复制创建不支持离线重放。');
       }
-    });
+    }, canSynchronize: (operation) => operation.deviceId == activeDeviceId);
     if (result.syncedCount > 0) {
       _dataChanges?.publish(
         {AppDataResource.photos, AppDataResource.batches, AppDataResource.sync},

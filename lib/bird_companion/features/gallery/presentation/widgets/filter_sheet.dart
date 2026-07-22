@@ -36,7 +36,7 @@ class _FilterSheetState extends State<FilterSheet> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final baseHeight = (media.size.height * .54).clamp(380, 520).toDouble();
+    final baseHeight = (media.size.height * .60).clamp(420, 560).toDouble();
     final sheetHeight = (baseHeight + media.viewInsets.bottom).clamp(baseHeight, media.size.height * .88).toDouble();
     return SizedBox(
       height: sheetHeight,
@@ -47,23 +47,27 @@ class _FilterSheetState extends State<FilterSheet> {
         child: SafeArea(
           top: false,
           child: Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.ml, AppSpacing.sm, AppSpacing.ml, media.viewInsets.bottom + AppSpacing.md),
+            padding: EdgeInsets.fromLTRB(AppSpacing.md, 10, AppSpacing.md, media.viewInsets.bottom + AppSpacing.md),
             child: Column(
               children: [
                 const _SheetHandle(),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
+                SizedBox(
+                  height: AppSpacing.minimumTouchTarget,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Text(
                         '筛选照片',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: AppColors.brandDark),
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark, fontWeight: FontWeight.w900),
                       ),
-                    ),
-                    TextButton(onPressed: _reset, child: const Text('重置')),
-                  ],
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(onPressed: _reset, child: const Text('重置')),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: AppSpacing.sm),
+                const SizedBox(height: AppSpacing.xxs),
                 Expanded(
                   child: ListView(
                     keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -210,7 +214,7 @@ class _FilterSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+    padding: const EdgeInsets.symmetric(vertical: 10),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -221,9 +225,9 @@ class _FilterSection extends StatelessWidget {
             Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppColors.brandDark)),
           ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: AppSpacing.xs),
         child,
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpacing.sm),
         const Divider(),
       ],
     ),
@@ -247,7 +251,14 @@ class _ChoiceWrap<T> extends StatelessWidget {
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             visualDensity: const VisualDensity(horizontal: -1, vertical: -2),
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
-            labelStyle: Theme.of(context).textTheme.labelMedium?.copyWith(fontSize: 13),
+            side: BorderSide(
+              color: value == options[index].$1 ? AppColors.brand : AppColors.outlineStrong,
+            ),
+            labelStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: value == options[index].$1 ? AppColors.cream : AppColors.ink,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
             label: SizedBox(
               width: double.infinity,
               child: FittedBox(

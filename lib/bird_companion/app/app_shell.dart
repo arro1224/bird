@@ -13,8 +13,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class BirdAppShell extends StatefulWidget {
-  const BirdAppShell({super.key, this.initialIndex = 0, this.onGenerateRoute});
+  const BirdAppShell({super.key, this.initialIndex = 0, this.initialRoute, this.onGenerateRoute});
   final int initialIndex;
+  final String? initialRoute;
   final RouteFactory? onGenerateRoute;
 
   @override
@@ -32,6 +33,12 @@ class _BirdAppShellState extends State<BirdAppShell> {
     super.initState();
     _selectedIndex = widget.initialIndex.clamp(0, 2).toInt();
     _selectedTab = ValueNotifier(_selectedIndex);
+    final initialRoute = widget.initialRoute;
+    if (initialRoute != null && initialRoute.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _navigatorKeys[_selectedIndex].currentState?.pushNamed(initialRoute);
+      });
+    }
   }
 
   @override

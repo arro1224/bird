@@ -9,4 +9,4 @@ flutter pub get
 flutter run --flavor bird -t lib/main_bird.dart
 ```
 
-项目的业务源码位于 `lib/bird_companion`，模拟盒子服务位于 `mock_box_server`。
+项目的业务源码位于 `lib/bird_companion`。

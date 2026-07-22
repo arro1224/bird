@@ -3,6 +3,7 @@ import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/features/connection/data/connection_api.dart';
 import 'package:aves/bird_companion/features/connection/data/device_discovery_source.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
+import 'package:dio/dio.dart';
 
 class ConnectionRepositoryImpl implements ConnectionRepository {
   ConnectionRepositoryImpl(this._api, this._cache, this._discoverySource);
@@ -27,8 +28,23 @@ class ConnectionRepositoryImpl implements ConnectionRepository {
   }
 
   @override
-  Future<DeviceStatus> connect(Uri baseUri, {required NetworkMode networkMode}) async {
-    final status = await _api.handshake(baseUri, networkMode);
+  Future<DeviceConnection?> savedDevice() async {
+    final raw = _cache.read<Map>(_activeDeviceKey);
+    if (raw == null) return null;
+    final device = DeviceConnection.fromJson(Map<String, dynamic>.from(raw));
+    return device.baseUri.host.isEmpty ? null : device;
+  }
+
+  @override
+  Future<DeviceStatus> connect(
+    Uri baseUri, {
+    required NetworkMode networkMode,
+    CancelToken? cancelToken,
+  }) async {
+    final status = await _api.handshake(baseUri, networkMode, cancelToken: cancelToken);
+    if (cancelToken?.isCancelled == true) {
+      throw StateError('Connection cancelled before the device was saved.');
+    }
     final device = status.connection;
     final recent = _unique([device, ...await recentDevices()]).take(10).toList();
     await _cache.write(_recentDevicesKey, recent.map((item) => item.toJson()).toList());
@@ -37,11 +53,10 @@ class ConnectionRepositoryImpl implements ConnectionRepository {
   }
 
   @override
-  Future<DeviceStatus> reconnect() async {
-    final raw = _cache.read<Map>(_activeDeviceKey);
-    if (raw == null) throw StateError('没有可重连的盒子设备。');
-    final device = DeviceConnection.fromJson(Map<String, dynamic>.from(raw));
-    return connect(device.baseUri, networkMode: device.networkMode);
+  Future<DeviceStatus> reconnect({CancelToken? cancelToken}) async {
+    final device = await savedDevice();
+    if (device == null) throw StateError('没有可重连的盒子设备。');
+    return connect(device.baseUri, networkMode: device.networkMode, cancelToken: cancelToken);
   }
 
   @override

@@ -52,7 +52,7 @@ class ApiClient {
     () => _dio.get<Map<String, dynamic>>(path, queryParameters: queryParameters),
   );
 
-  Future<Map<String, dynamic>> getUri(Uri uri) => _request(() => _dio.getUri<Map<String, dynamic>>(uri));
+  Future<Map<String, dynamic>> getUri(Uri uri, {CancelToken? cancelToken}) => _request(() => _dio.getUri<Map<String, dynamic>>(uri, cancelToken: cancelToken));
 
   Future<Map<String, dynamic>> post(String path, {Object? data, String? idempotencyKey}) => _request(
     () => _dio.post<Map<String, dynamic>>(

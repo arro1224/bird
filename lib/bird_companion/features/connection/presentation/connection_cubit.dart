@@ -2,6 +2,7 @@ import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
 import 'package:equatable/equatable.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 enum ConnectionPhase { initial, loading, connecting, connected, failure }
@@ -69,6 +70,7 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
   Uri? _lastUri;
   NetworkMode? _lastMode;
   var _connectionGeneration = 0;
+  CancelToken? _activeCancelToken;
 
   Future<void> load() async {
     if (isClosed) return;
@@ -141,6 +143,9 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
 
   Future<void> connect(Uri uri, NetworkMode mode) async {
     if (isClosed) return;
+    _activeCancelToken?.cancel('Replaced by a newer connection request.');
+    final cancelToken = CancelToken();
+    _activeCancelToken = cancelToken;
     final generation = ++_connectionGeneration;
     _lastRequest = _ConnectionRequest.connect;
     _lastUri = uri;
@@ -154,7 +159,11 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
     );
     if (!preserveExistingSession) _sessionCubit.connecting();
     try {
-      final status = await _repository.connect(uri, networkMode: mode);
+      final status = await _repository.connect(
+        uri,
+        networkMode: mode,
+        cancelToken: cancelToken,
+      );
       if (isClosed || generation != _connectionGeneration) return;
       await _sessionCubit.setConnectedFromStatus(status);
       if (isClosed || generation != _connectionGeneration) return;
@@ -177,12 +186,16 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
           connectionAttemptFailed: true,
         ),
       );
+    } finally {
+      if (identical(_activeCancelToken, cancelToken)) _activeCancelToken = null;
     }
   }
 
   void cancelConnection() {
     if (isClosed || state.phase != ConnectionPhase.connecting) return;
     _connectionGeneration++;
+    _activeCancelToken?.cancel('Connection cancelled by the user.');
+    _activeCancelToken = null;
     if (!preserveExistingSession) _sessionCubit.disconnected();
     emit(
       state.copyWith(
@@ -222,6 +235,8 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
   Future<void> close() {
     if (state.phase == ConnectionPhase.connecting) {
       _connectionGeneration++;
+      _activeCancelToken?.cancel('Connection screen was closed.');
+      _activeCancelToken = null;
       if (!preserveExistingSession) _sessionCubit.disconnected();
     }
     return super.close();

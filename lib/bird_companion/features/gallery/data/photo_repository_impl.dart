@@ -10,12 +10,21 @@ import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 
 class PhotoRepositoryImpl implements PhotoRepository {
-  PhotoRepositoryImpl(this._api, this._connectivity, this._pending, this._cache, [String Function()? cacheNamespace]) : _cacheNamespace = cacheNamespace ?? (() => 'default');
+  PhotoRepositoryImpl(
+    this._api,
+    this._connectivity,
+    this._pending,
+    this._cache, [
+    String Function()? cacheNamespace,
+    String? Function()? deviceId,
+  ]) : _cacheNamespace = cacheNamespace ?? (() => 'default'),
+       _deviceId = deviceId ?? (() => null);
   final PhotoApi _api;
   final ConnectivityMonitor _connectivity;
   final PendingOperationStore _pending;
   final LocalCache _cache;
   final String Function() _cacheNamespace;
+  final String? Function() _deviceId;
 
   static const _photoPrefix = 'album:photos:';
   static const _scenePrefix = 'album:scenes:';
@@ -73,16 +82,24 @@ class PhotoRepositoryImpl implements PhotoRepository {
 
   @override
   Future<BatchOperationOutcome> batchOperation(String id, List<String> ids, String action, {Object? value}) async {
+    final targetIds = ids.map((value) => value.trim()).where((value) => value.isNotEmpty).toSet().toList();
+    if (targetIds.isEmpty) return const BatchOperationOutcome(succeededIds: []);
     try {
-      if (await _connectivity.hasNetwork) return await _api.batchOperation(id, ids, action, value: value);
+      if (await _connectivity.hasNetwork) return await _api.batchOperation(id, targetIds, action, value: value);
     } on ApiException {
       // A failed request is retained below and replayed after a reconnect.
     }
     await _pending.save(
-      PendingOperation(id: 'batch-$id-${DateTime.now().microsecondsSinceEpoch}', type: PendingOperationType.batchReview, payload: {'batch_id': id, 'file_ids': ids, 'operation': action, 'value': value}, createdAt: DateTime.now()),
+      PendingOperation(
+        id: 'batch-$id-${DateTime.now().microsecondsSinceEpoch}',
+        type: PendingOperationType.batchReview,
+        payload: {'batch_id': id, 'file_ids': targetIds, 'operation': action, 'value': value},
+        createdAt: DateTime.now(),
+        deviceId: _activeDeviceId,
+      ),
     );
-    await _updateCachedPhotos(id, ids, action, value);
-    return BatchOperationOutcome(succeededIds: ids, queued: true);
+    await _updateCachedPhotos(id, targetIds, action, value);
+    return BatchOperationOutcome(succeededIds: targetIds, queued: true);
   }
 
   Future<void> _updateCachedPhotos(String batchId, List<String> ids, String operation, Object? value) async {
@@ -114,6 +131,11 @@ class PhotoRepositoryImpl implements PhotoRepository {
   String _queryKey(PhotoQuery query) {
     final entries = query.parameters.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
     return Uri(queryParameters: {for (final entry in entries) entry.key: entry.value.toString()}).query;
+  }
+
+  String? get _activeDeviceId {
+    final value = _deviceId()?.trim();
+    return value == null || value.isEmpty ? null : value;
   }
 
   PhotoPage _photoPageFromCache(Map<dynamic, dynamic> raw) => PhotoPage(

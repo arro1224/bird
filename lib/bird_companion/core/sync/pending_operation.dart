@@ -13,6 +13,7 @@ class PendingOperation extends Equatable {
     this.version,
     this.retryCount = 0,
     this.source = 'app',
+    this.deviceId,
     this.status = PendingOperationStatus.pending,
     this.failureReason,
   });
@@ -24,6 +25,7 @@ class PendingOperation extends Equatable {
   final int? version;
   final int retryCount;
   final String source;
+  final String? deviceId;
   final PendingOperationStatus status;
   final String? failureReason;
 
@@ -35,6 +37,7 @@ class PendingOperation extends Equatable {
     version: version,
     retryCount: retryCount ?? this.retryCount,
     source: source,
+    deviceId: deviceId,
     status: status ?? this.status,
     failureReason: failureReason ?? this.failureReason,
   );
@@ -47,6 +50,7 @@ class PendingOperation extends Equatable {
     'version': version,
     'retry_count': retryCount,
     'source': source,
+    'device_id': deviceId,
     'status': status.name,
     'failure_reason': failureReason,
   };
@@ -59,10 +63,11 @@ class PendingOperation extends Equatable {
     version: (json['version'] as num?)?.toInt(),
     retryCount: (json['retry_count'] as num?)?.toInt() ?? 0,
     source: json['source']?.toString() ?? 'app',
+    deviceId: json['device_id']?.toString(),
     status: PendingOperationStatus.values.firstWhere((value) => value.name == json['status'], orElse: () => PendingOperationStatus.pending),
     failureReason: json['failure_reason']?.toString(),
   );
 
   @override
-  List<Object?> get props => [id, type, payload, createdAt, version, retryCount, source, status, failureReason];
+  List<Object?> get props => [id, type, payload, createdAt, version, retryCount, source, deviceId, status, failureReason];
 }

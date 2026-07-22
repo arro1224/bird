@@ -14,10 +14,14 @@ class SyncCoordinator {
 
   final PendingOperationStore _store;
 
-  Future<SyncResult> synchronize(Future<void> Function(PendingOperation operation) submit) async {
+  Future<SyncResult> synchronize(
+    Future<void> Function(PendingOperation operation) submit, {
+    bool Function(PendingOperation operation)? canSynchronize,
+  }) async {
     var syncedCount = 0;
     final failed = <PendingOperation>[];
     for (final operation in _store.readAll()) {
+      if (canSynchronize != null && !canSynchronize(operation)) continue;
       try {
         await submit(operation);
         await _store.remove(operation.id);

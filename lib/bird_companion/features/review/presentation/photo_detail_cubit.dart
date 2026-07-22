@@ -6,23 +6,44 @@ import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class PhotoDetailState {
-  const PhotoDetailState({this.detail, this.loading = false, this.saving = false, this.message, this.conflict = false, this.pendingConflictDecision, this.undoEntry});
+  const PhotoDetailState({
+    this.detail,
+    this.loading = false,
+    this.saving = false,
+    this.message,
+    this.messageIsError = false,
+    this.conflict = false,
+    this.pendingConflictDecision,
+    this.undoEntry,
+  });
   final ReviewDetail? detail;
   final bool loading, saving, conflict;
   final String? message;
+  final bool messageIsError;
   final UserDecision? pendingConflictDecision;
   final ReviewUndoEntry? undoEntry;
   bool get canUndo => undoEntry != null && !saving;
-  PhotoDetailState copyWith({ReviewDetail? detail, bool? loading, bool? saving, String? message, bool? conflict, UserDecision? pendingConflictDecision, ReviewUndoEntry? undoEntry, bool clearConflict = false, bool clearUndo = false}) =>
-      PhotoDetailState(
-        detail: detail ?? this.detail,
-        loading: loading ?? this.loading,
-        saving: saving ?? this.saving,
-        message: message,
-        conflict: clearConflict ? false : conflict ?? this.conflict,
-        pendingConflictDecision: clearConflict ? null : pendingConflictDecision ?? this.pendingConflictDecision,
-        undoEntry: clearUndo ? null : undoEntry ?? this.undoEntry,
-      );
+  PhotoDetailState copyWith({
+    ReviewDetail? detail,
+    bool? loading,
+    bool? saving,
+    String? message,
+    bool? messageIsError,
+    bool? conflict,
+    UserDecision? pendingConflictDecision,
+    ReviewUndoEntry? undoEntry,
+    bool clearConflict = false,
+    bool clearUndo = false,
+  }) => PhotoDetailState(
+    detail: detail ?? this.detail,
+    loading: loading ?? this.loading,
+    saving: saving ?? this.saving,
+    message: message,
+    messageIsError: messageIsError ?? this.messageIsError,
+    conflict: clearConflict ? false : conflict ?? this.conflict,
+    pendingConflictDecision: clearConflict ? null : pendingConflictDecision ?? this.pendingConflictDecision,
+    undoEntry: clearUndo ? null : undoEntry ?? this.undoEntry,
+  );
 }
 
 class PhotoDetailCubit extends Cubit<PhotoDetailState> {
@@ -54,7 +75,13 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
     final undo = ReviewUndoEntry(before: previous, after: decision);
     await load(decision.fileId);
     _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'photo_review_saved');
-    emit(state.copyWith(message: result.queued ? result.message : '修改已保存', undoEntry: undo));
+    emit(
+      state.copyWith(
+        message: result.queued ? result.message : '修改已保存',
+        messageIsError: false,
+        undoEntry: undo,
+      ),
+    );
   }
 
   Future<void> undo() async {
@@ -68,7 +95,7 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
     }
     await load(entry.before.fileId);
     _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'photo_review_undone');
-    emit(state.copyWith(message: '已撤销最近一次修改', clearUndo: true));
+    emit(state.copyWith(message: '已撤销最近一次修改', messageIsError: false, clearUndo: true));
   }
 
   Future<void> useRemote(String fileId) async {
@@ -77,8 +104,12 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
   }
 
   Future<void> keepLocal() async {
-    final value = state.pendingConflictDecision;
     emit(state.copyWith(clearConflict: true));
-    if (value != null) await save(value);
+    emit(
+      state.copyWith(
+        message: '盒子内容未被覆盖：当前协议未提供强制保存能力，请稍后在照片详情中重试。',
+        messageIsError: true,
+      ),
+    );
   }
 }

@@ -4,16 +4,31 @@ import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/core/network/event_client.dart';
+import 'package:aves/bird_companion/features/connection/domain/connection_address.dart';
+import 'package:dio/dio.dart';
 
 class ConnectionApi {
   ConnectionApi(this._apiClient, this._eventClient);
   final ApiClient _apiClient;
   final EventClient _eventClient;
 
-  Future<DeviceStatus> handshake(Uri baseUri, NetworkMode networkMode) async {
+  Future<DeviceStatus> handshake(
+    Uri baseUri,
+    NetworkMode networkMode, {
+    CancelToken? cancelToken,
+  }) async {
     final normalized = _normalizeBaseUri(baseUri);
-    final payload = await _apiClient.getUri(normalized.resolve(ApiEndpoints.deviceStatus));
+    final payload = await _apiClient.getUri(
+      normalized.resolve(ApiEndpoints.deviceStatus),
+      cancelToken: cancelToken,
+    );
+    if (cancelToken?.isCancelled == true) {
+      throw StateError('Connection cancelled before the device session was configured.');
+    }
     final status = DeviceStatus.fromJson(payload, fallbackBaseUri: normalized, fallbackNetworkMode: networkMode);
+    if (cancelToken?.isCancelled == true) {
+      throw StateError('Connection cancelled before the device session was configured.');
+    }
     _apiClient.configure(normalized);
     final eventUri = normalized.replace(scheme: normalized.scheme == 'https' ? 'wss' : 'ws', path: ApiEndpoints.events);
     // The mock server and some legacy boxes do not expose WebSocket. A failed
@@ -27,5 +42,9 @@ class ConnectionApi {
     _apiClient.clearSession();
   }
 
-  Uri _normalizeBaseUri(Uri value) => value.hasScheme ? value : value.replace(scheme: 'http');
+  Uri _normalizeBaseUri(Uri value) {
+    final normalized = ConnectionAddress.normalize(value.hasScheme ? value : value.replace(scheme: 'http'));
+    if (normalized == null) throw ArgumentError.value(value, 'baseUri', 'A local box address is required.');
+    return normalized;
+  }
 }

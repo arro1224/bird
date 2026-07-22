@@ -31,7 +31,7 @@ class ConnectionProgressView extends StatelessWidget {
             const SizedBox.square(
               dimension: 270,
               child: CircularProgressIndicator(
-                value: .65,
+                value: null,
                 strokeWidth: 8,
                 strokeCap: StrokeCap.round,
                 backgroundColor: AppColors.brandLight,
@@ -57,7 +57,7 @@ class ConnectionProgressView extends StatelessWidget {
         ),
       ),
       Text(
-        '65%',
+        '正在验证连接',
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.displayMedium?.copyWith(color: AppColors.brand, fontWeight: FontWeight.w800),
       ),
@@ -70,28 +70,31 @@ class ConnectionProgressView extends StatelessWidget {
         ),
       ),
       const SizedBox(height: AppSpacing.lg),
-      const BirdCard(
-        padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-        child: Column(
-          children: [
-            _ConnectionStep(
-              state: _StepState.done,
-              title: '已确认设备',
-              subtitle: '设备身份已验证',
-            ),
-            Divider(),
-            _ConnectionStep(
-              state: _StepState.active,
-              title: '正在配置连接',
-              subtitle: '正在建立连接，请稍候……',
-            ),
-            Divider(),
-            _ConnectionStep(
-              state: _StepState.waiting,
-              title: '正在读取设备状态',
-              subtitle: '连接成功后将自动读取',
-            ),
-          ],
+      const Visibility(
+        visible: false,
+        child: BirdCard(
+          padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: Column(
+            children: [
+              _ConnectionStep(
+                state: _StepState.done,
+                title: '已确认设备',
+                subtitle: '设备身份已验证',
+              ),
+              Divider(),
+              _ConnectionStep(
+                state: _StepState.active,
+                title: '正在配置连接',
+                subtitle: '正在建立连接，请稍候……',
+              ),
+              Divider(),
+              _ConnectionStep(
+                state: _StepState.waiting,
+                title: '正在读取设备状态',
+                subtitle: '连接成功后将自动读取',
+              ),
+            ],
+          ),
         ),
       ),
       const SizedBox(height: AppSpacing.md),

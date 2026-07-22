@@ -30,101 +30,113 @@ class _SelectionActionBarState extends State<SelectionActionBar> {
   String? _pendingAction;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: AppColors.paperStrong,
-    elevation: 16,
-    borderRadius: const BorderRadius.vertical(top: Radius.circular(AppSpacing.radiusSheet)),
-    clipBehavior: Clip.antiAlias,
-    child: SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 44,
-              height: 5,
-              decoration: BoxDecoration(color: AppColors.outlineStrong, borderRadius: BorderRadius.circular(99)),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              '批量操作',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 2,
-              mainAxisSpacing: AppSpacing.xs,
-              crossAxisSpacing: AppSpacing.xs,
-              childAspectRatio: 1.36,
+  Widget build(BuildContext context) {
+    final sheetHeight = (MediaQuery.sizeOf(context).height * .36).clamp(248.0, 320.0).toDouble();
+    return SizedBox(
+      height: sheetHeight,
+      child: Material(
+        color: AppColors.paperStrong,
+        elevation: 16,
+        shadowColor: const Color(0x2914341E),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(AppSpacing.radiusSheet)),
+        clipBehavior: Clip.antiAlias,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.xs, AppSpacing.md, AppSpacing.xs),
+            child: Column(
               children: [
-                _Action(icon: Icons.check_rounded, label: '确认保留', subtitle: '保留选中的照片', color: AppColors.keep, selected: _pendingAction == 'keep', onTap: widget.busy ? null : () => _choose('keep')),
-                _Action(icon: Icons.close_rounded, label: '确认弃用', subtitle: '排除选中的照片', color: AppColors.danger, selected: _pendingAction == 'discard', onTap: widget.busy ? null : () => _choose('discard')),
-                _Action(icon: Icons.new_label_outlined, label: '添加标签', subtitle: '批量添加或修改标签', onTap: widget.busy ? null : widget.onAddTags),
-                _MoreAction(
-                  busy: widget.busy,
-                  onSelected: (value) {
-                    if (value == 'remove_tags') {
-                      widget.onRemoveTags();
-                    } else {
-                      _choose(value);
-                    }
-                  },
+                Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(color: AppColors.outlineStrong, borderRadius: BorderRadius.circular(99)),
+                ),
+                const SizedBox(height: AppSpacing.xxs),
+                Text(
+                  '批量操作',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppColors.brandDark, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: GridView.count(
+                    padding: EdgeInsets.zero,
+                    primary: false,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 2,
+                    mainAxisSpacing: AppSpacing.xs,
+                    crossAxisSpacing: AppSpacing.xs,
+                    childAspectRatio: 3.4,
+                    children: [
+                      _Action(icon: Icons.check_rounded, label: '确认保留', subtitle: '保留选中的照片', color: AppColors.keep, selected: _pendingAction == 'keep', onTap: widget.busy ? null : () => _choose('keep')),
+                      _Action(icon: Icons.close_rounded, label: '确认弃用', subtitle: '排除选中的照片', color: AppColors.danger, selected: _pendingAction == 'discard', onTap: widget.busy ? null : () => _choose('discard')),
+                      _Action(icon: Icons.new_label_outlined, label: '添加标签', subtitle: '批量添加或修改标签', onTap: widget.busy ? null : widget.onAddTags),
+                      _MoreAction(
+                        busy: widget.busy,
+                        onSelected: (value) {
+                          if (value == 'remove_tags') {
+                            widget.onRemoveTags();
+                          } else {
+                            _choose(value);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 5),
+                  decoration: BoxDecoration(color: AppColors.brandLight.withValues(alpha: .62), borderRadius: BorderRadius.circular(AppSpacing.radiusCompact)),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.brand),
+                      const SizedBox(width: AppSpacing.xs),
+                      Expanded(
+                        child: Text(
+                          widget.failedCount > 0
+                              ? '有 ${widget.failedCount} 张操作失败，可重试或取消选择。'
+                              : _pendingAction == null
+                              ? '请选择操作，完成后会在照片上显示结果。'
+                              : '已选择“${_label(_pendingAction!)}”，将处理 ${widget.count} 张照片。',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: widget.failedCount > 0 ? AppColors.danger : AppColors.brand,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                SizedBox(
+                  width: double.infinity,
+                  height: AppSpacing.minimumTouchTarget,
+                  child: FilledButton.icon(
+                    onPressed: widget.busy || _pendingAction == null
+                        ? null
+                        : () {
+                            widget.onAction(_pendingAction!);
+                          },
+                    icon: widget.busy ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.check_circle_outline_rounded),
+                    label: Text(
+                      widget.busy
+                          ? '正在处理 ${widget.count} 张…'
+                          : widget.failedCount > 0
+                          ? '重新尝试'
+                          : '确认操作',
+                    ),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: AppSpacing.sm),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
-              decoration: BoxDecoration(color: AppColors.brandLight.withValues(alpha: .65), borderRadius: BorderRadius.circular(AppSpacing.radiusCompact)),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.brand),
-                  const SizedBox(width: AppSpacing.xs),
-                  Expanded(
-                    child: Text(
-                      widget.failedCount > 0
-                          ? '有 ${widget.failedCount} 张操作失败，可重试或取消选择。'
-                          : _pendingAction == null
-                          ? '请先选择操作；完成后会在照片上显示结果。'
-                          : '已选择“${_label(_pendingAction!)}”，将处理 ${widget.count} 张照片。',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: widget.failedCount > 0 ? AppColors.danger : AppColors.brand,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: widget.busy || _pendingAction == null
-                    ? null
-                    : () {
-                        widget.onAction(_pendingAction!);
-                      },
-                icon: widget.busy ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.check_circle_outline_rounded),
-                label: Text(
-                  widget.busy
-                      ? '正在处理 ${widget.count} 张…'
-                      : widget.failedCount > 0
-                      ? '重新尝试'
-                      : '确认操作',
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   void _choose(String action) => setState(() => _pendingAction = action);
 
@@ -156,26 +168,35 @@ class _Action extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: AppSpacing.xs,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.xxs),
+        child: Row(
           children: [
             CircleAvatar(
-              radius: 17,
+              radius: 14,
               backgroundColor: color.withValues(alpha: .10),
-              child: Icon(icon, color: onTap == null ? AppColors.inkFaint : color),
+              child: Icon(icon, size: 19, color: onTap == null ? AppColors.inkFaint : color),
             ),
-            const SizedBox(height: 6),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 2),
-            Text(
-              subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: AppColors.inkMuted),
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 9.5, color: AppColors.inkMuted),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -237,29 +258,35 @@ class _PassiveAction extends StatelessWidget {
       side: const BorderSide(color: AppColors.outline),
     ),
     child: Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.xs,
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.xxs),
+      child: Row(
         children: [
           CircleAvatar(
-            radius: 17,
+            radius: 14,
             backgroundColor: AppColors.brand.withValues(alpha: .10),
-            child: Icon(
-              icon,
-              color: enabled ? AppColors.brand : AppColors.inkFaint,
-            ),
+            child: Icon(icon, size: 19, color: enabled ? AppColors.brand : AppColors.inkFaint),
           ),
-          const SizedBox(height: 6),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 2),
-          Text(
-            subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, color: AppColors.inkMuted),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 9.5, color: AppColors.inkMuted),
+                ),
+              ],
+            ),
           ),
         ],
       ),

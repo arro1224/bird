@@ -6,6 +6,7 @@ import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/presentation/user_facing_text.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
+import 'package:aves/bird_companion/core/models/tag_input.dart';
 import 'package:aves/bird_companion/core/widgets/bird_navigation.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -213,7 +214,7 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
     ),
   );
 
-  List<String> get _tagValues => _tags.text.split(RegExp(r'[,，]')).map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList();
+  List<String> get _tagValues => parseUserTags(_tags.text);
 
   void _removeTag(String value) => setState(() => _tags.text = _tagValues.where((tag) => tag != value).join(', '));
 
@@ -236,7 +237,7 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
     );
     controller.dispose();
     if (value == null || value.isEmpty || !mounted) return;
-    setState(() => _tags.text = {..._tagValues, value}.join(', '));
+    setState(() => _tags.text = normalizeUserTags([..._tagValues, ...parseUserTags(value)]).join(', '));
   }
 }
 

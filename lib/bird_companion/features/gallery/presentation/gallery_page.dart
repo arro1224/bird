@@ -5,6 +5,7 @@ import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/models/tag_input.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
@@ -60,6 +61,8 @@ class GalleryPage extends StatelessWidget {
           BirdCompanionScope.of(context).refreshCoordinator,
           BirdCompanionScope.of(context).dataChangeBus,
           BirdCompanionScope.of(context).cache,
+          BirdCompanionScope.of(context).pendingOperationStore,
+          () => BirdCompanionScope.of(context).deviceSessionCubit.state.device?.id,
         )..restoreAndRefresh(initialQuery),
       ),
       BlocProvider(create: (_) => SelectionCubit()),
@@ -190,6 +193,8 @@ class _GalleryView extends StatelessWidget {
                               context: context,
                               useRootNavigator: true,
                               isScrollControlled: true,
+                              showDragHandle: false,
+                              backgroundColor: Colors.transparent,
                               builder: (_) => FilterSheet(
                                 initial: context.read<GalleryCubit>().state.query,
                                 onApply: (query) => context.read<GalleryCubit>().refresh(query: query),
@@ -325,6 +330,7 @@ class _GalleryView extends StatelessWidget {
                                         onTap: () {
                                           final selection = context.read<SelectionCubit>();
                                           if (selection.state.ids.isEmpty) {
+                                            final gallery = context.read<GalleryCubit>();
                                             final photoIds = state.items.map((item) => item.id).toList(growable: false);
                                             final photoContext = _reviewContext.openPhotos(
                                               photoIds,
@@ -336,6 +342,15 @@ class _GalleryView extends StatelessWidget {
                                                 photoContext,
                                                 fileId: photo.id,
                                                 totalCount: totalCount,
+                                                hasMoreSequence: state.hasMore,
+                                                loadMoreSequence: () async {
+                                                  await gallery.loadMore();
+                                                  final current = gallery.state;
+                                                  return PhotoSequencePage(
+                                                    ids: current.items.map((item) => item.id).toList(growable: false),
+                                                    hasMore: current.hasMore,
+                                                  );
+                                                },
                                               ),
                                             );
                                           } else {
@@ -464,7 +479,22 @@ class _GalleryHeader extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (state.pendingOperationCount > 0 || state.conflictOperationCount > 0) ...[
+              _PendingSyncNotice(
+                pendingCount: state.pendingOperationCount,
+                conflictCount: state.conflictOperationCount,
+              ),
+              const SizedBox(height: 12),
+            ],
             if (rootMode) ...[
+              if (state.fromCache) ...[
+                _OfflineSnapshotNotice(
+                  cachedAt: state.cachedAt,
+                  loadedCount: state.items.length,
+                  totalCount: totalCount,
+                ),
+                const SizedBox(height: 12),
+              ],
               _AlbumDeviceArea(offline: offline),
               const SizedBox(height: 16),
               _QuickFilters(
@@ -485,7 +515,11 @@ class _GalleryHeader extends StatelessWidget {
               const SizedBox(height: 8),
             ] else ...[
               if (state.fromCache) ...[
-                _OfflineSnapshotNotice(cachedAt: state.cachedAt),
+                _OfflineSnapshotNotice(
+                  cachedAt: state.cachedAt,
+                  loadedCount: state.items.length,
+                  totalCount: totalCount,
+                ),
                 const SizedBox(height: 12),
               ],
               _QuickFilters(query: state.query),
@@ -846,13 +880,16 @@ class _AlbumPathChevron extends StatelessWidget {
 }
 
 class _OfflineSnapshotNotice extends StatelessWidget {
-  const _OfflineSnapshotNotice({this.cachedAt});
+  const _OfflineSnapshotNotice({this.cachedAt, required this.loadedCount, this.totalCount});
 
   final DateTime? cachedAt;
+  final int loadedCount;
+  final int? totalCount;
 
   @override
   Widget build(BuildContext context) {
-    final suffix = cachedAt == null ? '' : ' · 保存于 ${_time(cachedAt!)}';
+    final savedAt = cachedAt == null ? '' : ' · 保存于 ${_time(cachedAt!)}';
+    final completeness = totalCount == null ? '仅包含手机已访问的照片' : '仅包含已加载的 $loadedCount / $totalCount 张照片';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -873,7 +910,7 @@ class _OfflineSnapshotNotice extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text('设备暂时无法连接，当前显示手机上已保存的照片$suffix', style: const TextStyle(color: AppColors.danger)),
+                child: Text('设备暂时无法连接，当前显示手机上已保存的照片；$completeness$savedAt', style: const TextStyle(color: AppColors.danger)),
               ),
             ],
           ),
@@ -892,6 +929,38 @@ class _OfflineSnapshotNotice extends StatelessWidget {
   String _time(DateTime value) {
     final local = value.toLocal();
     return '${local.month}月${local.day}日 ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+class _PendingSyncNotice extends StatelessWidget {
+  const _PendingSyncNotice({required this.pendingCount, required this.conflictCount});
+
+  final int pendingCount;
+  final int conflictCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasConflict = conflictCount > 0;
+    final text = hasConflict ? '有 $conflictCount 条照片修改与盒子版本冲突，需在照片详情中处理。' : '有 $pendingCount 条照片修改保存在手机上，重连后只会同步到当前设备。';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: hasConflict ? AppColors.dangerSoft : AppColors.amberLight,
+        border: Border.all(color: (hasConflict ? AppColors.danger : AppColors.pending).withValues(alpha: .3)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(hasConflict ? Icons.warning_amber_rounded : Icons.cloud_upload_outlined, color: hasConflict ? AppColors.danger : AppColors.pending),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text, style: TextStyle(color: hasConflict ? AppColors.danger : AppColors.ink)),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -994,6 +1063,8 @@ class _QuickFilters extends StatelessWidget {
               context: context,
               useRootNavigator: true,
               isScrollControlled: true,
+              showDragHandle: false,
+              backgroundColor: Colors.transparent,
               builder: (_) => FilterSheet(
                 initial: context.read<GalleryCubit>().state.query,
                 onApply: (value) => context.read<GalleryCubit>().refresh(query: value),
@@ -1144,7 +1215,13 @@ Future<void> _showTagDialog(BuildContext context, String batchId, List<String> i
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
-        FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.split(',').map((value) => value.trim()).where((value) => value.isNotEmpty).toList()), child: const Text('应用')),
+        FilledButton(
+          onPressed: () => Navigator.pop(
+            dialogContext,
+            parseUserTags(controller.text),
+          ),
+          child: const Text('应用'),
+        ),
       ],
     ),
   );

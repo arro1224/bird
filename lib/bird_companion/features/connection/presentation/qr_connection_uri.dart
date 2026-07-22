@@ -1,3 +1,5 @@
+import 'package:aves/bird_companion/features/connection/domain/connection_address.dart';
+
 enum QrConnectionResultType { connect, manual }
 
 class QrConnectionResult {
@@ -20,20 +22,14 @@ Uri? parseBirdBoxConnectionUri(String? raw) {
     if (host == null || host.isEmpty) return null;
     final port = int.tryParse(parsed.queryParameters['port'] ?? '');
     if (port != null && (port < 1 || port > 65535)) return null;
-    return Uri(
-      scheme: parsed.queryParameters['https'] == 'true' ? 'https' : 'http',
-      host: host,
-      port: port ?? 8080,
+    return ConnectionAddress.normalize(
+      Uri(
+        scheme: parsed.queryParameters['https'] == 'true' ? 'https' : 'http',
+        host: host,
+        port: port ?? 8080,
+      ),
     );
   }
 
-  if ((parsed.scheme == 'http' || parsed.scheme == 'https') && parsed.host.isNotEmpty && parsed.userInfo.isEmpty) {
-    try {
-      if (parsed.hasPort && (parsed.port < 1 || parsed.port > 65535)) return null;
-      return parsed;
-    } on FormatException {
-      return null;
-    }
-  }
-  return null;
+  return ConnectionAddress.normalize(parsed);
 }

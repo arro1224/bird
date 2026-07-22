@@ -45,6 +45,7 @@ abstract final class BirdAppRouter {
         final args = settings.arguments;
         page = BirdAppShell(
           initialIndex: args is ShellArgs ? args.initialIndex : 0,
+          initialRoute: args is ShellArgs ? args.initialRoute : null,
           onGenerateRoute: onGenerateRoute,
         );
       case BirdRoutes.gallery:
@@ -90,6 +91,8 @@ abstract final class BirdAppRouter {
                 displayIndex: args is PhotoDetailArgs ? args.displayIndex : null,
                 totalCount: args is PhotoDetailArgs ? args.totalCount : null,
                 sequence: args is PhotoDetailArgs ? args.sequence : const [],
+                hasMoreSequence: args is PhotoDetailArgs && args.hasMoreSequence,
+                loadMoreSequence: args is PhotoDetailArgs ? args.loadMoreSequence : null,
                 reviewContext: args is PhotoDetailArgs ? args.reviewContext : null,
               );
       case BirdRoutes.copyConfirmation:

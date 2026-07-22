@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
+import 'package:aves/bird_companion/features/connection/domain/connection_address.dart';
 import 'package:flutter/material.dart';
 
 class ManualAddressForm extends StatefulWidget {
@@ -30,9 +31,8 @@ class _ManualAddressFormState extends State<ManualAddressForm> {
 
   void _submit() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    var raw = _addressController.text.trim();
-    if (!raw.startsWith('http://') && !raw.startsWith('https://')) raw = 'http://$raw';
-    widget.onConnect(Uri.parse(raw));
+    final uri = ConnectionAddress.tryParse(_addressController.text);
+    if (uri != null) widget.onConnect(uri);
   }
 
   @override
@@ -50,11 +50,8 @@ class _ManualAddressFormState extends State<ManualAddressForm> {
             enabled: !widget.isSubmitting,
             decoration: const InputDecoration(labelText: '盒子地址', hintText: 'http://192.168.4.1:8080'),
             validator: (value) {
-              var raw = value?.trim() ?? '';
-              if (raw.isEmpty) return '请输入盒子地址';
-              if (!raw.startsWith('http://') && !raw.startsWith('https://')) raw = 'http://$raw';
-              final uri = Uri.tryParse(raw);
-              if (uri == null || uri.host.isEmpty) return '请输入有效的连接地址';
+              if (value?.trim().isEmpty ?? true) return '请输入盒子地址';
+              if (ConnectionAddress.tryParse(value!) == null) return '请输入同一局域网内盒子的地址';
               return null;
             },
             onFieldSubmitted: (_) => _submit(),

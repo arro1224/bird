@@ -5,6 +5,7 @@ import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class DeviceSessionCubit extends Cubit<DeviceSessionState> {
@@ -44,6 +45,37 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     DeviceSessionState(phase: DeviceSessionPhase.connected, device: status.connection, lastUpdatedAt: DateTime.now()),
   );
 
+  /// Restores the previously selected device without leaving an unbounded
+  /// startup request in flight. A failed restore keeps the device in session
+  /// so the connection page can offer a one-tap retry.
+  Future<bool> restoreSavedSession({Duration timeout = const Duration(seconds: 5)}) async {
+    if (isClosed || state.isConnected) return state.isConnected;
+    final device = await _repository.savedDevice();
+    if (device == null || isClosed) return false;
+    emit(DeviceSessionState(phase: DeviceSessionPhase.disconnected, device: device));
+    if (!await _connectivityMonitor.hasNetwork || isClosed) return false;
+
+    final cancelToken = CancelToken();
+    emit(state.copyWith(phase: DeviceSessionPhase.reconnecting));
+    try {
+      final status = await _repository
+          .reconnect(cancelToken: cancelToken)
+          .timeout(
+            timeout,
+            onTimeout: () {
+              cancelToken.cancel('Startup reconnection timed out.');
+              throw TimeoutException('Startup reconnection timed out.');
+            },
+          );
+      if (isClosed) return false;
+      await setConnectedFromStatus(status);
+      return true;
+    } catch (_) {
+      if (!isClosed) emit(state.copyWith(phase: DeviceSessionPhase.disconnected));
+      return false;
+    }
+  }
+
   Future<void> _synchronizeAfterConnection() async {
     try {
       await onConnectionRecovered?.call();
@@ -74,8 +106,10 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     }
   }
 
-  void disconnected([String? message]) {
-    if (!isClosed) emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: message));
+  void disconnected([String? message, bool clearDevice = false]) {
+    if (!isClosed) {
+      emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: message, clearDevice: clearDevice));
+    }
   }
 
   @override

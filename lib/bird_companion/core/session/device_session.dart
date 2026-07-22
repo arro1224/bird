@@ -12,9 +12,16 @@ class DeviceSessionState {
 
   bool get isConnected => phase == DeviceSessionPhase.connected;
 
-  DeviceSessionState copyWith({DeviceSessionPhase? phase, DeviceConnection? device, DateTime? lastUpdatedAt, String? message, bool clearMessage = false}) => DeviceSessionState(
+  DeviceSessionState copyWith({
+    DeviceSessionPhase? phase,
+    DeviceConnection? device,
+    DateTime? lastUpdatedAt,
+    String? message,
+    bool clearDevice = false,
+    bool clearMessage = false,
+  }) => DeviceSessionState(
     phase: phase ?? this.phase,
-    device: device ?? this.device,
+    device: clearDevice ? null : device ?? this.device,
     lastUpdatedAt: lastUpdatedAt ?? this.lastUpdatedAt,
     message: clearMessage ? null : message ?? this.message,
   );

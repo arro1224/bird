@@ -107,7 +107,7 @@ class _ConnectionViewState extends State<_ConnectionView> {
           child: ConnectionSuccessView(
             status: state.status!,
             onOpenGallery: () => _finishConnection(0),
-            onOpenDevice: () => _finishConnection(2),
+            onOpenDevice: () => _finishConnection(2, initialRoute: BirdRoutes.deviceStatus),
           ),
         );
       }
@@ -274,12 +274,12 @@ class _ConnectionViewState extends State<_ConnectionView> {
     }
   }
 
-  void _finishConnection(int shellIndex) {
+  void _finishConnection(int shellIndex, {String? initialRoute}) {
     if (!mounted) return;
     Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
       BirdRoutes.shell,
       (route) => false,
-      arguments: ShellArgs(initialIndex: shellIndex),
+      arguments: ShellArgs(initialIndex: shellIndex, initialRoute: initialRoute),
     );
   }
 

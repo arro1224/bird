@@ -1,5 +1,14 @@
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 
+class PhotoSequencePage {
+  const PhotoSequencePage({required this.ids, required this.hasMore});
+
+  final List<String> ids;
+  final bool hasMore;
+}
+
+typedef PhotoSequenceLoader = Future<PhotoSequencePage> Function();
+
 /// Carries the user's position through the complete photo-review hierarchy.
 ///
 /// Route argument classes keep their legacy fields for compatibility, while
@@ -149,6 +158,8 @@ class PhotoDetailArgs {
     this.displayIndex,
     this.totalCount,
     this.sequence = const [],
+    this.hasMoreSequence = false,
+    this.loadMoreSequence,
     this.reviewContext,
   });
 
@@ -156,6 +167,8 @@ class PhotoDetailArgs {
     ReviewContext context, {
     String? fileId,
     int? totalCount,
+    bool hasMoreSequence = false,
+    PhotoSequenceLoader? loadMoreSequence,
   }) {
     final resolvedId = fileId ?? context.currentPhotoId ?? '';
     final index = context.photoIds.indexOf(resolvedId);
@@ -164,6 +177,8 @@ class PhotoDetailArgs {
       displayIndex: index < 0 ? null : index + 1,
       totalCount: totalCount ?? (context.photoIds.isEmpty ? null : context.photoIds.length),
       sequence: context.photoIds,
+      hasMoreSequence: hasMoreSequence,
+      loadMoreSequence: loadMoreSequence,
       reviewContext: index < 0 ? context : context.moveTo(index),
     );
   }
@@ -172,6 +187,8 @@ class PhotoDetailArgs {
   final int? displayIndex;
   final int? totalCount;
   final List<String> sequence;
+  final bool hasMoreSequence;
+  final PhotoSequenceLoader? loadMoreSequence;
   final ReviewContext? reviewContext;
 }
 
@@ -201,8 +218,9 @@ class ComparisonReviewArgs {
 }
 
 class ShellArgs {
-  const ShellArgs({this.initialIndex = 0});
+  const ShellArgs({this.initialIndex = 0, this.initialRoute});
   final int initialIndex;
+  final String? initialRoute;
 }
 
 enum ConnectionEntryMode { initialSetup, addOrSwitch }

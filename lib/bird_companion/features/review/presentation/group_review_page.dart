@@ -252,7 +252,7 @@ class _GroupContent extends StatelessWidget {
                   );
                 },
           icon: const Icon(Icons.compare_rounded),
-          label: const Text('对比最推荐的 3 张'),
+          label: const Text('对比最推荐的 2 张'),
         ),
         const SizedBox(height: 18),
         Row(

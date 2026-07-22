@@ -2,6 +2,7 @@ import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
+import 'package:aves/bird_companion/core/models/tag_input.dart';
 import 'package:aves/bird_companion/core/presentation/user_facing_text.dart';
 import 'package:aves/bird_companion/core/widgets/bird_navigation.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
@@ -25,12 +26,16 @@ class PhotoDetailPage extends StatelessWidget {
     this.displayIndex,
     this.totalCount,
     this.sequence = const [],
+    this.hasMoreSequence = false,
+    this.loadMoreSequence,
     this.reviewContext,
   });
   final String fileId;
   final int? displayIndex;
   final int? totalCount;
   final List<String> sequence;
+  final bool hasMoreSequence;
+  final PhotoSequenceLoader? loadMoreSequence;
   final ReviewContext? reviewContext;
 
   @override
@@ -45,6 +50,8 @@ class PhotoDetailPage extends StatelessWidget {
       displayIndex: displayIndex,
       totalCount: totalCount,
       sequence: sequence,
+      hasMoreSequence: hasMoreSequence,
+      loadMoreSequence: loadMoreSequence,
       reviewContext: reviewContext,
     ),
   );
@@ -56,12 +63,16 @@ class _View extends StatefulWidget {
     this.displayIndex,
     this.totalCount,
     required this.sequence,
+    required this.hasMoreSequence,
+    this.loadMoreSequence,
     this.reviewContext,
   });
   final String fileId;
   final int? displayIndex;
   final int? totalCount;
   final List<String> sequence;
+  final bool hasMoreSequence;
+  final PhotoSequenceLoader? loadMoreSequence;
   final ReviewContext? reviewContext;
 
   @override
@@ -77,8 +88,11 @@ class _ViewState extends State<_View> {
   String? _appliedRevision;
   var _showSubjects = false;
   late int _currentIndex;
+  late List<String> _loadedSequence;
+  late bool _hasMoreSequence;
+  var _loadingMoreSequence = false;
 
-  List<String> get _sequence => widget.reviewContext?.photoIds.isNotEmpty == true ? widget.reviewContext!.photoIds : widget.sequence;
+  List<String> get _sequence => _loadedSequence;
 
   String get _currentFileId => _sequence.isEmpty ? widget.fileId : _sequence[_currentIndex.clamp(0, _sequence.length - 1)];
 
@@ -87,6 +101,10 @@ class _ViewState extends State<_View> {
   @override
   void initState() {
     super.initState();
+    _loadedSequence = List<String>.from(
+      widget.reviewContext?.photoIds.isNotEmpty == true ? widget.reviewContext!.photoIds : widget.sequence,
+    );
+    _hasMoreSequence = widget.hasMoreSequence;
     final contextIndex = widget.reviewContext?.safeCurrentIndex;
     final sequenceIndex = _sequence.indexOf(widget.fileId);
     _currentIndex = contextIndex ?? (sequenceIndex < 0 ? 0 : sequenceIndex);
@@ -141,7 +159,7 @@ class _ViewState extends State<_View> {
                   height: 52,
                   child: _DetailMenuItem(icon: Icons.chevron_left_rounded, label: '上一张'),
                 ),
-              if (_nextId != null)
+              if (_nextId != null || _hasMoreSequence)
                 const PopupMenuItem(
                   value: 'next',
                   height: 52,
@@ -184,7 +202,7 @@ class _ViewState extends State<_View> {
           });
         }
         if (state.message != null) {
-          if (state.detail == null) {
+          if (state.detail == null || state.messageIsError) {
             BirdFeedback.error(context, state.message!);
           } else {
             BirdFeedback.success(context, state.message!);
@@ -297,6 +315,10 @@ class _ViewState extends State<_View> {
       _save(context, detail, KeepState.pending);
       return;
     }
+    if (value == 'next' && _nextId == null) {
+      _loadNextPage(context);
+      return;
+    }
     final id = value == 'previous' ? _previousId : _nextId;
     if (id == null) return;
     _openInPlace(context, id);
@@ -313,6 +335,27 @@ class _ViewState extends State<_View> {
     await context.read<PhotoDetailCubit>().load(id);
   }
 
+  Future<void> _loadNextPage(BuildContext context) async {
+    final loader = widget.loadMoreSequence;
+    if (loader == null || !_hasMoreSequence || _loadingMoreSequence) return;
+    setState(() => _loadingMoreSequence = true);
+    try {
+      final page = await loader();
+      if (!mounted) return;
+      final knownIds = _loadedSequence.toSet();
+      final addedIds = page.ids.where(knownIds.add).toList();
+      setState(() {
+        _loadedSequence = [..._loadedSequence, ...addedIds];
+        _hasMoreSequence = page.hasMore;
+        _loadingMoreSequence = false;
+      });
+      if (addedIds.isNotEmpty && context.mounted) await _openInPlace(context, addedIds.first);
+    } catch (_) {
+      if (mounted) setState(() => _loadingMoreSequence = false);
+      if (context.mounted) BirdFeedback.error(context, '无法加载下一页照片，请重试');
+    }
+  }
+
   Future<void> _save(BuildContext context, ReviewDetail detail, KeepState value) async {
     setState(() => _keep = value);
     await context.read<PhotoDetailCubit>().save(_decision(detail, keepState: value));
@@ -324,7 +367,7 @@ class _ViewState extends State<_View> {
     userSpeciesId: _speciesId,
     userSpecies: _species.text.trim().isEmpty ? null : _species.text.trim(),
     userScore: double.tryParse(_score.text),
-    userTags: _tags.text.split(',').map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList(),
+    userTags: parseUserTags(_tags.text),
     updatedAt: DateTime.now(),
     version: detail.decision?.version,
   );
