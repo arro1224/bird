@@ -4,9 +4,10 @@ import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:flutter/material.dart';
 
 class RatingReasonPanel extends StatelessWidget {
-  const RatingReasonPanel({super.key, required this.value});
+  const RatingReasonPanel({super.key, required this.value, this.currentScore});
 
   final RatingResult? value;
+  final double? currentScore;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -23,7 +24,8 @@ class RatingReasonPanel extends StatelessWidget {
                 child: Text('详细指标', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
               ),
               Text(
-                value?.totalScore.toStringAsFixed(1) ?? '—',
+                (currentScore ?? value?.totalScore)?.toStringAsFixed(1) ?? '—',
+                key: const ValueKey('rating-current-score'),
                 style: const TextStyle(color: AppColors.brand, fontSize: 30, fontWeight: FontWeight.w800),
               ),
               const Text(' / 5', style: TextStyle(color: AppColors.inkMuted)),

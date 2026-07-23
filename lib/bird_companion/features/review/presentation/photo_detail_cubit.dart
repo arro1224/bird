@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/features/review/domain/review_undo_entry.dart';
@@ -73,10 +74,13 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
       return;
     }
     final undo = ReviewUndoEntry(before: previous, after: decision);
-    await load(decision.fileId);
+    final refreshed = await _refreshedDetail(decision.fileId);
+    final updated = refreshed == null ? null : _withDecision(refreshed, decision);
     _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'photo_review_saved');
     emit(
       state.copyWith(
+        detail: updated,
+        saving: false,
         message: result.queued ? result.message : '修改已保存',
         messageIsError: false,
         undoEntry: undo,
@@ -93,9 +97,10 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
       emit(state.copyWith(saving: false, conflict: true, pendingConflictDecision: entry.before, message: result.message));
       return;
     }
-    await load(entry.before.fileId);
+    final refreshed = await _refreshedDetail(entry.before.fileId);
+    final updated = refreshed == null ? null : _withDecision(refreshed, entry.before);
     _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'photo_review_undone');
-    emit(state.copyWith(message: '已撤销最近一次修改', messageIsError: false, clearUndo: true));
+    emit(state.copyWith(detail: updated, saving: false, message: '已撤销最近一次修改', messageIsError: false, clearUndo: true));
   }
 
   Future<void> useRemote(String fileId) async {
@@ -110,6 +115,39 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
         message: '盒子内容未被覆盖：当前协议未提供强制保存能力，请稍后在照片详情中重试。',
         messageIsError: true,
       ),
+    );
+  }
+
+  Future<ReviewDetail?> _refreshedDetail(String fileId) async {
+    try {
+      return await _repository.detail(fileId);
+    } catch (_) {
+      return state.detail;
+    }
+  }
+
+  ReviewDetail _withDecision(ReviewDetail detail, UserDecision decision) {
+    final remoteDecision = detail.decision;
+    final effectiveDecision = UserDecision(
+      fileId: decision.fileId,
+      keepState: decision.keepState,
+      userScore: decision.userScore,
+      userSpeciesId: decision.userSpeciesId,
+      userSpecies: decision.userSpecies,
+      userTags: decision.userTags,
+      updatedAt: decision.updatedAt ?? remoteDecision?.updatedAt,
+      version: remoteDecision?.version ?? decision.version,
+    );
+    final photo = detail.photo;
+    return ReviewDetail(
+      photo: PhotoDetail(
+        summary: photo.summary.copyWith(keepState: decision.keepState.wireValue),
+        subjects: photo.subjects,
+        tags: photo.tags,
+        exif: photo.exif,
+      ),
+      decision: effectiveDecision,
+      history: detail.history,
     );
   }
 }

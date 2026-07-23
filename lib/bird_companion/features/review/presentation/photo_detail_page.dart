@@ -245,9 +245,16 @@ class _ViewState extends State<_View> {
                       ),
                       childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                       children: [
-                        RecognitionPanel(value: detail.photo.summary.recognition),
+                        RecognitionPanel(
+                          value: detail.photo.summary.recognition,
+                          currentSpeciesId: _speciesId,
+                          currentSpecies: _species.text,
+                        ),
                         const SizedBox(height: 10),
-                        RatingReasonPanel(value: detail.photo.summary.rating),
+                        RatingReasonPanel(
+                          value: detail.photo.summary.rating,
+                          currentScore: double.tryParse(_score.text),
+                        ),
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           title: const Text('标出照片中的鸟'),

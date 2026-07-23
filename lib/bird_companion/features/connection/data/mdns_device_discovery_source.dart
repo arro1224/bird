@@ -1,12 +1,17 @@
 import 'dart:async';
+import 'dart:developer';
+import 'dart:io';
 
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/features/connection/data/device_discovery_source.dart';
 import 'package:multicast_dns/multicast_dns.dart';
 
-/// 默认服务名是联调约定，真实盒子端若使用其它服务名只需改此构造参数。
+/// The default service name follows the Bird Box integration convention.
 class MdnsDeviceDiscoverySource implements DeviceDiscoverySource {
-  MdnsDeviceDiscoverySource({this.serviceName = '_birdbox._tcp.local', this.timeout = const Duration(seconds: 3)});
+  MdnsDeviceDiscoverySource({
+    this.serviceName = '_birdbox._tcp.local',
+    this.timeout = const Duration(seconds: 3),
+  });
 
   final String serviceName;
   final Duration timeout;
@@ -17,14 +22,30 @@ class MdnsDeviceDiscoverySource implements DeviceDiscoverySource {
     final result = <DeviceConnection>[];
     try {
       await client.start();
-      await for (final pointer in client.lookup<PtrResourceRecord>(ResourceRecordQuery.serverPointer(serviceName)).timeout(timeout)) {
-        await for (final service in client.lookup<SrvResourceRecord>(ResourceRecordQuery.service(pointer.domainName)).timeout(timeout)) {
-          await for (final address in client.lookup<IPAddressResourceRecord>(ResourceRecordQuery.addressIPv4(service.target)).timeout(timeout)) {
+      await for (final pointer in client
+          .lookup<PtrResourceRecord>(
+            ResourceRecordQuery.serverPointer(serviceName),
+          )
+          .timeout(timeout)) {
+        await for (final service in client
+            .lookup<SrvResourceRecord>(
+              ResourceRecordQuery.service(pointer.domainName),
+            )
+            .timeout(timeout)) {
+          await for (final address in client
+              .lookup<IPAddressResourceRecord>(
+                ResourceRecordQuery.addressIPv4(service.target),
+              )
+              .timeout(timeout)) {
             result.add(
               DeviceConnection(
                 id: service.target,
                 name: service.target.replaceFirst('.local', ''),
-                baseUri: Uri(scheme: 'http', host: address.address.address, port: service.port),
+                baseUri: Uri(
+                  scheme: 'http',
+                  host: address.address.address,
+                  port: service.port,
+                ),
                 networkMode: NetworkMode.lan,
               ),
             );
@@ -32,10 +53,28 @@ class MdnsDeviceDiscoverySource implements DeviceDiscoverySource {
         }
       }
     } on TimeoutException {
-      // 未发现设备属于正常结果，页面会提供手动地址入口。
+      // No device found is expected; manual entry remains available.
+    } on SocketException catch (error, stackTrace) {
+      // Some Android 8 kernels do not support SO_REUSEPORT. The mDNS package
+      // requests it while opening its socket, so discovery cannot run there.
+      // Discovery is optional: keep QR and manual connection usable.
+      log(
+        'mDNS discovery is unavailable on this device: $error',
+        name: 'bird_companion.connection',
+        stackTrace: stackTrace,
+      );
+    } catch (error, stackTrace) {
+      // Vendor network stacks can reject multicast joins after the socket has
+      // opened. Treat that as an empty discovery result as well.
+      log(
+        'mDNS discovery failed: $error',
+        name: 'bird_companion.connection',
+        stackTrace: stackTrace,
+      );
     } finally {
       client.stop();
     }
+
     final seen = <String>{};
     return result.where((item) => seen.add(item.baseUri.toString())).toList();
   }

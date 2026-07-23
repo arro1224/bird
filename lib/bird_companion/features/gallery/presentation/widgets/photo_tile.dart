@@ -60,25 +60,27 @@ class PhotoTile extends StatelessWidget {
                     )
                   else
                     AnalysisPlaceholder(state: photo.analysisState),
-                  if (!compact)
-                    const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Colors.transparent, Colors.transparent, Color(0xAA182016)],
-                        ),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Colors.transparent, Color(0xAA182016)],
                       ),
                     ),
-                  if (!compact)
-                    Positioned(
-                      left: 8,
-                      bottom: 7,
-                      child: Text(
-                        score?.toStringAsFixed(1) ?? '—',
-                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                  Positioned(
+                    left: 8,
+                    bottom: 7,
+                    child: Text(
+                      score?.toStringAsFixed(1) ?? '—',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: compact ? 16 : 18,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
+                  ),
                   Positioned(
                     right: 8,
                     top: 8,

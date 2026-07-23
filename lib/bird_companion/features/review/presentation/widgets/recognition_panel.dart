@@ -4,14 +4,35 @@ import 'package:aves/bird_companion/core/presentation/user_facing_text.dart';
 import 'package:flutter/material.dart';
 
 class RecognitionPanel extends StatelessWidget {
-  const RecognitionPanel({super.key, required this.value});
+  const RecognitionPanel({
+    super.key,
+    required this.value,
+    this.currentSpeciesId,
+    this.currentSpecies,
+  });
 
   final RecognitionResult? value;
+  final String? currentSpeciesId;
+  final String? currentSpecies;
 
   @override
   Widget build(BuildContext context) {
-    final candidates = value?.candidates.take(3).toList() ?? const <SpeciesCandidate>[];
-    final first = candidates.isEmpty ? null : candidates.first;
+    final systemCandidates = value?.candidates.take(3).toList() ?? const <SpeciesCandidate>[];
+    final selectedName = currentSpecies?.trim();
+    final hasUserResult = selectedName?.isNotEmpty == true;
+    final selectedIndex = systemCandidates.indexWhere(
+      (candidate) => currentSpeciesId?.isNotEmpty == true && candidate.speciesId == currentSpeciesId || hasUserResult && candidate.name == selectedName,
+    );
+    final selectedCandidate = selectedIndex < 0 ? null : systemCandidates[selectedIndex];
+    final candidates = selectedCandidate == null
+        ? systemCandidates
+        : [
+            selectedCandidate,
+            ...systemCandidates.where((candidate) => candidate != selectedCandidate),
+          ];
+    final systemFirst = systemCandidates.firstOrNull;
+    final currentName = hasUserResult ? selectedName : systemFirst?.name;
+    final currentConfidence = hasUserResult ? selectedCandidate?.confidence : systemFirst?.confidence;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -26,7 +47,7 @@ class RecognitionPanel extends StatelessWidget {
               ],
             ),
             const Divider(height: 24),
-            if (first == null)
+            if (currentName == null)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 18),
                 child: Center(child: Text('暂无识别结果')),
@@ -39,16 +60,27 @@ class RecognitionPanel extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('可能是', style: TextStyle(color: AppColors.inkMuted)),
+                        Text(hasUserResult ? '当前结果' : '可能是', style: const TextStyle(color: AppColors.inkMuted)),
                         const SizedBox(height: 8),
-                        Text(first.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                        Text(
+                          currentName,
+                          key: const ValueKey('recognition-current-species'),
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                        ),
                         const SizedBox(height: 16),
                         const Text('识别度', style: TextStyle(color: AppColors.inkMuted)),
-                        Text(
-                          UserFacingText.recognitionCertainty(first.confidence),
-                          style: const TextStyle(fontSize: 24, color: AppColors.brand, fontWeight: FontWeight.w800),
-                        ),
-                        Text('${(first.confidence * 100).round()}%', style: const TextStyle(color: AppColors.inkMuted)),
+                        if (currentConfidence == null)
+                          const Text(
+                            '人工确认',
+                            style: TextStyle(fontSize: 20, color: AppColors.brand, fontWeight: FontWeight.w800),
+                          )
+                        else ...[
+                          Text(
+                            UserFacingText.recognitionCertainty(currentConfidence),
+                            style: const TextStyle(fontSize: 24, color: AppColors.brand, fontWeight: FontWeight.w800),
+                          ),
+                          Text('${(currentConfidence * 100).round()}%', style: const TextStyle(color: AppColors.inkMuted)),
+                        ],
                       ],
                     ),
                   ),
@@ -67,8 +99,8 @@ class RecognitionPanel extends StatelessWidget {
                             contentPadding: EdgeInsets.zero,
                             leading: CircleAvatar(
                               radius: 12,
-                              backgroundColor: index == 0 ? AppColors.brand : AppColors.mist,
-                              foregroundColor: index == 0 ? Colors.white : AppColors.inkMuted,
+                              backgroundColor: candidates[index] == selectedCandidate || !hasUserResult && index == 0 ? AppColors.brand : AppColors.mist,
+                              foregroundColor: candidates[index] == selectedCandidate || !hasUserResult && index == 0 ? Colors.white : AppColors.inkMuted,
                               child: Text('${index + 1}', style: const TextStyle(fontSize: 11)),
                             ),
                             title: Text(candidates[index].name, maxLines: 1, overflow: TextOverflow.ellipsis),
