@@ -27,7 +27,8 @@ class PhotoTile extends StatelessWidget {
     final image = photo.preview.thumbnailUri;
     final score = photo.rating?.totalScore;
     final state = photo.keepState ?? 'pending';
-    final isFeatured = state == 'featured' || photo.isRecommended;
+    final isDiscarded = state == 'discard';
+    final isFeatured = !isDiscarded && (state == 'featured' || photo.isRecommended);
     final needsReview = state == 'pending' || photo.analysisState == AnalysisState.lowConfidence || photo.recognition?.isLowConfidence == true;
 
     return LayoutBuilder(
@@ -91,10 +92,13 @@ class PhotoTile extends StatelessWidget {
                             child: Icon(Icons.check_rounded, size: 16, color: Colors.white),
                           )
                         : Icon(
+                            key: ValueKey('photo-status-$state'),
                             isFeatured ? Icons.star_rounded : Icons.circle,
                             size: isFeatured ? 23 : 15,
                             color: isFeatured
                                 ? AppColors.amber
+                                : isDiscarded
+                                ? AppColors.danger
                                 : needsReview
                                 ? AppColors.amber
                                 : const Color(0xFFA9D56C),

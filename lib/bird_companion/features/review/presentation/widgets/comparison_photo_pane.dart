@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
@@ -30,7 +31,8 @@ class ComparisonPhotoPane extends StatelessWidget {
     final photo = detail.photo.summary;
     final url = photo.preview.previewUri?.toString();
     final reasons = photo.rating?.reasonTags ?? const <String>[];
-    return GestureDetector(
+    return BirdPressable(
+      borderRadius: BorderRadius.circular(18),
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

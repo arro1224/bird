@@ -60,6 +60,7 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
             if (state.loading) return const Center(child: CircularProgressIndicator());
             if (state.error != null && state.items.isEmpty) return Center(child: Text('无法加载对比照片：${state.error}'));
             if (state.items.length < 2) return const Center(child: Text('对比至少需要两张照片'));
+            final retainedIndex = _singleRetainedIndex(state.items, _selectedIndex);
             return SafeArea(
               top: false,
               child: LayoutBuilder(
@@ -108,7 +109,7 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
                                 Expanded(
                                   child: _ComparisonActionButton(
                                     label: '保留左图',
-                                    selected: _decisionState(state.items[0]) == KeepState.keep,
+                                    selected: retainedIndex == 0,
                                     onPressed: state.savingId == null ? () => _mark(context, state, 0, KeepState.keep) : null,
                                   ),
                                 ),
@@ -116,7 +117,7 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
                                 Expanded(
                                   child: _ComparisonActionButton(
                                     label: '保留右图',
-                                    selected: _decisionState(state.items[1]) == KeepState.keep,
+                                    selected: retainedIndex == 1,
                                     onPressed: state.savingId == null ? () => _mark(context, state, 1, KeepState.keep) : null,
                                   ),
                                 ),
@@ -148,6 +149,9 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
 
   void _mark(BuildContext context, ComparisonReviewState state, int index, KeepState value) {
     if (state.savingId != null || index >= state.items.length) return;
+    if (value.isRetained && _selectedIndex != index) {
+      setState(() => _selectedIndex = index);
+    }
     context.read<ComparisonReviewCubit>().mark(state.items[index].photo.summary.id, value);
   }
 }
@@ -184,3 +188,13 @@ class _ComparisonActionButton extends StatelessWidget {
 }
 
 KeepState _decisionState(ReviewDetail detail) => detail.decision?.keepState ?? KeepStateWireValue.fromWire(detail.photo.summary.keepState);
+
+int? _singleRetainedIndex(List<ReviewDetail> items, int preferredIndex) {
+  final featuredIndex = items.indexWhere((item) => _decisionState(item) == KeepState.featured);
+  if (featuredIndex >= 0) return featuredIndex;
+  if (preferredIndex < items.length && _decisionState(items[preferredIndex]).isRetained) {
+    return preferredIndex;
+  }
+  final retainedIndex = items.indexWhere((item) => _decisionState(item).isRetained);
+  return retainedIndex < 0 ? null : retainedIndex;
+}

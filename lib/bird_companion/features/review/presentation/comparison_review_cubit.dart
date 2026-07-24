@@ -32,41 +32,39 @@ class ComparisonReviewCubit extends Cubit<ComparisonReviewState> {
   Future<void> mark(String fileId, KeepState value) async {
     emit(ComparisonReviewState(items: state.items, savingId: fileId));
     try {
-      final result = await _repository.save(UserDecision(fileId: fileId, keepState: value, updatedAt: DateTime.now()));
-      if (result.conflict) {
-        emit(ComparisonReviewState(items: state.items, message: result.message ?? '盒子端已有更新，请返回照片详情处理冲突'));
+      final originalItems = state.items;
+      final nextStates = {
+        for (final item in originalItems)
+          item.photo.summary.id: item.photo.summary.id == fileId
+              ? value
+              : value.isRetained
+              ? KeepState.discard
+              : _decisionState(item),
+      };
+      final changedItems = originalItems.where((item) {
+        final nextState = nextStates[item.photo.summary.id]!;
+        return _decisionState(item) != nextState;
+      }).toList();
+      final updatedAt = DateTime.now();
+      final results = await Future.wait(
+        changedItems.map(
+          (item) => _repository.save(
+            _decisionWithState(item, nextStates[item.photo.summary.id]!, updatedAt),
+          ),
+        ),
+      );
+      final conflict = results.where((result) => result.conflict).firstOrNull;
+      if (conflict != null) {
+        emit(ComparisonReviewState(items: originalItems, message: conflict.message ?? '盒子端已有更新，请返回照片详情处理冲突'));
         return;
       }
-      final updatedAt = DateTime.now();
-      final updated = state.items.map((item) {
-        if (item.photo.summary.id != fileId) return item;
-        final previous = item.decision;
-        return ReviewDetail(
-          photo: PhotoDetail(
-            summary: item.photo.summary.copyWith(keepState: value.wireValue),
-            subjects: item.photo.subjects,
-            tags: item.photo.tags,
-            exif: item.photo.exif,
-          ),
-          decision: UserDecision(
-            fileId: fileId,
-            keepState: value,
-            userScore: previous?.userScore,
-            userSpeciesId: previous?.userSpeciesId,
-            userSpecies: previous?.userSpecies,
-            userTags: previous?.userTags ?? const [],
-            updatedAt: updatedAt,
-            version: previous?.version,
-          ),
-          history: item.history,
-        );
-      }).toList();
+      final updated = originalItems.map((item) => _detailWithState(item, nextStates[item.photo.summary.id]!, updatedAt)).toList();
       _refreshCoordinator?.requestRefresh();
       _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'comparison_review_saved');
       emit(
         ComparisonReviewState(
           items: updated,
-          message: result.queued ? result.message : '照片状态已更新',
+          message: results.where((result) => result.queued).firstOrNull?.message ?? '照片状态已更新',
         ),
       );
     } catch (error) {
@@ -74,3 +72,38 @@ class ComparisonReviewCubit extends Cubit<ComparisonReviewState> {
     }
   }
 }
+
+KeepState _decisionState(ReviewDetail detail) => detail.decision?.keepState ?? KeepStateWireValue.fromWire(detail.photo.summary.keepState);
+
+UserDecision _decisionWithState(
+  ReviewDetail detail,
+  KeepState keepState,
+  DateTime updatedAt,
+) {
+  final previous = detail.decision;
+  return UserDecision(
+    fileId: detail.photo.summary.id,
+    keepState: keepState,
+    userScore: previous?.userScore,
+    userSpeciesId: previous?.userSpeciesId,
+    userSpecies: previous?.userSpecies,
+    userTags: previous?.userTags ?? const [],
+    updatedAt: updatedAt,
+    version: previous?.version,
+  );
+}
+
+ReviewDetail _detailWithState(
+  ReviewDetail detail,
+  KeepState keepState,
+  DateTime updatedAt,
+) => ReviewDetail(
+  photo: PhotoDetail(
+    summary: detail.photo.summary.copyWith(keepState: keepState.wireValue),
+    subjects: detail.photo.subjects,
+    tags: detail.photo.tags,
+    exif: detail.photo.exif,
+  ),
+  decision: _decisionWithState(detail, keepState, updatedAt),
+  history: detail.history,
+);

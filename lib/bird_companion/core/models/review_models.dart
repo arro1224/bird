@@ -3,6 +3,10 @@ import 'package:aves/bird_companion/core/models/photo_models.dart';
 
 enum KeepState { pending, keep, discard, featured }
 
+extension KeepStateSemantics on KeepState {
+  bool get isRetained => this == KeepState.keep || this == KeepState.featured;
+}
+
 extension KeepStateWireValue on KeepState {
   static KeepState fromWire(String? value) => switch (value) {
     'keep' => KeepState.keep,

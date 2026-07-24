@@ -2,6 +2,7 @@ import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/widgets/bird_navigation.dart';
@@ -170,7 +171,8 @@ class _GroupContent extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: Column(
               children: [
-                GestureDetector(
+                BirdPressable(
+                  borderRadius: BorderRadius.circular(18),
                   onTap: representative == null
                       ? null
                       : () {
@@ -380,7 +382,8 @@ class _Thumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final url = photo.preview.thumbnailUri?.toString();
-    return GestureDetector(
+    return BirdPressable(
+      borderRadius: BorderRadius.circular(10),
       onTap: onTap,
       child: Container(
         width: 96,

@@ -48,6 +48,16 @@ abstract final class AppTheme {
       borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
       side: BorderSide(color: outline),
     );
+    final controlOverlay = WidgetStateProperty.resolveWith<Color?>((states) {
+      if (states.contains(WidgetState.disabled)) return null;
+      if (states.contains(WidgetState.pressed)) {
+        return Colors.black.withValues(alpha: .14);
+      }
+      if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) {
+        return scheme.primary.withValues(alpha: .08);
+      }
+      return null;
+    });
 
     return ThemeData(
       useMaterial3: true,
@@ -59,8 +69,8 @@ abstract final class AppTheme {
       dividerColor: outline,
       disabledColor: mutedForeground.withValues(alpha: .45),
       shadowColor: isLight ? const Color(0x1A0F2E1A) : Colors.black54,
-      splashColor: scheme.primary.withValues(alpha: .08),
-      highlightColor: scheme.primary.withValues(alpha: .04),
+      splashColor: scheme.primary.withValues(alpha: .16),
+      highlightColor: scheme.primary.withValues(alpha: .10),
       visualDensity: VisualDensity.standard,
       materialTapTargetSize: MaterialTapTargetSize.padded,
       appBarTheme: AppBarTheme(
@@ -132,7 +142,7 @@ abstract final class AppTheme {
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
           shape: controlShape,
           elevation: 0,
-        ),
+        ).copyWith(overlayColor: controlOverlay),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
@@ -143,7 +153,7 @@ abstract final class AppTheme {
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
           side: BorderSide(color: isLight ? AppColors.brand : AppColors.brandLight, width: 1.25),
           shape: controlShape,
-        ),
+        ).copyWith(overlayColor: controlOverlay),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
@@ -152,7 +162,7 @@ abstract final class AppTheme {
           minimumSize: const Size(AppSpacing.minimumTouchTarget, AppSpacing.minimumTouchTarget),
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
           shape: controlShape,
-        ),
+        ).copyWith(overlayColor: controlOverlay),
       ),
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
@@ -160,7 +170,7 @@ abstract final class AppTheme {
           minimumSize: const Size.square(AppSpacing.minimumTouchTarget),
           iconSize: AppSpacing.iconSize,
           shape: const CircleBorder(),
-        ),
+        ).copyWith(overlayColor: controlOverlay),
       ),
       listTileTheme: ListTileThemeData(
         contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xxs),

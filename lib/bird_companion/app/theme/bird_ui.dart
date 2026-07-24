@@ -202,6 +202,60 @@ class BirdCard extends StatelessWidget {
   }
 }
 
+/// Press feedback for custom interactive surfaces that cannot use [InkWell].
+///
+/// It paints a short dark overlay above images and other opaque children, so
+/// custom photo gestures feel consistent with Material buttons and cards.
+class BirdPressable extends StatefulWidget {
+  const BirdPressable({
+    super.key,
+    required this.child,
+    required this.onTap,
+    this.borderRadius = BorderRadius.zero,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final BorderRadiusGeometry borderRadius;
+
+  @override
+  State<BirdPressable> createState() => _BirdPressableState();
+}
+
+class _BirdPressableState extends State<BirdPressable> {
+  var _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value || !mounted) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onTap != null;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        onTapDown: enabled ? (_) => _setPressed(true) : null,
+        onTapUp: enabled ? (_) => _setPressed(false) : null,
+        onTapCancel: enabled ? () => _setPressed(false) : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 90),
+          curve: Curves.easeOut,
+          foregroundDecoration: BoxDecoration(
+            color: _pressed ? Colors.black.withValues(alpha: .14) : Colors.transparent,
+            borderRadius: widget.borderRadius,
+          ),
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
 enum BirdButtonVariant { filled, outlined, tonal }
 
 class BirdButton extends StatelessWidget {
