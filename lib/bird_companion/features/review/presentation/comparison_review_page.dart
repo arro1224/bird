@@ -7,6 +7,7 @@ import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/features/review/presentation/comparison_review_cubit.dart';
+import 'package:aves/bird_companion/features/review/presentation/widgets/comparison_review_actions.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/comparison_photo_pane.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -47,7 +48,7 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
           context: context,
           builder: (_) => const AlertDialog(
             title: Text('如何对比？'),
-            content: Text('点击左右照片选中目标，可保留任意一张，或将当前选中照片设为精选。'),
+            content: Text('点击左右照片选中目标，可保留任意一张或同时保留两张。精选只作用于当前选中照片，不会取消另一张已有的保留状态。'),
           ),
         ),
       ),
@@ -60,7 +61,8 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
             if (state.loading) return const Center(child: CircularProgressIndicator());
             if (state.error != null && state.items.isEmpty) return Center(child: Text('无法加载对比照片：${state.error}'));
             if (state.items.length < 2) return const Center(child: Text('对比至少需要两张照片'));
-            final retainedIndex = _singleRetainedIndex(state.items, _selectedIndex);
+            final leftRetained = _decisionState(state.items[0]).isRetained;
+            final rightRetained = _decisionState(state.items[1]).isRetained;
             return SafeArea(
               top: false,
               child: LayoutBuilder(
@@ -90,7 +92,7 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
                                     detail: state.items[index],
                                     rank: index,
                                     selected: _selectedIndex == index,
-                                    saving: state.savingId == state.items[index].photo.summary.id,
+                                    saving: state.savingBoth || state.savingId == state.items[index].photo.summary.id,
                                     transformationController: _syncZoom ? _transform : null,
                                     onTap: () => setState(() => _selectedIndex = index),
                                   ),
@@ -102,38 +104,15 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(14, 16, 14, 20),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _ComparisonActionButton(
-                                    label: '保留左图',
-                                    selected: retainedIndex == 0,
-                                    onPressed: state.savingId == null ? () => _mark(context, state, 0, KeepState.keep) : null,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: _ComparisonActionButton(
-                                    label: '保留右图',
-                                    selected: retainedIndex == 1,
-                                    onPressed: state.savingId == null ? () => _mark(context, state, 1, KeepState.keep) : null,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: double.infinity,
-                              child: _ComparisonActionButton(
-                                label: '将选中照片设为精选',
-                                selected: _decisionState(state.items[_selectedIndex]) == KeepState.featured,
-                                featured: true,
-                                onPressed: state.savingId == null ? () => _mark(context, state, _selectedIndex, KeepState.featured) : null,
-                              ),
-                            ),
-                          ],
+                        child: ComparisonReviewActions(
+                          leftRetained: leftRetained,
+                          rightRetained: rightRetained,
+                          selectedFeatured: _decisionState(state.items[_selectedIndex]) == KeepState.featured,
+                          busy: state.saving,
+                          onKeepLeft: () => _mark(context, state, 0, KeepState.keep),
+                          onKeepRight: () => _mark(context, state, 1, KeepState.keep),
+                          onKeepBoth: () => context.read<ComparisonReviewCubit>().keepBoth(),
+                          onFeatureSelected: () => _mark(context, state, _selectedIndex, KeepState.featured),
                         ),
                       ),
                     ],
@@ -148,7 +127,7 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
   );
 
   void _mark(BuildContext context, ComparisonReviewState state, int index, KeepState value) {
-    if (state.savingId != null || index >= state.items.length) return;
+    if (state.saving || index >= state.items.length) return;
     if (value.isRetained && _selectedIndex != index) {
       setState(() => _selectedIndex = index);
     }
@@ -163,38 +142,4 @@ String _displayGroupName(String? value) {
   return '第 ${int.parse(match.group(1)!)} 组连拍照片';
 }
 
-class _ComparisonActionButton extends StatelessWidget {
-  const _ComparisonActionButton({required this.label, required this.selected, required this.onPressed, this.featured = false});
-
-  final String label;
-  final bool selected;
-  final bool featured;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = featured ? AppColors.amber : AppColors.brand;
-    return OutlinedButton.icon(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: selected ? Colors.white : color,
-        backgroundColor: selected ? color : Colors.transparent,
-        side: BorderSide(color: selected ? color : AppColors.outline),
-      ),
-      icon: Icon(featured ? Icons.star_outline_rounded : Icons.check_circle_outline),
-      label: Text(selected ? (featured ? '已设为精选' : '$label（已选）') : label),
-    );
-  }
-}
-
 KeepState _decisionState(ReviewDetail detail) => detail.decision?.keepState ?? KeepStateWireValue.fromWire(detail.photo.summary.keepState);
-
-int? _singleRetainedIndex(List<ReviewDetail> items, int preferredIndex) {
-  final featuredIndex = items.indexWhere((item) => _decisionState(item) == KeepState.featured);
-  if (featuredIndex >= 0) return featuredIndex;
-  if (preferredIndex < items.length && _decisionState(items[preferredIndex]).isRetained) {
-    return preferredIndex;
-  }
-  final retainedIndex = items.indexWhere((item) => _decisionState(item).isRetained);
-  return retainedIndex < 0 ? null : retainedIndex;
-}

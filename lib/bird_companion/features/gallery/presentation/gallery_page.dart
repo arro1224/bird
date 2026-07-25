@@ -17,6 +17,7 @@ import 'package:aves/bird_companion/features/device/presentation/widgets/device_
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_cubit.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/selection_cubit.dart';
+import 'package:aves/bird_companion/features/gallery/presentation/widgets/active_filter_summary.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/filter_sheet.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/album_add_device_button.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/gallery_search_dialog.dart';
@@ -292,16 +293,11 @@ class _GalleryView extends StatelessWidget {
                               SliverToBoxAdapter(
                                 child: Padding(
                                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-                                  child: Wrap(
-                                    spacing: 6,
-                                    runSpacing: 4,
-                                    children: [
-                                      ...state.query.activeLabels.map((label) => Chip(label: Text(label))),
-                                      TextButton(
-                                        onPressed: () => context.read<GalleryCubit>().refresh(query: const PhotoQuery()),
-                                        child: const Text('清除'),
-                                      ),
-                                    ],
+                                  child: ActiveFilterSummary(
+                                    labels: state.query.activeLabels,
+                                    onClear: () => context.read<GalleryCubit>().refresh(
+                                      query: const PhotoQuery(),
+                                    ),
                                   ),
                                 ),
                               ),
