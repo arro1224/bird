@@ -14,6 +14,16 @@ import 'package:aves/bird_companion/features/review/presentation/comparison_revi
 import 'package:aves/bird_companion/features/review/presentation/group_review_page.dart';
 import 'package:aves/bird_companion/features/review/presentation/photo_detail_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/diagnostics_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/bird_settings_controller.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/copy_backup_settings_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/device_details_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/device_management_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/display_settings_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/help_center_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/network_diagnostics_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/photo_settings_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/storage_target_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
 import 'package:flutter/material.dart';
 
 abstract final class BirdRoutes {
@@ -30,6 +40,15 @@ abstract final class BirdRoutes {
   static const batches = '/batches';
   static const diagnostics = '/diagnostics';
   static const deviceStatus = '/device-status';
+  static const settingsDeviceManagement = '/settings/device-management';
+  static const settingsDeviceDetails = '/settings/device-details';
+  static const settingsDisplay = '/settings/display';
+  static const settingsPhotos = '/settings/photos';
+  static const settingsCopyBackup = '/settings/copy-backup';
+  static const settingsStorageTarget = '/settings/storage-target';
+  static const settingsNetworkDiagnostics = '/settings/network-diagnostics';
+  static const settingsSystemLogs = '/settings/system-logs';
+  static const settingsHelp = '/settings/help';
 }
 
 abstract final class BirdAppRouter {
@@ -115,6 +134,43 @@ abstract final class BirdAppRouter {
         page = const DiagnosticsPage();
       case BirdRoutes.deviceStatus:
         page = const DeviceStatusPage();
+      case BirdRoutes.settingsDeviceManagement:
+        page = _SettingsControllerRoute(
+          builder: (context, controller) => DeviceManagementPage(
+            controller: controller,
+            onOpenDetails: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => DeviceDetailsPage(controller: controller),
+              ),
+            ),
+          ),
+        );
+      case BirdRoutes.settingsDeviceDetails:
+        page = _SettingsControllerRoute(
+          builder: (_, controller) => DeviceDetailsPage(controller: controller),
+        );
+      case BirdRoutes.settingsDisplay:
+        page = _SettingsControllerRoute(
+          builder: (_, controller) => DisplaySettingsPage(controller: controller),
+        );
+      case BirdRoutes.settingsPhotos:
+        page = _SettingsControllerRoute(
+          builder: (_, controller) => PhotoSettingsPage(controller: controller),
+        );
+      case BirdRoutes.settingsCopyBackup:
+        page = _SettingsControllerRoute(
+          builder: (_, controller) => CopyBackupSettingsPage(controller: controller),
+        );
+      case BirdRoutes.settingsStorageTarget:
+        page = _SettingsControllerRoute(
+          builder: (_, controller) => StorageTargetPage(controller: controller),
+        );
+      case BirdRoutes.settingsNetworkDiagnostics:
+        page = const NetworkDiagnosticsPage();
+      case BirdRoutes.settingsSystemLogs:
+        page = const SystemLogsPage();
+      case BirdRoutes.settingsHelp:
+        page = const HelpCenterPage();
       default:
         page = _invalid('页面不存在', '请返回拍鸟伴侣首页后重新选择功能');
     }
@@ -152,6 +208,34 @@ abstract final class BirdAppRouter {
   );
 
   static Widget _invalid(String title, String message) => _RouteErrorPage(title: title, message: message);
+}
+
+typedef _SettingsPageBuilder =
+    Widget Function(
+      BuildContext context,
+      BirdSettingsController controller,
+    );
+
+class _SettingsControllerRoute extends StatefulWidget {
+  const _SettingsControllerRoute({required this.builder});
+
+  final _SettingsPageBuilder builder;
+
+  @override
+  State<_SettingsControllerRoute> createState() => _SettingsControllerRouteState();
+}
+
+class _SettingsControllerRouteState extends State<_SettingsControllerRoute> {
+  final BirdSettingsController _controller = BirdSettingsController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _controller);
 }
 
 class _RouteErrorPage extends StatelessWidget {
