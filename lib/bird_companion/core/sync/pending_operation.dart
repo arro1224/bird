@@ -29,7 +29,12 @@ class PendingOperation extends Equatable {
   final PendingOperationStatus status;
   final String? failureReason;
 
-  PendingOperation copyWith({int? retryCount, PendingOperationStatus? status, String? failureReason}) => PendingOperation(
+  PendingOperation copyWith({
+    int? retryCount,
+    PendingOperationStatus? status,
+    String? failureReason,
+    bool clearFailureReason = false,
+  }) => PendingOperation(
     id: id,
     type: type,
     payload: payload,
@@ -39,7 +44,7 @@ class PendingOperation extends Equatable {
     source: source,
     deviceId: deviceId,
     status: status ?? this.status,
-    failureReason: failureReason ?? this.failureReason,
+    failureReason: clearFailureReason ? null : failureReason ?? this.failureReason,
   );
 
   Map<String, dynamic> toJson() => {

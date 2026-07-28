@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/app_shell.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/tag_input.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
+import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/core/widgets/page_back_button.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
@@ -21,10 +25,13 @@ import 'package:aves/bird_companion/features/gallery/presentation/widgets/active
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/filter_sheet.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/album_add_device_button.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/gallery_search_dialog.dart';
+import 'package:aves/bird_companion/features/gallery/presentation/widgets/photo_masonry_grid.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/photo_tile.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/selection_action_bar.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/sort_sheet.dart';
+import 'package:aves/bird_companion/features/review/domain/review_checkpoint.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class GalleryPage extends StatelessWidget {
@@ -38,6 +45,7 @@ class GalleryPage extends StatelessWidget {
     this.keepCount,
     this.discardCount,
     this.initialQuery = const PhotoQuery(),
+    this.restoreSavedView = true,
     this.rootMode = false,
     this.reviewContext,
   });
@@ -49,6 +57,7 @@ class GalleryPage extends StatelessWidget {
   final int? keepCount;
   final int? discardCount;
   final PhotoQuery initialQuery;
+  final bool restoreSavedView;
   final bool rootMode;
   final ReviewContext? reviewContext;
 
@@ -56,15 +65,20 @@ class GalleryPage extends StatelessWidget {
   Widget build(BuildContext context) => MultiBlocProvider(
     providers: [
       BlocProvider(
-        create: (_) => GalleryCubit(
-          BirdCompanionScope.of(context).photoRepository,
-          batchId,
-          BirdCompanionScope.of(context).refreshCoordinator,
-          BirdCompanionScope.of(context).dataChangeBus,
-          BirdCompanionScope.of(context).cache,
-          BirdCompanionScope.of(context).pendingOperationStore,
-          () => BirdCompanionScope.of(context).deviceSessionCubit.state.device?.id,
-        )..restoreAndRefresh(initialQuery),
+        create: (_) =>
+            GalleryCubit(
+              BirdCompanionScope.of(context).photoRepository,
+              batchId,
+              BirdCompanionScope.of(context).refreshCoordinator,
+              BirdCompanionScope.of(context).dataChangeBus,
+              BirdCompanionScope.of(context).cache,
+              BirdCompanionScope.of(context).pendingOperationStore,
+              () => BirdCompanionScope.of(context).deviceSessionCubit.state.device?.id,
+              BirdCompanionScope.of(context).reviewCheckpointStore,
+            )..restoreAndRefresh(
+              initialQuery,
+              restoreSavedView: restoreSavedView,
+            ),
       ),
       BlocProvider(create: (_) => SelectionCubit()),
       if (rootMode)
@@ -262,6 +276,20 @@ class _GalleryView extends StatelessWidget {
           body: BlocBuilder<GalleryCubit, GalleryState>(
             builder: (context, state) {
               if (state.loading && state.items.isEmpty) return const Center(child: CircularProgressIndicator());
+              if (state.error != null && state.items.isEmpty) {
+                final message = UserMessageMapper.fromError(state.error!);
+                return NaturalBackdrop(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      child: ErrorNotice(
+                        title: '暂时无法加载照片',
+                        message: message.message,
+                        onRetry: () => context.read<GalleryCubit>().refresh(),
+                      ),
+                    ),
+                  ),
+                );
+              }
               return NaturalBackdrop(
                 child: Stack(
                   children: [
@@ -269,10 +297,15 @@ class _GalleryView extends StatelessWidget {
                       onRefresh: () => context.read<GalleryCubit>().refresh(),
                       child: NotificationListener<ScrollNotification>(
                         onNotification: (notification) {
-                          if (notification.metrics.extentAfter < 360) context.read<GalleryCubit>().loadMore();
+                          final prefetchDistance = MediaQuery.sizeOf(context).height * .75;
+                          if (state.error == null && notification.metrics.extentAfter < prefetchDistance) {
+                            context.read<GalleryCubit>().loadMore();
+                          }
                           return false;
                         },
                         child: CustomScrollView(
+                          key: PageStorageKey<String>('photo-gallery-scroll-$batchId'),
+                          scrollCacheExtent: const ScrollCacheExtent.viewport(.75),
                           physics: const AlwaysScrollableScrollPhysics(),
                           slivers: [
                             SliverToBoxAdapter(
@@ -309,54 +342,79 @@ class _GalleryView extends StatelessWidget {
                             else
                               SliverPadding(
                                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
-                                sliver: SliverGrid(
-                                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 3,
-                                    crossAxisSpacing: 6,
-                                    mainAxisSpacing: 6,
-                                    childAspectRatio: rootMode ? .79 : 1,
-                                  ),
-                                  delegate: SliverChildBuilderDelegate(
-                                    (context, index) {
-                                      if (index >= state.items.length) return Center(child: state.loading ? const CircularProgressIndicator() : const SizedBox.shrink());
-                                      final photo = state.items[index];
-                                      return _SelectablePhotoTile(
-                                        photo: photo,
-                                        compact: rootMode,
-                                        onTap: () {
-                                          final selection = context.read<SelectionCubit>();
-                                          if (selection.state.ids.isEmpty) {
-                                            final gallery = context.read<GalleryCubit>();
-                                            final photoIds = state.items.map((item) => item.id).toList(growable: false);
-                                            final photoContext = _reviewContext.openPhotos(
-                                              photoIds,
-                                              initialIndex: index,
-                                            );
-                                            Navigator.of(context).pushNamed(
-                                              BirdRoutes.photoDetail,
-                                              arguments: PhotoDetailArgs.fromReview(
-                                                photoContext,
-                                                fileId: photo.id,
-                                                totalCount: totalCount,
-                                                hasMoreSequence: state.hasMore,
-                                                loadMoreSequence: () async {
-                                                  await gallery.loadMore();
-                                                  final current = gallery.state;
-                                                  return PhotoSequencePage(
-                                                    ids: current.items.map((item) => item.id).toList(growable: false),
-                                                    hasMore: current.hasMore,
-                                                  );
-                                                },
+                                sliver: PhotoMasonryGrid(
+                                  photos: state.items,
+                                  itemBuilder: (context, photo, index) => _SelectablePhotoTile(
+                                    photo: photo,
+                                    compact: rootMode,
+                                    onTap: () {
+                                      final selection = context.read<SelectionCubit>();
+                                      if (selection.state.ids.isEmpty) {
+                                        final gallery = context.read<GalleryCubit>();
+                                        final photoIds = state.items.map((item) => item.id).toList(growable: false);
+                                        final photoContext = _reviewContext.openPhotos(
+                                          photoIds,
+                                          initialIndex: index,
+                                        );
+                                        final dependencies = BirdCompanionScope.of(context);
+                                        final deviceId = dependencies.deviceSessionCubit.state.device?.id.trim();
+                                        if (deviceId?.isNotEmpty == true) {
+                                          unawaited(
+                                            dependencies.reviewCheckpointStore.save(
+                                              ReviewCheckpoint.fromContext(
+                                                deviceId: deviceId!,
+                                                context: photoContext,
+                                                query: state.query,
                                               ),
-                                            );
-                                          } else {
-                                            selection.toggle(photo.id);
-                                          }
-                                        },
-                                        onLongPress: () => context.read<SelectionCubit>().toggle(photo.id),
-                                      );
+                                            ),
+                                          );
+                                        }
+                                        Navigator.of(context).pushNamed(
+                                          BirdRoutes.photoDetail,
+                                          arguments: PhotoDetailArgs.fromReview(
+                                            photoContext,
+                                            fileId: photo.id,
+                                            totalCount: totalCount,
+                                            hasMoreSequence: state.hasMore,
+                                            loadMoreSequence: () async {
+                                              await gallery.loadMore();
+                                              final current = gallery.state;
+                                              return PhotoSequencePage(
+                                                ids: current.items.map((item) => item.id).toList(growable: false),
+                                                hasMore: current.hasMore,
+                                              );
+                                            },
+                                          ),
+                                        );
+                                      } else {
+                                        selection.toggle(photo.id);
+                                      }
                                     },
-                                    childCount: state.items.length + (state.loading || state.hasMore ? 1 : 0),
+                                    onLongPress: () => context.read<SelectionCubit>().toggle(photo.id),
+                                  ),
+                                ),
+                              ),
+                            if (state.items.isNotEmpty && (state.loading || state.hasMore || state.error != null))
+                              SliverToBoxAdapter(
+                                child: SizedBox(
+                                  height: state.error == null ? 52 : 68,
+                                  child: Center(
+                                    child: state.loading
+                                        ? const SizedBox.square(
+                                            dimension: 22,
+                                            child: CircularProgressIndicator(strokeWidth: 2.4),
+                                          )
+                                        : state.error != null
+                                        ? OutlinedButton.icon(
+                                            onPressed: () => context.read<GalleryCubit>().loadMore(),
+                                            icon: const Icon(
+                                              Icons.refresh_rounded,
+                                            ),
+                                            label: const Text(
+                                              '加载更多失败，点击重试',
+                                            ),
+                                          )
+                                        : const SizedBox.shrink(),
                                   ),
                                 ),
                               ),
@@ -782,16 +840,21 @@ class _AlbumBatchHeading extends StatelessWidget {
                 fontSize: 14,
               ),
             ),
-            const Spacer(),
-            _AlbumReviewPath(
-              onBatch: () => Navigator.of(context).pushNamed(BirdRoutes.batches),
-              onScene: () => Navigator.of(context).pushNamed(
-                BirdRoutes.scenes,
-                arguments: SceneListArgs(
-                  batchId,
-                  batchName: batchName,
-                  totalCount: totalCount,
-                  reviewContext: reviewContext,
+            const SizedBox(width: 12),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: _AlbumReviewPath(
+                  onBatch: () => Navigator.of(context).pushNamed(BirdRoutes.batches),
+                  onScene: () => Navigator.of(context).pushNamed(
+                    BirdRoutes.scenes,
+                    arguments: SceneListArgs(
+                      batchId,
+                      batchName: batchName,
+                      totalCount: totalCount,
+                      reviewContext: reviewContext,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -850,14 +913,19 @@ class _AlbumPathButton extends StatelessWidget {
   Widget build(BuildContext context) => InkWell(
     onTap: onTap,
     borderRadius: BorderRadius.circular(8),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 8),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.inkMuted,
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: Center(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.inkMuted,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ),
       ),
     ),
@@ -1034,8 +1102,8 @@ class _QuickFilters extends StatelessWidget {
               child: ChoiceChip(
                 selected: active,
                 showCheckmark: false,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: const VisualDensity(horizontal: -1, vertical: -2),
+                materialTapTargetSize: MaterialTapTargetSize.padded,
+                visualDensity: VisualDensity.standard,
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
                 labelStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: active ? AppColors.cream : AppColors.ink,
@@ -1050,8 +1118,8 @@ class _QuickFilters extends StatelessWidget {
             );
           }),
           ActionChip(
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            visualDensity: const VisualDensity(horizontal: -1, vertical: -2),
+            materialTapTargetSize: MaterialTapTargetSize.padded,
+            visualDensity: VisualDensity.standard,
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
             avatar: const Icon(Icons.tune_rounded, size: 18),
             label: const Text('筛选'),
@@ -1200,28 +1268,28 @@ Future<void> _requestBatchAction(
 }
 
 Future<void> _showTagDialog(BuildContext context, String batchId, List<String> ids, {required bool remove}) async {
-  final controller = TextEditingController();
+  var draft = '';
   final tags = await showDialog<List<String>>(
     context: context,
     builder: (dialogContext) => AlertDialog(
       title: Text(remove ? '批量删除标签' : '批量添加标签'),
       content: TextField(
-        controller: controller,
         decoration: const InputDecoration(hintText: '例如：水鸟, 晨拍'),
+        onChanged: (value) => draft = value,
+        onSubmitted: (value) => Navigator.pop(dialogContext, parseUserTags(value)),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
         FilledButton(
           onPressed: () => Navigator.pop(
             dialogContext,
-            parseUserTags(controller.text),
+            parseUserTags(draft),
           ),
           child: const Text('应用'),
         ),
       ],
     ),
   );
-  controller.dispose();
   if (tags == null || tags.isEmpty || !context.mounted) return;
   final selection = context.read<SelectionCubit>();
   selection.begin();

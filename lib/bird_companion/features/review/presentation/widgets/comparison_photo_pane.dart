@@ -31,6 +31,7 @@ class ComparisonPhotoPane extends StatelessWidget {
     final photo = detail.photo.summary;
     final url = photo.preview.previewUri?.toString();
     final reasons = photo.rating?.reasonTags ?? const <String>[];
+    final currentScore = detail.decision?.userScore ?? photo.rating?.totalScore;
     return BirdPressable(
       borderRadius: BorderRadius.circular(18),
       onTap: onTap,
@@ -107,7 +108,7 @@ class ComparisonPhotoPane extends StatelessWidget {
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final score = Text(
-                      photo.rating?.totalScore.toStringAsFixed(1) ?? '—',
+                      currentScore?.toStringAsFixed(1) ?? '—',
                       style: TextStyle(fontSize: constraints.maxWidth < 110 ? 26 : 32, fontWeight: FontWeight.w900, color: selected ? AppColors.brand : AppColors.inkMuted),
                     );
                     if (constraints.maxWidth < 110) return score;

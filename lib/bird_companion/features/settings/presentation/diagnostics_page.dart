@@ -1,4 +1,6 @@
 import 'package:aves/bird_companion/app/app_dependencies.dart';
+import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/core/network/event_client.dart';
@@ -30,12 +32,17 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
   Future<void> _run() async {
     final dependencies = BirdCompanionScope.of(context);
     final session = dependencies.deviceSessionCubit.state;
+    final pending = _pendingForActiveDevice(dependencies);
     setState(() {
       _checkingApi = true;
       _results = [
         DiagnosticResult(label: '盒子连接', passed: session.isConnected, detail: session.isConnected ? '已连接' : '尚未连接设备'),
         const DiagnosticResult(label: '状态更新', passed: false, detail: '正在检查盒子的状态更新…'),
-        DiagnosticResult(label: '尚未传回盒子的修改', passed: true, detail: '${dependencies.pendingOperationStore.readAll().length} 项'),
+        DiagnosticResult(
+          label: '尚未传回盒子的修改',
+          passed: pending.isEmpty,
+          detail: '${pending.length} 项',
+        ),
       ];
     });
     final eventState = dependencies.eventClient.currentState;
@@ -71,9 +78,46 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
     final result = await dependencies.birdSyncService.synchronize();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已更新 ${result.syncedCount} 项，${result.failedOperations.length} 项仍需处理')),
+      SnackBar(
+        content: Text(
+          '已更新 ${result.syncedCount} 项，${result.remainingOperations.length} 项仍需处理',
+        ),
+      ),
     );
     await _run();
+  }
+
+  List<PendingOperation> _pendingForActiveDevice(
+    BirdCompanionDependencies dependencies,
+  ) {
+    final deviceId = dependencies.deviceSessionCubit.state.device?.id.trim();
+    if (deviceId == null || deviceId.isEmpty) return const [];
+    return dependencies.pendingOperationStore.readAll().where((operation) => operation.deviceId == deviceId).toList(growable: false);
+  }
+
+  Future<void> _acceptRemote(PendingOperation operation) async {
+    final accepted = await BirdCompanionScope.of(
+      context,
+    ).birdSyncService.acceptRemote(operation.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          accepted ? '已采用盒子中的版本，本机冲突操作已移除。' : '当前操作无法处理，请确认仍连接原来的盒子。',
+        ),
+      ),
+    );
+    await _run();
+  }
+
+  Future<void> _reviewConflict(PendingOperation operation) async {
+    final fileId = operation.payload['file_id']?.toString().trim();
+    if (fileId == null || fileId.isEmpty) return;
+    await Navigator.of(context).pushNamed(
+      BirdRoutes.photoDetail,
+      arguments: PhotoDetailArgs(fileId),
+    );
+    if (mounted) await _run();
   }
 
   String _operationLabel(PendingOperation operation) => switch (operation.type) {
@@ -85,7 +129,9 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final pending = BirdCompanionScope.of(context).pendingOperationStore.readAll();
+    final pending = _pendingForActiveDevice(
+      BirdCompanionScope.of(context),
+    );
     return Scaffold(
       backgroundColor: AppColors.brand,
       appBar: AppBar(
@@ -128,9 +174,13 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                         title: Text('尚未传回盒子的修改 ${pending.length} 项'),
                         subtitle: const Text('可以查看原因并重新尝试'),
                         children: [
-                          for (final operation in pending)
+                          for (final operation in pending) ...[
                             ListTile(
                               dense: true,
+                              leading: Icon(
+                                operation.status == PendingOperationStatus.conflict ? Icons.warning_amber_rounded : Icons.cloud_upload_outlined,
+                                color: operation.status == PendingOperationStatus.conflict ? AppColors.danger : AppColors.warning,
+                              ),
                               title: Text(_operationLabel(operation)),
                               subtitle: Text(
                                 operation.failureReason == null ? '${operation.status.name} · ${operation.createdAt.toLocal()}' : '已重试 ${operation.retryCount} 次：${operation.failureReason}',
@@ -138,6 +188,34 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            if (operation.status == PendingOperationStatus.conflict)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  10,
+                                ),
+                                child: Row(
+                                  children: [
+                                    if (operation.type == PendingOperationType.updateReview)
+                                      Expanded(
+                                        child: OutlinedButton(
+                                          onPressed: () => _reviewConflict(operation),
+                                          child: const Text('打开照片重新确认'),
+                                        ),
+                                      ),
+                                    if (operation.type == PendingOperationType.updateReview) const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextButton(
+                                        onPressed: () => _acceptRemote(operation),
+                                        child: const Text('采用盒子版本'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                             child: SizedBox(

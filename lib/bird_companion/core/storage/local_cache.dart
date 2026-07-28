@@ -33,5 +33,14 @@ class LocalCache {
 
   int estimateBytes() => _box.toMap().entries.fold(0, (sum, entry) => sum + utf8.encode('${entry.key}:${entry.value}').length);
 
+  int estimateBytesWithPrefix(String prefix) => _box
+      .toMap()
+      .entries
+      .where((entry) => entry.key.toString().startsWith(prefix))
+      .fold(
+        0,
+        (sum, entry) => sum + utf8.encode('${entry.key}:${entry.value}').length,
+      );
+
   Future<void> close() => _box.close();
 }

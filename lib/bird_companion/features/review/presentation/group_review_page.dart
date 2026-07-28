@@ -1,14 +1,22 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
+import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/widgets/bird_navigation.dart';
+import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
+import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/review/presentation/group_review_cubit.dart';
+import 'package:aves/bird_companion/features/review/data/review_checkpoint_store.dart';
+import 'package:aves/bird_companion/features/review/domain/review_checkpoint.dart';
+import 'package:aves/bird_companion/features/review/presentation/widgets/group_review_comparison_action.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -36,24 +44,36 @@ class GroupReviewPage extends StatelessWidget {
       );
 
   @override
-  Widget build(BuildContext context) => BlocProvider(
-    create: (_) => GroupReviewCubit(
-      BirdCompanionScope.of(context).reviewRepository,
-      BirdCompanionScope.of(context).refreshCoordinator,
-      BirdCompanionScope.of(context).dataChangeBus,
-    )..load(batchId, sceneId: sceneId),
-    child: _GroupReviewView(
-      sceneName: sceneName,
-      reviewContext: _reviewContext,
-    ),
-  );
+  Widget build(BuildContext context) {
+    final dependencies = BirdCompanionScope.of(context);
+    return BlocProvider(
+      create: (_) => GroupReviewCubit(
+        dependencies.reviewRepository,
+        dependencies.refreshCoordinator,
+        dependencies.dataChangeBus,
+      )..load(batchId, sceneId: sceneId),
+      child: _GroupReviewView(
+        sceneName: sceneName,
+        reviewContext: _reviewContext,
+        checkpointStore: dependencies.reviewCheckpointStore,
+        deviceId: dependencies.deviceSessionCubit.state.device?.id,
+      ),
+    );
+  }
 }
 
 class _GroupReviewView extends StatefulWidget {
-  const _GroupReviewView({this.sceneName, required this.reviewContext});
+  const _GroupReviewView({
+    this.sceneName,
+    required this.reviewContext,
+    required this.checkpointStore,
+    this.deviceId,
+  });
 
   final String? sceneName;
   final ReviewContext reviewContext;
+  final ReviewCheckpointStore checkpointStore;
+  final String? deviceId;
 
   @override
   State<_GroupReviewView> createState() => _GroupReviewViewState();
@@ -62,6 +82,7 @@ class _GroupReviewView extends StatefulWidget {
 class _GroupReviewViewState extends State<_GroupReviewView> {
   int _index = 0;
   int _selectedPhotoIndex = 0;
+  var _restoredInitialPosition = false;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -79,12 +100,30 @@ class _GroupReviewViewState extends State<_GroupReviewView> {
       ),
     ),
     body: BlocConsumer<GroupReviewCubit, GroupReviewState>(
-      listenWhen: (previous, current) => previous.message != current.message && current.message != null,
-      listener: (context, state) => BirdFeedback.success(context, state.message!),
+      listenWhen: (previous, current) => (previous.message != current.message && current.message != null) || (previous.error != current.error && current.error != null),
+      listener: (context, state) {
+        if (state.error != null) {
+          final message = UserMessageMapper.fromError(state.error!);
+          BirdFeedback.error(context, message.message);
+        } else if (state.message != null) {
+          BirdFeedback.success(context, state.message!);
+        }
+      },
       builder: (context, state) {
         if (state.loading && state.groups.isEmpty) return const Center(child: CircularProgressIndicator());
-        if (state.error != null && state.groups.isEmpty) return const Center(child: Text('暂时无法加载连拍照片，请稍后重试'));
+        if (state.error != null && state.groups.isEmpty) {
+          final message = UserMessageMapper.fromError(state.error!);
+          return ErrorNotice(
+            title: '暂时无法加载连拍照片',
+            message: message.message,
+            onRetry: () => context.read<GroupReviewCubit>().load(
+              widget.reviewContext.batchId,
+              sceneId: widget.reviewContext.sceneId,
+            ),
+          );
+        }
         if (state.groups.isEmpty) return const Center(child: Text('这次拍摄没有需要挑选的连拍照片'));
+        _restoreInitialPosition(state.groups);
         final index = _index.clamp(0, state.groups.length - 1);
         final group = state.groups[index];
         return NaturalBackdrop(
@@ -95,25 +134,90 @@ class _GroupReviewViewState extends State<_GroupReviewView> {
             total: state.groups.length,
             reviewContext: widget.reviewContext,
             selectedPhotoIndex: _selectedPhotoIndex,
-            onSelectPhoto: (value) => setState(() => _selectedPhotoIndex = value),
+            onSelectPhoto: (value) {
+              setState(() => _selectedPhotoIndex = value);
+              _saveCheckpoint(group, value);
+            },
             onPrevious: index == 0
                 ? null
-                : () => setState(() {
-                    _index = index - 1;
-                    _selectedPhotoIndex = 0;
-                  }),
+                : () {
+                    setState(() {
+                      _index = index - 1;
+                      _selectedPhotoIndex = 0;
+                    });
+                    _saveCheckpoint(state.groups[_index], 0);
+                  },
             onNext: index == state.groups.length - 1
                 ? null
-                : () => setState(() {
-                    _index = index + 1;
-                    _selectedPhotoIndex = 0;
-                  }),
+                : () {
+                    setState(() {
+                      _index = index + 1;
+                      _selectedPhotoIndex = 0;
+                    });
+                    _saveCheckpoint(state.groups[_index], 0);
+                  },
           ),
         );
       },
     ),
   );
+
+  void _restoreInitialPosition(List<BirdGroup> groups) {
+    if (_restoredInitialPosition) return;
+    final requestedGroupId = widget.reviewContext.groupId;
+    final requestedGroupIndex = requestedGroupId == null ? -1 : groups.indexWhere((group) => group.id == requestedGroupId);
+    _index = requestedGroupIndex < 0 ? 0 : requestedGroupIndex;
+    final ids = _orderedPhotoIds(groups[_index]);
+    final requestedPhotoId = widget.reviewContext.currentPhotoId;
+    final requestedPhotoIndex = requestedPhotoId == null ? -1 : ids.indexOf(requestedPhotoId);
+    _selectedPhotoIndex = requestedPhotoIndex >= 0
+        ? requestedPhotoIndex
+        : widget.reviewContext.currentIndex.clamp(
+            0,
+            ids.isEmpty ? 0 : ids.length - 1,
+          );
+    _restoredInitialPosition = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _saveCheckpoint(groups[_index], _selectedPhotoIndex);
+      }
+    });
+  }
+
+  void _saveCheckpoint(BirdGroup group, int photoIndex) {
+    final deviceId = widget.deviceId?.trim();
+    if (deviceId == null || deviceId.isEmpty) return;
+    final ids = _orderedPhotoIds(group);
+    final base = widget.reviewContext.sceneId == null && group.sceneId != null
+        ? ReviewContext(
+            batchId: widget.reviewContext.batchId,
+            batchName: widget.reviewContext.batchName,
+            sceneId: group.sceneId,
+          )
+        : widget.reviewContext;
+    final reviewContext = base.enterGroup(
+      group.id,
+      name: _displayGroupName(group.id),
+      photos: ids,
+      initialIndex: photoIndex,
+    );
+    final previous = widget.checkpointStore.read(
+      deviceId: deviceId,
+      batchId: reviewContext.batchId,
+    );
+    unawaited(
+      widget.checkpointStore.save(
+        ReviewCheckpoint.fromContext(
+          deviceId: deviceId,
+          context: reviewContext,
+          query: previous?.query ?? const PhotoQuery(),
+        ),
+      ),
+    );
+  }
 }
+
+List<String> _orderedPhotoIds(BirdGroup group) => group.rankOrder.isEmpty ? group.memberFileIds : group.rankOrder;
 
 class _GroupContent extends StatelessWidget {
   const _GroupContent({
@@ -237,7 +341,7 @@ class _GroupContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        OutlinedButton.icon(
+        GroupReviewComparisonAction(
           onPressed: rankedIds.length < 2
               ? null
               : () {
@@ -253,8 +357,6 @@ class _GroupContent extends StatelessWidget {
                     ),
                   );
                 },
-          icon: const Icon(Icons.compare_rounded),
-          label: const Text('对比最推荐的 2 张'),
         ),
         const SizedBox(height: 18),
         Row(

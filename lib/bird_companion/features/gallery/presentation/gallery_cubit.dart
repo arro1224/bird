@@ -8,7 +8,17 @@ import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dar
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
+import 'package:aves/bird_companion/features/review/data/review_checkpoint_store.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
+PhotoQuery resolveInitialPhotoQuery({
+  required PhotoQuery fallback,
+  required Map<dynamic, dynamic>? savedView,
+  required bool restoreSavedView,
+}) {
+  if (!restoreSavedView || savedView == null) return fallback;
+  return PhotoQuery.fromJson(Map<String, dynamic>.from(savedView));
+}
 
 class GalleryState {
   const GalleryState({
@@ -63,6 +73,7 @@ class GalleryCubit extends Cubit<GalleryState> {
     this._cache,
     this._pendingOperations,
     this._activeDeviceId,
+    this._checkpointStore,
   ]) : super(const GalleryState()) {
     _refreshSubscription = refreshCoordinator?.changes.listen((_) => refresh());
     _dataSubscription = dataChanges?.changes.where((change) => change.affects(AppDataResource.photos) || change.affects(AppDataResource.cache)).listen((_) => refresh());
@@ -72,14 +83,22 @@ class GalleryCubit extends Cubit<GalleryState> {
   final LocalCache? _cache;
   final PendingOperationStore? _pendingOperations;
   final String? Function()? _activeDeviceId;
+  final ReviewCheckpointStore? _checkpointStore;
   StreamSubscription<int>? _refreshSubscription;
   StreamSubscription<AppDataChange>? _dataSubscription;
   Timer? _searchDebounce;
   int _requestGeneration = 0;
 
-  Future<void> restoreAndRefresh(PhotoQuery fallback) async {
-    final raw = _cache?.read<Map>('album:view:$batchId');
-    final restored = raw == null ? fallback : PhotoQuery.fromJson(Map<String, dynamic>.from(raw));
+  Future<void> restoreAndRefresh(
+    PhotoQuery fallback, {
+    bool restoreSavedView = true,
+  }) async {
+    final raw = restoreSavedView ? _cache?.read<Map>('album:view:$batchId') : null;
+    final restored = resolveInitialPhotoQuery(
+      fallback: fallback,
+      savedView: raw,
+      restoreSavedView: restoreSavedView,
+    );
     await refresh(query: restored);
   }
 
@@ -105,7 +124,7 @@ class GalleryCubit extends Cubit<GalleryState> {
           loading: false,
           items: p.items,
           query: q.next(p.nextCursor),
-          hasMore: p.hasMore,
+          hasMore: p.hasMore && p.nextCursor != null,
           fromCache: p.fromCache,
           cachedAt: p.cachedAt,
           pendingOperationCount: operationCounts.pending,
@@ -113,6 +132,19 @@ class GalleryCubit extends Cubit<GalleryState> {
         ),
       );
       await _cache?.write('album:view:$batchId', q.toJson());
+      final deviceId = _activeDeviceId?.call()?.trim();
+      if (deviceId != null && deviceId.isNotEmpty) {
+        try {
+          await _checkpointStore?.updateQuery(
+            deviceId: deviceId,
+            batchId: batchId,
+            query: q,
+          );
+        } catch (_) {
+          // Query persistence is a resume aid and must not turn a successful
+          // gallery request into a visible load failure.
+        }
+      }
     } catch (e) {
       if (generation != _requestGeneration) return;
       emit(state.copyWith(loading: false, error: e));
@@ -122,23 +154,27 @@ class GalleryCubit extends Cubit<GalleryState> {
   Future<void> loadMore() async {
     if (state.loading || !state.hasMore) return;
     final generation = ++_requestGeneration;
+    final requestedCursor = state.query.cursor;
     emit(state.copyWith(loading: true));
     try {
       final p = await _repo.page(batchId, state.query);
       if (generation != _requestGeneration) return;
       final ids = state.items.map((item) => item.id).toSet();
       final merged = [...state.items, ...p.items.where((item) => ids.add(item.id))];
+      final cursorAdvanced = p.nextCursor != null && p.nextCursor != requestedCursor;
+      final hasMore = p.hasMore && cursorAdvanced;
       final operationCounts = _operationCounts();
       emit(
         state.copyWith(
           loading: false,
           query: state.query.next(p.nextCursor),
           items: merged,
-          hasMore: p.hasMore,
+          hasMore: hasMore,
           fromCache: p.fromCache,
           cachedAt: p.cachedAt,
           pendingOperationCount: operationCounts.pending,
           conflictOperationCount: operationCounts.conflict,
+          clearError: true,
         ),
       );
     } catch (e) {

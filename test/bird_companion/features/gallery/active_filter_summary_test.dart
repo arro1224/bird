@@ -31,12 +31,18 @@ void main() {
     final summary = find.byKey(const ValueKey('active-filter-summary'));
     expect(summary, findsOneWidget);
     expect(tester.getSize(summary).height, 48);
-    expect(find.text('筛选条件 · 已选 4 项'), findsOneWidget);
+    expect(
+      find.text('照片质量 ≥ 4.0 星 · 照片状态：待确认 · +2'),
+      findsOneWidget,
+    );
     for (final label in labels) {
       expect(find.text(label), findsNothing);
     }
 
-    await tester.tap(find.text('展开'));
+    await tester.tap(find.byKey(const ValueKey('active-filter-clear')));
+    expect(clearCount, 1);
+
+    await tester.tap(find.byKey(const ValueKey('active-filter-toggle')));
     await tester.pumpAndSettle();
 
     for (final label in labels) {
@@ -45,6 +51,6 @@ void main() {
     expect(tester.getSize(summary).height, greaterThan(48));
 
     await tester.tap(find.text('清除全部'));
-    expect(clearCount, 1);
+    expect(clearCount, 2);
   });
 }

@@ -1,5 +1,7 @@
+import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
+import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/features/review/presentation/photo_detail_cubit.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/rating_reason_panel.dart';
@@ -33,6 +35,23 @@ void main() {
       expect(cubit.state.detail?.decision?.userTags, ['湿地']);
       expect(cubit.state.detail?.photo.summary.keepState, 'keep');
       expect(cubit.state.saving, isFalse);
+    });
+
+    test('详情加载失败时保留异常对象而不是暴露原始异常文本', () async {
+      final repository = _FailingReviewRepository();
+      final cubit = PhotoDetailCubit(repository);
+      addTearDown(cubit.close);
+
+      await cubit.load('photo-1');
+
+      expect(cubit.state.loading, isFalse);
+      expect(cubit.state.detail, isNull);
+      expect(cubit.state.error, isA<ApiException>());
+      expect(cubit.state.message, isNull);
+
+      final message = UserMessageMapper.fromError(cubit.state.error!);
+      expect(message.title, '照片详情不可用');
+      expect(message.message, isNot(contains('Unknown mock endpoint')));
     });
 
     testWidgets('详细鸟种指标优先显示用户保存的结果', (tester) async {
@@ -121,6 +140,23 @@ class _StaleReviewRepository implements ReviewRepository {
 
   @override
   Future<ReviewDetail> detail(String fileId) async => staleDetail;
+
+  @override
+  Future<List<BirdGroup>> groups(String batchId, {String? sceneId}) async => const [];
+
+  @override
+  Future<ReviewSaveResult> save(UserDecision value) async => const ReviewSaveResult();
+}
+
+class _FailingReviewRepository implements ReviewRepository {
+  @override
+  Future<ReviewDetail> detail(String fileId) async {
+    throw const ApiException(
+      code: 'not_found',
+      statusCode: 404,
+      message: 'Unknown mock endpoint: /api/v1/files/photo-1',
+    );
+  }
 
   @override
   Future<List<BirdGroup>> groups(String batchId, {String? sceneId}) async => const [];

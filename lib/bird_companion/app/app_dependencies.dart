@@ -29,6 +29,7 @@ import 'package:aves/bird_companion/features/gallery/data/photo_api.dart';
 import 'package:aves/bird_companion/features/gallery/data/photo_repository_impl.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
 import 'package:aves/bird_companion/features/review/data/review_api.dart';
+import 'package:aves/bird_companion/features/review/data/review_checkpoint_store.dart';
 import 'package:aves/bird_companion/features/review/data/review_repository_impl.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
@@ -57,6 +58,7 @@ class BirdCompanionDependencies {
     required this.batchRepository,
     required this.photoRepository,
     required this.reviewRepository,
+    required this.reviewCheckpointStore,
     required this.copyRepository,
     required this.jobRepository,
     required this.deviceSessionCubit,
@@ -79,6 +81,7 @@ class BirdCompanionDependencies {
   final BatchRepository batchRepository;
   final PhotoRepository photoRepository;
   final ReviewRepository reviewRepository;
+  final ReviewCheckpointStore reviewCheckpointStore;
   final CopyRepository copyRepository;
   final JobRepository jobRepository;
   final DeviceSessionCubit deviceSessionCubit;
@@ -102,6 +105,7 @@ class BirdCompanionDependencies {
     final refreshCoordinator = SessionRefreshCoordinator();
     final dataChangeBus = AppDataChangeBus();
     late final DeviceSessionCubit deviceSessionCubit;
+    late final ReviewRepositoryImpl reviewRepository;
     String? activeDeviceId() {
       final id = deviceSessionCubit.state.device?.id.trim();
       return id == null || id.isEmpty ? null : id;
@@ -115,6 +119,7 @@ class BirdCompanionDependencies {
       apiClient,
       dataChangeBus,
       activeDeviceId,
+      (fileId) => reviewRepository.acceptRemoteDecision(fileId),
     );
     deviceSessionCubit = DeviceSessionCubit(
       connectionRepository,
@@ -124,6 +129,14 @@ class BirdCompanionDependencies {
       onConnectionRecovered: () async {
         await birdSyncService.synchronize();
       },
+    );
+    reviewRepository = ReviewRepositoryImpl(
+      ReviewApi(apiClient),
+      connectivityMonitor,
+      pendingOperationStore,
+      cache,
+      activeDeviceNamespace,
+      activeDeviceId,
     );
     final dependencies = BirdCompanionDependencies._(
       apiClient: apiClient,
@@ -144,14 +157,8 @@ class BirdCompanionDependencies {
         activeDeviceNamespace,
         activeDeviceId,
       ),
-      reviewRepository: ReviewRepositoryImpl(
-        ReviewApi(apiClient),
-        connectivityMonitor,
-        pendingOperationStore,
-        cache,
-        activeDeviceNamespace,
-        activeDeviceId,
-      ),
+      reviewRepository: reviewRepository,
+      reviewCheckpointStore: ReviewCheckpointStore(cache),
       copyRepository: CopyRepositoryImpl(CopyApi(apiClient)),
       jobRepository: JobRepositoryImpl(JobApi(apiClient)),
       deviceSessionCubit: deviceSessionCubit,

@@ -45,9 +45,24 @@ abstract final class UserMessageMapper {
         'storage_insufficient' => const UserMessage(title: '目标空间不足', message: '请更换目标盘或减少复制范围。'),
         'device_overheated' => const UserMessage(title: '盒子温度较高', message: '请等待降温，必要时暂停当前任务。'),
         'battery_low' => const UserMessage(title: '电量不足', message: '请连接电源后再继续执行高负载任务。'),
+        _ when error.statusCode == 404 => const UserMessage(
+          title: '照片详情不可用',
+          message: '盒子没有提供这张照片的详情。照片可能已被删除，或当前盒子服务版本不支持详情接口。',
+          actionLabel: '重试',
+        ),
+        _ when error.statusCode == 409 => const UserMessage(
+          title: '照片已在其他位置修改',
+          message: '请重新加载盒子中的最新结果，再决定是否重新应用本次修改。',
+          actionLabel: '重新加载',
+        ),
+        _ when error.statusCode != null && error.statusCode! >= 500 => const UserMessage(
+          title: '盒子服务暂不可用',
+          message: '盒子暂时无法完成本次操作，请稍后重试。',
+          actionLabel: '重试',
+        ),
         _ => UserMessage(
           title: error.statusCode == 401 || error.statusCode == 403 ? '盒子拒绝连接' : '操作未完成',
-          message: error.statusCode == 401 || error.statusCode == 403 ? '当前设备尚未完成配对或授权，请重新配对后连接。' : error.message,
+          message: error.statusCode == 401 || error.statusCode == 403 ? '当前设备尚未完成配对或授权，请重新配对后连接。' : '盒子没有完成本次请求，请检查连接后重试。',
           actionLabel: '重试',
         ),
       };

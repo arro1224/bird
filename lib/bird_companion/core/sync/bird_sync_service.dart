@@ -17,12 +17,14 @@ class BirdSyncService {
     this._client, [
     this._dataChanges,
     String? Function()? deviceId,
+    this._acceptRemoteReview,
   ]) : _deviceId = deviceId ?? (() => null);
   final ConnectivityMonitor _connectivity;
   final SyncCoordinator _coordinator;
   final ApiClient _client;
   final AppDataChangeBus? _dataChanges;
   final String? Function() _deviceId;
+  final Future<void> Function(String fileId)? _acceptRemoteReview;
   StreamSubscription<bool>? _subscription;
 
   void start() {
@@ -32,7 +34,10 @@ class BirdSyncService {
   Future<SyncResult> synchronize() async {
     final activeDeviceId = _deviceId()?.trim();
     if (activeDeviceId == null || activeDeviceId.isEmpty || _client.baseUri == null) {
-      return const SyncResult(syncedCount: 0, failedOperations: []);
+      return const SyncResult(
+        syncedCount: 0,
+        failedOperations: [],
+      );
     }
     final result = await _coordinator.synchronize((operation) async {
       switch (operation.type) {
@@ -52,13 +57,35 @@ class BirdSyncService {
           throw StateError('任务控制与复制创建不支持离线重放。');
       }
     }, canSynchronize: (operation) => operation.deviceId == activeDeviceId);
-    if (result.syncedCount > 0) {
+    if (result.syncedCount > 0 || result.failedOperations.isNotEmpty) {
       _dataChanges?.publish(
         {AppDataResource.photos, AppDataResource.batches, AppDataResource.sync},
         reason: 'offline_changes_synced',
       );
     }
     return result;
+  }
+
+  Future<bool> acceptRemote(String operationId) async {
+    final activeDeviceId = _deviceId()?.trim();
+    final operation = _coordinator.operation(operationId);
+    if (operation == null || operation.status != PendingOperationStatus.conflict || activeDeviceId == null || activeDeviceId.isEmpty || operation.deviceId != activeDeviceId) {
+      return false;
+    }
+    final fileId = operation.payload['file_id']?.toString().trim();
+    if (operation.type == PendingOperationType.updateReview && fileId != null && fileId.isNotEmpty && _acceptRemoteReview != null) {
+      try {
+        await _acceptRemoteReview(fileId);
+      } catch (_) {
+        return false;
+      }
+    }
+    await _coordinator.remove(operationId);
+    _dataChanges?.publish(
+      {AppDataResource.photos, AppDataResource.batches, AppDataResource.sync},
+      reason: 'offline_conflict_remote_accepted',
+    );
+    return true;
   }
 
   Future<void> dispose() async => _subscription?.cancel();

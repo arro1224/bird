@@ -20,7 +20,7 @@ dependencies:
   flutter_bloc: ^9.1.1
   flutter_cache_manager:
   hive_flutter: ^1.1.0
-  mobile_scanner: ^7.0.0
+  mobile_scanner: ^7.4.0
   multicast_dns: ^0.3.2+7
   package_info_plus:
   path_provider: ^2.1.5

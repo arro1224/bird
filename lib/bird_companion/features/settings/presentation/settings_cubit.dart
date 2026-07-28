@@ -6,16 +6,30 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsState {
-  const SettingsState({this.loading = false, this.cacheBytes = 0, this.appVersion = '读取中', this.message = ''});
+  const SettingsState({
+    this.loading = false,
+    this.imageCacheBytes = 0,
+    this.albumCacheBytes = 0,
+    this.appVersion = '读取中',
+    this.message = '',
+  });
 
   final bool loading;
-  final int cacheBytes;
+  final int imageCacheBytes;
+  final int albumCacheBytes;
   final String appVersion;
   final String message;
 
-  SettingsState copyWith({bool? loading, int? cacheBytes, String? appVersion, String? message}) => SettingsState(
+  SettingsState copyWith({
+    bool? loading,
+    int? imageCacheBytes,
+    int? albumCacheBytes,
+    String? appVersion,
+    String? message,
+  }) => SettingsState(
     loading: loading ?? this.loading,
-    cacheBytes: cacheBytes ?? this.cacheBytes,
+    imageCacheBytes: imageCacheBytes ?? this.imageCacheBytes,
+    albumCacheBytes: albumCacheBytes ?? this.albumCacheBytes,
     appVersion: appVersion ?? this.appVersion,
     message: message ?? this.message,
   );
@@ -29,23 +43,59 @@ class SettingsCubit extends Cubit<SettingsState> {
     emit(state.copyWith(loading: true, message: ''));
     try {
       final package = await PackageInfo.fromPlatform();
-      final bytes = await _dependencies.cacheMetricsService.imageCacheBytes();
-      emit(state.copyWith(loading: false, cacheBytes: bytes, appVersion: '${package.version}+${package.buildNumber}'));
+      final imageBytes = await _dependencies.cacheMetricsService.imageCacheBytes();
+      final albumBytes = _dependencies.cache.estimateBytesWithPrefix(
+        'album:',
+      );
+      emit(
+        state.copyWith(
+          loading: false,
+          imageCacheBytes: imageBytes,
+          albumCacheBytes: albumBytes,
+          appVersion: '${package.version}+${package.buildNumber}',
+        ),
+      );
     } catch (error) {
       emit(state.copyWith(loading: false, message: '读取本地设置信息失败：$error'));
     }
   }
 
-  Future<void> clearCache() async {
+  Future<void> clearImageCache() async {
     emit(state.copyWith(loading: true, message: ''));
     await _dependencies.cache.clearImageMetadata();
-    await _dependencies.cache.clearAlbumSnapshots();
     await DefaultCacheManager().emptyCache();
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
-    _dependencies.dataChangeBus.publish({AppDataResource.cache, AppDataResource.photos}, reason: 'cache_cleared');
+    _dependencies.dataChangeBus.publish(
+      {AppDataResource.cache},
+      reason: 'image_cache_cleared',
+    );
     final bytes = await _dependencies.cacheMetricsService.imageCacheBytes();
-    emit(state.copyWith(loading: false, cacheBytes: bytes, message: '已清理手机上保存的预览图；你做过的照片修改不会丢失。'));
+    emit(
+      state.copyWith(
+        loading: false,
+        imageCacheBytes: bytes,
+        message: '已清理手机上保存的预览图；相册信息和待同步修改仍然保留。',
+      ),
+    );
+  }
+
+  Future<void> clearAlbumCache() async {
+    emit(state.copyWith(loading: true, message: ''));
+    await _dependencies.cache.clearAlbumSnapshots();
+    _dependencies.dataChangeBus.publish(
+      {AppDataResource.cache, AppDataResource.photos},
+      reason: 'album_cache_cleared',
+    );
+    emit(
+      state.copyWith(
+        loading: false,
+        albumCacheBytes: _dependencies.cache.estimateBytesWithPrefix(
+          'album:',
+        ),
+        message: '已清理相册离线信息；预览图和待同步修改没有被删除。',
+      ),
+    );
   }
 
   Future<void> reconnect() async {

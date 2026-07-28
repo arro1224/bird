@@ -28,6 +28,9 @@ class _ActiveFilterSummaryState extends State<ActiveFilterSummary> {
     if (widget.labels.isEmpty) return const SizedBox.shrink();
 
     final borderRadius = BorderRadius.circular(AppSpacing.radiusCard);
+    final visibleLabels = widget.labels.take(2).join(' · ');
+    final remainingCount = widget.labels.length - 2;
+    final compactSummary = remainingCount > 0 ? '$visibleLabels · +$remainingCount' : visibleLabels;
     return AnimatedSize(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
@@ -47,6 +50,7 @@ class _ActiveFilterSummaryState extends State<ActiveFilterSummary> {
               expanded: _expanded,
               label: _expanded ? '收起筛选条件' : '展开筛选条件',
               child: InkWell(
+                key: const ValueKey('active-filter-toggle'),
                 borderRadius: borderRadius,
                 onTap: () => setState(() => _expanded = !_expanded),
                 child: SizedBox(
@@ -63,7 +67,7 @@ class _ActiveFilterSummaryState extends State<ActiveFilterSummary> {
                         const SizedBox(width: AppSpacing.xs),
                         Expanded(
                           child: Text(
-                            '筛选条件 · 已选 ${widget.labels.length} 项',
+                            compactSummary,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -72,14 +76,21 @@ class _ActiveFilterSummaryState extends State<ActiveFilterSummary> {
                             ),
                           ),
                         ),
-                        Text(
-                          _expanded ? '收起' : '展开',
-                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color: AppColors.brand,
-                            fontWeight: FontWeight.w700,
+                        IconButton(
+                          key: const ValueKey('active-filter-clear'),
+                          tooltip: '清除全部筛选',
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 38,
+                            height: 38,
+                          ),
+                          onPressed: widget.onClear,
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            size: 19,
+                            color: AppColors.inkMuted,
                           ),
                         ),
-                        const SizedBox(width: 2),
                         Icon(
                           _expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
                           color: AppColors.brand,

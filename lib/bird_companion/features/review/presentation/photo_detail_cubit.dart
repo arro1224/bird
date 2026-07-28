@@ -13,6 +13,7 @@ class PhotoDetailState {
     this.saving = false,
     this.message,
     this.messageIsError = false,
+    this.error,
     this.conflict = false,
     this.pendingConflictDecision,
     this.undoEntry,
@@ -21,6 +22,7 @@ class PhotoDetailState {
   final bool loading, saving, conflict;
   final String? message;
   final bool messageIsError;
+  final Object? error;
   final UserDecision? pendingConflictDecision;
   final ReviewUndoEntry? undoEntry;
   bool get canUndo => undoEntry != null && !saving;
@@ -30,6 +32,7 @@ class PhotoDetailState {
     bool? saving,
     String? message,
     bool? messageIsError,
+    Object? error,
     bool? conflict,
     UserDecision? pendingConflictDecision,
     ReviewUndoEntry? undoEntry,
@@ -41,6 +44,7 @@ class PhotoDetailState {
     saving: saving ?? this.saving,
     message: message,
     messageIsError: messageIsError ?? this.messageIsError,
+    error: error ?? this.error,
     conflict: clearConflict ? false : conflict ?? this.conflict,
     pendingConflictDecision: clearConflict ? null : pendingConflictDecision ?? this.pendingConflictDecision,
     undoEntry: clearUndo ? null : undoEntry ?? this.undoEntry,
@@ -59,7 +63,7 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
     try {
       emit(PhotoDetailState(detail: await _repository.detail(id), undoEntry: state.undoEntry));
     } catch (error) {
-      emit(state.copyWith(loading: false, message: error.toString()));
+      emit(PhotoDetailState(error: error, undoEntry: state.undoEntry));
     } finally {
       _loadInFlight = false;
     }

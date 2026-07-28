@@ -4,12 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class CurrentBatchCard extends StatelessWidget {
-  const CurrentBatchCard({super.key, required this.batch, required this.onOpen, this.onBrowseScenes, this.actionLabel = '进入本次拍摄', this.contextLabel = '本次拍摄'});
+  const CurrentBatchCard({
+    super.key,
+    required this.batch,
+    required this.onOpen,
+    this.onBrowseScenes,
+    this.actionLabel = '进入本次拍摄',
+    this.contextLabel = '本次拍摄',
+    this.loading = false,
+  });
   final BatchSummary batch;
   final VoidCallback onOpen;
   final VoidCallback? onBrowseScenes;
   final String actionLabel;
   final String contextLabel;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -40,9 +49,14 @@ class CurrentBatchCard extends StatelessWidget {
             width: double.infinity,
             height: 56,
             child: FilledButton.icon(
-              onPressed: onOpen,
-              icon: const Icon(Icons.center_focus_strong_rounded),
-              label: Text(actionLabel),
+              onPressed: loading ? null : onOpen,
+              icon: loading
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.center_focus_strong_rounded),
+              label: Text(loading ? '正在打开照片…' : actionLabel),
             ),
           ),
         ],

@@ -1,8 +1,7 @@
-gradle-wrapper.jar
+# Keep the Gradle Wrapper scripts and JAR in Git so a fresh clone can build
+# with the project-pinned Gradle version.
 /.gradle
 /captures/
-/gradlew
-/gradlew.bat
 /local.properties
 GeneratedPluginRegistrant.java
 .cxx/

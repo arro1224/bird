@@ -103,6 +103,7 @@ class _FilterSheetState extends State<FilterSheet> {
                         child: _ChoiceWrap<String>(value: _sort, options: const [('score_desc', '照片质量'), ('captured_at_desc', '拍摄时间'), ('recommended_desc', '系统推荐')], onChanged: (value) => setState(() => _sort = value)),
                       ),
                       ExpansionTile(
+                        key: const ValueKey('photo-filter-more-conditions'),
                         tilePadding: EdgeInsets.zero,
                         title: const Text(
                           '更多条件',

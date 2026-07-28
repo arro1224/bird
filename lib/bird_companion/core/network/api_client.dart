@@ -70,10 +70,33 @@ class ApiClient {
       final data = response.data;
       if (data == null) return const {};
       final envelope = data['data'];
-      return envelope is Map ? Map<String, dynamic>.from(envelope) : data;
+      final payload = envelope is Map ? Map<String, dynamic>.from(envelope) : data;
+      return _resolveMediaReferences(payload) as Map<String, dynamic>;
     } on DioException catch (error) {
       throw ApiException.fromDio(error);
     }
+  }
+
+  String resolveMediaReference(String value) {
+    final reference = Uri.tryParse(value);
+    final baseUri = _baseUri;
+    if (reference == null || reference.hasScheme || baseUri == null) return value;
+    return baseUri.resolveUri(reference).toString();
+  }
+
+  Object? _resolveMediaReferences(Object? value, [String? key]) {
+    if (value is Map) {
+      return <String, dynamic>{
+        for (final entry in value.entries) entry.key.toString(): _resolveMediaReferences(entry.value, entry.key.toString()),
+      };
+    }
+    if (value is List) {
+      return value.map(_resolveMediaReferences).toList(growable: false);
+    }
+    if (value is String && (key == 'thumb_ref' || key == 'preview_ref')) {
+      return resolveMediaReference(value);
+    }
+    return value;
   }
 
   String _newRequestId() => 'app-${DateTime.now().microsecondsSinceEpoch}';

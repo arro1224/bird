@@ -219,23 +219,23 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
   void _removeTag(String value) => setState(() => _tags.text = _tagValues.where((tag) => tag != value).join(', '));
 
   Future<void> _addTag() async {
-    final controller = TextEditingController();
+    var draft = '';
     final value = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('添加标签'),
         content: TextField(
-          controller: controller,
           autofocus: true,
           decoration: const InputDecoration(hintText: '例如：湿地'),
+          onChanged: (value) => draft = value,
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('添加')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, draft.trim()), child: const Text('添加')),
         ],
       ),
     );
-    controller.dispose();
     if (value == null || value.isEmpty || !mounted) return;
     setState(() => _tags.text = normalizeUserTags([..._tagValues, ...parseUserTags(value)]).join(', '));
   }

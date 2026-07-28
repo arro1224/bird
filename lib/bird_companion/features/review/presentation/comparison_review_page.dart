@@ -1,8 +1,10 @@
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/widgets/bird_navigation.dart';
+import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
@@ -55,11 +57,27 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
       body: NaturalBackdrop(
         dense: true,
         child: BlocConsumer<ComparisonReviewCubit, ComparisonReviewState>(
-          listenWhen: (previous, current) => previous.message != current.message && current.message != null,
-          listener: (context, state) => BirdFeedback.success(context, state.message!),
+          listenWhen: (previous, current) => (previous.message != current.message && current.message != null) || (previous.error != current.error && current.error != null),
+          listener: (context, state) {
+            if (state.error != null) {
+              final message = UserMessageMapper.fromError(state.error!);
+              BirdFeedback.error(context, message.message);
+            } else if (state.message != null) {
+              BirdFeedback.success(context, state.message!);
+            }
+          },
           builder: (context, state) {
             if (state.loading) return const Center(child: CircularProgressIndicator());
-            if (state.error != null && state.items.isEmpty) return Center(child: Text('无法加载对比照片：${state.error}'));
+            if (state.error != null && state.items.isEmpty) {
+              final message = UserMessageMapper.fromError(state.error!);
+              return ErrorNotice(
+                title: '无法加载对比照片',
+                message: message.message,
+                onRetry: () => context.read<ComparisonReviewCubit>().load(
+                  widget.args.fileIds.take(2).toList(),
+                ),
+              );
+            }
             if (state.items.length < 2) return const Center(child: Text('对比至少需要两张照片'));
             final leftRetained = _decisionState(state.items[0]).isRetained;
             final rightRetained = _decisionState(state.items[1]).isRetained;

@@ -23,43 +23,46 @@ class DeviceStatusPills extends StatelessWidget {
     child: InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppSpacing.radiusControl),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 390;
-          final pills = <Widget>[
-            _StatusPill(
-              icon: session.isConnected ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-              label: session.isConnected ? '已连接' : '连接中断',
-              warning: !session.isConnected,
-              compact: compact,
-            ),
-            _StatusPill(
-              icon: Icons.battery_5_bar_rounded,
-              label: status.batteryPercent == null ? '电量 —' : '电量 ${status.batteryPercent}%',
-              compact: compact,
-            ),
-            _StatusPill(
-              icon: Icons.storage_rounded,
-              label: _storageLabel(status),
-              warning: status.card.inserted && !status.card.readable,
-              compact: compact,
-            ),
-          ];
-          if (compact) {
-            return Row(
-              children: [
-                for (var index = 0; index < pills.length; index++) ...[
-                  if (index > 0) const SizedBox(width: 6),
-                  Expanded(child: pills[index]),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 390;
+            final pills = <Widget>[
+              _StatusPill(
+                icon: session.isConnected ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                label: session.isConnected ? '已连接' : '连接中断',
+                warning: !session.isConnected,
+                compact: compact,
+              ),
+              _StatusPill(
+                icon: Icons.battery_5_bar_rounded,
+                label: status.batteryPercent == null ? '电量 —' : '电量 ${status.batteryPercent}%',
+                compact: compact,
+              ),
+              _StatusPill(
+                icon: Icons.storage_rounded,
+                label: _storageLabel(status),
+                warning: status.card.inserted && !status.card.readable,
+                compact: compact,
+              ),
+            ];
+            if (compact) {
+              return Row(
+                children: [
+                  for (var index = 0; index < pills.length; index++) ...[
+                    if (index > 0) const SizedBox(width: 6),
+                    Expanded(child: pills[index]),
+                  ],
                 ],
-              ],
+              );
+            }
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: pills,
             );
-          }
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: pills,
-          );
-        },
+          },
+        ),
       ),
     ),
   );

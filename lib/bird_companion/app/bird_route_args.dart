@@ -98,6 +98,7 @@ class GalleryArgs {
     this.keepCount,
     this.discardCount,
     this.initialQuery = const PhotoQuery(),
+    this.restoreSavedView = true,
     this.reviewContext,
   });
   final String batchId;
@@ -108,6 +109,7 @@ class GalleryArgs {
   final int? keepCount;
   final int? discardCount;
   final PhotoQuery initialQuery;
+  final bool restoreSavedView;
   final ReviewContext? reviewContext;
 
   ReviewContext get context => reviewContext ?? ReviewContext(batchId: batchId, batchName: batchName);

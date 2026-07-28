@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
@@ -21,12 +23,34 @@ class GroupReviewState {
 }
 
 class GroupReviewCubit extends Cubit<GroupReviewState> {
-  GroupReviewCubit(this._repository, [SessionRefreshCoordinator? refreshCoordinator, this._dataChanges]) : super(const GroupReviewState());
+  GroupReviewCubit(
+    this._repository, [
+    SessionRefreshCoordinator? refreshCoordinator,
+    this._dataChanges,
+  ]) : super(const GroupReviewState()) {
+    _refreshSubscription = refreshCoordinator?.changes.listen((_) => _reload());
+    _dataSubscription = _dataChanges?.changes
+        .where(
+          (change) => change.affects(AppDataResource.photos) && !_localChangeReasons.contains(change.reason),
+        )
+        .listen((_) => _reload());
+  }
   final ReviewRepository _repository;
   final AppDataChangeBus? _dataChanges;
+  static const _localChangeReasons = {
+    'group_review_saved',
+    'group_photo_review_saved',
+    'top_recommendations_saved',
+  };
+  StreamSubscription<int>? _refreshSubscription;
+  StreamSubscription<AppDataChange>? _dataSubscription;
+  String? _batchId;
+  String? _sceneId;
   bool _loadInFlight = false;
 
   Future<void> load(String batchId, {String? sceneId}) async {
+    _batchId = batchId;
+    _sceneId = sceneId;
     if (_loadInFlight) return;
     _loadInFlight = true;
     emit(state.copyWith(loading: true, clearError: true));
@@ -37,6 +61,12 @@ class GroupReviewCubit extends Cubit<GroupReviewState> {
     } finally {
       _loadInFlight = false;
     }
+  }
+
+  Future<void> _reload() async {
+    final batchId = _batchId;
+    if (batchId == null || batchId.isEmpty || isClosed) return;
+    await load(batchId, sceneId: _sceneId);
   }
 
   Future<void> markGroup(BirdGroup group, KeepState keepState) async {
@@ -114,4 +144,11 @@ class GroupReviewCubit extends Cubit<GroupReviewState> {
               ),
       )
       .toList(growable: false);
+
+  @override
+  Future<void> close() async {
+    await _refreshSubscription?.cancel();
+    await _dataSubscription?.cancel();
+    return super.close();
+  }
 }

@@ -51,7 +51,7 @@ class PhotoTile extends StatelessWidget {
                     CachedNetworkImage(
                       imageUrl: image.toString(),
                       fit: BoxFit.cover,
-                      cacheKey: 'bird-photo-${photo.id}-${image.pathSegments.last}',
+                      cacheKey: 'bird-photo-${photo.id}-${image.toString()}',
                       memCacheWidth: cacheWidth,
                       memCacheHeight: cacheHeight,
                       maxWidthDiskCache: cacheWidth * 2,

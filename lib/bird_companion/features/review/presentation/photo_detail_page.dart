@@ -1,13 +1,19 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/models/tag_input.dart';
+import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/presentation/user_facing_text.dart';
 import 'package:aves/bird_companion/core/widgets/bird_navigation.dart';
+import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
+import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
+import 'package:aves/bird_companion/features/review/domain/review_checkpoint.dart';
 import 'package:aves/bird_companion/features/review/presentation/photo_detail_cubit.dart';
 import 'package:aves/bird_companion/features/review/presentation/review_edit_page.dart';
 import 'package:aves/bird_companion/features/review/presentation/version_history_page.dart';
@@ -211,7 +217,19 @@ class _ViewState extends State<_View> {
       },
       builder: (context, state) {
         final detail = state.detail;
-        if (detail == null) return Center(child: state.message == null ? const CircularProgressIndicator() : Text(state.message!));
+        if (detail == null) {
+          if (state.loading) return const Center(child: CircularProgressIndicator());
+          final error = state.error;
+          final message = error == null ? const UserMessage(title: '照片详情暂不可用', message: '请稍后重试。', actionLabel: '重试') : UserMessageMapper.fromError(error);
+          return Center(
+            child: ErrorNotice(
+              title: message.title,
+              message: message.message,
+              actionLabel: message.actionLabel ?? '重试',
+              onRetry: () => context.read<PhotoDetailCubit>().load(_currentFileId),
+            ),
+          );
+        }
         _applyExisting(detail);
         return NaturalBackdrop(
           dense: true,
@@ -339,7 +357,33 @@ class _ViewState extends State<_View> {
       _appliedRevision = null;
       _showSubjects = false;
     });
+    _saveCheckpoint(context);
     await context.read<PhotoDetailCubit>().load(id);
+  }
+
+  void _saveCheckpoint(BuildContext context) {
+    final base = widget.reviewContext;
+    if (base == null || base.batchId.trim().isEmpty) return;
+    final dependencies = BirdCompanionScope.of(context);
+    final deviceId = dependencies.deviceSessionCubit.state.device?.id.trim();
+    if (deviceId == null || deviceId.isEmpty) return;
+    final currentContext = base.openPhotos(
+      _sequence,
+      initialIndex: _currentIndex,
+    );
+    final previous = dependencies.reviewCheckpointStore.read(
+      deviceId: deviceId,
+      batchId: base.batchId,
+    );
+    unawaited(
+      dependencies.reviewCheckpointStore.save(
+        ReviewCheckpoint.fromContext(
+          deviceId: deviceId,
+          context: currentContext,
+          query: previous?.query ?? const PhotoQuery(),
+        ),
+      ),
+    );
   }
 
   Future<void> _loadNextPage(BuildContext context) async {

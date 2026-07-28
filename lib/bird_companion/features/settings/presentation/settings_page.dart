@@ -67,8 +67,10 @@ class SettingsPage extends StatelessWidget {
                       const SizedBox(height: 18),
                       const _SectionTitle('手机存储'),
                       CacheManagementCard(
-                        bytes: state.cacheBytes,
-                        onClear: state.loading ? null : () => context.read<SettingsCubit>().clearCache(),
+                        imageBytes: state.imageCacheBytes,
+                        albumBytes: state.albumCacheBytes,
+                        onClearImages: state.loading ? null : () => context.read<SettingsCubit>().clearImageCache(),
+                        onClearAlbumData: state.loading ? null : () => context.read<SettingsCubit>().clearAlbumCache(),
                       ),
                       const SizedBox(height: 18),
                       const _SectionTitle('遇到问题'),

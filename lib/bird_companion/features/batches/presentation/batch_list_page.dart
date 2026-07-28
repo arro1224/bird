@@ -16,6 +16,22 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 enum BatchOpenMode { gallery, review }
 
+/// “继续挑选”始终从当前批次的照片主页开始，不携带上次连拍位置。
+GalleryArgs currentBatchGalleryArgs(BatchSummary batch) => GalleryArgs(
+  batch.id,
+  batchName: batch.name,
+  createdAt: batch.createdAt,
+  totalCount: batch.totalFiles,
+  pendingCount: batch.pendingReviewCount,
+  keepCount: batch.keepCount,
+  discardCount: batch.discardCount,
+  restoreSavedView: false,
+  reviewContext: ReviewContext(
+    batchId: batch.id,
+    batchName: batch.name,
+  ),
+);
+
 class BatchListPage extends StatelessWidget {
   const BatchListPage({super.key, this.openMode = BatchOpenMode.gallery});
 
@@ -60,6 +76,7 @@ class _View extends StatefulWidget {
 
 class _ViewState extends State<_View> {
   var _showCurrent = true;
+  String? _resolvingBatchId;
 
   @override
   Widget build(BuildContext context) => BlocBuilder<BatchListCubit, BatchListState>(
@@ -100,7 +117,8 @@ class _ViewState extends State<_View> {
                   CurrentBatchCard(
                     batch: state.current!,
                     actionLabel: '继续挑选',
-                    onOpen: () => _openBatch(context, state.current!),
+                    loading: _resolvingBatchId == state.current!.id,
+                    onOpen: () => _continueReview(context, state.current!),
                   ),
                 const SizedBox(height: 28),
                 const _HistoryHeading(),
@@ -158,12 +176,12 @@ class _ViewState extends State<_View> {
 
   List<BatchSummary> _historyItems(BatchListState state) => state.items.where((item) => item.id != state.current?.id).toList(growable: false);
 
-  void _openBatch(BuildContext context, BatchSummary batch) {
+  Future<void> _openBatch(BuildContext context, BatchSummary batch) async {
     final reviewContext = ReviewContext(
       batchId: batch.id,
       batchName: batch.name,
     );
-    Navigator.of(context).pushNamed(
+    await Navigator.of(context).pushNamed(
       widget.openMode == BatchOpenMode.gallery ? BirdRoutes.gallery : BirdRoutes.scenes,
       arguments: widget.openMode == BatchOpenMode.gallery
           ? GalleryArgs(
@@ -183,6 +201,28 @@ class _ViewState extends State<_View> {
               reviewContext: reviewContext,
             ),
     );
+    if (context.mounted) {
+      final cubit = context.read<BatchListCubit>();
+      await cubit.load(filter: cubit.state.filter);
+    }
+  }
+
+  Future<void> _continueReview(
+    BuildContext context,
+    BatchSummary batch,
+  ) async {
+    if (_resolvingBatchId != null) return;
+    setState(() => _resolvingBatchId = batch.id);
+    await Navigator.of(context).pushNamed(
+      BirdRoutes.gallery,
+      arguments: currentBatchGalleryArgs(batch),
+    );
+    if (!mounted || !context.mounted) return;
+    setState(() => _resolvingBatchId = null);
+    if (context.mounted) {
+      final cubit = context.read<BatchListCubit>();
+      await cubit.load(filter: cubit.state.filter);
+    }
   }
 }
 
