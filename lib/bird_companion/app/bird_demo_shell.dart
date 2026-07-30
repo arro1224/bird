@@ -1,6 +1,5 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/features/settings/presentation/settings_showcase_page.dart';
-import 'package:aves/bird_companion/features/tasks/presentation/pages/batch_setup_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/copy_confirmation_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/copy_content_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/task_home_page.dart';
@@ -9,8 +8,6 @@ import 'package:aves/bird_companion/features/tasks/presentation/pages/task_detai
 import 'package:aves/bird_companion/features/tasks/presentation/pages/task_result_page.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/task_experience_controller.dart';
-import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_design_components.dart';
-import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_page_frame.dart';
 import 'package:flutter/material.dart';
 
 typedef BirdDemoSettingsBuilder =
@@ -146,20 +143,20 @@ class _TaskTabNavigator extends StatelessWidget {
     }
   }
 
-  void _openCopy(BuildContext context) => Navigator.of(context).push<void>(
-    MaterialPageRoute<void>(
-      builder: (copyContext) => CopyContentPage(
-        controller: controller,
-        onNext: () => Navigator.of(copyContext).push<void>(
-          MaterialPageRoute<void>(
-            builder: (confirmContext) => CopyConfirmationPage(
-              controller: controller,
-              onStart: () {
-                const copyTaskId = 'demo-copy-failed';
-                controller.startTask(copyTaskId);
-                _openDetail(confirmContext, taskId: copyTaskId);
-              },
-            ),
+  void _openCopy(BuildContext context) => Navigator.of(context).push<void>(_copyRoute());
+
+  MaterialPageRoute<void> _copyRoute() => MaterialPageRoute<void>(
+    builder: (copyContext) => CopyContentPage(
+      controller: controller,
+      onNext: () => Navigator.of(copyContext).push<void>(
+        MaterialPageRoute<void>(
+          builder: (confirmContext) => CopyConfirmationPage(
+            controller: controller,
+            onStart: () {
+              const copyTaskId = 'demo-copy-failed';
+              controller.startTask(copyTaskId);
+              _openDetail(confirmContext, taskId: copyTaskId);
+            },
           ),
         ),
       ),
@@ -170,29 +167,27 @@ class _TaskTabNavigator extends StatelessWidget {
     MaterialPageRoute<void>(
       builder: (sdContext) => SdCardFlowPage(
         controller: controller,
-        onContinue: () => Navigator.of(sdContext).push<void>(
-          MaterialPageRoute<void>(
-            builder: (batchContext) => BatchSetupPage(
-              controller: controller,
-              onStartImport: (batchName) {
-                controller.startImportBatch(batchName);
-                _openDetail(batchContext);
-              },
-            ),
-          ),
-        ),
+        onContinue: () {
+          final date = controller.sdCard.captureDate;
+          controller.startImportBatch(
+            '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')} 导入批次',
+          );
+          Navigator.of(sdContext).pushReplacement<void, void>(_detailRoute());
+        },
       ),
     ),
   );
 
   void _openDetail(BuildContext context, {String? taskId}) => Navigator.of(context).push<void>(
-    MaterialPageRoute<void>(
-      builder: (detailContext) => TaskDetailPage(
-        controller: controller,
-        taskId: taskId,
-        onShowResult: () => _openResult(detailContext),
-        onTaskCompleted: (type) => _advanceAfterCompletion(detailContext, type),
-      ),
+    _detailRoute(taskId: taskId),
+  );
+
+  MaterialPageRoute<void> _detailRoute({String? taskId}) => MaterialPageRoute<void>(
+    builder: (detailContext) => TaskDetailPage(
+      controller: controller,
+      taskId: taskId,
+      onShowResult: () => _openResult(detailContext),
+      onTaskCompleted: (type) => _advanceAfterCompletion(detailContext, type),
     ),
   );
 
@@ -200,23 +195,12 @@ class _TaskTabNavigator extends StatelessWidget {
     switch (type) {
       case TaskType.importIndex:
         Navigator.of(context).pushReplacement<void, void>(
-          MaterialPageRoute<void>(
-            builder: (analysisContext) => TaskDetailPage(
-              controller: controller,
-              taskId: 'demo-analysis-paused',
-              onTaskCompleted: (nextType) => _advanceAfterCompletion(analysisContext, nextType),
-            ),
-          ),
+          _detailRoute(taskId: 'demo-analysis-paused'),
         );
         return;
       case TaskType.aiAnalysis:
         Navigator.of(context).pushAndRemoveUntil<void>(
-          MaterialPageRoute<void>(
-            builder: (reviewContext) => _DemoBatchReviewPage(
-              controller: controller,
-              onContinue: () => _openCopy(reviewContext),
-            ),
-          ),
+          _copyRoute(),
           (route) => route.isFirst,
         );
         return;
@@ -263,78 +247,4 @@ class _AlbumPlaceholder extends StatelessWidget {
       ),
     ),
   );
-}
-
-class _DemoBatchReviewPage extends StatelessWidget {
-  const _DemoBatchReviewPage({required this.controller, required this.onContinue});
-
-  final TaskExperienceController controller;
-  final VoidCallback onContinue;
-
-  @override
-  Widget build(BuildContext context) {
-    final batchName = controller.taskById('demo-analysis-paused').sourceBatch ?? '当前批次';
-    final batchId = controller.activeBatchId ?? '未建立批次';
-    return TaskPageFrame(
-      title: '演示审阅',
-      subtitle: 'AI 分析完成 · 批次已就绪',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Center(
-            child: Icon(Icons.rate_review_outlined, size: 76, color: AppColors.forestPrimary),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: Text(
-              batchName,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.forestDeep,
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Center(
-            child: Text(
-              '批次 ID · $batchId',
-              style: const TextStyle(color: AppColors.mutedInk),
-            ),
-          ),
-          const SizedBox(height: 24),
-          const TaskSurface(
-            child: Column(
-              children: [
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.auto_awesome_outlined, color: AppColors.forestPrimary),
-                  title: Text('AI 分析已完成'),
-                  subtitle: Text('演示批次已生成评分与待审阅结果'),
-                ),
-                Divider(height: 1),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.photo_library_outlined, color: AppColors.forestPrimary),
-                  title: Text('审阅入口已关联当前批次'),
-                  subtitle: Text('完成演示审阅后即可配置复制范围'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: FilledButton.icon(
-              onPressed: onContinue,
-              icon: const Icon(Icons.copy_all_outlined),
-              label: const Text('完成审阅，配置复制'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

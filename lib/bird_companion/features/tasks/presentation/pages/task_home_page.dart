@@ -44,13 +44,13 @@ class TaskHomePage extends StatelessWidget {
                         const SizedBox(height: 12),
                         const TaskDisconnectedNotice(),
                       ],
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 22),
                       const TaskSectionTitle('当前任务'),
                       _currentTask(),
-                      const SizedBox(height: 12),
-                      const TaskSectionTitle('下一步'),
+                      const SizedBox(height: 22),
+                      const TaskSectionTitle('开始新任务'),
                       _actionGrid(context),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 22),
                       const TaskSectionTitle('任务列表'),
                       TaskGroupFilter(
                         selected: controller.selectedGroup,
@@ -105,107 +105,143 @@ class TaskHomePage extends StatelessWidget {
         }
       },
       child: TaskSurface(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        key: const Key('task-home-current-card'),
+        padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+        radius: 20,
+        child: Stack(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    task.title,
-                    style: const TextStyle(
-                      fontSize: 21,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.forestDeep,
-                    ),
+            Positioned(
+              right: -30,
+              bottom: -52,
+              width: 165,
+              height: 190,
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: .18,
+                  child: Image.asset(
+                    'assets/bird_companion/ui_extracted/connection/batch-04/b04_07_reeds-right-ornament.png',
+                    fit: BoxFit.contain,
                   ),
                 ),
-                TaskStatusChip(
-                  label: _stateLabel(task),
-                  icon: _stateIcon(task.state),
-                ),
-              ],
-            ),
-            if (task.sourceBatch case final sourceBatch?) ...[
-              const SizedBox(height: 7),
-              Text(
-                '来源批次 · $sourceBatch',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: AppColors.mutedInk, fontSize: 13),
-              ),
-            ],
-            const SizedBox(height: 9),
-            Text(
-              '${_count(task.processed)} / ${_count(task.total)} 张',
-              style: const TextStyle(
-                fontSize: 22,
-                color: AppColors.mutedInk,
-                fontWeight: FontWeight.w500,
               ),
             ),
-            Text(
-              '${task.progressPercent}%',
-              style: const TextStyle(
-                fontSize: 40,
-                color: AppColors.forestPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 5),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(5),
-              child: LinearProgressIndicator(
-                value: task.progressPercent / 100,
-                minHeight: 7,
-                color: AppColors.forestPrimary,
-                backgroundColor: AppColors.divider,
-              ),
-            ),
-            if (task.currentFile != null || task.speed != null) ...[
-              const SizedBox(height: 9),
-              Row(
-                children: [
-                  if (task.currentFile case final currentFile?)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
                     Expanded(
                       child: Text(
-                        '当前 $currentFile',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        _displayTitle(task),
                         style: const TextStyle(
-                          color: AppColors.mutedInk,
-                          fontSize: 13,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.forestDeep,
                         ),
                       ),
                     ),
-                  if (task.speed case final speed?)
-                    Text(
-                      speed,
-                      style: const TextStyle(
-                        color: AppColors.forestDeep,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
+                    TaskStatusChip(
+                      label: _stateLabel(task),
+                      icon: _stateIcon(task.state),
+                      color: TaskDesign.stateColor(task.state),
                     ),
+                  ],
+                ),
+                if (task.sourceBatch case final sourceBatch?) ...[
+                  const SizedBox(height: 7),
+                  Text(
+                    '来源批次 · $sourceBatch',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: AppColors.mutedInk, fontSize: 13),
+                  ),
                 ],
-              ),
-            ],
-            const SizedBox(height: 9),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '预计剩余 ${task.remainingMinutes} 分钟',
+                const SizedBox(height: 9),
+                Text.rich(
+                  TextSpan(
                     style: const TextStyle(
                       color: AppColors.mutedInk,
-                      fontSize: 16,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w500,
                     ),
+                    children: [
+                      TextSpan(
+                        text: _count(task.processed),
+                        style: const TextStyle(
+                          color: AppColors.forestPrimary,
+                          fontSize: 42,
+                          fontWeight: FontWeight.w800,
+                          height: 1.1,
+                        ),
+                      ),
+                      TextSpan(text: ' / ${_count(task.total)} 张'),
+                    ],
                   ),
                 ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.forestPrimary,
+                Text(
+                  '${task.progressPercent}%',
+                  style: const TextStyle(
+                    fontSize: 46,
+                    height: 1.05,
+                    color: AppColors.forestPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(5),
+                  child: LinearProgressIndicator(
+                    value: task.progressPercent / 100,
+                    minHeight: 7.5,
+                    color: AppColors.forestPrimary,
+                    backgroundColor: AppColors.divider,
+                  ),
+                ),
+                if (task.currentFile != null || task.speed != null) ...[
+                  const SizedBox(height: 9),
+                  Row(
+                    children: [
+                      if (task.currentFile case final currentFile?)
+                        Expanded(
+                          child: Text(
+                            '当前 $currentFile',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.mutedInk,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      if (task.speed case final speed?)
+                        Text(
+                          speed,
+                          style: const TextStyle(
+                            color: AppColors.forestDeep,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 9),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '预计剩余 ${task.remainingMinutes} 分钟',
+                        style: const TextStyle(
+                          color: AppColors.mutedInk,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.forestPrimary,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -223,59 +259,65 @@ class TaskHomePage extends StatelessWidget {
       TaskType.sync: '同步批次和审片结果',
     };
     return GridView.builder(
+      key: const Key('task-home-action-grid'),
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        mainAxisExtent: 78,
+        mainAxisExtent: 92,
         crossAxisSpacing: 12,
-        mainAxisSpacing: 10,
+        mainAxisSpacing: 12,
       ),
       itemCount: controller.executableTaskTypes.length,
       itemBuilder: (_, index) {
         final type = controller.executableTaskTypes[index];
-        return InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () => _activateType(context, type),
-          child: TaskSurface(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            child: Row(
-              children: [
-                Icon(
-                  _typeIcon(type),
-                  color: AppColors.forestPrimary,
-                  size: 30,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        type.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.forestDeep,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        descriptions[type]!,
-                        style: const TextStyle(
-                          color: AppColors.mutedInk,
-                          fontSize: 10.5,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+        return TaskSurface(
+          padding: EdgeInsets.zero,
+          radius: 16,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => _activateType(context, type),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+              child: Row(
+                children: [
+                  Icon(
+                    _typeIcon(type),
+                    color: AppColors.forestPrimary,
+                    size: 34,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _entryTitle(type),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.forestDeep,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          descriptions[type]!,
+                          style: const TextStyle(
+                            color: AppColors.mutedInk,
+                            fontSize: 11.5,
+                            height: 1.15,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -286,7 +328,9 @@ class TaskHomePage extends StatelessWidget {
   Widget _taskList() {
     final tasks = controller.visibleTasks;
     return TaskSurface(
+      key: const Key('task-home-task-list'),
       padding: EdgeInsets.zero,
+      radius: 18,
       child: Column(
         children: [
           for (var index = 0; index < tasks.length; index++) ...[
@@ -351,29 +395,29 @@ class TaskHomePage extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
         children: [
-            const Text(
-              '当前可执行操作',
-              style: TextStyle(
-                color: AppColors.forestDeep,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
+          const Text(
+            '当前可执行操作',
+            style: TextStyle(
+              color: AppColors.forestDeep,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
             ),
-            const SizedBox(height: 8),
-            for (final type in controller.executableTaskTypes)
-              ListTile(
-                minTileHeight: 56,
-                leading: Icon(
-                  _typeIcon(type),
-                  color: AppColors.forestPrimary,
-                ),
-                title: Text(type.label),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _activateType(context, type);
-                },
+          ),
+          const SizedBox(height: 8),
+          for (final type in controller.executableTaskTypes)
+            ListTile(
+              minTileHeight: 56,
+              leading: Icon(
+                _typeIcon(type),
+                color: AppColors.forestPrimary,
               ),
+              title: Text(type.label),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _activateType(context, type);
+              },
+            ),
         ],
       ),
     ),
@@ -407,6 +451,20 @@ class TaskHomePage extends StatelessWidget {
     TaskRunState.failed => Icons.error_outline_rounded,
     TaskRunState.completed => Icons.check_rounded,
     TaskRunState.cancelled => Icons.block_outlined,
+  };
+
+  String _displayTitle(TaskSummary task) => switch (task.type) {
+    TaskType.aiAnalysis => 'AI 照片分析',
+    TaskType.importIndex => '导入/索引照片',
+    TaskType.copy => '复制照片',
+    TaskType.sync => '同步审阅结果',
+  };
+
+  String _entryTitle(TaskType type) => switch (type) {
+    TaskType.importIndex => '导入/索引',
+    TaskType.aiAnalysis => 'AI 分析',
+    TaskType.copy => '复制照片',
+    TaskType.sync => '同步结果',
   };
 
   String _stateLabel(TaskSummary task) => switch (task.state) {

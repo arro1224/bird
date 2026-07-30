@@ -27,16 +27,18 @@ class TaskDetailPage extends StatelessWidget {
       final task = taskId == null ? controller.currentTask : controller.taskById(taskId!);
       return TaskPageFrame(
         title: '任务详情',
+        padding: const EdgeInsets.fromLTRB(24, 10, 24, 18),
+        bottomNavigationBar: _actionBar(context, task),
         actions: [
-          if (task.type == TaskType.copy && task.state == TaskRunState.completed && onShowResult != null)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_horiz_rounded),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              onSelected: (value) {
-                if (value == 'result') onShowResult?.call();
-              },
-              itemBuilder: (_) => const [PopupMenuItem(value: 'result', child: Text('查看复制结果'))],
+          PopupMenuButton<String>(
+            key: const Key('task-detail-menu-button'),
+            icon: const Icon(Icons.more_horiz_rounded),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
             ),
+            onSelected: (value) => _handleMenuAction(context, task, value),
+            itemBuilder: (_) => _menuItems(task),
+          ),
         ],
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,8 +64,7 @@ class TaskDetailPage extends StatelessWidget {
               const SizedBox(height: 10),
               _failureNotice(task),
             ],
-            const SizedBox(height: 12),
-            _actions(context, task),
+            const SizedBox(height: 8),
           ],
         ),
       );
@@ -71,7 +72,8 @@ class TaskDetailPage extends StatelessWidget {
   );
 
   Widget _summaryCard(TaskSummary task) => TaskSurface(
-    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+    padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+    radius: 20,
     child: Stack(
       children: [
         Positioned(
@@ -89,7 +91,7 @@ class TaskDetailPage extends StatelessWidget {
                 Expanded(
                   child: Text(
                     task.type.label,
-                    style: const TextStyle(color: AppColors.forestDeep, fontSize: 21, fontWeight: FontWeight.w700),
+                    style: const TextStyle(color: AppColors.forestDeep, fontSize: 24, fontWeight: FontWeight.w800),
                   ),
                 ),
                 TaskStatusChip(label: _stateLabel(task), icon: _stateIcon(task.state)),
@@ -103,7 +105,7 @@ class TaskDetailPage extends StatelessWidget {
                 children: [
                   TextSpan(
                     text: _count(task.processed),
-                    style: const TextStyle(color: AppColors.forestPrimary, fontSize: 31, fontWeight: FontWeight.w700),
+                    style: const TextStyle(color: AppColors.forestPrimary, fontSize: 38, fontWeight: FontWeight.w900),
                   ),
                   TextSpan(text: ' / ${_count(task.total)} 张'),
                 ],
@@ -112,7 +114,7 @@ class TaskDetailPage extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               '${task.progressPercent}%',
-              style: const TextStyle(color: AppColors.forestPrimary, fontSize: 42, fontWeight: FontWeight.w700),
+              style: const TextStyle(color: AppColors.forestPrimary, fontSize: 48, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 5),
             LinearProgressIndicator(value: task.progressPercent / 100, minHeight: 7),
@@ -207,47 +209,71 @@ class TaskDetailPage extends StatelessWidget {
     ),
   );
 
-  Widget _actions(BuildContext context, TaskSummary task) {
+  Widget? _actionBar(BuildContext context, TaskSummary task) {
     final actions = task.availableActions;
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: [
-        if (task.type == TaskType.aiAnalysis && task.state == TaskRunState.queued && actions.contains(TaskAction.resume)) _actionButton('开始 AI 分析', () => controller.startTask(task.id)),
-        if (task.state == TaskRunState.running && task.type != TaskType.sync)
-          _actionButton(
-            switch (task.type) {
-              TaskType.importIndex => '演示完成导入',
-              TaskType.aiAnalysis => '演示完成 AI 分析',
-              TaskType.copy => '演示完成复制',
-              TaskType.sync => '',
-            },
-            () {
-              controller.completeTask(task.id);
-              onTaskCompleted?.call(task.type);
-            },
-          ),
-        if (actions.contains(TaskAction.pause)) _actionButton('暂停任务', () => controller.performAction(task.id, TaskAction.pause), filled: false),
-        if (actions.contains(TaskAction.resume) && task.state != TaskRunState.queued) _actionButton('继续任务', () => controller.performAction(task.id, TaskAction.resume)),
-        if (actions.contains(TaskAction.retry)) _actionButton('重试失败项', () => controller.performAction(task.id, TaskAction.retry)),
-        if (actions.contains(TaskAction.skipFailed)) _actionButton('跳过失败项', () => controller.performAction(task.id, TaskAction.skipFailed), filled: false),
-        if (actions.contains(TaskAction.cancel)) _actionButton('取消任务', () => _confirmCancel(context, task), filled: false),
-        if (actions.contains(TaskAction.exportLog))
-          _actionButton(
-            '导出日志',
-            () {
-              controller.performAction(task.id, TaskAction.exportLog);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('演示模式：日志导出请求已记录')));
-            },
-            filled: false,
-          ),
-      ],
+    final buttons = <Widget>[
+      if (task.type == TaskType.aiAnalysis && task.state == TaskRunState.queued && actions.contains(TaskAction.resume)) _actionButton('开始 AI 分析', () => controller.startTask(task.id)),
+      if (actions.contains(TaskAction.pause)) _actionButton('暂停任务', () => controller.performAction(task.id, TaskAction.pause), filled: false),
+      if (actions.contains(TaskAction.resume) && task.state != TaskRunState.queued) _actionButton('继续任务', () => controller.performAction(task.id, TaskAction.resume)),
+      if (actions.contains(TaskAction.retry)) _actionButton('重试失败项', () => controller.performAction(task.id, TaskAction.retry)),
+      if (actions.contains(TaskAction.skipFailed)) _actionButton('跳过失败项', () => controller.performAction(task.id, TaskAction.skipFailed), filled: false),
+      if (actions.contains(TaskAction.cancel)) _actionButton('取消任务', () => _confirmCancel(context, task), filled: false),
+    ];
+    if (buttons.isEmpty) return null;
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.fromLTRB(24, 10, 24, 16),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        alignment: WrapAlignment.center,
+        children: buttons,
+      ),
     );
   }
 
+  List<PopupMenuEntry<String>> _menuItems(TaskSummary task) => [
+    if (task.state == TaskRunState.running && task.type != TaskType.sync)
+      PopupMenuItem(
+        value: 'complete',
+        child: Text(
+          switch (task.type) {
+            TaskType.importIndex => '演示完成导入',
+            TaskType.aiAnalysis => '演示完成 AI 分析',
+            TaskType.copy => '演示完成复制',
+            TaskType.sync => '',
+          },
+        ),
+      ),
+    if (task.type == TaskType.copy && task.state == TaskRunState.completed && onShowResult != null) const PopupMenuItem(value: 'result', child: Text('查看复制结果')),
+    if (task.availableActions.contains(TaskAction.exportLog)) const PopupMenuItem(value: 'log', child: Text('导出日志')),
+  ];
+
+  void _handleMenuAction(
+    BuildContext context,
+    TaskSummary task,
+    String value,
+  ) {
+    switch (value) {
+      case 'complete':
+        controller.completeTask(task.id);
+        onTaskCompleted?.call(task.type);
+        return;
+      case 'result':
+        onShowResult?.call();
+        return;
+      case 'log':
+        controller.performAction(task.id, TaskAction.exportLog);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('演示模式：日志导出请求已记录')),
+        );
+        return;
+    }
+  }
+
   Widget _actionButton(String label, VoidCallback onPressed, {bool filled = true}) => SizedBox(
-    width: 164,
-    height: 48,
+    width: 148,
+    height: 52,
     child: filled ? FilledButton(onPressed: onPressed, child: Text(label)) : OutlinedButton(onPressed: onPressed, child: Text(label)),
   );
 

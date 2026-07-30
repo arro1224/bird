@@ -2,6 +2,26 @@ import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 import 'package:flutter/material.dart';
 
+abstract final class TaskDesign {
+  static const pagePadding = EdgeInsets.fromLTRB(24, 18, 24, 24);
+  static const green = AppColors.forestPrimary;
+  static const deepGreen = AppColors.forestDeep;
+  static const muted = AppColors.mutedInk;
+  static const surface = AppColors.surface;
+  static const divider = AppColors.divider;
+  static const shadow = BoxShadow(
+    color: Color(0x160E351D),
+    blurRadius: 22,
+    offset: Offset(0, 8),
+  );
+
+  static Color stateColor(TaskRunState state) => switch (state) {
+    TaskRunState.failed || TaskRunState.cancelled => AppColors.danger,
+    TaskRunState.paused || TaskRunState.queued => AppColors.warning,
+    TaskRunState.running || TaskRunState.completed => AppColors.forestPrimary,
+  };
+}
+
 class TaskSectionTitle extends StatelessWidget {
   const TaskSectionTitle(this.text, {super.key});
   final String text;
@@ -13,44 +33,58 @@ class TaskSectionTitle extends StatelessWidget {
       text,
       style: const TextStyle(
         color: AppColors.forestDeep,
-        fontSize: 20,
+        fontSize: 21,
         fontWeight: FontWeight.w800,
+        height: 1.15,
       ),
     ),
   );
 }
 
 class TaskSurface extends StatelessWidget {
-  const TaskSurface({super.key, required this.child, this.padding = const EdgeInsets.all(16)});
+  const TaskSurface({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(18),
+    this.radius = 18,
+    this.withBorder = false,
+  });
+
   final Widget child;
   final EdgeInsets padding;
+  final double radius;
+  final bool withBorder;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: AppColors.surface.withValues(alpha: .94),
-      borderRadius: BorderRadius.circular(18),
-      boxShadow: const [
-        BoxShadow(color: Color(0x120E351D), blurRadius: 14, offset: Offset(0, 4)),
-      ],
-    ),
-    child: Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      child: Padding(padding: padding, child: child),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(radius);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: .965),
+        borderRadius: borderRadius,
+        border: withBorder ? Border.all(color: AppColors.divider.withValues(alpha: .82)) : null,
+        boxShadow: const [TaskDesign.shadow],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: borderRadius,
+        child: Padding(padding: padding, child: child),
+      ),
+    );
+  }
 }
 
 class TaskStatusChip extends StatelessWidget {
-  const TaskStatusChip({super.key, required this.label, required this.icon});
+  const TaskStatusChip({super.key, required this.label, required this.icon, this.color = AppColors.forestPrimary});
+
   final String label;
   final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
-      color: AppColors.forestSoft.withValues(alpha: .65),
+      color: color.withValues(alpha: .1),
       borderRadius: BorderRadius.circular(7),
     ),
     child: Padding(
@@ -58,9 +92,12 @@ class TaskStatusChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: AppColors.forestPrimary),
+          Icon(icon, size: 16, color: color),
           const SizedBox(width: 4),
-          Text(label, style: const TextStyle(color: AppColors.forestPrimary)),
+          Text(
+            label,
+            style: TextStyle(color: color, fontWeight: FontWeight.w700),
+          ),
         ],
       ),
     ),
@@ -80,9 +117,9 @@ class TaskGroupFilter extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
-      color: AppColors.surface.withValues(alpha: .82),
-      borderRadius: BorderRadius.circular(9),
-      border: Border.all(color: AppColors.divider),
+      color: AppColors.surface.withValues(alpha: .72),
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(color: AppColors.divider.withValues(alpha: .72)),
     ),
     child: Row(
       children: [
@@ -101,9 +138,9 @@ class TaskGroupFilter extends StatelessWidget {
         height: 48,
         child: Material(
           color: isSelected ? AppColors.forestPrimary : Colors.transparent,
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(999),
           child: InkWell(
-            borderRadius: BorderRadius.circular(7),
+            borderRadius: BorderRadius.circular(999),
             onTap: () => onSelected(group),
             child: Center(
               child: Text(
@@ -155,5 +192,135 @@ class TaskDisconnectedNotice extends StatelessWidget {
         ],
       ),
     ),
+  );
+}
+
+class TaskPrimaryButton extends StatelessWidget {
+  const TaskPrimaryButton(
+    this.label, {
+    super.key,
+    required this.onPressed,
+    this.icon,
+    this.filled = true,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: double.infinity,
+    height: 56,
+    child: icon == null
+        ? filled
+              ? FilledButton(onPressed: onPressed, child: Text(label))
+              : OutlinedButton(onPressed: onPressed, child: Text(label))
+        : filled
+        ? FilledButton.icon(
+            onPressed: onPressed,
+            icon: Icon(icon),
+            label: Text(label),
+          )
+        : OutlinedButton.icon(
+            onPressed: onPressed,
+            icon: Icon(icon),
+            label: Text(label),
+          ),
+  );
+}
+
+class TaskBottomActions extends StatelessWidget {
+  const TaskBottomActions({
+    super.key,
+    required this.primaryLabel,
+    required this.onPrimary,
+    this.secondaryLabel,
+    this.onSecondary,
+    this.secondaryFirst = false,
+  });
+
+  final String primaryLabel;
+  final VoidCallback? onPrimary;
+  final String? secondaryLabel;
+  final VoidCallback? onSecondary;
+  final bool secondaryFirst;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    top: false,
+    minimum: const EdgeInsets.fromLTRB(24, 10, 24, 16),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (secondaryFirst && secondaryLabel != null) ...[
+          TaskPrimaryButton(
+            secondaryLabel!,
+            filled: false,
+            onPressed: onSecondary,
+          ),
+          const SizedBox(height: 10),
+        ],
+        TaskPrimaryButton(primaryLabel, onPressed: onPrimary),
+        if (!secondaryFirst && secondaryLabel != null) ...[
+          const SizedBox(height: 10),
+          TaskPrimaryButton(
+            secondaryLabel!,
+            filled: false,
+            onPressed: onSecondary,
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+class TaskMetricRow extends StatelessWidget {
+  const TaskMetricRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.trailing,
+    this.valueColor = AppColors.forestPrimary,
+    this.divider = true,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Widget? trailing;
+  final Color valueColor;
+  final bool divider;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 62),
+        child: Row(
+          children: [
+            Icon(icon, color: AppColors.forestPrimary, size: 28),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(color: AppColors.ink, fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.end,
+                style: TextStyle(color: valueColor, fontSize: 22, fontWeight: FontWeight.w800),
+              ),
+            ),
+            if (trailing != null) ...[const SizedBox(width: 6), trailing!],
+          ],
+        ),
+      ),
+      if (divider) const Divider(height: 1),
+    ],
   );
 }

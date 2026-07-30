@@ -25,19 +25,26 @@ void main() {
     );
 
     expect(find.byType(TaskNatureBackground), findsOneWidget);
+    expect(find.byKey(const Key('task-ink-mountain-layer')), findsOneWidget);
+    expect(find.byKey(const Key('task-paper-texture-layer')), findsOneWidget);
+    expect(find.byKey(const Key('task-reeds-left-layer')), findsOneWidget);
+    expect(find.byKey(const Key('task-reeds-right-layer')), findsOneWidget);
     expect(find.text('任务'), findsOneWidget);
     expect(find.text('当前任务'), findsOneWidget);
-    expect(find.text('下一步'), findsOneWidget);
+    expect(find.text('开始新任务'), findsOneWidget);
     expect(find.text('任务列表'), findsOneWidget);
     expect(find.text('导入/索引'), findsWidgets);
-    expect(find.text('AI分析'), findsWidgets);
-    expect(find.text('复制'), findsWidgets);
-    expect(find.text('同步'), findsWidgets);
+    expect(find.text('AI 分析'), findsWidgets);
+    expect(find.text('复制照片'), findsWidgets);
+    expect(find.text('同步结果'), findsWidgets);
     expect(find.text('2,384 / 3,672 张'), findsOneWidget);
     expect(find.text('65%'), findsWidgets);
+    expect(find.byKey(const Key('task-home-current-card')), findsOneWidget);
+    expect(find.byKey(const Key('task-home-action-grid')), findsOneWidget);
+    expect(find.byKey(const Key('task-home-task-list')), findsOneWidget);
     expect(find.byType(TaskDisconnectedNotice), findsNothing);
 
-    for (final forbidden in ['NAS 访问', 'SD 卡照片分拣', '其他任务', '开始新任务']) {
+    for (final forbidden in ['NAS 访问', 'SD 卡照片分拣', '其他任务']) {
       expect(find.text(forbidden), findsNothing);
     }
   });

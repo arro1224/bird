@@ -2,7 +2,6 @@ import 'package:aves/bird_companion/app/bird_demo_shell.dart';
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/features/tasks/demo/demo_task_experience_data_source.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
-import 'package:aves/bird_companion/features/tasks/presentation/pages/batch_setup_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/sd_card_flow_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/copy_content_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/copy_confirmation_page.dart';
@@ -58,7 +57,10 @@ void main() {
       ),
     );
 
-    final copyAction = find.descendant(of: find.byType(GridView), matching: find.text('复制'));
+    final copyAction = find.descendant(
+      of: find.byType(GridView),
+      matching: find.text('复制照片'),
+    );
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -260));
     await tester.pumpAndSettle();
     await tester.tap(copyAction);
@@ -107,148 +109,135 @@ void main() {
     expect(find.textContaining('替换后的批次'), findsOneWidget);
   });
 
-  testWidgets('BirdDemoShell advances an imported batch through review and copy result', (tester) async {
+  testWidgets(
+    'BirdDemoShell advances import and analysis directly into copy result',
+    (tester) async {
+      tester.view.devicePixelRatio = 3;
+      tester.view.physicalSize = const Size(1080, 2400);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final controller = TaskExperienceController(const DemoTaskExperienceDataSource());
+      addTearDown(controller.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: BirdDemoShell(taskController: controller),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('task-executable-actions-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(of: find.byType(BottomSheet), matching: find.text('导入/索引')),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('开始建立批次'));
+      await tester.tap(find.text('开始建立批次'));
+      await tester.pumpAndSettle();
+      expect(controller.activeBatchId, 'demo-batch-20260716');
+      expect(controller.currentTask.sourceBatch, '2026.07.16 导入批次');
+      expect(find.byType(TaskDetailPage), findsOneWidget);
+      expect(find.text('导入/索引'), findsOneWidget);
+
+      await _tapTaskMenuAction(tester, '演示完成导入');
+
+      expect(controller.taskById('demo-import-running').state, TaskRunState.completed);
+      expect(controller.taskById('demo-analysis-paused').state, TaskRunState.queued);
+      expect(controller.currentTask.type, TaskType.aiAnalysis);
+      expect(find.text('照片复制完成'), findsNothing);
+      expect(find.text('开始 AI 分析'), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(of: find.byType(NavigationBar), matching: find.text('设备')),
+      );
+      await tester.pump();
+      expect(
+        find.descendant(of: find.byKey(const Key('device-current-work-task')), matching: find.text('AI分析')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.descendant(of: find.byType(NavigationBar), matching: find.text('任务')),
+      );
+      await tester.pump();
+      expect(find.text('开始 AI 分析'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('开始 AI 分析'));
+      await tester.tap(find.text('开始 AI 分析'));
+      await tester.pump();
+      expect(controller.taskById('demo-analysis-paused').state, TaskRunState.running);
+      await _tapTaskMenuAction(tester, '演示完成 AI 分析');
+
+      expect(find.byType(CopyContentPage), findsOneWidget);
+      expect(find.text('复制范围'), findsOneWidget);
+      expect(find.text('演示审阅'), findsNothing);
+      expect(find.byKey(const Key('batch-name-field')), findsNothing);
+
+      await tester.tap(
+        find.descendant(of: find.byType(NavigationBar), matching: find.text('设备')),
+      );
+      await tester.pump();
+      expect(find.byKey(const Key('settings-showcase-page')), findsOneWidget);
+      expect(
+        find.descendant(of: find.byKey(const Key('device-current-work-task')), matching: find.text('复制')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.descendant(of: find.byType(NavigationBar), matching: find.text('任务')),
+      );
+      await tester.pump();
+      expect(find.text('复制范围'), findsOneWidget);
+      await tester.ensureVisible(find.text('下一步'));
+      await tester.tap(find.text('下一步'));
+      await tester.pumpAndSettle();
+      expect(find.text('确认复制'), findsOneWidget);
+      await tester.ensureVisible(find.text('开始复制'));
+      await tester.tap(find.text('开始复制'));
+      await tester.pumpAndSettle();
+
+      final runningCopy = controller.taskById('demo-copy-failed');
+      expect(runningCopy.state, TaskRunState.running);
+      expect(runningCopy.sourceBatch, '2026.07.16 导入批次');
+      expect(find.byType(TaskDetailPage), findsOneWidget);
+      await _tapTaskMenuAction(tester, '演示完成复制');
+
+      expect(controller.taskById('demo-copy-failed').state, TaskRunState.completed);
+      expect(find.byType(TaskResultPage), findsOneWidget);
+      expect(find.text('照片复制完成'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('进入相册'));
+      await tester.tap(find.text('进入相册'));
+      await tester.pumpAndSettle();
+      expect(find.text('照片复制完成'), findsNothing);
+      await tester.tap(
+        find.descendant(of: find.byType(NavigationBar), matching: find.text('任务')),
+      );
+      await tester.pump();
+      expect(find.byKey(const Key('task-home-page')), findsOneWidget);
+      expect(controller.currentTask.type, TaskType.copy);
+      expect(controller.currentTask.state, TaskRunState.completed);
+      expect(find.text('2,012 / 2,012 张'), findsOneWidget);
+      expect(find.text('演示审阅'), findsNothing);
+      expect(find.text('确认复制'), findsNothing);
+      expect(find.text('照片复制完成'), findsNothing);
+    },
+  );
+
+  testWidgets('copy setup system back returns to task home without stale setup', (tester) async {
     tester.view.devicePixelRatio = 3;
     tester.view.physicalSize = const Size(1080, 2400);
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
     final controller = TaskExperienceController(const DemoTaskExperienceDataSource());
     addTearDown(controller.dispose);
+    await _pumpShellToCopy(tester, controller);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        home: BirdDemoShell(taskController: controller),
-      ),
-    );
-
-    await tester.tap(find.byKey(const Key('task-executable-actions-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(of: find.byType(BottomSheet), matching: find.text('导入/索引')),
-    );
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('开始建立批次'));
-    await tester.tap(find.text('开始建立批次'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('batch-name-field')), '河岸翠鸟 0725');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.ensureVisible(find.text('开始导入并建立索引'));
-    await tester.tap(find.text('开始导入并建立索引'));
-    await tester.pumpAndSettle();
-
-    expect(controller.activeBatchId, 'demo-batch-20260716');
-    expect(controller.currentTask.sourceBatch, '河岸翠鸟 0725');
-    expect(find.byType(TaskDetailPage), findsOneWidget);
-    expect(find.text('导入/索引'), findsOneWidget);
-
-    await tester.ensureVisible(find.text('演示完成导入'));
-    await tester.tap(find.text('演示完成导入'));
-    await tester.pumpAndSettle();
-
-    expect(controller.taskById('demo-import-running').state, TaskRunState.completed);
-    expect(controller.taskById('demo-analysis-paused').state, TaskRunState.queued);
-    expect(controller.currentTask.type, TaskType.aiAnalysis);
-    expect(find.text('照片复制完成'), findsNothing);
-    expect(find.text('开始 AI 分析'), findsOneWidget);
-
-    await tester.tap(
-      find.descendant(of: find.byType(NavigationBar), matching: find.text('设备')),
-    );
-    await tester.pump();
-    expect(
-      find.descendant(of: find.byKey(const Key('device-current-work-task')), matching: find.text('AI分析')),
-      findsOneWidget,
-    );
-    await tester.tap(
-      find.descendant(of: find.byType(NavigationBar), matching: find.text('任务')),
-    );
-    await tester.pump();
-    expect(find.text('开始 AI 分析'), findsOneWidget);
-
-    await tester.ensureVisible(find.text('开始 AI 分析'));
-    await tester.tap(find.text('开始 AI 分析'));
-    await tester.pump();
-    expect(controller.taskById('demo-analysis-paused').state, TaskRunState.running);
-    await tester.ensureVisible(find.text('演示完成 AI 分析'));
-    await tester.tap(find.text('演示完成 AI 分析'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('演示审阅'), findsOneWidget);
-    expect(find.text('河岸翠鸟 0725'), findsOneWidget);
-    expect(find.textContaining('demo-batch-20260716'), findsOneWidget);
-    expect(find.text('完成审阅，配置复制'), findsOneWidget);
-
-    await tester.tap(
-      find.descendant(of: find.byType(NavigationBar), matching: find.text('设备')),
-    );
-    await tester.pump();
-    expect(find.byKey(const Key('settings-showcase-page')), findsOneWidget);
-    expect(
-      find.descendant(of: find.byKey(const Key('device-current-work-task')), matching: find.text('复制')),
-      findsOneWidget,
-    );
-    await tester.tap(
-      find.descendant(of: find.byType(NavigationBar), matching: find.text('任务')),
-    );
-    await tester.pump();
-    expect(find.text('演示审阅'), findsOneWidget);
-
-    await tester.tap(find.text('完成审阅，配置复制'));
-    await tester.pumpAndSettle();
-    expect(find.text('复制范围'), findsOneWidget);
-    await tester.ensureVisible(find.text('下一步'));
-    await tester.tap(find.text('下一步'));
-    await tester.pumpAndSettle();
-    expect(find.text('确认复制'), findsOneWidget);
-    await tester.ensureVisible(find.text('开始复制'));
-    await tester.tap(find.text('开始复制'));
-    await tester.pumpAndSettle();
-
-    final runningCopy = controller.taskById('demo-copy-failed');
-    expect(runningCopy.state, TaskRunState.running);
-    expect(runningCopy.sourceBatch, '河岸翠鸟 0725');
-    expect(find.byType(TaskDetailPage), findsOneWidget);
-    await tester.ensureVisible(find.text('演示完成复制'));
-    await tester.tap(find.text('演示完成复制'));
-    await tester.pumpAndSettle();
-
-    expect(controller.taskById('demo-copy-failed').state, TaskRunState.completed);
-    expect(find.byType(TaskResultPage), findsOneWidget);
-    expect(find.text('照片复制完成'), findsOneWidget);
-
-    await tester.ensureVisible(find.text('进入相册'));
-    await tester.tap(find.text('进入相册'));
-    await tester.pumpAndSettle();
-    expect(find.text('照片复制完成'), findsNothing);
-    await tester.tap(
-      find.descendant(of: find.byType(NavigationBar), matching: find.text('任务')),
-    );
-    await tester.pump();
-    expect(find.byKey(const Key('task-home-page')), findsOneWidget);
-    expect(controller.currentTask.type, TaskType.copy);
-    expect(controller.currentTask.state, TaskRunState.completed);
-    expect(find.text('2,012 / 2,012 张'), findsOneWidget);
-    expect(find.text('演示审阅'), findsNothing);
-    expect(find.text('确认复制'), findsNothing);
-    expect(find.text('照片复制完成'), findsNothing);
-  });
-
-  testWidgets('review system back returns to task home without stale batch setup', (tester) async {
-    tester.view.devicePixelRatio = 3;
-    tester.view.physicalSize = const Size(1080, 2400);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPhysicalSize);
-    final controller = TaskExperienceController(const DemoTaskExperienceDataSource());
-    addTearDown(controller.dispose);
-    await _pumpShellToReview(tester, controller);
-
-    await Navigator.maybePop<void>(tester.element(find.text('演示审阅')));
+    await Navigator.maybePop<void>(tester.element(find.text('复制范围')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('task-home-page')), findsOneWidget);
     expect(find.text('建立批次'), findsNothing);
-    expect(find.text('演示审阅'), findsNothing);
+    expect(find.text('复制范围'), findsNothing);
   });
 
   testWidgets('copy result system back returns to task home without stale confirmation', (tester) async {
@@ -258,19 +247,14 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     final controller = TaskExperienceController(const DemoTaskExperienceDataSource());
     addTearDown(controller.dispose);
-    await _pumpShellToReview(tester, controller);
-
-    await tester.tap(find.text('完成审阅，配置复制'));
-    await tester.pumpAndSettle();
+    await _pumpShellToCopy(tester, controller);
     await tester.ensureVisible(find.text('下一步'));
     await tester.tap(find.text('下一步'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('开始复制'));
     await tester.tap(find.text('开始复制'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('演示完成复制'));
-    await tester.tap(find.text('演示完成复制'));
-    await tester.pumpAndSettle();
+    await _tapTaskMenuAction(tester, '演示完成复制');
     expect(find.text('照片复制完成'), findsOneWidget);
 
     await Navigator.maybePop<void>(tester.element(find.text('照片复制完成')));
@@ -283,10 +267,10 @@ void main() {
 
   _sdCardStateTests();
 
-  testWidgets('detected card opens batch setup before copy configuration', (tester) async {
+  testWidgets('detected card can start import without a temporary batch page', (tester) async {
     final controller = TaskExperienceController(const DemoTaskExperienceDataSource());
     addTearDown(controller.dispose);
-    String? startedBatchName;
+    var continueCalls = 0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -294,14 +278,10 @@ void main() {
         home: Builder(
           builder: (context) => SdCardFlowPage(
             controller: controller,
-            onContinue: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(
-                builder: (_) => BatchSetupPage(
-                  controller: controller,
-                  onStartImport: (name) => startedBatchName = name,
-                ),
-              ),
-            ),
+            onContinue: () {
+              continueCalls++;
+              controller.startImportBatch('2026.07.16 导入批次');
+            },
           ),
         ),
       ),
@@ -311,18 +291,12 @@ void main() {
     await tester.tap(find.text('开始建立批次'));
     await tester.pumpAndSettle();
 
-    expect(find.text('建立批次'), findsOneWidget);
-    expect(find.text('开始导入并建立索引'), findsOneWidget);
+    expect(continueCalls, 1);
+    expect(controller.activeBatchId, 'demo-batch-20260716');
+    expect(controller.currentTask.state, TaskRunState.running);
+    expect(controller.currentTask.sourceBatch, '2026.07.16 导入批次');
     expect(find.text('复制范围'), findsNothing);
-    expect(find.text('SD 卡只读，原始照片不会被修改或删除'), findsOneWidget);
-    final nameField = tester.widget<TextField>(find.byKey(const Key('batch-name-field')));
-    expect(nameField.decoration?.labelText, '批次名称');
-
-    await tester.enterText(find.byKey(const Key('batch-name-field')), '河岸翠鸟 0725');
-    await tester.ensureVisible(find.text('开始导入并建立索引'));
-    await tester.tap(find.text('开始导入并建立索引'));
-    await tester.pump();
-    expect(startedBatchName, '河岸翠鸟 0725');
+    expect(find.byKey(const Key('batch-name-field')), findsNothing);
   });
 
   testWidgets('复制任务页面保留设计稿关键内容', (tester) async {
@@ -389,14 +363,16 @@ void main() {
     expect(find.byKey(const Key('copy-safety-notice')), findsOneWidget);
     expect(find.byKey(const Key('copy-verification-status')), findsOneWidget);
     expect(find.byType(SwitchListTile), findsNothing);
-    expect(find.text('总照片数'), findsOneWidget);
-    expect(find.text('已确认保留'), findsOneWidget);
-    expect(find.text('待审阅'), findsOneWidget);
-    expect(find.text('已丢弃'), findsOneWidget);
-    expect(find.text('3,672 张'), findsOneWidget);
-    expect(find.text('2,012 张'), findsWidgets);
-    expect(find.text('12 张'), findsOneWidget);
-    expect(find.text('1,648 张'), findsOneWidget);
+    expect(find.text('复制范围'), findsOneWidget);
+    expect(find.text('照片数量'), findsOneWidget);
+    expect(find.text('预计使用空间'), findsOneWidget);
+    expect(find.text('目标存储'), findsOneWidget);
+    expect(find.text('XMP'), findsOneWidget);
+    expect(find.text('仅保留照片'), findsOneWidget);
+    expect(find.text('2,012 张'), findsOneWidget);
+    expect(find.text('238.7 GB'), findsOneWidget);
+    expect(find.text('Samsung T7 Shield'), findsOneWidget);
+    expect(find.text('已开启'), findsOneWidget);
   });
 
   testWidgets('offline copy target blocks starting the copy task', (tester) async {
@@ -483,7 +459,12 @@ void main() {
     expect(find.textContaining('正在重新连接盒子'), findsNothing);
     expect(find.text('重试失败项'), findsOneWidget);
     expect(find.text('跳过失败项'), findsOneWidget);
+    expect(find.byKey(const Key('task-detail-menu-button')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('task-detail-menu-button')));
+    await tester.pumpAndSettle();
     expect(find.text('导出日志'), findsOneWidget);
+    await tester.tapAt(const Offset(12, 220));
+    await tester.pumpAndSettle();
     expect(find.text('暂停任务'), findsNothing);
     expect(controller.taskById('demo-copy-failed').processed, 2009);
 
@@ -539,7 +520,21 @@ void main() {
   });
 }
 
-Future<void> _pumpShellToReview(WidgetTester tester, TaskExperienceController controller) async {
+Future<void> _tapTaskMenuAction(
+  WidgetTester tester,
+  String label,
+) async {
+  await tester.tap(find.byKey(const Key('task-detail-menu-button')));
+  await tester.pumpAndSettle();
+  expect(find.text(label), findsOneWidget);
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pumpShellToCopy(
+  WidgetTester tester,
+  TaskExperienceController controller,
+) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: AppTheme.light(),
@@ -555,19 +550,14 @@ Future<void> _pumpShellToReview(WidgetTester tester, TaskExperienceController co
   await tester.ensureVisible(find.text('开始建立批次'));
   await tester.tap(find.text('开始建立批次'));
   await tester.pumpAndSettle();
-  await tester.ensureVisible(find.text('开始导入并建立索引'));
-  await tester.tap(find.text('开始导入并建立索引'));
-  await tester.pumpAndSettle();
-  await tester.ensureVisible(find.text('演示完成导入'));
-  await tester.tap(find.text('演示完成导入'));
-  await tester.pumpAndSettle();
+  await _tapTaskMenuAction(tester, '演示完成导入');
   await tester.ensureVisible(find.text('开始 AI 分析'));
   await tester.tap(find.text('开始 AI 分析'));
   await tester.pump();
-  await tester.ensureVisible(find.text('演示完成 AI 分析'));
-  await tester.tap(find.text('演示完成 AI 分析'));
-  await tester.pumpAndSettle();
-  expect(find.text('演示审阅'), findsOneWidget);
+  await _tapTaskMenuAction(tester, '演示完成 AI 分析');
+  expect(find.byType(CopyContentPage), findsOneWidget);
+  expect(find.text('复制范围'), findsOneWidget);
+  expect(find.text('演示审阅'), findsNothing);
 }
 
 Future<void> _pumpSdState(
