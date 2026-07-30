@@ -345,7 +345,12 @@ void main() {
     );
 
     expect(find.byKey(const Key('copy-mode-card')), findsNWidgets(3));
-    expect(find.byKey(const Key('copy-target-drive-icon')), findsOneWidget);
+    final driveIcon = find.byKey(const Key('copy-target-drive-icon'));
+    expect(driveIcon, findsOneWidget);
+    expect(
+      find.descendant(of: driveIcon, matching: find.byType(Transform)),
+      findsNothing,
+    );
     expect(find.byKey(const Key('copy-recommended-badge')), findsOneWidget);
     expect(tester.getBottomRight(find.text('保存为默认策略')).dy, lessThan(800));
   });

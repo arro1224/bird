@@ -36,10 +36,7 @@ class TaskExternalDriveArt extends StatelessWidget {
     key: const Key('copy-target-drive-icon'),
     width: size,
     height: size * 1.06,
-    child: Transform.rotate(
-      angle: .08,
-      child: CustomPaint(painter: _DrivePainter()),
-    ),
+    child: CustomPaint(painter: _DrivePainter()),
   );
 }
 
@@ -120,34 +117,64 @@ class TaskEmptyBoxArt extends StatelessWidget {
 class _DrivePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
+    final bodyRect = Rect.fromLTWH(
+      size.width * .14,
+      size.height * .04,
+      size.width * .72,
+      size.height * .90,
+    );
     final body = RRect.fromRectAndRadius(
-      Rect.fromLTWH(size.width * .14, size.height * .05, size.width * .72, size.height * .86),
-      const Radius.circular(9),
+      bodyRect,
+      Radius.circular(size.width * .14),
     );
+    final bodyPath = Path()..addRRect(body);
+    canvas.drawShadow(bodyPath, const Color(0x240E351D), 4, false);
+
+    final bodyFill = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFFFFFFF), Color(0xFFEAF0E5)],
+      ).createShader(bodyRect);
     final outline = Paint()
-      ..color = AppColors.forestPrimary
+      ..color = AppColors.forestDeep
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2;
-    canvas.drawRRect(body, Paint()..color = const Color(0xFFF8F9F3));
+      ..strokeWidth = 2;
+    canvas.drawRRect(body, bodyFill);
     canvas.drawRRect(body, outline);
-    for (var x = size.width * .22; x < size.width * .82; x += size.width * .14) {
-      canvas.drawLine(
-        Offset(x, size.height * .14),
-        Offset(x - size.width * .16, size.height * .76),
-        Paint()
-          ..color = const Color(0xFF94AD83)
-          ..strokeWidth = 1.3,
-      );
-    }
-    canvas.drawLine(
-      Offset(size.width * .22, size.height * .77),
-      Offset(size.width * .78, size.height * .77),
-      outline,
+
+    final inset = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        size.width * .25,
+        size.height * .16,
+        size.width * .50,
+        size.height * .48,
+      ),
+      Radius.circular(size.width * .07),
     );
+    canvas.drawRRect(inset, Paint()..color = const Color(0xFFDCE8D6));
+    canvas.drawRRect(
+      inset,
+      Paint()
+        ..color = const Color(0xFF9AB28E)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+
+    final port = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        size.width * .36,
+        size.height * .79,
+        size.width * .28,
+        size.height * .065,
+      ),
+      Radius.circular(size.width * .025),
+    );
+    canvas.drawRRect(port, Paint()..color = AppColors.forestDeep);
     canvas.drawCircle(
-      Offset(size.width * .70, size.height * .86),
-      2.1,
-      Paint()..color = AppColors.forestPrimary,
+      Offset(size.width * .72, size.height * .82),
+      size.width * .025,
+      Paint()..color = const Color(0xFF73A34D),
     );
   }
 
