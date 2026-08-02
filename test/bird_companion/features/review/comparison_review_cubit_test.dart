@@ -100,6 +100,50 @@ void main() {
     expect(_states(cubit), [KeepState.keep, KeepState.featured]);
     expect(_states(cubit).where((state) => state.isRetained), hasLength(2));
   });
+
+  test('three-photo comparison loads Top 3 and can retain all', () async {
+    final repository = _ComparisonRepository({
+      'first': _detail('first'),
+      'second': _detail('second'),
+      'third': _detail('third'),
+      'fourth': _detail('fourth'),
+    });
+    final cubit = ComparisonReviewCubit(repository);
+    addTearDown(cubit.close);
+
+    await cubit.load(const ['first', 'second', 'third', 'fourth']);
+
+    expect(
+      cubit.state.items.map((item) => item.photo.summary.id),
+      ['first', 'second', 'third'],
+    );
+
+    await cubit.keepAll();
+
+    expect(
+      _states(cubit),
+      [KeepState.keep, KeepState.keep, KeepState.keep],
+    );
+    expect(cubit.state.message, '已保留全部对比照片');
+  });
+
+  test('keeping one of three comparison photos discards the other two', () async {
+    final repository = _ComparisonRepository({
+      'first': _detail('first'),
+      'second': _detail('second'),
+      'third': _detail('third'),
+    });
+    final cubit = ComparisonReviewCubit(repository);
+    addTearDown(cubit.close);
+
+    await cubit.load(const ['first', 'second', 'third']);
+    await cubit.mark('second', KeepState.keep);
+
+    expect(
+      _states(cubit),
+      [KeepState.discard, KeepState.keep, KeepState.discard],
+    );
+  });
 }
 
 List<KeepState> _states(ComparisonReviewCubit cubit) => cubit.state.items.map((item) => item.decision!.keepState).toList();
@@ -129,5 +173,8 @@ class _ComparisonRepository implements ReviewRepository {
   Future<List<BirdGroup>> groups(String batchId, {String? sceneId}) async => const [];
 
   @override
-  Future<ReviewSaveResult> save(UserDecision value) async => const ReviewSaveResult();
+  Future<ReviewSaveResult> save(
+    UserDecision value, {
+    String? projectId,
+  }) async => const ReviewSaveResult();
 }

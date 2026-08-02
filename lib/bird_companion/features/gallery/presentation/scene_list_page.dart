@@ -12,6 +12,7 @@ import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/scene_list_cubit.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:aves/bird_companion/core/files/media_cache_identity.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -154,6 +155,11 @@ class _SceneCard extends StatelessWidget {
                     child: imageUrl?.isNotEmpty == true
                         ? CachedNetworkImage(
                             imageUrl: imageUrl!,
+                            cacheKey: mediaCacheIdentity(
+                              uri: scene.cover!.thumbnailUri!,
+                              mediaId: scene.id,
+                              variant: 'scene-thumbnail',
+                            ),
                             fit: BoxFit.cover,
                             placeholder: (_, _) => const _ScenePlaceholder(),
                             errorWidget: (_, _, _) => const _ScenePlaceholder(),

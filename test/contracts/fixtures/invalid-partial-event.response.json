@@ -1,0 +1,9 @@
+{
+  "event_id": "evt-partial",
+  "event_type": "job_progress",
+  "timestamp": "2026-07-29T14:02:18+08:00",
+  "payload": {
+    "job_id": "job-copy-001",
+    "progress": 0.65
+  }
+}

@@ -25,15 +25,27 @@ class ComparisonReviewState {
 }
 
 class ComparisonReviewCubit extends Cubit<ComparisonReviewState> {
-  ComparisonReviewCubit(this._repository, [this._refreshCoordinator, this._dataChanges]) : super(const ComparisonReviewState());
+  ComparisonReviewCubit(
+    this._repository, [
+    this._refreshCoordinator,
+    this._dataChanges,
+    this.projectId,
+  ]) : super(const ComparisonReviewState());
   final ReviewRepository _repository;
   final SessionRefreshCoordinator? _refreshCoordinator;
   final AppDataChangeBus? _dataChanges;
+  final String? projectId;
 
   Future<void> load(List<String> ids) async {
     emit(const ComparisonReviewState(loading: true));
     try {
-      emit(ComparisonReviewState(items: await Future.wait(ids.take(2).map(_repository.detail))));
+      emit(
+        ComparisonReviewState(
+          items: await Future.wait(
+            ids.take(3).map(_repository.detail),
+          ),
+        ),
+      );
     } catch (error) {
       emit(ComparisonReviewState(error: error));
     }
@@ -67,6 +79,18 @@ class ComparisonReviewCubit extends Cubit<ComparisonReviewState> {
     );
   }
 
+  Future<void> keepAll() async {
+    if (state.saving || state.items.length < 2) return;
+    final nextStates = {
+      for (final item in state.items) item.photo.summary.id: _decisionState(item) == KeepState.featured ? KeepState.featured : KeepState.keep,
+    };
+    await _saveStates(
+      nextStates,
+      savingBoth: true,
+      successMessage: '已保留全部对比照片',
+    );
+  }
+
   Future<void> _saveStates(
     Map<String, KeepState> nextStates, {
     String? savingId,
@@ -91,6 +115,7 @@ class ComparisonReviewCubit extends Cubit<ComparisonReviewState> {
         changedItems.map(
           (item) => _repository.save(
             _decisionWithState(item, nextStates[item.photo.summary.id]!, updatedAt),
+            projectId: projectId,
           ),
         ),
       );

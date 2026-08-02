@@ -5,22 +5,44 @@ import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_failure.dart';
+import 'package:aves/bird_companion/features/jobs/domain/job_report.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class JobDetailState {
-  const JobDetailState({this.loading = false, this.controlling = false, this.job, this.failures = const [], this.error, this.message});
+  const JobDetailState({
+    this.loading = false,
+    this.controlling = false,
+    this.job,
+    this.report,
+    this.failures = const [],
+    this.error,
+    this.message,
+  });
   final bool loading;
   final bool controlling;
   final BirdJobStatus? job;
+  final JobReport? report;
   final List<JobFailure> failures;
   final Object? error;
   final String? message;
 
-  JobDetailState copyWith({bool? loading, bool? controlling, BirdJobStatus? job, List<JobFailure>? failures, Object? error, String? message, bool clearError = false, bool clearMessage = false}) => JobDetailState(
+  JobDetailState copyWith({
+    bool? loading,
+    bool? controlling,
+    BirdJobStatus? job,
+    JobReport? report,
+    List<JobFailure>? failures,
+    Object? error,
+    String? message,
+    bool clearError = false,
+    bool clearMessage = false,
+    bool clearReport = false,
+  }) => JobDetailState(
     loading: loading ?? this.loading,
     controlling: controlling ?? this.controlling,
     job: job ?? this.job,
+    report: clearReport ? null : report ?? this.report,
     failures: failures ?? this.failures,
     error: clearError ? null : error ?? this.error,
     message: clearMessage ? null : message ?? this.message,
@@ -38,7 +60,7 @@ class JobDetailCubit extends Cubit<JobDetailState> {
 
   final JobRepository _repository;
   final EventClient _events;
-  final String? jobId;
+  final String jobId;
   final SessionRefreshCoordinator? _refreshCoordinator;
   final AppDataChangeBus? _dataChanges;
   StreamSubscription<DeviceEvent>? _eventSubscription;
@@ -48,29 +70,20 @@ class JobDetailCubit extends Cubit<JobDetailState> {
 
   Future<void> load() async {
     if (_loadInFlight) return;
-    final id = jobId;
-    if (id == null) {
-      emit(
-        const JobDetailState(
-          job: BirdJobStatus(id: 'demo-analysis-01', type: BirdJobType.analysis, state: BirdJobState.running, progress: .5, totalCount: 1200, finishedCount: 600, currentFile: 'DSC_0120.NEF'),
-        ),
-      );
-      return;
-    }
     _loadInFlight = true;
     emit(state.copyWith(loading: true, clearError: true, clearMessage: true));
     try {
-      final job = await _repository.detail(id);
-      List<JobFailure> failures = const [];
-      if (job.failedCount > 0) {
-        try {
-          failures = await _repository.failures(id);
-        } catch (_) {
-          // A task can still be controlled when the optional failure-detail
-          // endpoint is temporarily unavailable.
-        }
-      }
-      emit(state.copyWith(loading: false, job: job, failures: failures));
+      final job = await _repository.detail(jobId);
+      final outcome = await _readOutcome(job);
+      emit(
+        state.copyWith(
+          loading: false,
+          job: job,
+          report: outcome.report,
+          clearReport: outcome.report == null,
+          failures: outcome.failures,
+        ),
+      );
       _configurePolling(job);
     } catch (error) {
       emit(state.copyWith(loading: false, error: error));
@@ -80,30 +93,49 @@ class JobDetailCubit extends Cubit<JobDetailState> {
   }
 
   Future<void> control(String action) async {
-    if (jobId == null || state.controlling) return;
+    if (state.controlling) return;
+    final current = state.job;
+    if (current == null) return;
     emit(state.copyWith(controlling: true, clearError: true, clearMessage: true));
     try {
-      await _repository.control(jobId!, action);
-      await load();
+      final updated = await _repository.control(
+        jobId,
+        action == 'retry' ? 'retry_failed' : action,
+        version: current.version,
+      );
+      final outcome = await _readOutcome(updated);
+      emit(
+        state.copyWith(
+          job: updated,
+          report: outcome.report,
+          clearReport: outcome.report == null,
+          failures: outcome.failures,
+        ),
+      );
       _refreshCoordinator?.requestRefresh();
       _dataChanges?.publish({AppDataResource.jobs, AppDataResource.device}, reason: 'job_$action');
-      emit(state.copyWith(controlling: false, message: '任务已${_actionLabel(action)}。'));
+      emit(
+        state.copyWith(
+          controlling: false,
+          message: '任务已${_actionLabel(action)}。',
+        ),
+      );
     } catch (error) {
-      emit(state.copyWith(controlling: false, error: error, message: '任务操作失败：$error'));
+      emit(state.copyWith(controlling: false, error: error));
     }
   }
 
   Future<bool> delete() async {
-    if (jobId == null || state.controlling || state.job?.canDelete != true) return false;
+    if (state.controlling || state.job?.canDelete != true) return false;
     emit(state.copyWith(controlling: true, clearError: true, clearMessage: true));
     try {
-      await _repository.delete(jobId!);
+      await _repository.delete(jobId);
       _refreshCoordinator?.requestRefresh();
       _dataChanges?.publish({AppDataResource.jobs, AppDataResource.device}, reason: 'job_deleted');
       emit(state.copyWith(controlling: false, message: '任务已从盒子任务列表移除'));
       return true;
     } catch (error) {
-      emit(state.copyWith(controlling: false, error: error, message: '删除任务失败：$error'));
+      emit(state.copyWith(controlling: false, error: error));
       return false;
     }
   }
@@ -113,7 +145,44 @@ class JobDetailCubit extends Cubit<JobDetailState> {
     if (update.id.isEmpty || update.id != jobId) return;
     emit(state.copyWith(job: update, clearError: true));
     _configurePolling(update);
+    if (_isTerminal(update)) {
+      unawaited(_refreshOutcome(update));
+    }
   }
+
+  Future<_JobOutcome> _readOutcome(BirdJobStatus job) async {
+    var failures = const <JobFailure>[];
+    JobReport? report;
+    if (job.failedCount > 0) {
+      try {
+        failures = await _repository.failures(job.id);
+      } catch (_) {
+        // The authoritative status and controls remain usable if the optional
+        // failure list cannot be loaded.
+      }
+    }
+    if (_isTerminal(job)) {
+      try {
+        report = await _repository.report(job.id);
+      } catch (_) {
+        // A report may be generated shortly after the terminal job update.
+      }
+    }
+    return _JobOutcome(failures: failures, report: report);
+  }
+
+  Future<void> _refreshOutcome(BirdJobStatus job) async {
+    final outcome = await _readOutcome(job);
+    if (isClosed || state.job?.id != job.id) return;
+    emit(
+      state.copyWith(
+        report: outcome.report,
+        failures: outcome.failures,
+      ),
+    );
+  }
+
+  bool _isTerminal(BirdJobStatus job) => job.state == BirdJobState.completed || job.state == BirdJobState.failed || job.state == BirdJobState.cancelled;
 
   void _configurePolling(BirdJobStatus job) {
     _pollTimer?.cancel();
@@ -137,4 +206,11 @@ class JobDetailCubit extends Cubit<JobDetailState> {
     await _connectionSubscription?.cancel();
     return super.close();
   }
+}
+
+class _JobOutcome {
+  const _JobOutcome({required this.failures, this.report});
+
+  final List<JobFailure> failures;
+  final JobReport? report;
 }

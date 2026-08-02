@@ -1,5 +1,6 @@
 import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/core/models/json_value.dart';
+import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:equatable/equatable.dart';
 
 enum NetworkMode { hotspot, lan, manual, qr, unknown }
@@ -142,14 +143,20 @@ class DeviceStatus extends Equatable {
       batteryPercent: json.intOrNull('battery_percent'),
       isExternalPower: json.boolOrNull('external_power') ?? json.boolOrNull('is_external_power') ?? false,
       temperatureCelsius: json.doubleOrNull('temperature') ?? json.doubleOrNull('temperature_celsius'),
-      storageTotalBytes: json.intOrNull('storage_total'),
-      storageFreeBytes: json.intOrNull('storage_free'),
+      storageTotalBytes: ProtocolValidation.optionalNonNegativeInt(
+        json,
+        'storage_total',
+      ),
+      storageFreeBytes: ProtocolValidation.optionalNonNegativeInt(
+        json,
+        'storage_free',
+      ),
       currentJob: jobJson == null ? null : BirdJobStatus.fromJson(jobJson),
       errorCode: json.stringOrNull('error_code'),
       errorMessage: json.stringOrNull('error_message'),
       softwareVersion: json.stringOrNull('software_version'),
       modelVersion: json.stringOrNull('model_version'),
-      updatedAt: DateTime.tryParse(json.stringOrNull('updated_at') ?? ''),
+      updatedAt: ProtocolValidation.optionalDateTime(json, 'updated_at'),
     );
   }
 

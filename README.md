@@ -6,7 +6,8 @@
 
 ```powershell
 flutter pub get
-flutter run --flavor bird -t lib/main_bird.dart
+flutter run --flavor bird
 ```
 
-项目的业务源码位于 `lib/bird_companion`。
+默认入口 `lib/main.dart` 会启动任务与设备模块。独立入口仍保留在
+`lib/main_bird_settings.dart`，项目业务源码位于 `lib/bird_companion`。

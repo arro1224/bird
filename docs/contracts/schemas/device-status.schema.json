@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://birdbox.local/contracts/v1/schemas/device-status.schema.json",
+  "title": "DeviceStatus",
+  "type": "object",
+  "required": [
+    "connection",
+    "card",
+    "external_power",
+    "updated_at"
+  ],
+  "properties": {
+    "connection": {
+      "type": "object",
+      "required": [
+        "device_id",
+        "device_name",
+        "base_uri",
+        "network_mode",
+        "api_version",
+        "is_paired"
+      ],
+      "properties": {
+        "device_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "device_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_uri": {
+          "type": "string",
+          "format": "uri"
+        },
+        "network_mode": {
+          "type": "string",
+          "enum": [
+            "hotspot",
+            "lan",
+            "manual",
+            "qr"
+          ]
+        },
+        "api_version": {
+          "const": "v1"
+        },
+        "signal_strength": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "is_paired": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "battery_percent": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 100
+    },
+    "external_power": {
+      "type": "boolean"
+    },
+    "temperature_celsius": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "storage_total": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "storage_free": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "card": {
+      "type": "object",
+      "required": [
+        "inserted",
+        "readable"
+      ],
+      "properties": {
+        "card_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inserted": {
+          "type": "boolean"
+        },
+        "readable": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "free_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "current_job": {
+      "oneOf": [
+        {
+          "$ref": "./bird-job-status.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "error_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "error_message": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "software_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "model_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "category_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}

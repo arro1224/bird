@@ -13,11 +13,14 @@ import 'package:aves/bird_companion/core/sync/conflict_resolver.dart';
 import 'package:aves/bird_companion/core/sync/bird_sync_service.dart';
 import 'package:aves/bird_companion/core/sync/sync_coordinator.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
+import 'package:aves/bird_companion/core/session/secure_session_store.dart';
+import 'package:aves/bird_companion/core/session/session_coordinator.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/features/connection/data/connection_api.dart';
 import 'package:aves/bird_companion/features/connection/data/connection_repository_impl.dart';
 import 'package:aves/bird_companion/features/connection/data/device_discovery_source.dart';
 import 'package:aves/bird_companion/features/connection/data/mdns_device_discovery_source.dart';
+import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
 import 'package:aves/bird_companion/features/device/data/device_repository_impl.dart';
 import 'package:aves/bird_companion/features/device/data/device_status_api.dart';
@@ -38,6 +41,10 @@ import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_api.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_repository_impl.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_repository.dart';
+import 'package:aves/bird_companion/features/settings/data/settings_store.dart';
+import 'package:aves/bird_companion/features/storage/data/storage_api.dart';
+import 'package:aves/bird_companion/features/storage/data/storage_repository_impl.dart';
+import 'package:aves/bird_companion/features/storage/domain/storage_repository.dart';
 import 'package:flutter/widgets.dart';
 
 /// 为拍鸟伴侣功能提供全局、可替换的依赖入口。
@@ -61,12 +68,15 @@ class BirdCompanionDependencies {
     required this.reviewCheckpointStore,
     required this.copyRepository,
     required this.jobRepository,
+    required this.storageRepository,
     required this.deviceSessionCubit,
     required this.birdSyncService,
     required this.refreshCoordinator,
     required this.logDownloadService,
     required this.dataChangeBus,
     required this.cacheMetricsService,
+    required this.settingsStore,
+    required this.sessionCoordinator,
   });
 
   final ApiClient apiClient;
@@ -84,19 +94,31 @@ class BirdCompanionDependencies {
   final ReviewCheckpointStore reviewCheckpointStore;
   final CopyRepository copyRepository;
   final JobRepository jobRepository;
+  final StorageRepository storageRepository;
   final DeviceSessionCubit deviceSessionCubit;
   final BirdSyncService birdSyncService;
   final SessionRefreshCoordinator refreshCoordinator;
   final LogDownloadService logDownloadService;
   final AppDataChangeBus dataChangeBus;
   final CacheMetricsService cacheMetricsService;
+  final SettingsStore settingsStore;
+  final SessionCoordinator sessionCoordinator;
 
   static Future<BirdCompanionDependencies> create() async {
     final cache = await LocalCache.open();
     final apiClient = ApiClient();
     final eventClient = EventClient();
+    final sessionCoordinator = SessionCoordinator(
+      apiClient,
+      eventClient,
+      AndroidKeystoreSessionStore(),
+    );
     final connectionRepository = ConnectionRepositoryImpl(
-      ConnectionApi(apiClient, eventClient),
+      ConnectionApi(
+        apiClient,
+        PairingApi(apiClient),
+        sessionCoordinator,
+      ),
       cache,
       CompositeDeviceDiscoverySource([MdnsDeviceDiscoverySource(), KnownDeviceDiscoverySource(() async => const [])]),
     );
@@ -126,6 +148,7 @@ class BirdCompanionDependencies {
       connectivityMonitor,
       eventClient,
       refreshCoordinator,
+      sessionCoordinator: sessionCoordinator,
       onConnectionRecovered: () async {
         await birdSyncService.synchronize();
       },
@@ -161,12 +184,15 @@ class BirdCompanionDependencies {
       reviewCheckpointStore: ReviewCheckpointStore(cache),
       copyRepository: CopyRepositoryImpl(CopyApi(apiClient)),
       jobRepository: JobRepositoryImpl(JobApi(apiClient)),
+      storageRepository: StorageRepositoryImpl(StorageApi(apiClient)),
       deviceSessionCubit: deviceSessionCubit,
       birdSyncService: birdSyncService,
       refreshCoordinator: refreshCoordinator,
       logDownloadService: LogDownloadService(apiClient),
       dataChangeBus: dataChangeBus,
       cacheMetricsService: CacheMetricsService(),
+      settingsStore: BirdSettingsStore(cache),
+      sessionCoordinator: sessionCoordinator,
     );
     dependencies.birdSyncService.start();
     const testBaseUrl = String.fromEnvironment('BIRD_TEST_BASE_URL');
@@ -190,6 +216,8 @@ class BirdCompanionDependencies {
 
   void dispose() {
     unawaited(eventClient.dispose());
+    unawaited(sessionCoordinator.dispose());
+    unawaited(apiClient.dispose());
     unawaited(deviceSessionCubit.close());
     unawaited(birdSyncService.dispose());
     unawaited(refreshCoordinator.dispose());

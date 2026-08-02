@@ -1,0 +1,34 @@
+{
+  "connection": {
+    "device_id": "k7-7b2a",
+    "device_name": "BirdBox K7",
+    "base_uri": "http://192.168.4.1:8080",
+    "network_mode": "hotspot",
+    "api_version": "v1",
+    "signal_strength": -46,
+    "is_paired": true
+  },
+  "battery_percent": 82,
+  "external_power": false,
+  "temperature_celsius": 48.5,
+  "storage_total": 1000204886016,
+  "storage_free": 742183206912,
+  "card": {
+    "card_id": "sd-001",
+    "inserted": true,
+    "readable": true,
+    "name": "SanDisk 128GB",
+    "total_bytes": 128000000000,
+    "free_bytes": 42100000000,
+    "error_code": null,
+    "error_message": null
+  },
+  "current_job": null,
+  "error_code": null,
+  "error_message": null,
+  "software_version": "1.2.4",
+  "model_version": "BirdAI-3.0.2",
+  "category_version": "birds-cn-2026.07",
+  "schema_version": "1.0.0",
+  "updated_at": "2026-07-29T14:20:31+08:00"
+}

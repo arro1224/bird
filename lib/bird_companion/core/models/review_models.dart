@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:flutter/foundation.dart';
 
 enum KeepState { pending, keep, discard, featured }
 
@@ -127,6 +128,136 @@ class UserDecision extends Equatable {
 
   @override
   List<Object?> get props => [fileId, keepState, userScore, userSpeciesId, userSpecies, userTags, updatedAt, version];
+}
+
+enum PatchFieldState { unchanged, clear, value }
+
+class PatchField<T> extends Equatable {
+  const PatchField.unchanged() : state = PatchFieldState.unchanged, value = null;
+
+  const PatchField.clear() : state = PatchFieldState.clear, value = null;
+
+  const PatchField.value(this.value) : state = PatchFieldState.value;
+
+  final PatchFieldState state;
+  final T? value;
+
+  @override
+  List<Object?> get props => [state, value];
+}
+
+/// Three-state review update DTO.
+///
+/// Omitted fields remain unchanged, `null` clears nullable scalar fields, and
+/// an empty list clears tags. This prevents an edit to one review field from
+/// overwriting newer values in another field.
+class UserDecisionPatch extends Equatable {
+  const UserDecisionPatch({
+    required this.fileId,
+    this.keepState = const PatchField.unchanged(),
+    this.userScore = const PatchField.unchanged(),
+    this.userSpeciesId = const PatchField.unchanged(),
+    this.userSpecies = const PatchField.unchanged(),
+    this.userTags = const PatchField.unchanged(),
+    this.updatedAt,
+    this.version,
+  });
+
+  factory UserDecisionPatch.fromDecision(UserDecision value) => UserDecisionPatch(
+    fileId: value.fileId,
+    keepState: PatchField.value(value.keepState),
+    userScore: value.userScore == null ? const PatchField.clear() : PatchField.value(value.userScore),
+    userSpeciesId: value.userSpeciesId == null ? const PatchField.clear() : PatchField.value(value.userSpeciesId),
+    userSpecies: value.userSpecies == null ? const PatchField.clear() : PatchField.value(value.userSpecies),
+    userTags: value.userTags.isEmpty ? const PatchField.clear() : PatchField.value(value.userTags),
+    updatedAt: value.updatedAt,
+    version: value.version,
+  );
+
+  factory UserDecisionPatch.diff(
+    UserDecision before,
+    UserDecision after,
+  ) => UserDecisionPatch(
+    fileId: after.fileId,
+    keepState: before.keepState == after.keepState ? const PatchField.unchanged() : PatchField.value(after.keepState),
+    userScore: _nullableDiff(before.userScore, after.userScore),
+    userSpeciesId: _nullableDiff(
+      before.userSpeciesId,
+      after.userSpeciesId,
+    ),
+    userSpecies: _nullableDiff(before.userSpecies, after.userSpecies),
+    userTags: listEquals(before.userTags, after.userTags)
+        ? const PatchField.unchanged()
+        : after.userTags.isEmpty
+        ? const PatchField.clear()
+        : PatchField.value(after.userTags),
+    updatedAt: after.updatedAt,
+    version: after.version ?? before.version,
+  );
+
+  final String fileId;
+  final PatchField<KeepState> keepState;
+  final PatchField<double> userScore;
+  final PatchField<String> userSpeciesId;
+  final PatchField<String> userSpecies;
+  final PatchField<List<String>> userTags;
+  final DateTime? updatedAt;
+  final int? version;
+
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{};
+    _writePatch(
+      json,
+      'keep_state',
+      keepState,
+      encode: (value) => value.wireValue,
+    );
+    _writePatch(json, 'user_score', userScore);
+    _writePatch(json, 'user_species_id', userSpeciesId);
+    _writePatch(json, 'user_species', userSpecies);
+    _writePatch(json, 'user_tags', userTags, clearValue: const <String>[]);
+    if (updatedAt != null) {
+      json['updated_at'] = updatedAt!.toUtc().toIso8601String();
+    }
+    if (version != null) json['version'] = version;
+    return json;
+  }
+
+  @override
+  List<Object?> get props => [
+    fileId,
+    keepState,
+    userScore,
+    userSpeciesId,
+    userSpecies,
+    userTags,
+    updatedAt,
+    version,
+  ];
+}
+
+PatchField<T> _nullableDiff<T>(T? before, T? after) {
+  if (before == after) return const PatchField.unchanged();
+  if (after == null) return const PatchField.clear();
+  return PatchField.value(after);
+}
+
+void _writePatch<T>(
+  Map<String, dynamic> json,
+  String key,
+  PatchField<T> field, {
+  Object? Function(T value)? encode,
+  Object? clearValue,
+}) {
+  switch (field.state) {
+    case PatchFieldState.unchanged:
+      return;
+    case PatchFieldState.clear:
+      json[key] = clearValue;
+    case PatchFieldState.value:
+      final value = field.value as T;
+      json[key] = encode?.call(value) ?? value;
+  }
 }
 
 class VersionHistory extends Equatable {

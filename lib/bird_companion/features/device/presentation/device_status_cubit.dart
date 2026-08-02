@@ -74,7 +74,11 @@ class DeviceStatusCubit extends Cubit<DeviceStatusState> {
     if (job == null) return;
     emit(state.copyWith(isControllingJob: true, clearError: true));
     try {
-      await _repository.controlJob(jobId: job.id, action: action);
+      await _repository.controlJob(
+        jobId: job.id,
+        action: action,
+        version: job.version,
+      );
       await load();
       _dataChanges?.publish({AppDataResource.device, AppDataResource.jobs}, reason: 'job_$action');
       emit(state.copyWith(isControllingJob: false));

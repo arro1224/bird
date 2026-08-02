@@ -10,13 +10,28 @@ class StorageTarget {
 }
 
 class CopyEstimate {
-  const CopyEstimate({required this.mode, required this.fileCount, required this.requiredBytes, required this.pendingCount, required this.targets});
+  const CopyEstimate({
+    required this.mode,
+    required this.fileCount,
+    required this.requiredBytes,
+    required this.pendingCount,
+    required this.targets,
+    this.version = 0,
+  });
   final String mode;
   final int fileCount, requiredBytes, pendingCount;
   final List<StorageTarget> targets;
+  final int version;
 }
 
 abstract interface class CopyRepository {
   Future<CopyEstimate> estimate(String batchId, String mode);
-  Future<BirdJobStatus> create(String batchId, String mode, String targetId, {required bool xmpEnabled});
+  Future<BirdJobStatus> create(
+    String batchId,
+    String mode,
+    String targetId, {
+    required bool xmpEnabled,
+    required bool verifyAfterCopy,
+    required int version,
+  });
 }

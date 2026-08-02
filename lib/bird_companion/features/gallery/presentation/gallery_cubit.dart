@@ -9,6 +9,7 @@ import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/features/review/data/review_checkpoint_store.dart';
+import 'package:aves/bird_companion/features/settings/data/settings_store.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 PhotoQuery resolveInitialPhotoQuery({
@@ -18,6 +19,15 @@ PhotoQuery resolveInitialPhotoQuery({
 }) {
   if (!restoreSavedView || savedView == null) return fallback;
   return PhotoQuery.fromJson(Map<String, dynamic>.from(savedView));
+}
+
+String albumViewCacheKey({
+  required String? deviceNamespace,
+  required String projectId,
+}) {
+  final normalized = deviceNamespace?.trim();
+  final namespace = normalized == null || normalized.isEmpty ? 'unbound' : normalized;
+  return 'album:view:$namespace:$projectId';
 }
 
 class GalleryState {
@@ -31,6 +41,8 @@ class GalleryState {
     this.pendingOperationCount = 0,
     this.conflictOperationCount = 0,
     this.error,
+    this.gridColumns = 3,
+    this.showRatingOverlay = true,
   });
   final bool loading, hasMore;
   final bool fromCache;
@@ -40,6 +52,8 @@ class GalleryState {
   final int pendingOperationCount;
   final int conflictOperationCount;
   final Object? error;
+  final int gridColumns;
+  final bool showRatingOverlay;
   GalleryState copyWith({
     bool? loading,
     List<PhotoSummary>? items,
@@ -51,6 +65,8 @@ class GalleryState {
     int? conflictOperationCount,
     Object? error,
     bool clearError = false,
+    int? gridColumns,
+    bool? showRatingOverlay,
   }) => GalleryState(
     loading: loading ?? this.loading,
     items: items ?? this.items,
@@ -61,6 +77,8 @@ class GalleryState {
     pendingOperationCount: pendingOperationCount ?? this.pendingOperationCount,
     conflictOperationCount: conflictOperationCount ?? this.conflictOperationCount,
     error: clearError ? null : error ?? this.error,
+    gridColumns: gridColumns ?? this.gridColumns,
+    showRatingOverlay: showRatingOverlay ?? this.showRatingOverlay,
   );
 }
 
@@ -74,9 +92,25 @@ class GalleryCubit extends Cubit<GalleryState> {
     this._pendingOperations,
     this._activeDeviceId,
     this._checkpointStore,
-  ]) : super(const GalleryState()) {
+    this._settingsStore,
+  ]) : super(
+         GalleryState(
+           gridColumns: _settingsGridColumns(_settingsStore),
+           showRatingOverlay: _settingsShowRatingOverlay(_settingsStore),
+         ),
+       ) {
     _refreshSubscription = refreshCoordinator?.changes.listen((_) => refresh());
-    _dataSubscription = dataChanges?.changes.where((change) => change.affects(AppDataResource.photos) || change.affects(AppDataResource.cache)).listen((_) => refresh());
+    _dataSubscription = dataChanges?.changes
+        .where(
+          (change) => change.affects(AppDataResource.photos) || change.affects(AppDataResource.cache) || change.affects(AppDataResource.photoPreferences),
+        )
+        .listen((change) {
+          if (change.affects(AppDataResource.photoPreferences)) {
+            _applyPhotoPreferences();
+          } else {
+            refresh();
+          }
+        });
   }
   final PhotoRepository _repo;
   final String batchId;
@@ -84,6 +118,7 @@ class GalleryCubit extends Cubit<GalleryState> {
   final PendingOperationStore? _pendingOperations;
   final String? Function()? _activeDeviceId;
   final ReviewCheckpointStore? _checkpointStore;
+  final SettingsStore? _settingsStore;
   StreamSubscription<int>? _refreshSubscription;
   StreamSubscription<AppDataChange>? _dataSubscription;
   Timer? _searchDebounce;
@@ -93,9 +128,19 @@ class GalleryCubit extends Cubit<GalleryState> {
     PhotoQuery fallback, {
     bool restoreSavedView = true,
   }) async {
-    final raw = restoreSavedView ? _cache?.read<Map>('album:view:$batchId') : null;
+    final raw = restoreSavedView ? _cache?.read<Map>(_viewCacheKey()) : null;
+    final preferences = _settingsStore?.read();
+    final preferredFallback = preferences == null
+        ? fallback
+        : _applyPhotoDefaults(
+            fallback.copyWith(
+              sort: _settingsSort(preferences.sortOrder),
+              clearCursor: true,
+            ),
+            preferences,
+          );
     final restored = resolveInitialPhotoQuery(
-      fallback: fallback,
+      fallback: preferredFallback,
       savedView: raw,
       restoreSavedView: restoreSavedView,
     );
@@ -131,7 +176,7 @@ class GalleryCubit extends Cubit<GalleryState> {
           conflictOperationCount: operationCounts.conflict,
         ),
       );
-      await _cache?.write('album:view:$batchId', q.toJson());
+      await _cache?.write(_viewCacheKey(), q.toJson());
       final deviceId = _activeDeviceId?.call()?.trim();
       if (deviceId != null && deviceId.isNotEmpty) {
         try {
@@ -149,6 +194,13 @@ class GalleryCubit extends Cubit<GalleryState> {
       if (generation != _requestGeneration) return;
       emit(state.copyWith(loading: false, error: e));
     }
+  }
+
+  String _viewCacheKey() {
+    return albumViewCacheKey(
+      deviceNamespace: _activeDeviceId?.call(),
+      projectId: batchId,
+    );
   }
 
   Future<void> loadMore() async {
@@ -183,11 +235,38 @@ class GalleryCubit extends Cubit<GalleryState> {
     }
   }
 
+  void _applyPhotoPreferences() {
+    final settings = _settingsStore?.read();
+    if (settings == null) return;
+    final sort = _settingsSort(settings.sortOrder);
+    emit(
+      state.copyWith(
+        gridColumns: settings.gridColumns.clamp(2, 6),
+        showRatingOverlay: settings.showRatingOverlay,
+      ),
+    );
+    if (state.query.sort != sort) {
+      unawaited(
+        refresh(
+          query: state.query.copyWith(sort: sort, clearCursor: true),
+        ),
+      );
+    }
+  }
+
   _OperationCounts _operationCounts() {
     final deviceId = _activeDeviceId?.call()?.trim();
     final pendingOperations = _pendingOperations;
     if (deviceId == null || deviceId.isEmpty || pendingOperations == null) return const _OperationCounts();
-    final operations = pendingOperations.readAll().where((operation) => operation.deviceId == deviceId).where((operation) => operation.type == PendingOperationType.updateReview || operation.type == PendingOperationType.batchReview);
+    final operations = pendingOperations
+        .readAll()
+        .where((operation) => operation.deviceId == deviceId)
+        .where(
+          (operation) => operation.projectId == batchId || operation.payload['project_id']?.toString() == batchId || operation.payload['batch_id']?.toString() == batchId,
+        )
+        .where(
+          (operation) => operation.type == PendingOperationType.updateReview || operation.type == PendingOperationType.batchReview,
+        );
     return _OperationCounts(
       pending: operations.where((operation) => operation.status != PendingOperationStatus.conflict).length,
       conflict: operations.where((operation) => operation.status == PendingOperationStatus.conflict).length,
@@ -196,11 +275,46 @@ class GalleryCubit extends Cubit<GalleryState> {
 
   @override
   Future<void> close() async {
+    _requestGeneration++;
     _searchDebounce?.cancel();
     await _refreshSubscription?.cancel();
     await _dataSubscription?.cancel();
     return super.close();
   }
+}
+
+int _settingsGridColumns(SettingsStore? store) => store?.read().gridColumns.clamp(2, 6) ?? 3;
+
+bool _settingsShowRatingOverlay(SettingsStore? store) => store?.read().showRatingOverlay ?? true;
+
+String _settingsSort(String value) => switch (value) {
+  'oldest' => 'captured_at_asc',
+  'fileNameAscending' => 'filename_asc',
+  'fileNameDescending' => 'filename_desc',
+  'sizeDescending' => 'size_desc',
+  'sizeAscending' => 'size_asc',
+  _ => 'captured_at_desc',
+};
+
+PhotoQuery _applyDefaultFilter(PhotoQuery query, String preference) => switch (preference) {
+  'pendingReview' when query.keepState == null => query.copyWith(keepState: 'pending'),
+  'recommended' when !query.recommendedOnly => query.copyWith(recommendedOnly: true),
+  'highScore' when query.minScore == null => query.copyWith(minScore: 4),
+  _ => query,
+};
+
+PhotoQuery _applyPhotoDefaults(
+  PhotoQuery query,
+  BirdSettingsSnapshot settings,
+) {
+  final filtered = _applyDefaultFilter(
+    query,
+    settings.defaultPhotoFilter,
+  );
+  if (!settings.birdPhotosOnly || filtered.recognitionState != null) {
+    return filtered;
+  }
+  return filtered.copyWith(recognitionState: 'recognized');
 }
 
 class _OperationCounts {

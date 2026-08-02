@@ -4,12 +4,13 @@ import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
 import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
+import 'package:aves/bird_companion/core/session/session_coordinator.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class DeviceSessionCubit extends Cubit<DeviceSessionState> {
-  DeviceSessionCubit(this._repository, this._connectivityMonitor, this._eventClient, this._refreshCoordinator, {this.onConnectionRecovered}) : super(const DeviceSessionState()) {
+  DeviceSessionCubit(this._repository, this._connectivityMonitor, this._eventClient, this._refreshCoordinator, {this.onConnectionRecovered, SessionCoordinator? sessionCoordinator}) : super(const DeviceSessionState()) {
     _networkSubscription = _connectivityMonitor.onNetworkChanged.listen((available) {
       if (!isClosed && available && state.phase == DeviceSessionPhase.disconnected && state.device != null) reconnect();
     });
@@ -18,6 +19,16 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
         // HTTP 状态查询仍可正常工作；模拟盒子或旧版真实盒子未提供 WebSocket 时，
         // 不应把整台设备误判为断线。
         emit(state.copyWith(message: '实时事件连接暂不可用，页面会在刷新时读取最新状态。'));
+      }
+    });
+    _authenticationSubscription = sessionCoordinator?.authenticationFailures.listen((_) {
+      if (!isClosed) {
+        emit(
+          state.copyWith(
+            phase: DeviceSessionPhase.disconnected,
+            message: '设备授权已失效，请重新配对。',
+          ),
+        );
       }
     });
   }
@@ -29,6 +40,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   final Future<void> Function()? onConnectionRecovered;
   late final StreamSubscription<bool> _networkSubscription;
   late final StreamSubscription<EventConnectionState> _eventSubscription;
+  StreamSubscription<SessionAuthenticationFailure>? _authenticationSubscription;
 
   void connecting() {
     if (!isClosed) emit(state.copyWith(phase: DeviceSessionPhase.connecting, clearMessage: true));
@@ -116,6 +128,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   Future<void> close() async {
     await _networkSubscription.cancel();
     await _eventSubscription.cancel();
+    await _authenticationSubscription?.cancel();
     return super.close();
   }
 }

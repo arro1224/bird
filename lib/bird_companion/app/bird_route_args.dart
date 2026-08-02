@@ -206,17 +206,31 @@ class JobDetailArgs {
 }
 
 class ComparisonReviewArgs {
-  const ComparisonReviewArgs({required this.groupId, required this.fileIds, this.reviewContext});
+  const ComparisonReviewArgs({
+    required this.groupId,
+    required this.fileIds,
+    this.reviewContext,
+    this.groups = const [],
+    this.initialGroupIndex = 0,
+  });
 
-  factory ComparisonReviewArgs.fromReview(ReviewContext context) => ComparisonReviewArgs(
+  factory ComparisonReviewArgs.fromReview(
+    ReviewContext context, {
+    List<ReviewContext> groups = const [],
+    int initialGroupIndex = 0,
+  }) => ComparisonReviewArgs(
     groupId: context.groupId ?? '',
     fileIds: context.photoIds,
     reviewContext: context,
+    groups: groups,
+    initialGroupIndex: initialGroupIndex,
   );
 
   final String groupId;
   final List<String> fileIds;
   final ReviewContext? reviewContext;
+  final List<ReviewContext> groups;
+  final int initialGroupIndex;
 }
 
 class ShellArgs {

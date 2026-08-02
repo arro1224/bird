@@ -52,9 +52,15 @@ class PhotoDetailState {
 }
 
 class PhotoDetailCubit extends Cubit<PhotoDetailState> {
-  PhotoDetailCubit(this._repository, [SessionRefreshCoordinator? refreshCoordinator, this._dataChanges]) : super(const PhotoDetailState());
+  PhotoDetailCubit(
+    this._repository, [
+    SessionRefreshCoordinator? refreshCoordinator,
+    this._dataChanges,
+    this.projectId,
+  ]) : super(const PhotoDetailState());
   final ReviewRepository _repository;
   final AppDataChangeBus? _dataChanges;
+  final String? projectId;
   bool _loadInFlight = false;
   Future<void> load(String id) async {
     if (_loadInFlight) return;
@@ -72,7 +78,10 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
   Future<void> save(UserDecision decision) async {
     final previous = state.detail?.decision ?? UserDecision(fileId: decision.fileId, keepState: KeepState.pending, updatedAt: DateTime.now());
     emit(state.copyWith(saving: true));
-    final result = await _repository.save(decision);
+    final result = await _repository.save(
+      decision,
+      projectId: projectId,
+    );
     if (result.conflict) {
       emit(state.copyWith(saving: false, conflict: true, pendingConflictDecision: decision, message: result.message));
       return;
@@ -96,7 +105,10 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
     final entry = state.undoEntry;
     if (entry == null) return;
     emit(state.copyWith(saving: true));
-    final result = await _repository.save(entry.before);
+    final result = await _repository.save(
+      entry.before,
+      projectId: projectId,
+    );
     if (result.conflict) {
       emit(state.copyWith(saving: false, conflict: true, pendingConflictDecision: entry.before, message: result.message));
       return;

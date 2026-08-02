@@ -19,6 +19,7 @@ import 'package:aves/bird_companion/features/connection/presentation/widgets/con
 import 'package:aves/bird_companion/features/connection/presentation/widgets/discovered_device_card.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/k7_device_artwork.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/manual_address_form.dart';
+import 'package:aves/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -75,6 +76,17 @@ class _ConnectionViewState extends State<_ConnectionView> {
           child: ConnectionProgressView(
             deviceName: deviceName,
             onCancel: context.read<ConnectionCubit>().cancelConnection,
+          ),
+        );
+      }
+
+      if (state.phase == ConnectionPhase.pairing && state.status != null) {
+        return _stateScaffold(
+          title: '设备配对',
+          child: PairingCodeForm(
+            deviceName: state.status!.connection.name,
+            onSubmit: context.read<ConnectionCubit>().pair,
+            onCancel: context.read<ConnectionCubit>().resetPairing,
           ),
         );
       }

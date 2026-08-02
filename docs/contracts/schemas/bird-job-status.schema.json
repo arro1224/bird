@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://birdbox.local/contracts/v1/schemas/bird-job-status.schema.json",
+  "title": "BirdJobStatus",
+  "type": "object",
+  "required": [
+    "job_id",
+    "job_type",
+    "job_state",
+    "progress",
+    "total_count",
+    "finished_count",
+    "failed_count",
+    "skipped_count",
+    "available_actions"
+  ],
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "job_type": {
+      "type": "string",
+      "enum": [
+        "import",
+        "analysis",
+        "copy",
+        "sync"
+      ]
+    },
+    "job_state": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "paused",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "workflow_stage": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "scanning",
+        "importing",
+        "analyzing",
+        "awaiting_review",
+        "reviewing",
+        "awaiting_copy",
+        "copying",
+        "verifying",
+        "exporting_xmp",
+        "completed",
+        null
+      ]
+    },
+    "source_project_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_project_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "progress": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "total_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "finished_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "failed_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "skipped_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "current_file": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "speed_bytes_per_second": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "estimated_remaining_seconds": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "started_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "error_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "error_message": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "available_actions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "pause",
+          "resume",
+          "cancel",
+          "retry_failed",
+          "skip_failed",
+          "delete"
+        ]
+      }
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false
+}

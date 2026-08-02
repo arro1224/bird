@@ -1,5 +1,6 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/files/media_cache_identity.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/analysis_placeholder.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,8 @@ class PhotoTile extends StatelessWidget {
     required this.onLongPress,
     this.compact = false,
     this.operationFailed = false,
+    this.deviceNamespace,
+    this.showRatingOverlay = true,
   });
 
   final PhotoSummary photo;
@@ -21,6 +24,8 @@ class PhotoTile extends StatelessWidget {
   final VoidCallback onLongPress;
   final bool compact;
   final bool operationFailed;
+  final String? deviceNamespace;
+  final bool showRatingOverlay;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +56,12 @@ class PhotoTile extends StatelessWidget {
                     CachedNetworkImage(
                       imageUrl: image.toString(),
                       fit: BoxFit.cover,
-                      cacheKey: 'bird-photo-${photo.id}-${image.toString()}',
+                      cacheKey: mediaCacheIdentity(
+                        uri: image,
+                        mediaId: photo.id,
+                        variant: 'thumbnail',
+                        deviceNamespace: deviceNamespace,
+                      ),
                       memCacheWidth: cacheWidth,
                       memCacheHeight: cacheHeight,
                       maxWidthDiskCache: cacheWidth * 2,
@@ -70,42 +80,44 @@ class PhotoTile extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Positioned(
-                    left: 8,
-                    bottom: 7,
-                    child: Text(
-                      score?.toStringAsFixed(1) ?? '—',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: compact ? 16 : 18,
-                        fontWeight: FontWeight.w800,
+                  if (showRatingOverlay)
+                    Positioned(
+                      left: 8,
+                      bottom: 7,
+                      child: Text(
+                        score?.toStringAsFixed(1) ?? '—',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: compact ? 16 : 18,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    right: 8,
-                    top: 8,
-                    child: selected
-                        ? const CircleAvatar(
-                            radius: 12,
-                            backgroundColor: AppColors.brand,
-                            child: Icon(Icons.check_rounded, size: 16, color: Colors.white),
-                          )
-                        : Icon(
-                            key: ValueKey('photo-status-$state'),
-                            isFeatured ? Icons.star_rounded : Icons.circle,
-                            size: isFeatured ? 23 : 15,
-                            color: isFeatured
-                                ? AppColors.amber
-                                : isDiscarded
-                                ? AppColors.danger
-                                : needsReview
-                                ? AppColors.amber
-                                : const Color(0xFFA9D56C),
-                            shadows: const [Shadow(color: Colors.black38, blurRadius: 4)],
-                          ),
-                  ),
-                  if (operationFailed)
+                  if (selected || showRatingOverlay)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: selected
+                          ? const CircleAvatar(
+                              radius: 12,
+                              backgroundColor: AppColors.brand,
+                              child: Icon(Icons.check_rounded, size: 16, color: Colors.white),
+                            )
+                          : Icon(
+                              key: ValueKey('photo-status-$state'),
+                              isFeatured ? Icons.star_rounded : Icons.circle,
+                              size: isFeatured ? 23 : 15,
+                              color: isFeatured
+                                  ? AppColors.amber
+                                  : isDiscarded
+                                  ? AppColors.danger
+                                  : needsReview
+                                  ? AppColors.amber
+                                  : const Color(0xFFA9D56C),
+                              shadows: const [Shadow(color: Colors.black38, blurRadius: 4)],
+                            ),
+                    ),
+                  if (showRatingOverlay && operationFailed)
                     const Positioned(
                       left: 7,
                       top: 7,
@@ -114,25 +126,25 @@ class PhotoTile extends StatelessWidget {
                         color: AppColors.danger,
                       ),
                     ),
-                  if (!operationFailed && !compact && photo.analysisState == AnalysisState.failed)
+                  if (showRatingOverlay && !operationFailed && !compact && photo.analysisState == AnalysisState.failed)
                     const Positioned(
                       left: 8,
                       top: 8,
                       child: _StatusBadge(label: '识别未完成', color: AppColors.danger),
                     )
-                  else if (!compact && photo.clarityState == ClarityState.blurred)
+                  else if (showRatingOverlay && !compact && photo.clarityState == ClarityState.blurred)
                     const Positioned(
                       right: 7,
                       bottom: 7,
                       child: _StatusBadge(label: '模糊', color: AppColors.inkMuted),
                     )
-                  else if (!compact && needsReview)
+                  else if (showRatingOverlay && !compact && needsReview)
                     const Positioned(
                       right: 7,
                       bottom: 7,
                       child: _StatusBadge(label: '需要确认', color: AppColors.amber),
                     )
-                  else if (!compact && photo.isRecommended)
+                  else if (showRatingOverlay && !compact && photo.isRecommended)
                     const Positioned(
                       right: 7,
                       bottom: 7,

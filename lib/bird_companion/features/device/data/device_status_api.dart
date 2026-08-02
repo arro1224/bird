@@ -12,7 +12,14 @@ class DeviceStatusApi {
     return DeviceStatus.fromJson(payload, fallbackBaseUri: _client.baseUri);
   }
 
-  Future<void> controlJob({required String jobId, required String action}) async {
-    await _client.post(ApiEndpoints.taskControl.replaceFirst('{jobId}', jobId), data: {'action': action});
+  Future<void> controlJob({
+    required String jobId,
+    required String action,
+    required int version,
+  }) async {
+    await _client.post(
+      ApiEndpoints.taskControl.replaceFirst('{jobId}', jobId),
+      data: {'action': action, 'version': version},
+    );
   }
 }

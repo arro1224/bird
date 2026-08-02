@@ -1,0 +1,24 @@
+{
+  "project_id": "project-001",
+  "card_id": "sd-001",
+  "name": "Dianchi 2026-07-29",
+  "state": "ready_to_review",
+  "created_at": "2026-07-29T08:30:00+08:00",
+  "total_files": 3672,
+  "imported_count": 3672,
+  "analyzed_count": 2384,
+  "pending_review_count": 1288,
+  "keep_count": 2012,
+  "discard_count": 372,
+  "pending_copy_count": 2012,
+  "copy_state": "pending",
+  "active_job_id": "job-analysis-001",
+  "scene_count": 18,
+  "burst_group_count": 86,
+  "cover": {
+    "thumb_ref": "https://192.168.4.1/media/thumb/photo-001?sig=test",
+    "preview_ref": "https://192.168.4.1/media/preview/photo-001?sig=test",
+    "width": 1600,
+    "height": 1067
+  }
+}

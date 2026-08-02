@@ -86,16 +86,23 @@ class PhotoRepositoryImpl implements PhotoRepository {
     if (targetIds.isEmpty) return const BatchOperationOutcome(succeededIds: []);
     try {
       if (await _connectivity.hasNetwork) return await _api.batchOperation(id, targetIds, action, value: value);
-    } on ApiException {
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) rethrow;
       // A failed request is retained below and replayed after a reconnect.
     }
     await _pending.save(
       PendingOperation(
         id: 'batch-$id-${DateTime.now().microsecondsSinceEpoch}',
         type: PendingOperationType.batchReview,
-        payload: {'batch_id': id, 'file_ids': targetIds, 'operation': action, 'value': value},
+        payload: {
+          'project_id': id,
+          'file_ids': targetIds,
+          'operation': action,
+          'value': value,
+        },
         createdAt: DateTime.now(),
         deviceId: _activeDeviceId,
+        projectId: id,
       ),
     );
     await _updateCachedPhotos(id, targetIds, action, value);

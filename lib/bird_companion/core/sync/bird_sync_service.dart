@@ -42,12 +42,23 @@ class BirdSyncService {
     final result = await _coordinator.synchronize((operation) async {
       switch (operation.type) {
         case PendingOperationType.updateReview:
-          final id = operation.payload['file_id']?.toString() ?? '';
+          final id = operation.fileId ?? operation.payload['file_id']?.toString() ?? '';
           await _client.post(ApiEndpoints.photoDecision.replaceFirst('{fileId}', id), data: operation.payload, idempotencyKey: operation.id);
           return;
         case PendingOperationType.batchReview:
-          final batchId = operation.payload['batch_id']?.toString() ?? '';
-          await _client.post(ApiEndpoints.batchPhotoOperation.replaceFirst('{batchId}', batchId), data: operation.payload, idempotencyKey: operation.id);
+          final projectId = (operation.projectId ?? operation.payload['project_id']?.toString() ?? operation.payload['batch_id']?.toString() ?? '').trim();
+          if (projectId.isEmpty) {
+            throw StateError('Offline batch review is missing project_id.');
+          }
+          final payload = <String, dynamic>{
+            ...operation.payload,
+            'project_id': projectId,
+          }..remove('batch_id');
+          await _client.post(
+            ApiEndpoints.batchPhotoOperation.replaceFirst('{batchId}', projectId),
+            data: payload,
+            idempotencyKey: operation.id,
+          );
           return;
         case PendingOperationType.controlJob:
         case PendingOperationType.createCopyJob:
@@ -72,7 +83,7 @@ class BirdSyncService {
     if (operation == null || operation.status != PendingOperationStatus.conflict || activeDeviceId == null || activeDeviceId.isEmpty || operation.deviceId != activeDeviceId) {
       return false;
     }
-    final fileId = operation.payload['file_id']?.toString().trim();
+    final fileId = operation.fileId?.trim() ?? operation.payload['file_id']?.toString().trim();
     if (operation.type == PendingOperationType.updateReview && fileId != null && fileId.isNotEmpty && _acceptRemoteReview != null) {
       try {
         await _acceptRemoteReview(fileId);

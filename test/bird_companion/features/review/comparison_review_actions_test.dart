@@ -1,25 +1,30 @@
+import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/comparison_review_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('对比操作区显示四个按钮并可保留两张', (tester) async {
-    var keepBothCount = 0;
+  testWidgets('comparison actions support quick decisions and keeping all', (
+    tester,
+  ) async {
+    var discardCount = 0;
+    var keepCount = 0;
+    var featureCount = 0;
+    var keepAllCount = 0;
 
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: SizedBox(
-            width: 360,
+            width: 390,
             child: ComparisonReviewActions(
-              leftRetained: false,
-              rightRetained: false,
-              selectedFeatured: false,
+              selectedState: KeepState.pending,
+              itemCount: 3,
               busy: false,
-              onKeepLeft: () {},
-              onKeepRight: () {},
-              onKeepBoth: () => keepBothCount++,
-              onFeatureSelected: () {},
+              onDiscardSelected: () => discardCount++,
+              onKeepSelected: () => keepCount++,
+              onKeepAll: () => keepAllCount++,
+              onFeatureSelected: () => featureCount++,
             ),
           ),
         ),
@@ -27,30 +32,36 @@ void main() {
     );
 
     expect(find.byType(OutlinedButton), findsNWidgets(4));
-    expect(find.text('保留左图'), findsOneWidget);
-    expect(find.text('保留右图'), findsOneWidget);
-    expect(find.text('保留两张'), findsOneWidget);
+    expect(find.text('弃用当前'), findsOneWidget);
+    expect(find.text('保留当前'), findsOneWidget);
     expect(find.text('设为精选'), findsOneWidget);
+    expect(find.text('保留全部 3 张'), findsOneWidget);
 
-    await tester.tap(find.text('保留两张'));
-    expect(keepBothCount, 1);
+    await tester.tap(find.text('弃用当前'));
+    await tester.tap(find.text('保留当前'));
+    await tester.tap(find.text('设为精选'));
+    await tester.tap(find.text('保留全部 3 张'));
+
+    expect(discardCount, 1);
+    expect(keepCount, 1);
+    expect(featureCount, 1);
+    expect(keepAllCount, 1);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('同时保留时只高亮保留两张按钮', (tester) async {
+  testWidgets('selected comparison action is visibly labelled', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: SizedBox(
-            width: 360,
+            width: 390,
             child: ComparisonReviewActions(
-              leftRetained: true,
-              rightRetained: true,
-              selectedFeatured: false,
+              selectedState: KeepState.featured,
+              itemCount: 2,
               busy: false,
-              onKeepLeft: () {},
-              onKeepRight: () {},
-              onKeepBoth: () {},
+              onDiscardSelected: () {},
+              onKeepSelected: () {},
+              onKeepAll: () {},
               onFeatureSelected: () {},
             ),
           ),
@@ -58,10 +69,8 @@ void main() {
       ),
     );
 
-    expect(find.text('保留左图'), findsOneWidget);
-    expect(find.text('保留右图'), findsOneWidget);
-    expect(find.text('保留两张（已选）'), findsOneWidget);
-    expect(find.text('保留左图（已选）'), findsNothing);
-    expect(find.text('保留右图（已选）'), findsNothing);
+    expect(find.text('设为精选（已选）'), findsOneWidget);
+    expect(find.text('保留当前（已选）'), findsNothing);
+    expect(find.text('弃用当前（已选）'), findsNothing);
   });
 }

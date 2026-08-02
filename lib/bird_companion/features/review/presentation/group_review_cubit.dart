@@ -71,26 +71,90 @@ class GroupReviewCubit extends Cubit<GroupReviewState> {
 
   Future<void> markGroup(BirdGroup group, KeepState keepState) async {
     if (state.actingGroupId != null) return;
-    emit(state.copyWith(actingGroupId: group.id, clearError: true, clearMessage: true));
-    try {
-      final results = await Future.wait(group.memberFileIds.map((fileId) => _repository.save(UserDecision(fileId: fileId, keepState: keepState, updatedAt: DateTime.now()))));
-      final message = _resultMessage(results, success: '整组状态已更新');
-      _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'group_review_saved');
-      final savedIds = <String>[
-        for (var index = 0; index < results.length; index++)
-          if (!results[index].conflict) group.memberFileIds[index],
-      ];
-      emit(state.copyWith(groups: _withDecision(group.id, savedIds, keepState), clearAction: true, message: message));
-    } catch (error) {
-      emit(state.copyWith(error: error, clearAction: true));
+    if (group.memberFileIds.isEmpty) {
+      emit(state.copyWith(message: '本组没有可操作的照片'));
+      return;
     }
+    emit(state.copyWith(actingGroupId: group.id, clearError: true, clearMessage: true));
+    final outcomes = await Future.wait(
+      group.memberFileIds.map(
+        (fileId) async {
+          try {
+            return _GroupSaveOutcome(
+              fileId: fileId,
+              result: await _repository.save(
+                UserDecision(
+                  fileId: fileId,
+                  keepState: keepState,
+                  updatedAt: DateTime.now(),
+                  version: _versionFor(group, fileId),
+                ),
+                projectId: _batchId,
+              ),
+            );
+          } catch (error) {
+            return _GroupSaveOutcome(
+              fileId: fileId,
+              error: error,
+            );
+          }
+        },
+      ),
+    );
+    final savedIds = outcomes
+        .where(
+          (outcome) => outcome.result != null && !outcome.result!.conflict,
+        )
+        .map((outcome) => outcome.fileId)
+        .toList(growable: false);
+    final failed = outcomes.where((outcome) => outcome.error != null).toList(growable: false);
+    final results = outcomes.map((outcome) => outcome.result).whereType<ReviewSaveResult>().toList(growable: false);
+    final conflictCount = results.where((result) => result.conflict).length;
+    if (savedIds.isNotEmpty) {
+      _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'group_review_saved');
+    }
+    if (failed.length == outcomes.length) {
+      emit(
+        state.copyWith(
+          error: failed.first.error,
+          clearAction: true,
+        ),
+      );
+      return;
+    }
+    final message = failed.isEmpty
+        ? _resultMessage(results, success: '整组状态已更新')
+        : [
+            '已更新 ${savedIds.length}/${outcomes.length} 张',
+            if (failed.isNotEmpty) '${failed.length} 张失败，请重试',
+            if (conflictCount > 0) '$conflictCount 张存在版本冲突',
+          ].join('；');
+    emit(
+      state.copyWith(
+        groups: _withDecision(
+          group.id,
+          savedIds,
+          keepState,
+        ),
+        clearAction: true,
+        message: message,
+      ),
+    );
   }
 
   Future<void> markFile(BirdGroup group, String fileId, KeepState keepState) async {
     if (state.actingGroupId != null || fileId.isEmpty) return;
     emit(state.copyWith(actingGroupId: group.id, clearError: true, clearMessage: true));
     try {
-      final result = await _repository.save(UserDecision(fileId: fileId, keepState: keepState, updatedAt: DateTime.now()));
+      final result = await _repository.save(
+        UserDecision(
+          fileId: fileId,
+          keepState: keepState,
+          updatedAt: DateTime.now(),
+          version: _versionFor(group, fileId),
+        ),
+        projectId: _batchId,
+      );
       final message = _resultMessage([result], success: '照片状态已更新');
       _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'group_photo_review_saved');
       emit(state.copyWith(groups: result.conflict ? state.groups : _withDecision(group.id, [fileId], keepState), clearAction: true, message: message));
@@ -108,7 +172,15 @@ class GroupReviewCubit extends Cubit<GroupReviewState> {
       final results = await Future.wait(
         state.groups.map((group) {
           final id = group.rankOrder.isNotEmpty ? group.rankOrder.first : group.representativeFileId;
-          return _repository.save(UserDecision(fileId: id, keepState: KeepState.keep, updatedAt: DateTime.now()));
+          return _repository.save(
+            UserDecision(
+              fileId: id,
+              keepState: KeepState.keep,
+              updatedAt: DateTime.now(),
+              version: _versionFor(group, id),
+            ),
+            projectId: _batchId,
+          );
         }),
       );
       final message = _resultMessage(results, success: '每组首选照片已保留');
@@ -129,6 +201,8 @@ class GroupReviewCubit extends Cubit<GroupReviewState> {
     if (queued != null) return queued.message ?? '设备离线，修改将在重连后同步';
     return success;
   }
+
+  int? _versionFor(BirdGroup group, String fileId) => group.members.where((photo) => photo.id == fileId).map((photo) => photo.version).firstOrNull;
 
   List<BirdGroup> _withDecision(String groupId, Iterable<String> fileIds, KeepState keepState) => _withDecisions(
     {for (final fileId in fileIds) fileId: keepState},
@@ -151,4 +225,16 @@ class GroupReviewCubit extends Cubit<GroupReviewState> {
     await _dataSubscription?.cancel();
     return super.close();
   }
+}
+
+class _GroupSaveOutcome {
+  const _GroupSaveOutcome({
+    required this.fileId,
+    this.result,
+    this.error,
+  });
+
+  final String fileId;
+  final ReviewSaveResult? result;
+  final Object? error;
 }

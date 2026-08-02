@@ -1,11 +1,12 @@
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
+import 'package:aves/bird_companion/features/connection/data/connection_api.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
 import 'package:equatable/equatable.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-enum ConnectionPhase { initial, loading, connecting, connected, failure }
+enum ConnectionPhase { initial, loading, connecting, pairing, connected, failure }
 
 enum _ConnectionRequest { load, discover, connect }
 
@@ -165,13 +166,16 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
         cancelToken: cancelToken,
       );
       if (isClosed || generation != _connectionGeneration) return;
-      await _sessionCubit.setConnectedFromStatus(status);
+      await _completeConnection(status, generation);
+    } on PairingRequiredException catch (error) {
       if (isClosed || generation != _connectionGeneration) return;
+      if (!preserveExistingSession) _sessionCubit.disconnected();
       emit(
         state.copyWith(
-          phase: ConnectionPhase.connected,
-          status: status,
+          phase: ConnectionPhase.pairing,
+          status: error.status,
           connectionAttemptFailed: false,
+          clearError: true,
         ),
       );
     } catch (error) {
@@ -191,6 +195,62 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
     }
   }
 
+  Future<void> pair(String pairingCode) async {
+    final uri = _lastUri;
+    final mode = _lastMode;
+    if (isClosed || uri == null || mode == null) return;
+    final cancelToken = CancelToken();
+    _activeCancelToken = cancelToken;
+    final generation = ++_connectionGeneration;
+    emit(
+      state.copyWith(
+        phase: ConnectionPhase.connecting,
+        connectionAttemptFailed: false,
+        clearError: true,
+      ),
+    );
+    if (!preserveExistingSession) _sessionCubit.connecting();
+    try {
+      final status = await _repository.pair(
+        uri,
+        networkMode: mode,
+        pairingCode: pairingCode,
+        cancelToken: cancelToken,
+      );
+      if (isClosed || generation != _connectionGeneration) return;
+      await _completeConnection(status, generation);
+    } catch (error) {
+      if (isClosed || generation != _connectionGeneration) return;
+      if (!preserveExistingSession) {
+        _sessionCubit.disconnected('配对失败。');
+      }
+      emit(
+        state.copyWith(
+          phase: ConnectionPhase.failure,
+          error: error,
+          connectionAttemptFailed: true,
+        ),
+      );
+    } finally {
+      if (identical(_activeCancelToken, cancelToken)) _activeCancelToken = null;
+    }
+  }
+
+  Future<void> _completeConnection(
+    DeviceStatus status,
+    int generation,
+  ) async {
+    await _sessionCubit.setConnectedFromStatus(status);
+    if (isClosed || generation != _connectionGeneration) return;
+    emit(
+      state.copyWith(
+        phase: ConnectionPhase.connected,
+        status: status,
+        connectionAttemptFailed: false,
+      ),
+    );
+  }
+
   void cancelConnection() {
     if (isClosed || state.phase != ConnectionPhase.connecting) return;
     _connectionGeneration++;
@@ -208,6 +268,18 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
 
   void resetAfterFailure() {
     if (isClosed || state.phase != ConnectionPhase.failure) return;
+    emit(
+      state.copyWith(
+        phase: ConnectionPhase.initial,
+        connectionAttemptFailed: false,
+        clearError: true,
+      ),
+    );
+  }
+
+  void resetPairing() {
+    if (isClosed || state.phase != ConnectionPhase.pairing) return;
+    if (!preserveExistingSession) _sessionCubit.disconnected();
     emit(
       state.copyWith(
         phase: ConnectionPhase.initial,

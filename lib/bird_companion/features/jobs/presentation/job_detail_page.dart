@@ -2,16 +2,18 @@ import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/core/widgets/page_back_button.dart';
 import 'package:aves/bird_companion/core/widgets/progress_summary.dart';
 import 'package:aves/bird_companion/features/jobs/presentation/job_detail_cubit.dart';
+import 'package:aves/bird_companion/features/jobs/domain/job_report.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class JobDetailPage extends StatelessWidget {
-  const JobDetailPage({super.key, this.jobId, this.sourceBatchId});
-  final String? jobId;
+  const JobDetailPage({super.key, required this.jobId, this.sourceBatchId});
+  final String jobId;
   final String? sourceBatchId;
 
   @override
@@ -42,7 +44,14 @@ class _JobDetailView extends StatelessWidget {
       builder: (context, state) {
         if (state.loading && state.job == null) return const Center(child: CircularProgressIndicator());
         final job = state.job;
-        if (job == null) return Center(child: Text('无法读取处理详情：${state.error ?? '请返回处理进度页重试'}'));
+        if (job == null) {
+          final message = state.error == null ? null : UserMessageMapper.fromError(state.error!);
+          return Center(
+            child: Text(
+              message == null ? '请返回处理进度页重试' : '${message.title}：${message.message}',
+            ),
+          );
+        }
         return ListView(
           padding: const EdgeInsets.all(20),
           children: [
@@ -87,6 +96,10 @@ class _JobDetailView extends StatelessWidget {
                 ),
               ),
             ),
+            if (state.report != null) ...[
+              const SizedBox(height: 16),
+              _JobReportCard(report: state.report!),
+            ],
             if (state.failures.isNotEmpty)
               Card(
                 color: AppColors.amberLight.withValues(alpha: .45),
@@ -103,7 +116,17 @@ class _JobDetailView extends StatelessWidget {
             if (state.error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text('$state.error', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                child: Builder(
+                  builder: (_) {
+                    final message = UserMessageMapper.fromError(state.error!);
+                    return Text(
+                      '${message.title}：${message.message}',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    );
+                  },
+                ),
               ),
             const SizedBox(height: 24),
             if (state.controlling) const Center(child: CircularProgressIndicator()),
@@ -142,6 +165,51 @@ class _InfoRow extends StatelessWidget {
   );
 }
 
+class _JobReportCard extends StatelessWidget {
+  const _JobReportCard({required this.report});
+
+  final JobReport report;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    key: const Key('job-authoritative-report'),
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _resultLabel(report.result),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: report.failedCount > 0 ? AppColors.danger : AppColors.success,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 18,
+            runSpacing: 8,
+            children: [
+              Text('成功 ${report.successCount}'),
+              Text('失败 ${report.failedCount}'),
+              Text('跳过 ${report.skippedCount}'),
+              Text('总计 ${report.totalCount}'),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+
+  String _resultLabel(JobReportResult result) => switch (result) {
+    JobReportResult.success => '任务报告：全部完成',
+    JobReportResult.partialSuccess => '任务报告：部分完成',
+    JobReportResult.failed => '任务报告：处理失败',
+    JobReportResult.cancelled => '任务报告：已取消',
+    JobReportResult.unknown => '任务报告',
+  };
+}
+
 class _JobActions extends StatelessWidget {
   const _JobActions({required this.job, this.sourceBatchId});
   final BirdJobStatus job;
@@ -155,6 +223,11 @@ class _JobActions extends StatelessWidget {
       if (job.canPause) OutlinedButton(onPressed: () => context.read<JobDetailCubit>().control('pause'), child: const Text('暂停')),
       if (job.canResume) FilledButton(onPressed: () => context.read<JobDetailCubit>().control('resume'), child: const Text('继续')),
       if (job.canRetry) FilledButton(onPressed: () => context.read<JobDetailCubit>().control('retry'), child: const Text('重试')),
+      if (job.availableActions.contains('skip_failed'))
+        OutlinedButton(
+          onPressed: () => context.read<JobDetailCubit>().control('skip_failed'),
+          child: const Text('跳过失败项'),
+        ),
       if (job.state == BirdJobState.running || job.state == BirdJobState.paused) TextButton(onPressed: () => context.read<JobDetailCubit>().control('cancel'), child: const Text('停止处理')),
       if (job.canDelete)
         TextButton.icon(

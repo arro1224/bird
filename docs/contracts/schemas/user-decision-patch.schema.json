@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://birdbox.local/contracts/v1/schemas/user-decision-patch.schema.json",
+  "title": "UserDecisionPatch",
+  "description": "Omitted means unchanged; null means clear; [] clears a list.",
+  "type": "object",
+  "required": [
+    "version"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "keep_state": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "pending",
+        "keep",
+        "discard",
+        "featured",
+        null
+      ]
+    },
+    "user_score": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 10
+    },
+    "user_species_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "user_species": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "user_tags": {
+      "oneOf": [
+        {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "keep_state"
+      ]
+    },
+    {
+      "required": [
+        "user_score"
+      ]
+    },
+    {
+      "required": [
+        "user_species_id"
+      ]
+    },
+    {
+      "required": [
+        "user_species"
+      ]
+    },
+    {
+      "required": [
+        "user_tags"
+      ]
+    }
+  ],
+  "additionalProperties": false
+}

@@ -8,13 +8,13 @@ import 'package:aves/bird_companion/features/jobs/domain/job_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class JobCenterState {
-  const JobCenterState({this.loading = false, this.jobs = const [], this.isDemo = false, this.error, this.actingJobId});
-  final bool loading, isDemo;
+  const JobCenterState({this.loading = false, this.jobs = const [], this.error, this.actingJobId});
+  final bool loading;
   final List<BirdJobStatus> jobs;
   final Object? error;
   final String? actingJobId;
-  JobCenterState copyWith({bool? loading, List<BirdJobStatus>? jobs, bool? isDemo, Object? error, String? actingJobId, bool clearError = false, bool clearActing = false}) =>
-      JobCenterState(loading: loading ?? this.loading, jobs: jobs ?? this.jobs, isDemo: isDemo ?? this.isDemo, error: clearError ? null : error ?? this.error, actingJobId: clearActing ? null : actingJobId ?? this.actingJobId);
+  JobCenterState copyWith({bool? loading, List<BirdJobStatus>? jobs, Object? error, String? actingJobId, bool clearError = false, bool clearActing = false}) =>
+      JobCenterState(loading: loading ?? this.loading, jobs: jobs ?? this.jobs, error: clearError ? null : error ?? this.error, actingJobId: clearActing ? null : actingJobId ?? this.actingJobId);
 }
 
 class JobCenterCubit extends Cubit<JobCenterState> {
@@ -40,7 +40,7 @@ class JobCenterCubit extends Cubit<JobCenterState> {
     } else {
       jobs[index] = updated;
     }
-    emit(state.copyWith(jobs: jobs, isDemo: false, clearError: true));
+    emit(state.copyWith(jobs: jobs, clearError: true));
   }
 
   Future<void> load() async {
@@ -57,20 +57,16 @@ class JobCenterCubit extends Cubit<JobCenterState> {
     }
   }
 
-  void showDemo() => emit(
-    state.copyWith(
-      jobs: const [BirdJobStatus(id: 'demo-analysis-01', type: BirdJobType.analysis, state: BirdJobState.running, progress: .5, totalCount: 1200, finishedCount: 600, currentFile: 'DSC_0120.NEF')],
-      isDemo: true,
-      clearError: true,
-    ),
-  );
-
   Future<void> control(String jobId, String action) async {
-    if (state.actingJobId != null || state.isDemo) return;
+    if (state.actingJobId != null) return;
     emit(state.copyWith(actingJobId: jobId, clearError: true));
     try {
-      await _repository.control(jobId, action);
-      final updated = await _repository.detail(jobId);
+      final current = state.jobs.firstWhere((job) => job.id == jobId);
+      final updated = await _repository.control(
+        jobId,
+        action == 'retry' ? 'retry_failed' : action,
+        version: current.version,
+      );
       final jobs = state.jobs.map((job) => job.id == jobId ? updated : job).toList();
       _dataChanges?.publish({AppDataResource.jobs, AppDataResource.device}, reason: 'job_$action');
       emit(state.copyWith(jobs: jobs, clearActing: true));
@@ -80,7 +76,7 @@ class JobCenterCubit extends Cubit<JobCenterState> {
   }
 
   Future<void> delete(String jobId) async {
-    if (state.actingJobId != null || state.isDemo) return;
+    if (state.actingJobId != null) return;
     emit(state.copyWith(actingJobId: jobId, clearError: true));
     try {
       await _repository.delete(jobId);

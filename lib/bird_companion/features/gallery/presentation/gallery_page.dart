@@ -75,6 +75,7 @@ class GalleryPage extends StatelessWidget {
               BirdCompanionScope.of(context).pendingOperationStore,
               () => BirdCompanionScope.of(context).deviceSessionCubit.state.device?.id,
               BirdCompanionScope.of(context).reviewCheckpointStore,
+              BirdCompanionScope.of(context).settingsStore,
             )..restoreAndRefresh(
               initialQuery,
               restoreSavedView: restoreSavedView,
@@ -185,6 +186,16 @@ class _GalleryView extends StatelessWidget {
                     ? [TextButton(onPressed: selection.submitting ? null : context.read<SelectionCubit>().clear, child: const Text('取消'))]
                     : [
                         if (rootMode)
+                          IconButton(
+                            key: const Key('album-copy-project-button'),
+                            tooltip: '复制当前拍摄',
+                            icon: const Icon(Icons.copy_all_outlined),
+                            onPressed: () => Navigator.of(context).pushNamed(
+                              BirdRoutes.copyConfirmation,
+                              arguments: CopyConfirmationArgs(batchId),
+                            ),
+                          ),
+                        if (rootMode)
                           Padding(
                             padding: const EdgeInsets.only(right: 12),
                             child: AlbumAddDeviceButton(
@@ -238,6 +249,11 @@ class _GalleryView extends StatelessWidget {
                                     reviewContext: _reviewContext,
                                   ),
                                 );
+                              } else if (value == 'copy') {
+                                Navigator.of(context).pushNamed(
+                                  BirdRoutes.copyConfirmation,
+                                  arguments: CopyConfirmationArgs(batchId),
+                                );
                               } else {
                                 showModalBottomSheet(
                                   context: context,
@@ -262,6 +278,13 @@ class _GalleryView extends StatelessWidget {
                               PopupMenuItem(
                                 value: 'review',
                                 child: ListTile(leading: Icon(Icons.auto_awesome_mosaic_outlined), title: Text('挑选连拍照片')),
+                              ),
+                              PopupMenuItem(
+                                value: 'copy',
+                                child: ListTile(
+                                  leading: Icon(Icons.copy_all_outlined),
+                                  title: Text('复制当前拍摄'),
+                                ),
                               ),
                               PopupMenuItem(
                                 value: 'sort',
@@ -344,9 +367,11 @@ class _GalleryView extends StatelessWidget {
                                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
                                 sliver: PhotoMasonryGrid(
                                   photos: state.items,
+                                  crossAxisCount: state.gridColumns,
                                   itemBuilder: (context, photo, index) => _SelectablePhotoTile(
                                     photo: photo,
                                     compact: rootMode,
+                                    showRatingOverlay: state.showRatingOverlay,
                                     onTap: () {
                                       final selection = context.read<SelectionCubit>();
                                       if (selection.state.ids.isEmpty) {
@@ -447,12 +472,19 @@ class _GalleryView extends StatelessWidget {
 }
 
 class _SelectablePhotoTile extends StatelessWidget {
-  const _SelectablePhotoTile({required this.photo, required this.onTap, required this.onLongPress, required this.compact});
+  const _SelectablePhotoTile({
+    required this.photo,
+    required this.onTap,
+    required this.onLongPress,
+    required this.compact,
+    required this.showRatingOverlay,
+  });
 
   final PhotoSummary photo;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final bool compact;
+  final bool showRatingOverlay;
 
   @override
   Widget build(BuildContext context) => BlocSelector<SelectionCubit, SelectionState, ({bool selected, bool failed})>(
@@ -464,8 +496,10 @@ class _SelectablePhotoTile extends StatelessWidget {
       key: ValueKey(photo.id),
       photo: photo,
       compact: compact,
+      showRatingOverlay: showRatingOverlay,
       selected: selection.selected,
       operationFailed: selection.failed,
+      deviceNamespace: BirdCompanionScope.of(context).deviceSessionCubit.state.device?.id,
       onTap: onTap,
       onLongPress: onLongPress,
     ),

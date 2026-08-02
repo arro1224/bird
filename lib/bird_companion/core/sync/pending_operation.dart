@@ -14,6 +14,8 @@ class PendingOperation extends Equatable {
     this.retryCount = 0,
     this.source = 'app',
     this.deviceId,
+    this.projectId,
+    this.fileId,
     this.status = PendingOperationStatus.pending,
     this.failureReason,
   });
@@ -26,6 +28,8 @@ class PendingOperation extends Equatable {
   final int retryCount;
   final String source;
   final String? deviceId;
+  final String? projectId;
+  final String? fileId;
   final PendingOperationStatus status;
   final String? failureReason;
 
@@ -43,6 +47,8 @@ class PendingOperation extends Equatable {
     retryCount: retryCount ?? this.retryCount,
     source: source,
     deviceId: deviceId,
+    projectId: projectId,
+    fileId: fileId,
     status: status ?? this.status,
     failureReason: clearFailureReason ? null : failureReason ?? this.failureReason,
   );
@@ -56,6 +62,8 @@ class PendingOperation extends Equatable {
     'retry_count': retryCount,
     'source': source,
     'device_id': deviceId,
+    'project_id': projectId,
+    'file_id': fileId,
     'status': status.name,
     'failure_reason': failureReason,
   };
@@ -69,10 +77,25 @@ class PendingOperation extends Equatable {
     retryCount: (json['retry_count'] as num?)?.toInt() ?? 0,
     source: json['source']?.toString() ?? 'app',
     deviceId: json['device_id']?.toString(),
+    projectId: json['project_id']?.toString() ?? (json['payload'] is Map ? (json['payload'] as Map)['project_id']?.toString() ?? (json['payload'] as Map)['batch_id']?.toString() : null),
+    fileId: json['file_id']?.toString() ?? (json['payload'] is Map ? (json['payload'] as Map)['file_id']?.toString() : null),
     status: PendingOperationStatus.values.firstWhere((value) => value.name == json['status'], orElse: () => PendingOperationStatus.pending),
     failureReason: json['failure_reason']?.toString(),
   );
 
   @override
-  List<Object?> get props => [id, type, payload, createdAt, version, retryCount, source, deviceId, status, failureReason];
+  List<Object?> get props => [
+    id,
+    type,
+    payload,
+    createdAt,
+    version,
+    retryCount,
+    source,
+    deviceId,
+    projectId,
+    fileId,
+    status,
+    failureReason,
+  ];
 }

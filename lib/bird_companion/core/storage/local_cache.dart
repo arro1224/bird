@@ -1,4 +1,5 @@
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:aves/bird_companion/core/storage/cache_schema_migrator.dart';
 import 'dart:convert';
 
 class LocalCache {
@@ -10,6 +11,10 @@ class LocalCache {
   static Future<LocalCache> open() async {
     await Hive.initFlutter();
     final box = await Hive.openBox<dynamic>(_boxName);
+    final migrationWrites = CacheSchemaMigrator.writesFor(box.toMap());
+    if (migrationWrites.isNotEmpty) {
+      await box.putAll(migrationWrites);
+    }
     return LocalCache._(box);
   }
 

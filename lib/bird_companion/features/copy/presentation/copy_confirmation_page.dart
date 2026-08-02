@@ -2,6 +2,8 @@ import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
+import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/widgets/page_back_button.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_confirmation_cubit.dart';
@@ -11,26 +13,75 @@ import 'package:aves/bird_companion/features/copy/presentation/widgets/storage_t
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-class CopyConfirmationPage extends StatelessWidget {
+class CopyConfirmationPage extends StatefulWidget {
   const CopyConfirmationPage({super.key, required this.batchId});
 
   final String batchId;
 
   @override
-  Widget build(BuildContext context) => BlocProvider(
-    create: (_) => CopyConfirmationCubit(
-      BirdCompanionScope.of(context).copyRepository,
-      batchId,
-      BirdCompanionScope.of(context).dataChangeBus,
-    )..load(),
-    child: _View(batchId: batchId),
-  );
+  State<CopyConfirmationPage> createState() => _CopyConfirmationPageState();
+}
+
+class _CopyConfirmationPageState extends State<CopyConfirmationPage> {
+  BirdCompanionDependencies? _dependencies;
+  Future<DeviceStatus?>? _statusFuture;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final dependencies = BirdCompanionScope.of(context);
+    if (identical(_dependencies, dependencies)) return;
+    _dependencies = dependencies;
+    final preferences = dependencies.settingsStore.read();
+    _statusFuture = preferences.lowBatteryReminder ? _readStatus(dependencies) : Future<DeviceStatus?>.value();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dependencies = _dependencies!;
+    final preferences = dependencies.settingsStore.read();
+    return BlocProvider(
+      create: (_) => CopyConfirmationCubit(
+        dependencies.copyRepository,
+        widget.batchId,
+        dependencies.dataChangeBus,
+        _copyModeWireValue(preferences.copyMode),
+        preferences.selectedStorageId,
+        preferences.xmpStrategy != '不导出标记',
+        preferences.verifyCopies,
+      )..load(),
+      child: FutureBuilder<DeviceStatus?>(
+        future: _statusFuture,
+        builder: (context, snapshot) => _View(
+          batchId: widget.batchId,
+          lowBatteryPercent: _lowBatteryPercent(snapshot.data),
+        ),
+      ),
+    );
+  }
+
+  Future<DeviceStatus?> _readStatus(
+    BirdCompanionDependencies dependencies,
+  ) async {
+    try {
+      return await dependencies.deviceRepository.fetchStatus();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int? _lowBatteryPercent(DeviceStatus? status) {
+    if (status == null || status.isExternalPower) return null;
+    final percent = status.batteryPercent;
+    return percent != null && percent <= 15 ? percent : null;
+  }
 }
 
 class _View extends StatelessWidget {
-  const _View({required this.batchId});
+  const _View({required this.batchId, this.lowBatteryPercent});
 
   final String batchId;
+  final int? lowBatteryPercent;
 
   @override
   Widget build(BuildContext context) => BlocConsumer<CopyConfirmationCubit, CopyConfirmationState>(
@@ -106,7 +157,17 @@ class _View extends StatelessWidget {
                 if (state.error != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
-                    child: Text('复制任务校验失败：${state.error}', style: const TextStyle(color: AppColors.danger)),
+                    child: Builder(
+                      builder: (_) {
+                        final message = UserMessageMapper.fromError(
+                          state.error!,
+                        );
+                        return Text(
+                          '${message.title}：${message.message}',
+                          style: const TextStyle(color: AppColors.danger),
+                        );
+                      },
+                    ),
                   ),
                 if (state.submissionBlockReason != null)
                   Padding(
@@ -131,6 +192,7 @@ class _View extends StatelessWidget {
                             requiredBytes: estimate.requiredBytes,
                             targetName: state.selectedTarget?.name ?? '目标存储',
                             xmpEnabled: state.xmpEnabled,
+                            lowBatteryPercent: lowBatteryPercent,
                             onConfirm: () => context.read<CopyConfirmationCubit>().submit(),
                           ),
                         ),
@@ -217,3 +279,9 @@ class _SectionTitle extends StatelessWidget {
 }
 
 String _formatBytes(int bytes) => bytes >= 1024 * 1024 * 1024 ? '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB' : '${(bytes / 1024 / 1024).toStringAsFixed(0)} MB';
+
+String _copyModeWireValue(String value) => switch (value) {
+  'all' => 'all',
+  'dualTrack' => 'dual',
+  _ => 'keep',
+};

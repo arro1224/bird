@@ -1,0 +1,13 @@
+{
+  "job_id": "job-copy-invalid",
+  "job_type": "copy",
+  "job_state": "running",
+  "progress": 65,
+  "total_count": 100,
+  "finished_count": 65,
+  "failed_count": 0,
+  "skipped_count": 0,
+  "available_actions": [
+    "pause"
+  ]
+}

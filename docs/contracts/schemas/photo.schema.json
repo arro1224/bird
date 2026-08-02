@@ -1,0 +1,327 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://birdbox.local/contracts/v1/schemas/photo.schema.json",
+  "title": "Photo",
+  "type": "object",
+  "required": [
+    "file_id",
+    "filename",
+    "format",
+    "thumb_ref",
+    "preview_ref",
+    "analysis_state",
+    "is_recommended",
+    "user_tags"
+  ],
+  "properties": {
+    "file_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "filename": {
+      "type": "string",
+      "minLength": 1
+    },
+    "format": {
+      "type": "string",
+      "minLength": 1
+    },
+    "thumb_ref": {
+      "type": "string",
+      "format": "uri"
+    },
+    "preview_ref": {
+      "type": "string",
+      "format": "uri"
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "analysis_state": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "processing",
+        "completed",
+        "low_confidence",
+        "skipped",
+        "failed"
+      ]
+    },
+    "recognition": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RecognitionResult"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rating": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RatingResult"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "subjects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/SubjectBox"
+      }
+    },
+    "group_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "scene_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "keep_state": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "pending",
+        "keep",
+        "discard",
+        "featured",
+        null
+      ]
+    },
+    "clarity_state": {
+      "type": "string",
+      "enum": [
+        "clear",
+        "average",
+        "blurred"
+      ]
+    },
+    "is_recommended": {
+      "type": "boolean"
+    },
+    "user_tags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "captured_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "version": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "PreviewRef": {
+      "type": "object",
+      "required": [
+        "thumb_ref",
+        "preview_ref"
+      ],
+      "properties": {
+        "thumb_ref": {
+          "type": "string",
+          "format": "uri"
+        },
+        "preview_ref": {
+          "type": "string",
+          "format": "uri"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "SpeciesCandidate": {
+      "type": "object",
+      "required": [
+        "name",
+        "confidence"
+      ],
+      "properties": {
+        "species_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "english_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latin_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "RecognitionResult": {
+      "type": "object",
+      "required": [
+        "species_topn",
+        "low_confidence"
+      ],
+      "properties": {
+        "species_topn": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SpeciesCandidate"
+          }
+        },
+        "low_confidence": {
+          "type": "boolean"
+        },
+        "model_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RatingResult": {
+      "type": "object",
+      "required": [
+        "total_score",
+        "reason_tags"
+      ],
+      "properties": {
+        "total_score": {
+          "type": "number",
+          "minimum": 0
+        },
+        "quality_score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "eye_score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "composition_score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "reason_tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "SubjectBox": {
+      "type": "object",
+      "required": [
+        "bbox"
+      ],
+      "properties": {
+        "bbox": {
+          "type": "object",
+          "required": [
+            "x",
+            "y",
+            "width",
+            "height"
+          ],
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "width": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "height": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "subject_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

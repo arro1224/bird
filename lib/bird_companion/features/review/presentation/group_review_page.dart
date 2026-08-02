@@ -17,7 +17,9 @@ import 'package:aves/bird_companion/features/review/presentation/group_review_cu
 import 'package:aves/bird_companion/features/review/data/review_checkpoint_store.dart';
 import 'package:aves/bird_companion/features/review/domain/review_checkpoint.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/group_review_comparison_action.dart';
+import 'package:aves/bird_companion/features/review/presentation/widgets/group_review_scope_selector.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:aves/bird_companion/core/files/media_cache_identity.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -57,6 +59,7 @@ class GroupReviewPage extends StatelessWidget {
         reviewContext: _reviewContext,
         checkpointStore: dependencies.reviewCheckpointStore,
         deviceId: dependencies.deviceSessionCubit.state.device?.id,
+        thumbnailSize: dependencies.settingsStore.read().thumbnailSize,
       ),
     );
   }
@@ -67,6 +70,7 @@ class _GroupReviewView extends StatefulWidget {
     this.sceneName,
     required this.reviewContext,
     required this.checkpointStore,
+    required this.thumbnailSize,
     this.deviceId,
   });
 
@@ -74,6 +78,7 @@ class _GroupReviewView extends StatefulWidget {
   final ReviewContext reviewContext;
   final ReviewCheckpointStore checkpointStore;
   final String? deviceId;
+  final String thumbnailSize;
 
   @override
   State<_GroupReviewView> createState() => _GroupReviewViewState();
@@ -83,6 +88,7 @@ class _GroupReviewViewState extends State<_GroupReviewView> {
   int _index = 0;
   int _selectedPhotoIndex = 0;
   var _restoredInitialPosition = false;
+  var _applyToWholeGroup = false;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -134,6 +140,20 @@ class _GroupReviewViewState extends State<_GroupReviewView> {
             total: state.groups.length,
             reviewContext: widget.reviewContext,
             selectedPhotoIndex: _selectedPhotoIndex,
+            thumbnailSize: widget.thumbnailSize,
+            comparisonGroups: state.groups
+                .map(
+                  (candidate) => _contextForGroup(
+                    widget.reviewContext,
+                    candidate,
+                  ),
+                )
+                .toList(growable: false),
+            comparisonGroupIndex: index,
+            applyToWholeGroup: _applyToWholeGroup,
+            onScopeChanged: (value) {
+              setState(() => _applyToWholeGroup = value);
+            },
             onSelectPhoto: (value) {
               setState(() => _selectedPhotoIndex = value);
               _saveCheckpoint(group, value);
@@ -187,18 +207,9 @@ class _GroupReviewViewState extends State<_GroupReviewView> {
   void _saveCheckpoint(BirdGroup group, int photoIndex) {
     final deviceId = widget.deviceId?.trim();
     if (deviceId == null || deviceId.isEmpty) return;
-    final ids = _orderedPhotoIds(group);
-    final base = widget.reviewContext.sceneId == null && group.sceneId != null
-        ? ReviewContext(
-            batchId: widget.reviewContext.batchId,
-            batchName: widget.reviewContext.batchName,
-            sceneId: group.sceneId,
-          )
-        : widget.reviewContext;
-    final reviewContext = base.enterGroup(
-      group.id,
-      name: _displayGroupName(group.id),
-      photos: ids,
+    final reviewContext = _contextForGroup(
+      widget.reviewContext,
+      group,
       initialIndex: photoIndex,
     );
     final previous = widget.checkpointStore.read(
@@ -219,6 +230,26 @@ class _GroupReviewViewState extends State<_GroupReviewView> {
 
 List<String> _orderedPhotoIds(BirdGroup group) => group.rankOrder.isEmpty ? group.memberFileIds : group.rankOrder;
 
+ReviewContext _contextForGroup(
+  ReviewContext baseContext,
+  BirdGroup group, {
+  int initialIndex = 0,
+}) {
+  final base = baseContext.sceneId == null && group.sceneId != null
+      ? ReviewContext(
+          batchId: baseContext.batchId,
+          batchName: baseContext.batchName,
+          sceneId: group.sceneId,
+        )
+      : baseContext;
+  return base.enterGroup(
+    group.id,
+    name: _displayGroupName(group.id),
+    photos: _orderedPhotoIds(group),
+    initialIndex: initialIndex,
+  );
+}
+
 class _GroupContent extends StatelessWidget {
   const _GroupContent({
     required this.group,
@@ -226,6 +257,11 @@ class _GroupContent extends StatelessWidget {
     required this.total,
     required this.reviewContext,
     required this.selectedPhotoIndex,
+    required this.thumbnailSize,
+    required this.comparisonGroups,
+    required this.comparisonGroupIndex,
+    required this.applyToWholeGroup,
+    required this.onScopeChanged,
     required this.onSelectPhoto,
     this.onPrevious,
     this.onNext,
@@ -236,6 +272,11 @@ class _GroupContent extends StatelessWidget {
   final int total;
   final ReviewContext reviewContext;
   final int selectedPhotoIndex;
+  final String thumbnailSize;
+  final List<ReviewContext> comparisonGroups;
+  final int comparisonGroupIndex;
+  final bool applyToWholeGroup;
+  final ValueChanged<bool> onScopeChanged;
   final ValueChanged<int> onSelectPhoto;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
@@ -251,9 +292,16 @@ class _GroupContent extends StatelessWidget {
     final representative = photos.isEmpty ? null : photos[selectedIndex];
     final representativeId = representative?.id ?? group.representativeFileId;
     final selectedKeepState = KeepStateWireValue.fromWire(representative?.keepState);
+    final memberStates = photos.map((photo) => KeepStateWireValue.fromWire(photo.keepState)).toSet();
+    final activeKeepState = applyToWholeGroup
+        ? memberStates.length == 1
+              ? memberStates.first
+              : null
+        : selectedKeepState;
     final score = representative?.rating?.totalScore;
     final reasons = group.recommendationReasons.take(3).toList();
     final busy = context.select<GroupReviewCubit, bool>((cubit) => cubit.state.actingGroupId == group.id);
+    final thumbnailExtent = _thumbnailExtent(thumbnailSize);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
@@ -307,7 +355,7 @@ class _GroupContent extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 118,
+          height: thumbnailExtent + 22,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: photos.length,
@@ -316,27 +364,34 @@ class _GroupContent extends StatelessWidget {
               photo: photos[photoIndex],
               rank: photoIndex + 1,
               selected: photoIndex == selectedIndex,
+              extent: thumbnailExtent,
               onTap: () => onSelectPhoto(photoIndex),
             ),
           ),
         ),
         const SizedBox(height: 16),
+        GroupReviewScopeSelector(
+          applyToWholeGroup: applyToWholeGroup,
+          memberCount: group.memberFileIds.length,
+          onChanged: busy ? null : onScopeChanged,
+        ),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
-              child: _MarkButton(label: '弃用', icon: Icons.delete_outline, color: AppColors.danger, filled: selectedKeepState == KeepState.discard, onTap: busy ? null : () => _mark(context, representativeId, KeepState.discard)),
+              child: _MarkButton(label: '弃用', icon: Icons.delete_outline, color: AppColors.danger, filled: activeKeepState == KeepState.discard, onTap: busy ? null : () => _mark(context, representativeId, KeepState.discard)),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _MarkButton(label: '待确认', icon: Icons.help_outline, color: AppColors.amber, filled: selectedKeepState == KeepState.pending, onTap: busy ? null : () => _mark(context, representativeId, KeepState.pending)),
+              child: _MarkButton(label: '待确认', icon: Icons.help_outline, color: AppColors.amber, filled: activeKeepState == KeepState.pending, onTap: busy ? null : () => _mark(context, representativeId, KeepState.pending)),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _MarkButton(label: '保留', icon: Icons.check_circle_outline, color: AppColors.brand, filled: selectedKeepState == KeepState.keep, onTap: busy ? null : () => _mark(context, representativeId, KeepState.keep)),
+              child: _MarkButton(label: '保留', icon: Icons.check_circle_outline, color: AppColors.brand, filled: activeKeepState == KeepState.keep, onTap: busy ? null : () => _mark(context, representativeId, KeepState.keep)),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _MarkButton(label: '精选', icon: Icons.star_outline, color: AppColors.amber, filled: selectedKeepState == KeepState.featured, onTap: busy ? null : () => _mark(context, representativeId, KeepState.featured)),
+              child: _MarkButton(label: '精选', icon: Icons.star_outline, color: AppColors.amber, filled: activeKeepState == KeepState.featured, onTap: busy ? null : () => _mark(context, representativeId, KeepState.featured)),
             ),
           ],
         ),
@@ -345,15 +400,19 @@ class _GroupContent extends StatelessWidget {
           onPressed: rankedIds.length < 2
               ? null
               : () {
-                  final comparisonContext = reviewContext.enterGroup(
-                    group.id,
-                    name: _displayGroupName(group.id),
-                    photos: rankedIds.take(3).toList(growable: false),
-                  );
+                  final comparisonContext = comparisonGroups.isEmpty
+                      ? reviewContext.enterGroup(
+                          group.id,
+                          name: _displayGroupName(group.id),
+                          photos: rankedIds.take(3).toList(growable: false),
+                        )
+                      : comparisonGroups[comparisonGroupIndex];
                   Navigator.of(context).pushNamed(
                     BirdRoutes.comparisonReview,
                     arguments: ComparisonReviewArgs.fromReview(
                       comparisonContext,
+                      groups: comparisonGroups,
+                      initialGroupIndex: comparisonGroupIndex,
                     ),
                   );
                 },
@@ -374,8 +433,48 @@ class _GroupContent extends StatelessWidget {
     );
   }
 
-  void _mark(BuildContext context, String id, KeepState state) => context.read<GroupReviewCubit>().markFile(group, id, state);
+  Future<void> _mark(
+    BuildContext context,
+    String id,
+    KeepState state,
+  ) async {
+    final cubit = context.read<GroupReviewCubit>();
+    if (!applyToWholeGroup) {
+      await cubit.markFile(group, id, state);
+      return;
+    }
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('确认整组修改？'),
+        content: Text(
+          '将把本组 ${group.memberFileIds.length} 张照片全部设为'
+          '“${_keepStateActionLabel(state)}”。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认修改'),
+          ),
+        ],
+      ),
+    );
+    if (approved == true && context.mounted) {
+      await cubit.markGroup(group, state);
+    }
+  }
 }
+
+String _keepStateActionLabel(KeepState state) => switch (state) {
+  KeepState.pending => '待确认',
+  KeepState.keep => '保留',
+  KeepState.discard => '弃用',
+  KeepState.featured => '精选',
+};
 
 class _HeroPhoto extends StatelessWidget {
   const _HeroPhoto({this.photo, this.recommended = false, this.score, this.reasons = const []});
@@ -398,6 +497,11 @@ class _HeroPhoto extends StatelessWidget {
             if (url?.isNotEmpty == true)
               CachedNetworkImage(
                 imageUrl: url!,
+                cacheKey: mediaCacheIdentity(
+                  uri: photo!.preview.previewUri!,
+                  mediaId: photo!.id,
+                  variant: 'group-hero',
+                ),
                 fit: BoxFit.cover,
                 placeholder: (_, _) => const _PhotoPlaceholder(),
                 errorWidget: (_, _, _) => const _PhotoPlaceholder(),
@@ -474,11 +578,18 @@ class _AiBadge extends StatelessWidget {
 }
 
 class _Thumbnail extends StatelessWidget {
-  const _Thumbnail({required this.photo, required this.rank, required this.selected, required this.onTap});
+  const _Thumbnail({
+    required this.photo,
+    required this.rank,
+    required this.selected,
+    required this.extent,
+    required this.onTap,
+  });
 
   final PhotoSummary photo;
   final int rank;
   final bool selected;
+  final double extent;
   final VoidCallback onTap;
 
   @override
@@ -488,7 +599,7 @@ class _Thumbnail extends StatelessWidget {
       borderRadius: BorderRadius.circular(10),
       onTap: onTap,
       child: Container(
-        width: 96,
+        width: extent,
         padding: const EdgeInsets.all(2),
         decoration: BoxDecoration(
           border: Border.all(color: selected ? AppColors.brand : Colors.transparent, width: 2),
@@ -502,6 +613,11 @@ class _Thumbnail extends StatelessWidget {
               if (url?.isNotEmpty == true)
                 CachedNetworkImage(
                   imageUrl: url!,
+                  cacheKey: mediaCacheIdentity(
+                    uri: photo.preview.thumbnailUri!,
+                    mediaId: photo.id,
+                    variant: 'group-thumbnail',
+                  ),
                   fit: BoxFit.cover,
                   placeholder: (_, _) => const _PhotoPlaceholder(compact: true),
                   errorWidget: (_, _, _) => const _PhotoPlaceholder(compact: true),
@@ -547,6 +663,12 @@ class _Thumbnail extends StatelessWidget {
     );
   }
 }
+
+double _thumbnailExtent(String preference) => switch (preference) {
+  'small' => 76,
+  'large' => 116,
+  _ => 96,
+};
 
 class _MarkButton extends StatelessWidget {
   const _MarkButton({required this.label, required this.icon, required this.color, required this.onTap, this.filled = false});

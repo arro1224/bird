@@ -1,6 +1,17 @@
 import 'package:flutter/material.dart';
 
 abstract final class AppColors {
+  // Tokens used by the task and device showcase screens.
+  static const forestPrimary = Color(0xFF194E2A);
+  static const forestDeep = Color(0xFF0E351D);
+  static const forestSoft = Color(0xFFDDE8D4);
+  static const surface = Color(0xFFFFFEFB);
+  static const settingsCanvas = Color(0xFFFAFAF8);
+  static const settingsSurface = Color(0xFFFFFFFF);
+  static const mutedInk = Color(0xFF6E6B65);
+  static const divider = Color(0xFFE6E1D7);
+  static const modalScrim = Color(0x85000000);
+
   // Core palette extracted from the approved warm Japanese-natural UI.
   static const brand = Color(0xFF245E2B);
   static const brandDark = Color(0xFF14341E);

@@ -1,0 +1,58 @@
+{
+  "contract_id": "birdbox-v1",
+  "contract_version": "1.0.0",
+  "api_version": "v1",
+  "effective_date": "2026-07-29",
+  "status": "blocked_external_inputs",
+  "app": {
+    "repository": "https://github.com/arro1224/bird.git",
+    "integration_branch": "codex/integration-birdpart2",
+    "integration_sha": "fb99f208a4e0ccba7bd8f3abd3154a6d970df92a",
+    "source_shas": {
+      "codex/bird-companion-project": "0c8c91d3af98390ee48a05daad0b44534b7fa604",
+      "yuyuyu": "5b38c3c6c11ee282d137602a630ff2449ac3ce6f"
+    }
+  },
+  "box": {
+    "repository": null,
+    "branch": null,
+    "firmware_sha": null,
+    "deployment_command": null,
+    "database_schema_version": null,
+    "database_migration": null,
+    "database_rollback": null,
+    "integration_base_url": null
+  },
+  "owners": {
+    "protocol": {
+      "role": "协议 owner",
+      "contact": null
+    },
+    "flutter_core": {
+      "role": "公共 Flutter 核心 owner",
+      "contact": null
+    },
+    "box_api": {
+      "role": "盒子 API owner",
+      "contact": null
+    },
+    "qa_release": {
+      "role": "测试/发布 owner",
+      "contact": null
+    }
+  },
+  "unresolved_external_inputs": [
+    "box.repository",
+    "box.branch",
+    "box.firmware_sha",
+    "box.deployment_command",
+    "box.database_schema_version",
+    "box.database_migration",
+    "box.database_rollback",
+    "box.integration_base_url",
+    "owners.protocol.contact",
+    "owners.flutter_core.contact",
+    "owners.box_api.contact",
+    "owners.qa_release.contact"
+  ]
+}

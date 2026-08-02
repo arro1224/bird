@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 
 class BatchSummary extends Equatable {
   const BatchSummary({
@@ -34,15 +35,29 @@ class BatchSummary extends Equatable {
   final PreviewRef? cover;
 
   factory BatchSummary.fromJson(Map<String, dynamic> json) => BatchSummary(
-    id: json['project_id']?.toString() ?? '',
+    id: ProtocolValidation.requiredId(json, 'project_id'),
     name: json['name']?.toString() ?? json['project_name']?.toString() ?? '未命名拍摄记录',
-    createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
-    totalFiles: (json['total_files'] as num?)?.toInt() ?? 0,
-    analyzedCount: (json['analyzed_count'] as num?)?.toInt() ?? 0,
-    reviewCount: (json['pending_review_count'] as num?)?.toInt() ?? (json['review_count'] as num?)?.toInt() ?? 0,
-    keepCount: (json['keep_count'] as num?)?.toInt() ?? 0,
-    discardCount: (json['discard_count'] as num?)?.toInt() ?? 0,
-    pendingCopyCount: (json['pending_copy_count'] as num?)?.toInt() ?? 0,
+    createdAt:
+        ProtocolValidation.optionalDateTime(json, 'created_at') ??
+        (throw const ProtocolCompatibilityException(
+          'created_at',
+          '不能为空',
+        )),
+    totalFiles: ProtocolValidation.nonNegativeInt(json, 'total_files'),
+    analyzedCount: ProtocolValidation.nonNegativeInt(
+      json,
+      'analyzed_count',
+    ),
+    reviewCount: json['pending_review_count'] != null ? ProtocolValidation.nonNegativeInt(json, 'pending_review_count') : ProtocolValidation.nonNegativeInt(json, 'review_count'),
+    keepCount: ProtocolValidation.nonNegativeInt(json, 'keep_count'),
+    discardCount: ProtocolValidation.nonNegativeInt(
+      json,
+      'discard_count',
+    ),
+    pendingCopyCount: ProtocolValidation.nonNegativeInt(
+      json,
+      'pending_copy_count',
+    ),
     copyState: json['copy_state']?.toString() ?? 'unknown',
     sceneCount: (json['scene_count'] as num?)?.toInt() ?? 0,
     burstGroupCount: (json['burst_group_count'] as num?)?.toInt() ?? 0,

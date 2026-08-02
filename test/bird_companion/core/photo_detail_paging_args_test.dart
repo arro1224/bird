@@ -19,4 +19,30 @@ void main() {
     expect(nextPage.ids, ['p1', 'p2', 'p3']);
     expect(nextPage.hasMore, isFalse);
   });
+
+  test('对比路由保留连续连拍组和当前组位置', () {
+    const groups = [
+      ReviewContext(
+        batchId: 'batch-1',
+        groupId: 'group-1',
+        photoIds: ['p1', 'p2'],
+      ),
+      ReviewContext(
+        batchId: 'batch-1',
+        groupId: 'group-2',
+        photoIds: ['p3', 'p4', 'p5'],
+      ),
+    ];
+
+    final args = ComparisonReviewArgs.fromReview(
+      groups[1],
+      groups: groups,
+      initialGroupIndex: 1,
+    );
+
+    expect(args.groupId, 'group-2');
+    expect(args.fileIds, ['p3', 'p4', 'p5']);
+    expect(args.groups, groups);
+    expect(args.initialGroupIndex, 1);
+  });
 }

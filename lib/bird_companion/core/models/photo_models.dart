@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/core/models/json_value.dart';
+import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:equatable/equatable.dart';
 
 enum AnalysisState { queued, processing, completed, lowConfidence, skipped, failed, unknown }
@@ -81,12 +82,27 @@ class SubjectBox extends Equatable {
 
   factory SubjectBox.fromJson(Map<String, dynamic> json) {
     final box = json.mapOrNull('bbox') ?? json;
+    for (final field in const ['x', 'y', 'width', 'height']) {
+      if (!box.containsKey(field)) {
+        throw ProtocolCompatibilityException('bbox.$field', '不能为空');
+      }
+    }
+    final x = ProtocolValidation.unitInterval(box, 'x');
+    final y = ProtocolValidation.unitInterval(box, 'y');
+    final width = ProtocolValidation.unitInterval(box, 'width');
+    final height = ProtocolValidation.unitInterval(box, 'height');
+    if (x + width > 1 || y + height > 1) {
+      throw const ProtocolCompatibilityException(
+        'bbox',
+        '必须完全位于归一化图像范围内',
+      );
+    }
     return SubjectBox(
-      x: box.doubleOrNull('x') ?? 0,
-      y: box.doubleOrNull('y') ?? 0,
-      width: box.doubleOrNull('width') ?? 0,
-      height: box.doubleOrNull('height') ?? 0,
-      confidence: json.doubleOrNull('confidence'),
+      x: x,
+      y: y,
+      width: width,
+      height: height,
+      confidence: json['confidence'] == null ? null : ProtocolValidation.unitInterval(json, 'confidence'),
       type: json.stringOrNull('subject_type'),
     );
   }
@@ -115,7 +131,7 @@ class SpeciesCandidate extends Equatable {
     speciesId: json.stringOrNull('species_id') ?? json.stringOrNull('id'),
     englishName: json.stringOrNull('english_name'),
     latinName: json.stringOrNull('latin_name'),
-    confidence: json.doubleOrNull('confidence') ?? 0,
+    confidence: ProtocolValidation.unitInterval(json, 'confidence'),
   );
 
   Map<String, dynamic> toJson() => {
@@ -224,6 +240,7 @@ class PhotoSummary extends Equatable {
     this.isRecommended = false,
     this.userTags = const [],
     this.capturedAt,
+    this.version,
   });
 
   final String id;
@@ -239,12 +256,13 @@ class PhotoSummary extends Equatable {
   final ClarityState clarityState;
   final bool isRecommended;
   final List<String> userTags;
+  final int? version;
 
   /// Device timestamp used by the gallery's "newest first" ordering.
   final DateTime? capturedAt;
 
   factory PhotoSummary.fromJson(Map<String, dynamic> json) => PhotoSummary(
-    id: json.stringOrNull('file_id') ?? '',
+    id: ProtocolValidation.requiredId(json, 'file_id'),
     filename: json.stringOrNull('filename') ?? '',
     format: json.stringOrNull('format') ?? '',
     preview: PreviewRef.fromJson(json),
@@ -257,7 +275,8 @@ class PhotoSummary extends Equatable {
     clarityState: ClarityStateWireValue.fromWire(json.stringOrNull('clarity_state')),
     isRecommended: json.boolOrNull('is_recommended') ?? false,
     userTags: json.listOrEmpty('user_tags').map((value) => value.toString()).toList(),
-    capturedAt: DateTime.tryParse(json.stringOrNull('captured_at') ?? json.stringOrNull('capturedAt') ?? ''),
+    capturedAt: json.containsKey('captured_at') ? ProtocolValidation.optionalDateTime(json, 'captured_at') : ProtocolValidation.optionalDateTime(json, 'capturedAt'),
+    version: ProtocolValidation.optionalNonNegativeInt(json, 'version'),
   );
 
   Map<String, dynamic> toJson() => {
@@ -275,6 +294,7 @@ class PhotoSummary extends Equatable {
     'is_recommended': isRecommended,
     'user_tags': userTags,
     if (capturedAt != null) 'captured_at': capturedAt!.toIso8601String(),
+    if (version != null) 'version': version,
   };
 
   /// Returns a local view of this photo after a review decision is saved.
@@ -296,10 +316,27 @@ class PhotoSummary extends Equatable {
     isRecommended: isRecommended,
     userTags: userTags,
     capturedAt: capturedAt,
+    version: version,
   );
 
   @override
-  List<Object?> get props => [id, filename, format, preview, analysisState, recognition, rating, groupId, sceneId, keepState, clarityState, isRecommended, userTags, capturedAt];
+  List<Object?> get props => [
+    id,
+    filename,
+    format,
+    preview,
+    analysisState,
+    recognition,
+    rating,
+    groupId,
+    sceneId,
+    keepState,
+    clarityState,
+    isRecommended,
+    userTags,
+    capturedAt,
+    version,
+  ];
 }
 
 class PhotoDetail extends Equatable {

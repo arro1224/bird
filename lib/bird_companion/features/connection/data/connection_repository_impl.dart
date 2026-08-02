@@ -42,6 +42,31 @@ class ConnectionRepositoryImpl implements ConnectionRepository {
     CancelToken? cancelToken,
   }) async {
     final status = await _api.handshake(baseUri, networkMode, cancelToken: cancelToken);
+    await _save(status, cancelToken);
+    return status;
+  }
+
+  @override
+  Future<DeviceStatus> pair(
+    Uri baseUri, {
+    required NetworkMode networkMode,
+    required String pairingCode,
+    CancelToken? cancelToken,
+  }) async {
+    final status = await _api.pair(
+      baseUri,
+      networkMode,
+      pairingCode: pairingCode,
+      cancelToken: cancelToken,
+    );
+    await _save(status, cancelToken);
+    return status;
+  }
+
+  Future<void> _save(
+    DeviceStatus status,
+    CancelToken? cancelToken,
+  ) async {
     if (cancelToken?.isCancelled == true) {
       throw StateError('Connection cancelled before the device was saved.');
     }
@@ -49,7 +74,6 @@ class ConnectionRepositoryImpl implements ConnectionRepository {
     final recent = _unique([device, ...await recentDevices()]).take(10).toList();
     await _cache.write(_recentDevicesKey, recent.map((item) => item.toJson()).toList());
     await _cache.write(_activeDeviceKey, device.toJson());
-    return status;
   }
 
   @override
@@ -64,7 +88,12 @@ class ConnectionRepositoryImpl implements ConnectionRepository {
 
   @override
   Future<void> forgetDevice() async {
-    await _api.disconnect();
+    final device = await savedDevice();
+    if (device == null) {
+      await _api.disconnect();
+    } else {
+      await _api.forget(device.id);
+    }
     await _cache.remove(_activeDeviceKey);
     await _cache.remove(_recentDevicesKey);
   }

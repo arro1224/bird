@@ -1,6 +1,15 @@
 import 'dart:async';
 
-enum AppDataResource { device, batches, photos, jobs, cache, sync }
+enum AppDataResource {
+  device,
+  batches,
+  photos,
+  jobs,
+  cache,
+  sync,
+  photoPreferences,
+  copyPreferences,
+}
 
 class AppDataChange {
   const AppDataChange(this.resources, {this.reason});

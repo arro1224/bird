@@ -1,6 +1,7 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/files/media_cache_identity.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -55,6 +56,11 @@ class ComparisonPhotoPane extends StatelessWidget {
                     child: url?.isNotEmpty == true
                         ? CachedNetworkImage(
                             imageUrl: url!,
+                            cacheKey: mediaCacheIdentity(
+                              uri: photo.preview.previewUri!,
+                              mediaId: photo.id,
+                              variant: 'preview',
+                            ),
                             fit: BoxFit.cover,
                             placeholder: (_, _) => const ColoredBox(
                               color: AppColors.brandLight,

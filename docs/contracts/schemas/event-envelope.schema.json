@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://birdbox.local/contracts/v1/schemas/event-envelope.schema.json",
+  "title": "EventEnvelope",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "event_id",
+        "event_type",
+        "timestamp",
+        "payload"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "device_status",
+            "device_status_changed",
+            "status_changed",
+            "card_status_changed",
+            "storage_target_changed"
+          ]
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "$ref": "./device-status.schema.json"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "event_id",
+        "event_type",
+        "timestamp",
+        "payload"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "job_created",
+            "job_updated",
+            "job_progress",
+            "job_state_changed",
+            "job_failed"
+          ]
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": {
+          "$ref": "./bird-job-status.schema.json"
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

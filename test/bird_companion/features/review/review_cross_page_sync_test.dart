@@ -197,7 +197,10 @@ class _ReloadingRepository implements ReviewRepository {
   }
 
   @override
-  Future<ReviewSaveResult> save(UserDecision value) {
+  Future<ReviewSaveResult> save(
+    UserDecision value, {
+    String? projectId,
+  }) {
     throw UnimplementedError();
   }
 }

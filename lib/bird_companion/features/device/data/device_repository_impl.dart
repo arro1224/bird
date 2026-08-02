@@ -55,5 +55,9 @@ class DeviceRepositoryImpl implements DeviceRepository {
   }
 
   @override
-  Future<void> controlJob({required String jobId, required String action}) => _api.controlJob(jobId: jobId, action: action);
+  Future<void> controlJob({
+    required String jobId,
+    required String action,
+    required int version,
+  }) => _api.controlJob(jobId: jobId, action: action, version: version);
 }

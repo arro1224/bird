@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://birdbox.local/contracts/v1/schemas/error-response.schema.json",
+  "title": "ErrorResponse",
+  "type": "object",
+  "required": [
+    "error_code",
+    "error_message"
+  ],
+  "properties": {
+    "error_code": {
+      "type": "string",
+      "minLength": 1
+    },
+    "error_message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "details": {
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

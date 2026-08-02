@@ -8,8 +8,7 @@ abstract final class UserFacingText {
     return '仅供参考';
   }
 
-  static String recognitionCertaintyWithPercent(double value) =>
-      '${recognitionCertainty(value)}（${(value * 100).round()}%）';
+  static String recognitionCertaintyWithPercent(double value) => '${recognitionCertainty(value)}（${(value * 100).round()}%）';
 
   static String analysisState(String? value) => switch (value) {
     'completed' => '识别完成',

@@ -68,36 +68,76 @@ class ReviewRepositoryImpl implements ReviewRepository {
   }
 
   @override
-  Future<ReviewSaveResult> save(UserDecision v) async {
+  Future<ReviewSaveResult> save(
+    UserDecision v, {
+    String? projectId,
+  }) async {
+    final previous = _optimisticDecisions[_optimisticKey(v.fileId)] ?? _cachedDecision(v.fileId);
+    final patch = previous == null ? UserDecisionPatch.fromDecision(v) : UserDecisionPatch.diff(previous, v);
     try {
-      if (!await _connectivity.hasNetwork) return _queue(v, '设备离线，修改将在重新连接后同步');
-      await _api.save(v);
-      await _removeQueuedReviewOperationsSafely(v.fileId);
+      if (!await _connectivity.hasNetwork) {
+        return _queue(
+          v,
+          patch,
+          '设备离线，修改将在重新连接后同步',
+          projectId: projectId,
+        );
+      }
+      await _api.save(patch);
+      await _removeQueuedReviewOperationsSafely(
+        v.fileId,
+        projectId: projectId,
+      );
       _optimisticDecisions[_optimisticKey(v.fileId)] = v;
       await _updateCachedDecisionSafely(v);
       return const ReviewSaveResult();
     } on ApiException catch (error) {
       if (error.statusCode == 409) return ReviewSaveResult(conflict: true, message: error.message);
-      return _queue(v, '暂时无法连接盒子，修改已保存在本机');
+      if (error.statusCode == 401 || error.statusCode == 403) rethrow;
+      return _queue(
+        v,
+        patch,
+        '暂时无法连接盒子，修改已保存在本机',
+        projectId: projectId,
+      );
     }
   }
 
-  Future<ReviewSaveResult> _queue(UserDecision value, String message) async {
+  Future<ReviewSaveResult> _queue(
+    UserDecision value,
+    UserDecisionPatch patch,
+    String message, {
+    String? projectId,
+  }) async {
     final operation = PendingOperation(
       id: 'review-${value.fileId}-${DateTime.now().microsecondsSinceEpoch}',
       type: PendingOperationType.updateReview,
-      payload: value.toJson(),
+      payload: patch.toJson(),
       createdAt: DateTime.now(),
       version: value.version,
       deviceId: _activeDeviceId,
+      projectId: projectId,
+      fileId: value.fileId,
     );
     await _pending.save(
       operation,
-      supersedes: (existing) => existing.type == PendingOperationType.updateReview && existing.deviceId == operation.deviceId && existing.payload['file_id']?.toString() == value.fileId,
+      supersedes: (existing) =>
+          existing.type == PendingOperationType.updateReview && existing.deviceId == operation.deviceId && existing.projectId == operation.projectId && (existing.fileId ?? existing.payload['file_id']?.toString()) == value.fileId,
     );
     _optimisticDecisions[_optimisticKey(value.fileId)] = value;
     await _updateCachedDecisionSafely(value);
     return ReviewSaveResult(queued: true, message: message);
+  }
+
+  UserDecision? _cachedDecision(String fileId) {
+    final raw = _cache.read<Map>(
+      'album:detail:${_cacheNamespace()}:$fileId',
+    );
+    final decision = raw?['decision'];
+    if (decision is! Map) return null;
+    return UserDecision.fromJson(
+      Map<String, dynamic>.from(decision),
+    );
   }
 
   Future<void> _updateCachedDecisionSafely(UserDecision value) async {
@@ -247,16 +287,23 @@ class ReviewRepositoryImpl implements ReviewRepository {
     return value == null || value.isEmpty ? null : value;
   }
 
-  Future<void> _removeQueuedReviewOperations(String fileId) {
+  Future<void> _removeQueuedReviewOperations(
+    String fileId, {
+    String? projectId,
+  }) {
     final deviceId = _activeDeviceId;
     return _pending.removeWhere(
-      (operation) => operation.type == PendingOperationType.updateReview && operation.deviceId == deviceId && operation.payload['file_id']?.toString() == fileId,
+      (operation) =>
+          operation.type == PendingOperationType.updateReview && operation.deviceId == deviceId && (projectId == null || operation.projectId == projectId) && (operation.fileId ?? operation.payload['file_id']?.toString()) == fileId,
     );
   }
 
-  Future<void> _removeQueuedReviewOperationsSafely(String fileId) async {
+  Future<void> _removeQueuedReviewOperationsSafely(
+    String fileId, {
+    String? projectId,
+  }) async {
     try {
-      await _removeQueuedReviewOperations(fileId);
+      await _removeQueuedReviewOperations(fileId, projectId: projectId);
     } catch (_) {
       // The box has already accepted the latest decision. A stale local queue
       // entry can be surfaced in diagnostics instead of failing the save.

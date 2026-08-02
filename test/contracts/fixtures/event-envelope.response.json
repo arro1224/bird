@@ -1,0 +1,31 @@
+{
+  "event_id": "evt-10028",
+  "event_type": "job_progress",
+  "timestamp": "2026-07-29T14:02:18+08:00",
+  "payload": {
+    "job_id": "job-copy-001",
+    "job_type": "copy",
+    "job_state": "running",
+    "workflow_stage": "copying",
+    "source_project_id": "project-001",
+    "source_project_name": "Dianchi 2026-07-29",
+    "progress": 0.65,
+    "total_count": 2012,
+    "finished_count": 1308,
+    "failed_count": 2,
+    "skipped_count": 0,
+    "current_file": "DSC_2384.ARW",
+    "speed_bytes_per_second": 44040192,
+    "estimated_remaining_seconds": 1080,
+    "started_at": "2026-07-29T13:20:00+08:00",
+    "created_at": "2026-07-29T13:19:58+08:00",
+    "updated_at": "2026-07-29T14:02:18+08:00",
+    "finished_at": null,
+    "error_code": null,
+    "error_message": null,
+    "available_actions": [
+      "pause",
+      "cancel"
+    ]
+  }
+}

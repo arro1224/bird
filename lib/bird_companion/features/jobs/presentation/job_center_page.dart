@@ -2,6 +2,7 @@ import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/core/widgets/empty_state.dart';
 import 'package:aves/bird_companion/features/jobs/presentation/job_center_cubit.dart';
@@ -9,6 +10,9 @@ import 'package:aves/bird_companion/features/jobs/presentation/widgets/job_card.
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+/// Secondary task detail/recovery surface. The production task-tab entrypoint
+/// remains [TaskExperienceRoot]; this page is reached from job deep links and
+/// diagnostics only.
 class JobCenterPage extends StatelessWidget {
   const JobCenterPage({super.key});
 
@@ -42,10 +46,16 @@ class _JobCenterViewState extends State<_JobCenterView> {
     backgroundColor: AppColors.paper,
     body: BlocConsumer<JobCenterCubit, JobCenterState>(
       listenWhen: (before, after) => before.error != after.error && after.error != null,
-      listener: (context, state) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('操作没有完成：${state.error}'))),
+      listener: (context, state) {
+        final message = UserMessageMapper.fromError(state.error!);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${message.title}：${message.message}')),
+        );
+      },
       builder: (context, state) {
         if (state.loading && state.jobs.isEmpty) return const Center(child: CircularProgressIndicator());
         final jobs = state.jobs.where((job) => _showCompleted ? _ended(job) : !_ended(job)).toList();
+        final errorMessage = state.error == null ? null : UserMessageMapper.fromError(state.error!);
         return RefreshIndicator(
           onRefresh: () => context.read<JobCenterCubit>().load(),
           child: ListView(
@@ -77,20 +87,15 @@ class _JobCenterViewState extends State<_JobCenterView> {
                 onSelectionChanged: (value) => setState(() => _showCompleted = value.first),
               ),
               const SizedBox(height: 18),
-              if (state.isDemo)
-                MaterialBanner(
-                  content: const Text('当前显示的是示例进度，尚未连接盒子。'),
-                  actions: [TextButton(onPressed: () => context.read<JobCenterCubit>().load(), child: const Text('退出演示'))],
-                ),
               if (jobs.isEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 80),
                   child: EmptyState(
                     icon: _showCompleted ? Icons.task_alt_rounded : Icons.assignment_outlined,
-                    title: _showCompleted ? '暂无已完成的处理' : (state.error == null ? '现在没有正在处理的照片' : '暂时无法读取处理进度'),
-                    message: state.error == null ? '照片识别、读取和保存进度会显示在这里。' : '请检查盒子连接后重试。',
-                    actionLabel: state.error == null ? '刷新' : '查看示例进度',
-                    onAction: state.error == null ? () => context.read<JobCenterCubit>().load() : context.read<JobCenterCubit>().showDemo,
+                    title: errorMessage?.title ?? (_showCompleted ? '暂无已完成的处理' : '现在没有正在处理的照片'),
+                    message: errorMessage?.message ?? '照片识别、读取和保存进度会显示在这里。',
+                    actionLabel: errorMessage?.actionLabel ?? '刷新',
+                    onAction: () => context.read<JobCenterCubit>().load(),
                   ),
                 )
               else
@@ -100,9 +105,9 @@ class _JobCenterViewState extends State<_JobCenterView> {
                     child: JobCard(
                       job: job,
                       busy: state.actingJobId == job.id,
-                      onTap: () => Navigator.of(context).pushNamed(BirdRoutes.jobDetail, arguments: state.isDemo ? null : JobDetailArgs(job.id)),
+                      onTap: () => Navigator.of(context).pushNamed(BirdRoutes.jobDetail, arguments: JobDetailArgs(job.id)),
                       onControl: (action) => context.read<JobCenterCubit>().control(job.id, action),
-                      onDelete: state.isDemo ? null : () => _confirmDelete(context, job.id),
+                      onDelete: job.canDelete ? () => _confirmDelete(context, job.id) : null,
                     ),
                   ),
                 ),

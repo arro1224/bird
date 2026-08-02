@@ -1,11 +1,20 @@
 import 'dart:io';
 
 import 'package:aves/bird_companion/core/models/review_models.dart';
+import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
+import 'package:aves/bird_companion/core/files/log_download_service.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
+import 'package:aves/bird_companion/core/network/api_endpoints.dart';
+import 'package:aves/bird_companion/core/network/api_exception.dart';
+import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/features/batches/data/batch_api.dart';
+import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
 import 'package:aves/bird_companion/features/gallery/data/photo_api.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/review/data/review_api.dart';
+import 'package:aves/bird_companion/features/jobs/data/job_api.dart';
+import 'package:aves/bird_companion/features/jobs/data/job_repository_impl.dart';
+import 'package:aves/bird_companion/features/jobs/presentation/job_detail_cubit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../tool/mock_box_server/mock_box_server.dart';
@@ -146,14 +155,16 @@ void main() {
     expect(before.decision?.version, 1);
 
     await reviewApi.save(
-      UserDecision(
-        fileId: 'photo-0001',
-        keepState: KeepState.discard,
-        userScore: 4.5,
-        userSpeciesId: 'common-kingfisher',
-        userSpecies: '普通翠鸟',
-        userTags: const ['复核完成'],
-        version: before.decision?.version,
+      UserDecisionPatch.fromDecision(
+        UserDecision(
+          fileId: 'photo-0001',
+          keepState: KeepState.discard,
+          userScore: 4.5,
+          userSpeciesId: 'common-kingfisher',
+          userSpecies: '普通翠鸟',
+          userTags: const ['复核完成'],
+          version: before.decision?.version,
+        ),
       ),
     );
     final after = await reviewApi.detail('photo-0001');
@@ -162,6 +173,31 @@ void main() {
     expect(after.decision?.version, 2);
     expect(after.decision?.userTags, contains('复核完成'));
     expect(after.history.last.source, 'app');
+
+    await expectLater(
+      reviewApi.save(
+        UserDecisionPatch.fromDecision(
+          UserDecision(
+            fileId: 'photo-0001',
+            keepState: KeepState.featured,
+            version: before.decision?.version,
+          ),
+        ),
+      ),
+      throwsA(
+        isA<ApiException>()
+            .having(
+              (error) => error.statusCode,
+              'statusCode',
+              HttpStatus.conflict,
+            )
+            .having(
+              (error) => UserMessageMapper.fromError(error).title,
+              'message title',
+              '照片审阅结果已更新',
+            ),
+      ),
+    );
 
     final outcome = await photoApi.batchOperation(
       'mock-batch-current',
@@ -174,4 +210,156 @@ void main() {
     expect(outcome.failed, contains('missing-photo'));
     expect(updated.photo.summary.keepState, 'featured');
   });
+
+  test('复制估算、完整创建请求、任务进度和权威报告形成闭环', () async {
+    final copyApi = CopyApi(client);
+    final jobApi = JobApi(client);
+    final estimate = await copyApi.estimate('mock-batch-current', 'keep');
+
+    expect(estimate.targets, isNotEmpty);
+    expect(estimate.targets.first.online, isTrue);
+    expect(estimate.version, 0);
+
+    final job = await copyApi.create(
+      'mock-batch-current',
+      'keep',
+      estimate.targets.first.id,
+      xmpEnabled: true,
+      verifyAfterCopy: true,
+      version: estimate.version,
+    );
+    expect(job.sourceProjectId, 'mock-batch-current');
+    expect(job.type.name, 'copy');
+
+    await server.completeJob(job.id);
+    final completed = await jobApi.detail(job.id);
+    final report = await jobApi.report(job.id);
+    final events = EventClient();
+    final detailCubit = JobDetailCubit(
+      JobRepositoryImpl(jobApi),
+      events,
+      job.id,
+    );
+    addTearDown(detailCubit.close);
+    addTearDown(events.dispose);
+    await detailCubit.load();
+
+    expect(completed.state.name, 'completed');
+    expect(report.jobId, job.id);
+    expect(report.successCount, report.totalCount);
+    expect(report.failedCount, 0);
+    expect(detailCubit.state.report?.jobId, job.id);
+
+    await server.failJob(job.id, failedCount: 1);
+    await detailCubit.load();
+    expect(detailCubit.state.failures, hasLength(1));
+    expect(
+      detailCubit.state.job?.availableActions,
+      contains('skip_failed'),
+    );
+
+    await detailCubit.control('skip_failed');
+    expect(detailCubit.state.job?.state.name, 'completed');
+    expect(detailCubit.state.report?.skippedCount, 1);
+    expect(detailCubit.state.failures, isEmpty);
+  });
+
+  test('日志导出会下载非空文件并保留本地路径', () async {
+    final directory = await Directory.systemTemp.createTemp('bird-b6-logs-');
+    addTearDown(() async {
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+    });
+    final jobApi = JobApi(client);
+    final service = LogDownloadService(
+      client,
+      directoryProvider: () async => directory,
+    );
+
+    final downloaded = await service.downloadWithRefresh(
+      () => jobApi.exportLogs(scope: 'device_and_jobs'),
+    );
+
+    expect(await downloaded.file.exists(), isTrue);
+    expect(await downloaded.file.length(), greaterThan(0));
+    expect(downloaded.file.parent.path, directory.path);
+  });
+
+  test(
+    '同一幂等键的并发请求只创建一次，重启后仍可重放并恢复项目',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'bird-b7-mock-state-',
+      );
+      final stateFile = File('${directory.path}/state.json');
+      addTearDown(() async {
+        if (await directory.exists()) {
+          await directory.delete(recursive: true);
+        }
+      });
+
+      await server.close();
+      await client.dispose();
+      server = MockBoxServer(
+        photoCount: 60,
+        assetDirectory: Directory('tool/mock_box_server/assets'),
+        logRequests: false,
+        stateFile: stateFile,
+      );
+      baseUri = await server.start();
+      client = ApiClient()..configure(baseUri);
+
+      const idempotencyKey = 'b7-project-replay-0001';
+      const request = {
+        'name': 'B7 persistent project',
+        'card_id': 'card-mock-001',
+      };
+      final concurrent = await Future.wait([
+        client.post(
+          ApiEndpoints.batches,
+          data: request,
+          idempotencyKey: idempotencyKey,
+        ),
+        client.post(
+          ApiEndpoints.batches,
+          data: request,
+          idempotencyKey: idempotencyKey,
+        ),
+      ]);
+      final projectId = concurrent.first['project_id'];
+
+      expect(projectId, 'project-0001');
+      expect(concurrent.last['project_id'], projectId);
+      expect(
+        (await BatchApi(client).page()).items.where((project) => project.id == projectId),
+        hasLength(1),
+      );
+
+      await server.close();
+      await client.dispose();
+      server = MockBoxServer(
+        photoCount: 60,
+        assetDirectory: Directory('tool/mock_box_server/assets'),
+        logRequests: false,
+        stateFile: stateFile,
+      );
+      baseUri = await server.start();
+      client = ApiClient()..configure(baseUri);
+
+      final replayed = await client.post(
+        ApiEndpoints.batches,
+        data: request,
+        idempotencyKey: idempotencyKey,
+      );
+      final restoredCurrent = await BatchApi(client).current();
+
+      expect(replayed['project_id'], projectId);
+      expect(restoredCurrent?.id, projectId);
+      expect(
+        (await BatchApi(client).page()).items.where((project) => project.id == projectId),
+        hasLength(1),
+      );
+    },
+  );
 }

@@ -1,0 +1,54 @@
+import 'package:aves/bird_companion/app/theme/app_theme.dart';
+import 'package:aves/bird_companion/features/settings/presentation/bird_settings_controller.dart';
+import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
+import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_scaffold.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('settings controller exposes approved defaults and updates values', () {
+    final controller = BirdSettingsController();
+    addTearDown(controller.dispose);
+
+    expect(controller.gridColumns, 4);
+    expect(controller.sortOrder, BirdPhotoSortOrder.newest);
+    expect(controller.copyMode, BirdCopyMode.keptOnly);
+    expect(controller.selectedStorageId, 'removable-e');
+
+    controller
+      ..setGridColumns(5)
+      ..setSortOrder(BirdPhotoSortOrder.fileNameAscending)
+      ..setCopyMode(BirdCopyMode.dualTrack)
+      ..setStorageTarget('local');
+
+    expect(controller.gridColumns, 5);
+    expect(controller.sortOrder, BirdPhotoSortOrder.fileNameAscending);
+    expect(controller.copyMode, BirdCopyMode.dualTrack);
+    expect(controller.selectedStorageId, 'local');
+  });
+
+  testWidgets('settings scaffold provides a 48dp back target and centered title', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: const BirdSettingsScaffold(
+          title: '显示设置',
+          body: SizedBox.shrink(),
+        ),
+      ),
+    );
+
+    expect(find.text('显示设置'), findsOneWidget);
+    final back = tester.getSize(find.byKey(const Key('settings-back')));
+    expect(back.width, greaterThanOrEqualTo(48));
+    expect(back.height, greaterThanOrEqualTo(48));
+  });
+
+  testWidgets('settings device icon uses the standard router glyph', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: BirdSettingsDeviceIcon())),
+    );
+
+    expect(find.byIcon(Icons.router_rounded), findsOneWidget);
+  });
+}

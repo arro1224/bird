@@ -111,11 +111,12 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
   }
 
   Future<void> _reviewConflict(PendingOperation operation) async {
-    final fileId = operation.payload['file_id']?.toString().trim();
+    final fileId = operation.fileId?.trim() ?? operation.payload['file_id']?.toString().trim();
     if (fileId == null || fileId.isEmpty) return;
+    final projectId = operation.projectId?.trim() ?? operation.payload['project_id']?.toString().trim();
     await Navigator.of(context).pushNamed(
       BirdRoutes.photoDetail,
-      arguments: PhotoDetailArgs(fileId),
+      arguments: projectId == null || projectId.isEmpty ? PhotoDetailArgs(fileId) : PhotoDetailArgs.fromReview(ReviewContext(batchId: projectId), fileId: fileId),
     );
     if (mounted) await _run();
   }
@@ -235,9 +236,9 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                     onPressed: () async {
                       final dependencies = BirdCompanionScope.of(context);
                       try {
-                        final url = await dependencies.jobRepository.exportLogs();
-                        if (url == null) throw StateError('日志正在生成，请稍后重试。');
-                        final log = await dependencies.logDownloadService.download(url);
+                        final log = await dependencies.logDownloadService.downloadWithRefresh(
+                          dependencies.jobRepository.exportLogs,
+                        );
                         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('日志已下载到：${log.file.path}')));
                       } catch (error) {
                         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('日志导出失败：$error')));

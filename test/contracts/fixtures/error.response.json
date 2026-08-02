@@ -1,0 +1,9 @@
+{
+  "error_code": "VERSION_CONFLICT",
+  "error_message": "The resource was updated by another client.",
+  "retryable": false,
+  "details": {
+    "requested_version": 3,
+    "current_version": 4
+  }
+}

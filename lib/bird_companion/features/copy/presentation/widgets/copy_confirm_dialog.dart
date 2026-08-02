@@ -2,13 +2,22 @@ import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
 class CopyConfirmDialog extends StatelessWidget {
-  const CopyConfirmDialog({super.key, required this.onConfirm, required this.fileCount, required this.requiredBytes, required this.targetName, required this.xmpEnabled});
+  const CopyConfirmDialog({
+    super.key,
+    required this.onConfirm,
+    required this.fileCount,
+    required this.requiredBytes,
+    required this.targetName,
+    required this.xmpEnabled,
+    this.lowBatteryPercent,
+  });
 
   final VoidCallback onConfirm;
   final int fileCount;
   final int requiredBytes;
   final String targetName;
   final bool xmpEnabled;
+  final int? lowBatteryPercent;
 
   @override
   Widget build(BuildContext context) => AlertDialog(
@@ -35,6 +44,31 @@ class CopyConfirmDialog extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         const Text('不会删除相机卡中的原始照片', style: TextStyle(color: AppColors.pending)),
+        if (lowBatteryPercent != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            key: const Key('copy-low-battery-warning'),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.amberLight,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.battery_alert_rounded,
+                  color: AppColors.pending,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '盒子电量仅剩 $lowBatteryPercent%，建议连接电源后再复制。',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     ),
     actions: [

@@ -35,4 +35,9 @@ dev_dependencies:
 flutter:
   assets:
     - assets/bird_companion/connection/
+    - assets/bird_companion/ui_extracted/connection/batch-01/
+    - assets/bird_companion/ui_extracted/connection/batch-02/
+    - assets/bird_companion/ui_extracted/connection/batch-04/
+    - assets/bird_companion/ui_extracted/connection/batch-05/
+    - assets/bird_companion/settings/icons/
   uses-material-design: true

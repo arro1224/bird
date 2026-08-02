@@ -13,7 +13,12 @@ void main() {
   group('照片详情修改同步', () {
     test('保存后即使设备暂时返回旧详情也保留刚修改的决定', () async {
       final repository = _StaleReviewRepository(_originalDetail());
-      final cubit = PhotoDetailCubit(repository);
+      final cubit = PhotoDetailCubit(
+        repository,
+        null,
+        null,
+        'project-7',
+      );
       addTearDown(cubit.close);
 
       await cubit.load('photo-1');
@@ -35,6 +40,7 @@ void main() {
       expect(cubit.state.detail?.decision?.userTags, ['湿地']);
       expect(cubit.state.detail?.photo.summary.keepState, 'keep');
       expect(cubit.state.saving, isFalse);
+      expect(repository.savedProjectId, 'project-7');
     });
 
     test('详情加载失败时保留异常对象而不是暴露原始异常文本', () async {
@@ -52,6 +58,35 @@ void main() {
       final message = UserMessageMapper.fromError(cubit.state.error!);
       expect(message.title, '照片详情不可用');
       expect(message.message, isNot(contains('Unknown mock endpoint')));
+    });
+
+    test('409 conflict keeps local choice until user reloads remote result', () async {
+      final repository = _ConflictReviewRepository();
+      final cubit = PhotoDetailCubit(
+        repository,
+        null,
+        null,
+        'project-7',
+      );
+      addTearDown(cubit.close);
+      await cubit.load('photo-1');
+      const local = UserDecision(
+        fileId: 'photo-1',
+        keepState: KeepState.featured,
+        version: 1,
+      );
+
+      await cubit.save(local);
+
+      expect(cubit.state.conflict, isTrue);
+      expect(cubit.state.pendingConflictDecision, local);
+      expect(repository.savedProjectId, 'project-7');
+
+      await cubit.useRemote('photo-1');
+
+      expect(cubit.state.conflict, isFalse);
+      expect(cubit.state.detail?.decision?.keepState, KeepState.discard);
+      expect(cubit.state.detail?.decision?.version, 2);
     });
 
     testWidgets('详细鸟种指标优先显示用户保存的结果', (tester) async {
@@ -137,6 +172,7 @@ class _StaleReviewRepository implements ReviewRepository {
   _StaleReviewRepository(this.staleDetail);
 
   final ReviewDetail staleDetail;
+  String? savedProjectId;
 
   @override
   Future<ReviewDetail> detail(String fileId) async => staleDetail;
@@ -145,7 +181,13 @@ class _StaleReviewRepository implements ReviewRepository {
   Future<List<BirdGroup>> groups(String batchId, {String? sceneId}) async => const [];
 
   @override
-  Future<ReviewSaveResult> save(UserDecision value) async => const ReviewSaveResult();
+  Future<ReviewSaveResult> save(
+    UserDecision value, {
+    String? projectId,
+  }) async {
+    savedProjectId = projectId;
+    return const ReviewSaveResult();
+  }
 }
 
 class _FailingReviewRepository implements ReviewRepository {
@@ -162,5 +204,55 @@ class _FailingReviewRepository implements ReviewRepository {
   Future<List<BirdGroup>> groups(String batchId, {String? sceneId}) async => const [];
 
   @override
-  Future<ReviewSaveResult> save(UserDecision value) async => const ReviewSaveResult();
+  Future<ReviewSaveResult> save(
+    UserDecision value, {
+    String? projectId,
+  }) async => const ReviewSaveResult();
+}
+
+class _ConflictReviewRepository implements ReviewRepository {
+  var reads = 0;
+  String? savedProjectId;
+
+  @override
+  Future<ReviewDetail> detail(String fileId) async {
+    reads++;
+    final remote = reads > 1;
+    return ReviewDetail(
+      photo: PhotoDetail(
+        summary: PhotoSummary(
+          id: fileId,
+          filename: '$fileId.jpg',
+          format: 'JPEG',
+          preview: const PreviewRef(),
+          analysisState: AnalysisState.completed,
+          keepState: remote ? 'discard' : 'pending',
+          version: remote ? 2 : 1,
+        ),
+      ),
+      decision: UserDecision(
+        fileId: fileId,
+        keepState: remote ? KeepState.discard : KeepState.pending,
+        version: remote ? 2 : 1,
+      ),
+    );
+  }
+
+  @override
+  Future<List<BirdGroup>> groups(
+    String batchId, {
+    String? sceneId,
+  }) async => const [];
+
+  @override
+  Future<ReviewSaveResult> save(
+    UserDecision value, {
+    String? projectId,
+  }) async {
+    savedProjectId = projectId;
+    return const ReviewSaveResult(
+      conflict: true,
+      message: '照片审阅结果已更新',
+    );
+  }
 }

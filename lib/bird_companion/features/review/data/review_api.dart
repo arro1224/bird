@@ -58,5 +58,8 @@ class ReviewApi {
     );
   }
 
-  Future<void> save(UserDecision value) => _client.post(ApiEndpoints.photoDecision.replaceFirst('{fileId}', value.fileId), data: value.toJson());
+  Future<void> save(UserDecisionPatch value) => _client.post(
+    ApiEndpoints.photoDecision.replaceFirst('{fileId}', value.fileId),
+    data: value.toJson(),
+  );
 }

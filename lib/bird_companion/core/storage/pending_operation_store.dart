@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
+import 'package:aves/bird_companion/core/storage/cache_schema_migrator.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 
 typedef _ReadPendingValue = Object? Function(String key);
@@ -25,13 +26,14 @@ class PendingOperationStore {
     );
   }
 
-  static const _key = 'pending_operations';
+  static const _key = CacheSchemaMigrator.pendingOperationsKey;
+  static const _legacyKey = CacheSchemaMigrator.legacyPendingOperationsKey;
   final _ReadPendingValue _read;
   final _WritePendingValue _write;
   Future<void> _mutationTail = Future.value();
 
   List<PendingOperation> readAll() {
-    final raw = _read(_key);
+    final raw = _read(_key) ?? _read(_legacyKey);
     final values = raw is List ? raw : const [];
     return values
         .whereType<Map>()

@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/files/media_cache_identity.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -26,6 +27,11 @@ class SubjectOverlayView extends StatelessWidget {
               if (photo.summary.preview.previewUri?.toString().isNotEmpty == true)
                 CachedNetworkImage(
                   imageUrl: photo.summary.preview.previewUri.toString(),
+                  cacheKey: mediaCacheIdentity(
+                    uri: photo.summary.preview.previewUri!,
+                    mediaId: photo.summary.id,
+                    variant: 'preview',
+                  ),
                   fit: BoxFit.cover,
                   memCacheWidth: (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(320, 1440),
                   memCacheHeight: (height * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(240, 1080),

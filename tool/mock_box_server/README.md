@@ -1,5 +1,10 @@
 # 照片模块模拟盒子
 
+> 契约基线：`birdbox-v1@1.0.0`
+>
+> 固定样例入口：`test/contracts/fixture-manifest.json`。mock 后续新增或调整响应时
+> 必须复用这些 fixtures，不得维护一套独立字段定义。
+
 该服务用于本地恢复照片首页、详情、场景、连拍组和审阅操作的数据链路。它只依赖 Dart SDK，不需要安装额外服务。
 
 ## 启动
@@ -23,7 +28,12 @@ dart run tool/mock_box_server/server.dart
 --host=0.0.0.0
 --port=8787
 --quiet
+--auth
+--state-file=.tmp/mock-box-state.json
 ```
+
+`--auth` 开启 B3 全通道鉴权；仅用于本地联调的配对码为 `2468`。
+服务日志只记录请求方法和路径，不记录配对码、Bearer Token 或签名 URL 查询串。
 
 启动后可访问：
 
@@ -63,7 +73,30 @@ flutter run --dart-define=BIRD_TEST_BASE_URL=http://10.0.2.2:8787
 - `GET /api/v1/species`
 - `GET /mock/media/{asset}.png`
 
-WebSocket 事件、复制任务和日志导出不属于 B1 范围，当前服务未实现。
+B3 鉴权联调接口：
+
+- `POST /api/v1/device/pair`
+- `GET /api/v1/events`（Bearer WebSocket）
+- `POST /api/v1/logs/export`
+- `GET /mock/media/{asset}.png?...`（短时签名 URL）
+- `GET /mock/logs/{file}?...`（短时签名 URL）
+
+开启 `--auth` 后，除健康检查、设备公开状态、配对和短签名资源外，
+REST 接口都校验同一 Bearer Token。无 Token 返回 401，错误或吊销 Token 返回 403；
+WS 也执行相同校验。媒体和日志不接收 Bearer，只接受未过期的签名 URL。
+
+## B7 持久化与幂等重放
+
+所有 `POST` 都要求至少 8 个字符的 `X-Idempotency-Key`。同一路径使用同一键的
+并发请求只执行一次，后续请求重放首次响应。通过 `--state-file` 指定状态文件后，
+项目、任务、审阅、照片覆盖值和幂等响应会在进程重启后恢复：
+
+```powershell
+dart run tool/mock_box_server/server.dart --quick --auth --state-file=.tmp/mock-box-state.json
+```
+
+状态文件只用于本地测试，可能包含业务样例和响应内容，不得提交到 Git 或作为正式
+盒子数据库使用；配对响应不会写入状态文件。
 
 ## 图片资源
 
@@ -79,7 +112,9 @@ WebSocket 事件、复制任务和日志导出不属于 B1 范围，当前服务
 ## 验证
 
 ```powershell
-flutter test test/bird_companion/core/media_uri_resolution_test.dart test/bird_companion/core/mock_box_server_test.dart
+flutter test test/bird_companion/core/authentication_flow_test.dart test/bird_companion/core/media_uri_resolution_test.dart test/bird_companion/core/mock_box_server_test.dart
 ```
 
-测试覆盖媒体相对地址解析、图片可访问性、批次解析、1200 张游标分页、场景与连拍组、详情与历史、决定保存及批量操作。
+测试覆盖配对、REST/WS Bearer、重启恢复、并发幂等重放、吊销、Token/签名 URL
+到期、设备切换、媒体与日志重新申请，以及原有图片、分页、场景、连拍组、详情和
+审阅操作。

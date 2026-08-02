@@ -8,7 +8,15 @@ class MockBoxServer {
     this.photoCount = 1200,
     Directory? assetDirectory,
     this.logRequests = true,
+    this.requireAuthentication = false,
+    this.deviceId = 'mock-k7-001',
+    this.pairingCode = '2468',
+    this.tokenLifetime = const Duration(minutes: 10),
+    this.signedUrlLifetime = const Duration(minutes: 2),
+    this.stateFile,
+    DateTime Function()? clock,
   }) : assetDirectory = assetDirectory ?? Directory('tool/mock_box_server/assets') {
+    _clock = clock ?? DateTime.now;
     if (photoCount <= 0) {
       throw ArgumentError.value(photoCount, 'photoCount', '必须大于 0');
     }
@@ -16,11 +24,19 @@ class MockBoxServer {
     _photosById = {for (final photo in _photos) photo['file_id'] as String: photo};
     _scenes = _buildScenes();
     _groups = _buildGroups();
+    _restoreState();
   }
 
   final int photoCount;
   final Directory assetDirectory;
   final bool logRequests;
+  final bool requireAuthentication;
+  final String deviceId;
+  final String pairingCode;
+  final Duration tokenLifetime;
+  final Duration signedUrlLifetime;
+  final File? stateFile;
+  late final DateTime Function() _clock;
 
   late final List<Map<String, dynamic>> _photos;
   late final Map<String, Map<String, dynamic>> _photosById;
@@ -28,6 +44,21 @@ class MockBoxServer {
   late final List<Map<String, dynamic>> _groups;
   final Map<String, Map<String, dynamic>> _decisions = {};
   final Map<String, List<Map<String, dynamic>>> _history = {};
+  final Map<String, Map<String, dynamic>> _createdProjects = {};
+  final Map<String, Map<String, dynamic>> _jobs = {};
+  final Map<String, _CachedHttpResponse> _idempotentResponses = {};
+  final Map<String, Completer<_CachedHttpResponse>> _idempotentInFlight = {};
+  final Map<HttpRequest, String> _idempotencyByRequest = {};
+  final Set<WebSocket> _eventSockets = {};
+  Future<void> _stateWrite = Future<void>.value();
+  String? _currentCreatedProjectId;
+  int _projectSequence = 0;
+  int _jobSequence = 0;
+  String? _activeToken;
+  DateTime? _tokenExpiresAt;
+  String? lastPairAuthorizationHeader;
+  String? lastSignedAssetAuthorizationHeader;
+  int jobListRequestCount = 0;
 
   HttpServer? _server;
 
@@ -36,6 +67,54 @@ class MockBoxServer {
     if (server == null) return null;
     final host = server.address.type == InternetAddressType.IPv6 ? '[${server.address.address}]' : server.address.address;
     return Uri.parse('http://$host:${server.port}');
+  }
+
+  void revokeAccessToken() {
+    _activeToken = null;
+    _tokenExpiresAt = null;
+  }
+
+  List<Map<String, dynamic>> get jobs => _jobs.values.map(Map<String, dynamic>.of).toList();
+
+  Future<void> completeJob(String jobId, {bool emitEvent = true}) async {
+    final job = _jobs[jobId];
+    if (job == null) throw ArgumentError.value(jobId, 'jobId', 'Unknown job');
+    job
+      ..['job_state'] = 'completed'
+      ..['progress'] = 1.0
+      ..['finished_count'] = job['total_count']
+      ..['available_actions'] = <String>['delete']
+      ..['version'] = (job['version'] as int) + 1
+      ..['updated_at'] = _clock().toUtc().toIso8601String();
+    await _persistState();
+    if (emitEvent) await _emitJob(job);
+  }
+
+  Future<void> failJob(
+    String jobId, {
+    int failedCount = 2,
+    bool emitEvent = true,
+  }) async {
+    final job = _jobs[jobId];
+    if (job == null) {
+      throw ArgumentError.value(jobId, 'jobId', 'Unknown job');
+    }
+    final total = job['total_count'] as int;
+    final failures = failedCount.clamp(1, total);
+    job
+      ..['job_state'] = 'failed'
+      ..['progress'] = 1.0
+      ..['finished_count'] = total
+      ..['failed_count'] = failures
+      ..['available_actions'] = <String>[
+        'retry_failed',
+        'skip_failed',
+        'delete',
+      ]
+      ..['version'] = (job['version'] as int) + 1
+      ..['updated_at'] = _clock().toUtc().toIso8601String();
+    await _persistState();
+    if (emitEvent) await _emitJob(job);
   }
 
   Future<Uri> start({
@@ -71,14 +150,20 @@ class MockBoxServer {
   }
 
   Future<void> close() async {
+    for (final socket in List<WebSocket>.of(_eventSockets)) {
+      await socket.close();
+    }
+    _eventSockets.clear();
     final server = _server;
     _server = null;
     await server?.close(force: true);
+    await _stateWrite;
   }
 
   Future<void> _handle(HttpRequest request) async {
     if (logRequests) {
-      stdout.writeln('${request.method} ${request.uri}');
+      // Query strings may contain short-lived signatures. Never print them.
+      stdout.writeln('${request.method} ${request.uri.path}');
     }
     _cors(request.response);
     if (request.method == 'OPTIONS') {
@@ -98,26 +183,157 @@ class MockBoxServer {
       await _json(request, HttpStatus.ok, _deviceStatus());
       return;
     }
-    if (method == 'GET' && path == '/api/v1/projects/current') {
-      await _json(request, HttpStatus.ok, {'batch': _currentBatch()});
-      return;
-    }
-    if (method == 'GET' && path == '/api/v1/projects') {
-      await _json(request, HttpStatus.ok, {
-        'items': [_currentBatch(), ..._historyBatches()],
-        'has_more': false,
-      });
-      return;
-    }
-    if (method == 'GET' && path == '/api/v1/species') {
-      await _json(request, HttpStatus.ok, {'items': _speciesSearch(request.uri.queryParameters['search'])});
+    if (method == 'POST' && path == '/api/v1/device/pair') {
+      if (await _replayOrRegisterIdempotent(request)) return;
+      await _pair(request);
       return;
     }
     if (method == 'GET' && path.startsWith('/mock/media/')) {
       await _serveMedia(request);
       return;
     }
+    if (method == 'GET' && path.startsWith('/mock/logs/')) {
+      await _serveLog(request);
+      return;
+    }
+    if (method == 'GET' && path == '/api/v1/events') {
+      if (!await _authorize(request)) return;
+      await _serveEvents(request);
+      return;
+    }
+    if (!await _authorize(request)) return;
+    if (method == 'POST' && await _replayOrRegisterIdempotent(request)) {
+      return;
+    }
+    if (method == 'POST' && path == '/api/v1/logs/export') {
+      final body = await _requestJson(request);
+      if (!const {
+        'device',
+        'jobs',
+        'device_and_jobs',
+      }.contains(body['scope'])) {
+        await _json(
+          request,
+          HttpStatus.unprocessableEntity,
+          {
+            'error_code': 'log_export_scope_invalid',
+            'error_message': 'A valid log export scope is required.',
+          },
+          envelope: false,
+        );
+        return;
+      }
+      await _json(request, HttpStatus.ok, {
+        'export_id': 'mock-log-export',
+        'state': 'ready',
+        'download_url': _signedPath('/mock/logs/diagnostics.txt'),
+        'expires_at': _clock().toUtc().add(signedUrlLifetime).toIso8601String(),
+      });
+      return;
+    }
+    if (method == 'GET' && path == '/api/v1/projects/current') {
+      await _json(request, HttpStatus.ok, {
+        'batch': _currentCreatedProjectId == null ? _currentBatch() : _createdProjects[_currentCreatedProjectId],
+      });
+      return;
+    }
+    if (method == 'POST' && path == '/api/v1/projects') {
+      await _createProject(request);
+      return;
+    }
+    if (method == 'GET' && path == '/api/v1/projects') {
+      await _json(request, HttpStatus.ok, {
+        'items': [
+          ..._createdProjects.values.toList().reversed,
+          _currentBatch(),
+          ..._historyBatches(),
+        ],
+        'has_more': false,
+      });
+      return;
+    }
+    if (method == 'GET' && path == '/api/v1/storage/cards/current/scan') {
+      await _json(request, HttpStatus.ok, _cardScan());
+      return;
+    }
+    if (method == 'POST' && path == '/api/v1/storage/cards/current/rescan') {
+      final job = _newJob('sync', null, workflowStage: 'scanning');
+      await _json(request, HttpStatus.accepted, job);
+      return;
+    }
+    if (method == 'GET' && path == '/api/v1/jobs') {
+      jobListRequestCount++;
+      await _json(request, HttpStatus.ok, {
+        'items': _jobs.values.toList().reversed.toList(),
+      });
+      return;
+    }
 
+    final copyEstimate = RegExp(
+      r'^/api/v1/projects/([^/]+)/copy/estimate$',
+    ).firstMatch(path);
+    if (method == 'GET' && copyEstimate != null) {
+      await _serveCopyEstimate(
+        request,
+        copyEstimate.group(1)!,
+      );
+      return;
+    }
+    final copyCreate = RegExp(
+      r'^/api/v1/projects/([^/]+)/copy$',
+    ).firstMatch(path);
+    if (method == 'POST' && copyCreate != null) {
+      await _createCopyJob(request, copyCreate.group(1)!);
+      return;
+    }
+
+    final importJob = RegExp(r'^/api/v1/projects/([^/]+)/imports$').firstMatch(path);
+    if (method == 'POST' && importJob != null) {
+      await _createWorkflowJob(request, importJob.group(1)!, 'import');
+      return;
+    }
+    final analysisJob = RegExp(
+      r'^/api/v1/projects/([^/]+)/analysis-jobs$',
+    ).firstMatch(path);
+    if (method == 'POST' && analysisJob != null) {
+      await _createWorkflowJob(
+        request,
+        analysisJob.group(1)!,
+        'analysis',
+      );
+      return;
+    }
+    final jobAction = RegExp(r'^/api/v1/jobs/([^/]+)/actions$').firstMatch(path);
+    if (method == 'POST' && jobAction != null) {
+      await _controlJob(request, jobAction.group(1)!);
+      return;
+    }
+    final jobFailures = RegExp(
+      r'^/api/v1/jobs/([^/]+)/failures$',
+    ).firstMatch(path);
+    if (method == 'GET' && jobFailures != null) {
+      await _serveJobFailures(request, jobFailures.group(1)!);
+      return;
+    }
+    final jobReport = RegExp(r'^/api/v1/jobs/([^/]+)/report$').firstMatch(path);
+    if (method == 'GET' && jobReport != null) {
+      await _serveJobReport(request, jobReport.group(1)!);
+      return;
+    }
+    final jobDetail = RegExp(r'^/api/v1/jobs/([^/]+)$').firstMatch(path);
+    if (method == 'GET' && jobDetail != null) {
+      final job = _jobs[jobDetail.group(1)!];
+      if (job == null) {
+        await _notFound(request, 'Unknown job: ${jobDetail.group(1)}');
+      } else {
+        await _json(request, HttpStatus.ok, job);
+      }
+      return;
+    }
+    if (method == 'GET' && path == '/api/v1/species') {
+      await _json(request, HttpStatus.ok, {'items': _speciesSearch(request.uri.queryParameters['search'])});
+      return;
+    }
     final projectFiles = RegExp(r'^/api/v1/projects/([^/]+)/files$').firstMatch(path);
     if (method == 'GET' && projectFiles != null) {
       if (!_isKnownBatch(projectFiles.group(1)!)) {
@@ -177,14 +393,357 @@ class MockBoxServer {
     await _notFound(request, 'Unknown mock endpoint: $path');
   }
 
+  Map<String, dynamic> _cardScan() => {
+    'scan_state': 'detected',
+    'card_id': 'card-mock-001',
+    'card_name': 'MOCK-SD',
+    'photo_count': photoCount,
+    'raw_count': (photoCount * .68).round(),
+    'jpeg_count': photoCount - (photoCount * .68).round(),
+    'required_bytes': photoCount * 24 * 1024 * 1024,
+  };
+
+  Future<void> _serveCopyEstimate(
+    HttpRequest request,
+    String projectId,
+  ) async {
+    if (!_isKnownBatch(projectId)) {
+      await _notFound(request, 'Unknown project: $projectId');
+      return;
+    }
+    final mode = request.uri.queryParameters['mode'];
+    if (!const {'keep', 'all', 'dual'}.contains(mode)) {
+      await _json(
+        request,
+        HttpStatus.unprocessableEntity,
+        {
+          'error_code': 'copy_mode_invalid',
+          'error_message': 'A valid copy mode is required.',
+        },
+        envelope: false,
+      );
+      return;
+    }
+    final fileCount = switch (mode) {
+      'all' => photoCount,
+      'dual' => photoCount * 2,
+      _ =>
+        _photos
+            .where(
+              (photo) => photo['keep_state'] == 'keep' || photo['keep_state'] == 'featured',
+            )
+            .length,
+    };
+    await _json(request, HttpStatus.ok, {
+      'mode': mode,
+      'file_count': fileCount,
+      'required_bytes': fileCount * 24 * 1024 * 1024,
+      'pending_count': _photos.where((photo) => photo['keep_state'] == 'pending').length,
+      'version': 0,
+      'targets': [
+        {
+          'id': 'mock-usb-1',
+          'name': 'MOCK-USB',
+          'free_bytes': 256 * 1024 * 1024 * 1024,
+          'total_bytes': 512 * 1024 * 1024 * 1024,
+          'online': true,
+        },
+        {
+          'id': 'mock-offline',
+          'name': 'MOCK-OFFLINE',
+          'free_bytes': 0,
+          'total_bytes': 512 * 1024 * 1024 * 1024,
+          'online': false,
+        },
+      ],
+    });
+  }
+
+  Future<void> _createCopyJob(
+    HttpRequest request,
+    String projectId,
+  ) async {
+    if (!_isKnownBatch(projectId)) {
+      await _notFound(request, 'Unknown project: $projectId');
+      return;
+    }
+    final body = await _requestJson(request);
+    final valid = const {'keep', 'all', 'dual'}.contains(body['mode']) && body['target_id'] == 'mock-usb-1' && body['xmp_enabled'] is bool && body['verify_after_copy'] is bool && body['version'] == 0;
+    if (!valid) {
+      await _json(
+        request,
+        HttpStatus.unprocessableEntity,
+        {
+          'error_code': 'copy_request_invalid',
+          'error_message': 'The copy request does not match birdbox-v1.',
+        },
+        envelope: false,
+      );
+      return;
+    }
+    final job = _newJob(
+      'copy',
+      projectId,
+      workflowStage: 'copying',
+    );
+    await _json(request, HttpStatus.accepted, job);
+    await _emitJob(job);
+  }
+
+  Future<void> _createProject(HttpRequest request) async {
+    final body = await _requestJson(request);
+    final name = body['name']?.toString().trim() ?? '';
+    final cardId = body['card_id']?.toString();
+    if (name.isEmpty || cardId != 'card-mock-001') {
+      await _json(
+        request,
+        HttpStatus.unprocessableEntity,
+        {
+          'error_code': 'project_invalid',
+          'error_message': 'name and the current card_id are required.',
+        },
+        envelope: false,
+      );
+      return;
+    }
+    final id = 'project-${(++_projectSequence).toString().padLeft(4, '0')}';
+    final project = <String, dynamic>{
+      'project_id': id,
+      'name': name,
+      'created_at': _clock().toUtc().toIso8601String(),
+      'total_files': 0,
+      'analyzed_count': 0,
+      'pending_review_count': 0,
+      'keep_count': 0,
+      'discard_count': 0,
+      'pending_copy_count': 0,
+      'copy_state': 'idle',
+      'scene_count': 0,
+      'burst_group_count': 0,
+    };
+    _createdProjects[id] = project;
+    _currentCreatedProjectId = id;
+    await _json(request, HttpStatus.created, project);
+  }
+
+  Future<void> _createWorkflowJob(
+    HttpRequest request,
+    String projectId,
+    String type,
+  ) async {
+    if (!_createdProjects.containsKey(projectId) && !_isKnownBatch(projectId)) {
+      await _notFound(request, 'Unknown project: $projectId');
+      return;
+    }
+    final body = await _requestJson(request);
+    final valid = type == 'import' ? body['source'] == 'card' && body['read_only'] == true : body['mode'] == 'standard';
+    if (!valid) {
+      await _json(
+        request,
+        HttpStatus.unprocessableEntity,
+        {
+          'error_code': 'job_request_invalid',
+          'error_message': 'The job request does not match birdbox-v1.',
+        },
+        envelope: false,
+      );
+      return;
+    }
+    final existing = _jobs.values.where(
+      (job) => job['job_type'] == type && job['source_project_id'] == projectId && job['job_state'] != 'cancelled',
+    );
+    if (existing.isNotEmpty) {
+      await _json(
+        request,
+        HttpStatus.conflict,
+        {
+          'error_code': 'job_already_exists',
+          'error_message': 'The workflow job already exists.',
+        },
+        envelope: false,
+      );
+      return;
+    }
+    final job = _newJob(
+      type,
+      projectId,
+      workflowStage: type == 'import' ? 'importing' : 'analyzing',
+    );
+    await _json(request, HttpStatus.accepted, job);
+    await _emitJob(job);
+  }
+
+  Map<String, dynamic> _newJob(
+    String type,
+    String? projectId, {
+    required String workflowStage,
+  }) {
+    final id = 'job-$type-${(++_jobSequence).toString().padLeft(4, '0')}';
+    final project = projectId == null ? null : _createdProjects[projectId] ?? (projectId == 'mock-batch-current' ? _currentBatch() : null);
+    final job = <String, dynamic>{
+      'job_id': id,
+      'job_type': type,
+      'job_state': 'running',
+      'workflow_stage': workflowStage,
+      'source_project_id': ?projectId,
+      'source_project_name': ?project?['name'],
+      'progress': 0.0,
+      'total_count': photoCount,
+      'finished_count': 0,
+      'failed_count': 0,
+      'skipped_count': 0,
+      'estimated_remaining_seconds': 240,
+      'available_actions': <String>['pause', 'cancel'],
+      'created_at': _clock().toUtc().toIso8601String(),
+      'updated_at': _clock().toUtc().toIso8601String(),
+      'version': 0,
+    };
+    _jobs[id] = job;
+    return job;
+  }
+
+  Future<void> _controlJob(HttpRequest request, String jobId) async {
+    final job = _jobs[jobId];
+    if (job == null) {
+      await _notFound(request, 'Unknown job: $jobId');
+      return;
+    }
+    final body = await _requestJson(request);
+    final version = body['version'];
+    if (version != job['version']) {
+      await _json(
+        request,
+        HttpStatus.conflict,
+        {
+          'error_code': 'job_version_conflict',
+          'error_message': 'Reload the latest job before controlling it.',
+        },
+        envelope: false,
+      );
+      return;
+    }
+    final action = body['action']?.toString() ?? '';
+    final available = (job['available_actions'] as List).cast<String>();
+    if (!available.contains(action)) {
+      await _json(
+        request,
+        HttpStatus.unprocessableEntity,
+        {
+          'error_code': 'job_action_unavailable',
+          'error_message': 'The action is not currently available.',
+        },
+        envelope: false,
+      );
+      return;
+    }
+    switch (action) {
+      case 'pause':
+        job
+          ..['job_state'] = 'paused'
+          ..['available_actions'] = <String>['resume', 'cancel'];
+      case 'resume':
+      case 'retry_failed':
+        job
+          ..['job_state'] = 'running'
+          ..['failed_count'] = 0
+          ..['available_actions'] = <String>['pause', 'cancel'];
+      case 'cancel':
+        job
+          ..['job_state'] = 'cancelled'
+          ..['available_actions'] = <String>['delete'];
+      case 'skip_failed':
+        final failed = job['failed_count'] as int;
+        job
+          ..['job_state'] = 'completed'
+          ..['progress'] = 1.0
+          ..['finished_count'] = job['total_count']
+          ..['skipped_count'] = (job['skipped_count'] as int) + failed
+          ..['failed_count'] = 0
+          ..['available_actions'] = <String>['delete'];
+    }
+    job
+      ..['version'] = (job['version'] as int) + 1
+      ..['updated_at'] = _clock().toUtc().toIso8601String();
+    await _json(request, HttpStatus.ok, job);
+    await _emitJob(job);
+  }
+
+  Future<void> _serveJobReport(
+    HttpRequest request,
+    String jobId,
+  ) async {
+    final job = _jobs[jobId];
+    if (job == null) {
+      await _notFound(request, 'Unknown job: $jobId');
+      return;
+    }
+    final total = job['total_count'] as int;
+    final failed = job['failed_count'] as int;
+    final skipped = job['skipped_count'] as int;
+    await _json(request, HttpStatus.ok, {
+      'job_id': jobId,
+      'result': switch (job['job_state']) {
+        'completed' when failed > 0 => 'partial_success',
+        'completed' => 'success',
+        'cancelled' => 'cancelled',
+        _ => 'failed',
+      },
+      'total_count': total,
+      'success_count': (job['finished_count'] as int) - failed - skipped,
+      'failed_count': failed,
+      'skipped_count': skipped,
+      'started_at': job['created_at'],
+      'finished_at': job['updated_at'],
+    });
+  }
+
+  Future<void> _serveJobFailures(
+    HttpRequest request,
+    String jobId,
+  ) async {
+    final job = _jobs[jobId];
+    if (job == null) {
+      await _notFound(request, 'Unknown job: $jobId');
+      return;
+    }
+    final failedCount = job['failed_count'] as int;
+    await _json(request, HttpStatus.ok, {
+      'items': List.generate(
+        failedCount,
+        (index) => {
+          'file_id': 'mock-failed-${index + 1}',
+          'error_code': 'copy_io_error',
+          'reason': 'The target rejected this file.',
+          'retryable': true,
+        },
+      ),
+      'has_more': false,
+    });
+  }
+
+  Future<void> _emitJob(Map<String, dynamic> job) async {
+    final message = jsonEncode({
+      'event_type': 'job_updated',
+      'timestamp': _clock().toUtc().toIso8601String(),
+      'payload': job,
+    });
+    for (final socket in List<WebSocket>.of(_eventSockets)) {
+      try {
+        socket.add(message);
+      } catch (_) {
+        _eventSockets.remove(socket);
+      }
+    }
+  }
+
   Map<String, dynamic> _deviceStatus() => {
     'connection': {
-      'device_id': 'mock-k7-001',
+      'device_id': deviceId,
       'device_name': 'K7 模拟盒子',
       'api_version': 'v1',
       'network_mode': 'manual',
       'signal_strength': 92,
-      'is_paired': true,
+      'is_paired': !requireAuthentication || _activeToken != null,
     },
     'card': {
       'inserted': true,
@@ -261,7 +820,7 @@ class MockBoxServer {
     final cursor = (int.tryParse(query['cursor'] ?? '') ?? 0).clamp(0, items.length);
     final end = min(cursor + pageSize, items.length);
     return {
-      'items': items.sublist(cursor, end),
+      'items': items.sublist(cursor, end).map(_withFreshSignedReferences).toList(growable: false),
       'has_more': end < items.length,
       if (end < items.length) 'next_cursor': '$end',
     };
@@ -327,7 +886,7 @@ class MockBoxServer {
     }
     final decision = _decisions.putIfAbsent(fileId, () => _initialDecision(photo));
     await _json(request, HttpStatus.ok, {
-      'file': photo,
+      'file': _withFreshSignedReferences(photo),
       'subjects': [
         {
           'bbox': {'x': .31, 'y': .18, 'width': .42, 'height': .58},
@@ -378,7 +937,37 @@ class MockBoxServer {
     }
     final body = await _requestJson(request);
     final current = _decisions[fileId] ?? _initialDecision(photo);
-    final version = ((current['version'] as num?)?.toInt() ?? 0) + 1;
+    final requestedVersion = body['version'];
+    final currentVersion = (current['version'] as num?)?.toInt() ?? 0;
+    if (requestedVersion is! int) {
+      await _json(
+        request,
+        HttpStatus.unprocessableEntity,
+        {
+          'error_code': 'decision_version_required',
+          'error_message': 'A review decision version is required.',
+        },
+        envelope: false,
+      );
+      return;
+    }
+    if (requestedVersion != currentVersion) {
+      await _json(
+        request,
+        HttpStatus.conflict,
+        {
+          'error_code': 'decision_version_conflict',
+          'error_message': 'The photo decision changed on the box. Reload before saving.',
+          'details': {
+            'requested_version': requestedVersion,
+            'current_version': currentVersion,
+          },
+        },
+        envelope: false,
+      );
+      return;
+    }
+    final version = currentVersion + 1;
     final updated = {
       ...current,
       ...body,
@@ -389,6 +978,7 @@ class MockBoxServer {
     _decisions[fileId] = updated;
     photo['keep_state'] = updated['keep_state'] ?? photo['keep_state'];
     photo['user_tags'] = updated['user_tags'] ?? photo['user_tags'];
+    photo['version'] = version;
     final history = _history.putIfAbsent(fileId, () => []);
     history.add({
       'version': version,
@@ -431,7 +1021,156 @@ class MockBoxServer {
     });
   }
 
+  Future<void> _pair(HttpRequest request) async {
+    lastPairAuthorizationHeader = request.headers.value(
+      HttpHeaders.authorizationHeader,
+    );
+    final body = await _requestJson(request);
+    if (body['pairing_code']?.toString() != pairingCode) {
+      await _json(
+        request,
+        HttpStatus.forbidden,
+        {
+          'error_code': 'pairing_code_invalid',
+          'error_message': '配对码无效或已过期。',
+          'retryable': false,
+        },
+        envelope: false,
+      );
+      return;
+    }
+    final expiresAt = _clock().toUtc().add(tokenLifetime);
+    final token = 'mock-access-$deviceId-${expiresAt.microsecondsSinceEpoch}';
+    _activeToken = token;
+    _tokenExpiresAt = expiresAt;
+    await _json(request, HttpStatus.ok, {
+      'access_token': token,
+      'expires_at': expiresAt.toIso8601String(),
+      'device_id': deviceId,
+      'api_version': 'v1',
+    });
+  }
+
+  Future<bool> _authorize(HttpRequest request) async {
+    if (!requireAuthentication) return true;
+    final authorization = request.headers.value(HttpHeaders.authorizationHeader);
+    if (authorization == null || authorization.isEmpty) {
+      await _authenticationError(
+        request,
+        HttpStatus.unauthorized,
+        'authorization_required',
+      );
+      return false;
+    }
+    if (authorization != 'Bearer $_activeToken' || _activeToken == null) {
+      await _authenticationError(
+        request,
+        HttpStatus.forbidden,
+        'authorization_invalid',
+      );
+      return false;
+    }
+    if (!_tokenExpiresAt!.isAfter(_clock().toUtc())) {
+      await _authenticationError(
+        request,
+        HttpStatus.unauthorized,
+        'authorization_expired',
+      );
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _authenticationError(
+    HttpRequest request,
+    int statusCode,
+    String code,
+  ) => _json(
+    request,
+    statusCode,
+    {
+      'error_code': code,
+      'error_message': '设备授权无效，请重新配对。',
+      'retryable': false,
+    },
+    envelope: false,
+  );
+
+  Future<void> _serveEvents(HttpRequest request) async {
+    if (!WebSocketTransformer.isUpgradeRequest(request)) {
+      await _json(
+        request,
+        HttpStatus.badRequest,
+        {
+          'error_code': 'websocket_upgrade_required',
+          'error_message': 'WebSocket upgrade required.',
+        },
+        envelope: false,
+      );
+      return;
+    }
+    final socket = await WebSocketTransformer.upgrade(request);
+    _eventSockets.add(socket);
+    socket.add(
+      jsonEncode({
+        'event_type': 'device.status',
+        'timestamp': _clock().toUtc().toIso8601String(),
+        'payload': _deviceStatus(),
+      }),
+    );
+    // Keep consuming frames without holding the server's request dispatcher;
+    // REST and signed-asset requests must continue while WS is open.
+    socket.listen(
+      (_) {},
+      onError: (_) => _eventSockets.remove(socket),
+      onDone: () => _eventSockets.remove(socket),
+    );
+  }
+
+  String _signedPath(String path) {
+    if (!requireAuthentication) return path;
+    final expires = _clock().toUtc().add(signedUrlLifetime).millisecondsSinceEpoch ~/ 1000;
+    return Uri(
+      path: path,
+      queryParameters: {
+        'expires': '$expires',
+        'signature': 'mock-signed-v1',
+      },
+    ).toString();
+  }
+
+  Future<bool> _validateSignedRequest(HttpRequest request) async {
+    if (!requireAuthentication) return true;
+    final expires = int.tryParse(request.uri.queryParameters['expires'] ?? '');
+    final signature = request.uri.queryParameters['signature'];
+    if (expires == null || signature != 'mock-signed-v1') {
+      await _authenticationError(
+        request,
+        HttpStatus.forbidden,
+        'signed_url_invalid',
+      );
+      return false;
+    }
+    final expiresAt = DateTime.fromMillisecondsSinceEpoch(
+      expires * 1000,
+      isUtc: true,
+    );
+    if (!expiresAt.isAfter(_clock().toUtc())) {
+      await _authenticationError(
+        request,
+        HttpStatus.unauthorized,
+        'signed_url_expired',
+      );
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _serveMedia(HttpRequest request) async {
+    lastSignedAssetAuthorizationHeader = request.headers.value(
+      HttpHeaders.authorizationHeader,
+    );
+    if (!await _validateSignedRequest(request)) return;
     final name = request.uri.pathSegments.last;
     if (!RegExp(r'^[a-z0-9_-]+\.png$').hasMatch(name)) {
       await _notFound(request, 'Unknown mock media: $name');
@@ -447,6 +1186,21 @@ class MockBoxServer {
     request.response.headers.set(HttpHeaders.cacheControlHeader, 'public, max-age=3600');
     request.response.contentLength = await file.length();
     await request.response.addStream(file.openRead());
+    await request.response.close();
+  }
+
+  Future<void> _serveLog(HttpRequest request) async {
+    lastSignedAssetAuthorizationHeader = request.headers.value(
+      HttpHeaders.authorizationHeader,
+    );
+    if (!await _validateSignedRequest(request)) return;
+    request.response.statusCode = HttpStatus.ok;
+    request.response.headers.contentType = ContentType.text;
+    request.response.headers.set(
+      HttpHeaders.contentDisposition,
+      'attachment; filename="bird-companion-diagnostics.txt"',
+    );
+    request.response.write('mock diagnostics\nstatus=ok\n');
     await request.response.close();
   }
 
@@ -517,6 +1271,7 @@ class MockBoxServer {
       'is_recommended': zeroBasedIndex % 9 == 0,
       'user_tags': [if (variant == 0) '翠鸟', '湿地'],
       'captured_at': capturedAt.toIso8601String(),
+      'version': 1,
     };
   }
 
@@ -568,7 +1323,7 @@ class MockBoxServer {
 
   Map<String, dynamic> _groupWithMembers(Map<String, dynamic> group) => {
     ...group,
-    'members': (group['member_file_ids'] as List).map((id) => _photosById[id.toString()]).whereType<Map<String, dynamic>>().toList(growable: false),
+    'members': (group['member_file_ids'] as List).map((id) => _photosById[id.toString()]).whereType<Map<String, dynamic>>().map(_withFreshSignedReferences).toList(growable: false),
   };
 
   Map<String, dynamic> _initialDecision(Map<String, dynamic> photo) {
@@ -599,13 +1354,21 @@ class MockBoxServer {
   }
 
   Map<String, dynamic> _previewFor(String asset, {required int height}) => {
-    'thumb_ref': '/mock/media/$asset',
-    'preview_ref': '/mock/media/$asset',
+    'thumb_ref': _signedPath('/mock/media/$asset'),
+    'preview_ref': _signedPath('/mock/media/$asset'),
     'width': 1024,
     'height': height,
   };
 
-  bool _isKnownBatch(String value) => value == 'mock-batch-current' || value.startsWith('mock-batch-history-');
+  Map<String, dynamic> _withFreshSignedReferences(
+    Map<String, dynamic> photo,
+  ) => {
+    ...photo,
+    if (photo['thumb_ref'] case final String value) 'thumb_ref': _signedPath(Uri.parse(value).path),
+    if (photo['preview_ref'] case final String value) 'preview_ref': _signedPath(Uri.parse(value).path),
+  };
+
+  bool _isKnownBatch(String value) => _createdProjects.containsKey(value) || value == 'mock-batch-current' || value.startsWith('mock-batch-history-');
 
   Future<Map<String, dynamic>> _requestJson(HttpRequest request) async {
     final raw = await utf8.decoder.bind(request).join();
@@ -630,10 +1393,155 @@ class MockBoxServer {
     Object payload, {
     bool envelope = true,
   }) async {
-    request.response.statusCode = statusCode;
+    final body = jsonEncode(envelope ? {'data': payload} : payload);
+    final cacheKey = _idempotencyByRequest.remove(request);
+    if (cacheKey != null) {
+      final cached = _CachedHttpResponse(statusCode, body);
+      _idempotentResponses[cacheKey] = cached;
+      _idempotentInFlight.remove(cacheKey)?.complete(cached);
+      await _persistState();
+    }
+    await _sendCachedResponse(
+      request,
+      _CachedHttpResponse(statusCode, body),
+    );
+  }
+
+  Future<bool> _replayOrRegisterIdempotent(HttpRequest request) async {
+    final key = request.headers.value('X-Idempotency-Key')?.trim();
+    if (key == null || key.length < 8) {
+      await _json(
+        request,
+        HttpStatus.unprocessableEntity,
+        {
+          'error_code': 'idempotency_key_required',
+          'error_message': 'X-Idempotency-Key must contain at least 8 characters.',
+        },
+        envelope: false,
+      );
+      return true;
+    }
+    final cacheKey = '${request.method} ${request.uri.path} $key';
+    final cached = _idempotentResponses[cacheKey];
+    if (cached != null) {
+      await _sendCachedResponse(request, cached);
+      return true;
+    }
+    final pending = _idempotentInFlight[cacheKey];
+    if (pending != null) {
+      await _sendCachedResponse(request, await pending.future);
+      return true;
+    }
+    _idempotentInFlight[cacheKey] = Completer<_CachedHttpResponse>();
+    _idempotencyByRequest[request] = cacheKey;
+    return false;
+  }
+
+  Future<void> _sendCachedResponse(
+    HttpRequest request,
+    _CachedHttpResponse cached,
+  ) async {
+    request.response.statusCode = cached.statusCode;
     request.response.headers.contentType = ContentType.json;
-    request.response.write(jsonEncode(envelope ? {'data': payload} : payload));
+    request.response.write(cached.body);
     await request.response.close();
+  }
+
+  void _restoreState() {
+    final file = stateFile;
+    if (file == null || !file.existsSync()) return;
+    final decoded = jsonDecode(file.readAsStringSync());
+    if (decoded is! Map || decoded['schema_version'] != 1) {
+      throw const FormatException('Unsupported mock state schema.');
+    }
+    final state = Map<String, dynamic>.from(decoded);
+    _projectSequence = (state['project_sequence'] as num?)?.toInt() ?? 0;
+    _jobSequence = (state['job_sequence'] as num?)?.toInt() ?? 0;
+    _currentCreatedProjectId = state['current_created_project_id']?.toString();
+    _restoreMapOfMaps(state['created_projects'], _createdProjects);
+    _restoreMapOfMaps(state['jobs'], _jobs);
+    _restoreMapOfMaps(state['decisions'], _decisions);
+    final history = state['history'];
+    if (history is Map) {
+      for (final entry in history.entries) {
+        final items = entry.value;
+        if (items is List) {
+          _history[entry.key.toString()] = items.whereType<Map>().map(Map<String, dynamic>.from).toList();
+        }
+      }
+    }
+    final photoOverrides = state['photo_overrides'];
+    if (photoOverrides is Map) {
+      for (final entry in photoOverrides.entries) {
+        final photo = _photosById[entry.key.toString()];
+        final override = entry.value;
+        if (photo != null && override is Map) {
+          photo.addAll(Map<String, dynamic>.from(override));
+        }
+      }
+    }
+    final idempotentResponses = state['idempotent_responses'];
+    if (idempotentResponses is Map) {
+      for (final entry in idempotentResponses.entries) {
+        final value = entry.value;
+        if (value is Map && value['status_code'] is num && value['body'] is String) {
+          _idempotentResponses[entry.key.toString()] = _CachedHttpResponse(
+            (value['status_code'] as num).toInt(),
+            value['body'] as String,
+          );
+        }
+      }
+    }
+  }
+
+  void _restoreMapOfMaps(
+    Object? source,
+    Map<String, Map<String, dynamic>> target,
+  ) {
+    if (source is! Map) return;
+    for (final entry in source.entries) {
+      if (entry.value is Map) {
+        target[entry.key.toString()] = Map<String, dynamic>.from(
+          entry.value as Map,
+        );
+      }
+    }
+  }
+
+  Future<void> _persistState() async {
+    final file = stateFile;
+    if (file == null) return;
+    final snapshot = <String, dynamic>{
+      'schema_version': 1,
+      'project_sequence': _projectSequence,
+      'job_sequence': _jobSequence,
+      'current_created_project_id': _currentCreatedProjectId,
+      'created_projects': _createdProjects,
+      'jobs': _jobs,
+      'decisions': _decisions,
+      'history': _history,
+      'photo_overrides': {
+        for (final photo in _photos)
+          photo['file_id'].toString(): {
+            'keep_state': photo['keep_state'],
+            'user_tags': photo['user_tags'],
+            'version': photo['version'],
+          },
+      },
+      'idempotent_responses': {
+        for (final entry in _idempotentResponses.entries)
+          if (!entry.key.contains('/api/v1/device/pair'))
+            entry.key: {
+              'status_code': entry.value.statusCode,
+              'body': entry.value.body,
+            },
+      },
+    };
+    _stateWrite = _stateWrite.then((_) async {
+      await file.parent.create(recursive: true);
+      await file.writeAsString(jsonEncode(snapshot), flush: true);
+    });
+    await _stateWrite;
   }
 
   void _cors(HttpResponse response) {
@@ -641,4 +1549,11 @@ class MockBoxServer {
     response.headers.set(HttpHeaders.accessControlAllowMethodsHeader, 'GET, POST, OPTIONS');
     response.headers.set(HttpHeaders.accessControlAllowHeadersHeader, 'Content-Type, Authorization, X-Api-Version, X-Idempotency-Key');
   }
+}
+
+class _CachedHttpResponse {
+  const _CachedHttpResponse(this.statusCode, this.body);
+
+  final int statusCode;
+  final String body;
 }

@@ -26,6 +26,24 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
   final _transform = TransformationController();
   var _syncZoom = true;
   var _selectedIndex = 0;
+  late int _groupIndex;
+
+  List<ReviewContext> get _groups => widget.args.groups;
+
+  ReviewContext? get _activeGroup {
+    if (_groups.isNotEmpty) return _groups[_groupIndex];
+    return widget.args.reviewContext;
+  }
+
+  List<String> get _activeFileIds => _activeGroup?.photoIds ?? widget.args.fileIds;
+
+  String get _activeGroupId => _activeGroup?.groupId ?? widget.args.groupId;
+
+  @override
+  void initState() {
+    super.initState();
+    _groupIndex = _groups.isEmpty ? 0 : widget.args.initialGroupIndex.clamp(0, _groups.length - 1);
+  }
 
   @override
   void dispose() {
@@ -39,12 +57,15 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
       BirdCompanionScope.of(context).reviewRepository,
       BirdCompanionScope.of(context).refreshCoordinator,
       BirdCompanionScope.of(context).dataChangeBus,
-    )..load(widget.args.fileIds.take(2).toList()),
+      _activeGroup?.batchId,
+    )..load(_activeFileIds.take(3).toList()),
     child: Scaffold(
       backgroundColor: AppColors.paper,
       appBar: BirdSecondaryAppBar(
         title: '照片对比',
-        subtitle: _displayGroupName(widget.args.reviewContext?.groupName ?? widget.args.groupId),
+        subtitle: _displayGroupName(
+          _activeGroup?.groupName ?? _activeGroupId,
+        ),
         helpTooltip: '对比说明',
         onHelp: () => showDialog<void>(
           context: context,
@@ -74,20 +95,27 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
                 title: '无法加载对比照片',
                 message: message.message,
                 onRetry: () => context.read<ComparisonReviewCubit>().load(
-                  widget.args.fileIds.take(2).toList(),
+                  _activeFileIds.take(3).toList(),
                 ),
               );
             }
             if (state.items.length < 2) return const Center(child: Text('对比至少需要两张照片'));
-            final leftRetained = _decisionState(state.items[0]).isRetained;
-            final rightRetained = _decisionState(state.items[1]).isRetained;
+            if (_selectedIndex >= state.items.length) {
+              _selectedIndex = 0;
+            }
+            final selectedState = _decisionState(
+              state.items[_selectedIndex],
+            );
             return SafeArea(
               top: false,
               child: LayoutBuilder(
                 builder: (context, constraints) => SingleChildScrollView(
                   child: Column(
                     children: [
-                      Text(_displayGroupName(widget.args.groupId), style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
+                      Text(
+                        _displayGroupName(_activeGroupId),
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark),
+                      ),
                       TextButton.icon(
                         onPressed: () => setState(() {
                           _syncZoom = !_syncZoom;
@@ -103,7 +131,7 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           child: Row(
                             children: [
-                              for (var index = 0; index < 2; index++) ...[
+                              for (var index = 0; index < state.items.length; index++) ...[
                                 if (index > 0) const SizedBox(width: 10),
                                 Expanded(
                                   child: ComparisonPhotoPane(
@@ -123,16 +151,74 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
                       Padding(
                         padding: const EdgeInsets.fromLTRB(14, 16, 14, 20),
                         child: ComparisonReviewActions(
-                          leftRetained: leftRetained,
-                          rightRetained: rightRetained,
-                          selectedFeatured: _decisionState(state.items[_selectedIndex]) == KeepState.featured,
+                          selectedState: selectedState,
+                          itemCount: state.items.length,
                           busy: state.saving,
-                          onKeepLeft: () => _mark(context, state, 0, KeepState.keep),
-                          onKeepRight: () => _mark(context, state, 1, KeepState.keep),
-                          onKeepBoth: () => context.read<ComparisonReviewCubit>().keepBoth(),
-                          onFeatureSelected: () => _mark(context, state, _selectedIndex, KeepState.featured),
+                          onDiscardSelected: () => _mark(
+                            context,
+                            state,
+                            _selectedIndex,
+                            KeepState.discard,
+                          ),
+                          onKeepSelected: () => _mark(
+                            context,
+                            state,
+                            _selectedIndex,
+                            KeepState.keep,
+                          ),
+                          onKeepAll: () => context.read<ComparisonReviewCubit>().keepAll(),
+                          onFeatureSelected: () => _mark(
+                            context,
+                            state,
+                            _selectedIndex,
+                            KeepState.featured,
+                          ),
                         ),
                       ),
+                      if (_groups.length > 1)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            14,
+                            0,
+                            14,
+                            24,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: state.saving || _groupIndex == 0 ? null : () => _moveGroup(context, -1),
+                                  icon: const Icon(
+                                    Icons.chevron_left_rounded,
+                                  ),
+                                  label: const Text('上一组'),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                child: Text(
+                                  '${_groupIndex + 1} / ${_groups.length}',
+                                  style: const TextStyle(
+                                    color: AppColors.inkMuted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: state.saving || _groupIndex == _groups.length - 1 ? null : () => _moveGroup(context, 1),
+                                  icon: const Icon(
+                                    Icons.chevron_right_rounded,
+                                  ),
+                                  iconAlignment: IconAlignment.end,
+                                  label: const Text('下一组'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -150,6 +236,19 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
       setState(() => _selectedIndex = index);
     }
     context.read<ComparisonReviewCubit>().mark(state.items[index].photo.summary.id, value);
+  }
+
+  void _moveGroup(BuildContext context, int delta) {
+    final next = (_groupIndex + delta).clamp(0, _groups.length - 1);
+    if (next == _groupIndex) return;
+    setState(() {
+      _groupIndex = next;
+      _selectedIndex = 0;
+      _transform.value = Matrix4.identity();
+    });
+    context.read<ComparisonReviewCubit>().load(
+      _activeFileIds.take(3).toList(),
+    );
   }
 }
 

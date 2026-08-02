@@ -1,0 +1,55 @@
+{
+  "file_id": "photo-001",
+  "filename": "DSC_0001.ARW",
+  "format": "ARW",
+  "thumb_ref": "https://192.168.4.1/media/thumb/photo-001?sig=test",
+  "preview_ref": "https://192.168.4.1/media/preview/photo-001?sig=test",
+  "width": 6000,
+  "height": 4000,
+  "analysis_state": "completed",
+  "recognition": {
+    "species_topn": [
+      {
+        "species_id": "species-kingfisher",
+        "name": "Common Kingfisher",
+        "english_name": "Common Kingfisher",
+        "latin_name": "Alcedo atthis",
+        "confidence": 0.94
+      }
+    ],
+    "low_confidence": false,
+    "model_version": "BirdAI-3.0.2"
+  },
+  "rating": {
+    "total_score": 8.7,
+    "quality_score": 8.9,
+    "eye_score": 9.1,
+    "composition_score": 8.2,
+    "reason_tags": [
+      "sharp_eye",
+      "clean_background"
+    ]
+  },
+  "subjects": [
+    {
+      "bbox": {
+        "x": 0.21,
+        "y": 0.18,
+        "width": 0.42,
+        "height": 0.53
+      },
+      "confidence": 0.97,
+      "subject_type": "bird"
+    }
+  ],
+  "group_id": "group-001",
+  "scene_id": "scene-001",
+  "keep_state": "keep",
+  "clarity_state": "clear",
+  "is_recommended": true,
+  "user_tags": [
+    "flight"
+  ],
+  "captured_at": "2026-07-29T07:42:10+08:00",
+  "version": 3
+}

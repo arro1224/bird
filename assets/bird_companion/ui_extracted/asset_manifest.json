@@ -1,0 +1,558 @@
+{
+  "schemaVersion": 1,
+  "total": 78,
+  "groupTotals": {
+    "batch-01": 53,
+    "batch-02": 6,
+    "batch-04": 14,
+    "batch-05": 5
+  },
+  "assets": [
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_01_back-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "back icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_02_help-circle-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "help circle icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_03_focus-reticle-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "focus reticle icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_04_error-circle-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "error circle icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_05_anti-glare-sun-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "anti glare sun icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_06_success-circle-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "success circle icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_07_verified-shield-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "verified shield icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_08_flashlight-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "flashlight icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_09_gallery-image-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "gallery image icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_10_search-device-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "search device icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_11_battery-outline-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "battery outline icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_12_bluetooth-circle-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "bluetooth circle icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_13_back-circle-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "back circle icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_14_failure-large-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "failure large icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_15_pairing-light-panel-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "pairing light panel icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_16_phone-bluetooth-proximity-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "phone bluetooth proximity icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_17_switch-connection-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "switch connection icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_18_document-details-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "document details icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_19_chevron-down-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "chevron down icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_20_scan-corners-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "scan corners icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_21_tip-check-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "tip check icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_22_device-found-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "device found icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_23_pairing-button-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "pairing button icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_24_connection-progress-ring.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "connection progress ring"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_25_step-complete-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "step complete icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_26_step-current-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "step current icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_27_step-pending-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "step pending icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_28_auto-connect-leaf-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "auto connect leaf icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_29_nav-album-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "nav album icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_30_nav-task-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "nav task icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_31_nav-profile-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "nav profile icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_32_close-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "close icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_33_wifi-status-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "wifi status icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_34_storage-status-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "storage status icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_35_thermometer-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "thermometer icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_36_sd-card-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "sd card icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_37_capacity-pie-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "capacity pie icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_38_task-list-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "task list icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_39_anomaly-shield-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "anomaly shield icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_40_chevron-right-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "chevron right icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_41_plus-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "plus icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_42_search-spinner-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "search spinner icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_43_bluetooth-signal-bars-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "bluetooth signal bars icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_44_scan-frame-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "scan frame icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_45_pencil-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "pencil icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_46_back-arrow-long-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "back arrow long icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_47_wifi-connected-linear-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "wifi connected linear icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_48_battery-level-linear-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "battery level linear icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_49_storage-linear-status-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "storage linear status icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_50_battery-status-badge-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "battery status badge icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_51_nav-task-dimmed-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "nav task dimmed icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_52_nav-profile-dimmed-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "nav profile dimmed icon"
+    },
+    {
+      "batch": "batch-01",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-01/b01_53_verified-shield-filled-icon.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "verified shield filled icon"
+    },
+    {
+      "batch": "batch-02",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-02/b02_01_scan-tips-card-shadow-frame.png",
+      "width": 1024,
+      "height": 469,
+      "semanticRole": "scan tips card shadow frame"
+    },
+    {
+      "batch": "batch-02",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-02/b02_02_outline-large-button-frame.png",
+      "width": 1024,
+      "height": 257,
+      "semanticRole": "outline large button frame"
+    },
+    {
+      "batch": "batch-02",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-02/b02_03_device-summary-card-shadow-frame.png",
+      "width": 1024,
+      "height": 474,
+      "semanticRole": "device summary card shadow frame"
+    },
+    {
+      "batch": "batch-02",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-02/b02_04_outline-half-button-frame.png",
+      "width": 1024,
+      "height": 356,
+      "semanticRole": "outline half button frame"
+    },
+    {
+      "batch": "batch-02",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-02/b02_05_instruction-card-shadow-frame.png",
+      "width": 1024,
+      "height": 795,
+      "semanticRole": "instruction card shadow frame"
+    },
+    {
+      "batch": "batch-02",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-02/b02_06_device-status-list-panel-frame.png",
+      "width": 1024,
+      "height": 791,
+      "semanticRole": "device status list panel frame"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_01_bird-left-ascending-sprite.png",
+      "width": 512,
+      "height": 512,
+      "semanticRole": "bird left ascending sprite"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_02_bird-left-gliding-sprite.png",
+      "width": 512,
+      "height": 512,
+      "semanticRole": "bird left gliding sprite"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_03_bird-right-soaring-sprite.png",
+      "width": 512,
+      "height": 512,
+      "semanticRole": "bird right soaring sprite"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_04_bird-right-gliding-sprite.png",
+      "width": 512,
+      "height": 512,
+      "semanticRole": "bird right gliding sprite"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_05_bird-right-distant-sprite.png",
+      "width": 512,
+      "height": 512,
+      "semanticRole": "bird right distant sprite"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_06_reeds-left-ornament.png",
+      "width": 1024,
+      "height": 2048,
+      "semanticRole": "reeds left ornament"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_07_reeds-right-ornament.png",
+      "width": 1228,
+      "height": 2048,
+      "semanticRole": "reeds right ornament"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_08_radar-scan-ornament.png",
+      "width": 1024,
+      "height": 1024,
+      "semanticRole": "radar scan ornament"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_09_divider-horizontal.png",
+      "width": 1024,
+      "height": 48,
+      "semanticRole": "divider horizontal"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_10_divider-vertical.png",
+      "width": 64,
+      "height": 768,
+      "semanticRole": "divider vertical"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_11_step-number-badge.png",
+      "width": 256,
+      "height": 256,
+      "semanticRole": "step number badge"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_12_timeline-connector.png",
+      "width": 128,
+      "height": 768,
+      "semanticRole": "timeline connector"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_13_distance-guide.png",
+      "width": 1024,
+      "height": 192,
+      "semanticRole": "distance guide"
+    },
+    {
+      "batch": "batch-04",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-04/b04_14_sheet-drag-handle.png",
+      "width": 512,
+      "height": 128,
+      "semanticRole": "sheet drag handle"
+    },
+    {
+      "batch": "batch-05",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-05/b05_01_warm-paper-grain-background.png",
+      "width": 1920,
+      "height": 4160,
+      "semanticRole": "warm paper grain background"
+    },
+    {
+      "batch": "batch-05",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-05/b05_02_ink-mountain-lake-background.png",
+      "width": 2592,
+      "height": 1080,
+      "semanticRole": "ink mountain lake background"
+    },
+    {
+      "batch": "batch-05",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-05/b05_03_device-front-render.png",
+      "width": 2048,
+      "height": 2048,
+      "semanticRole": "device front render"
+    },
+    {
+      "batch": "batch-05",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-05/b05_04_device-side-angle-render.png",
+      "width": 2048,
+      "height": 2048,
+      "semanticRole": "device side angle render"
+    },
+    {
+      "batch": "batch-05",
+      "path": "assets/bird_companion/ui_extracted/connection/batch-05/b05_05_modal-scrim-overlay.png",
+      "width": 1920,
+      "height": 4160,
+      "semanticRole": "modal scrim overlay"
+    }
+  ]
+}

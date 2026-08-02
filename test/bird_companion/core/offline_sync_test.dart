@@ -73,6 +73,11 @@ void main() {
       PendingOperationStatus.conflict,
     );
     expect(
+      store.read('device-a-conflict')?.projectId,
+      'project-shared',
+    );
+    expect(store.read('device-a-conflict')?.fileId, 'photo-2');
+    expect(
       store.read('device-a-conflict')?.failureReason,
       isNot(contains('ApiException')),
     );
@@ -87,6 +92,65 @@ void main() {
     expect(await service.acceptRemote('device-a-conflict'), isTrue);
     expect(acceptedRemoteFile, 'photo-2');
     expect(store.read('device-a-conflict'), isNull);
+  });
+
+  test('401/403 暂停同步且不增加离线重试次数', () async {
+    final store = PendingOperationStore.memory();
+    await store.save(_operation('auth-first', 'photo-1'));
+    await store.save(_operation('auth-second', 'photo-2'));
+    var attempts = 0;
+
+    final result = await SyncCoordinator(store).synchronize((_) async {
+      attempts++;
+      throw const ApiException(
+        message: 'authorization expired',
+        statusCode: 401,
+      );
+    });
+
+    expect(attempts, 1);
+    expect(result.failedOperations, isEmpty);
+    expect(store.read('auth-first')?.status, PendingOperationStatus.pending);
+    expect(store.read('auth-first')?.retryCount, 0);
+    expect(store.read('auth-second')?.status, PendingOperationStatus.pending);
+  });
+
+  test('legacy batch_id is read compatibly but never sent on the wire', () async {
+    final store = PendingOperationStore.memory();
+    await store.save(
+      PendingOperation(
+        id: 'legacy-batch-review',
+        type: PendingOperationType.batchReview,
+        payload: const {
+          'batch_id': 'project-7',
+          'file_ids': <String>['photo-1', 'photo-2'],
+          'operation': 'keep',
+          'value': null,
+        },
+        createdAt: DateTime.utc(2026, 8, 1),
+        deviceId: 'box-a',
+      ),
+    );
+    final client = _RecordingApiClient();
+    final service = BirdSyncService(
+      ConnectivityMonitor(),
+      SyncCoordinator(store),
+      client,
+      null,
+      () => 'box-a',
+    );
+
+    final result = await service.synchronize();
+
+    expect(result.syncedCount, 1);
+    expect(client.paths, ['/api/v1/projects/project-7/files/actions']);
+    expect(client.payloads.single, {
+      'project_id': 'project-7',
+      'file_ids': ['photo-1', 'photo-2'],
+      'operation': 'keep',
+      'value': null,
+    });
+    expect((client.payloads.single as Map).containsKey('batch_id'), isFalse);
   });
 }
 
@@ -104,6 +168,8 @@ PendingOperation _operation(
   },
   createdAt: DateTime.utc(2026, 7, 28),
   deviceId: deviceId,
+  projectId: 'project-shared',
+  fileId: fileId,
 );
 
 class _RecordingApiClient extends ApiClient {
@@ -111,6 +177,8 @@ class _RecordingApiClient extends ApiClient {
 
   final Set<String> conflictKeys;
   final List<String> idempotencyKeys = [];
+  final List<String> paths = [];
+  final List<Object?> payloads = [];
 
   @override
   Uri? get baseUri => Uri.parse('http://127.0.0.1:8080');
@@ -122,6 +190,8 @@ class _RecordingApiClient extends ApiClient {
     String? idempotencyKey,
   }) async {
     idempotencyKeys.add(idempotencyKey ?? '');
+    paths.add(path);
+    payloads.add(data);
     if (conflictKeys.contains(idempotencyKey)) {
       throw const ApiException(
         message: 'internal conflict detail',

@@ -3,6 +3,7 @@ import 'package:aves/bird_companion/features/batches/data/batch_api.dart';
 import 'package:aves/bird_companion/features/batches/domain/batch_overview.dart';
 import 'package:aves/bird_companion/features/batches/domain/batch_repository.dart';
 import 'package:aves/bird_companion/features/batches/domain/batch_page.dart';
+import 'package:aves/bird_companion/features/batches/domain/project_create_request.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 
@@ -11,6 +12,9 @@ class BatchRepositoryImpl implements BatchRepository {
   final BatchApi _api;
   final LocalCache? _cache;
   final String Function() _cacheNamespace;
+
+  @override
+  Future<BatchSummary> create(ProjectCreateRequest request) => _api.create(request);
 
   @override
   Future<BatchPage> page({String? state, String? sort, String? cursor}) async {

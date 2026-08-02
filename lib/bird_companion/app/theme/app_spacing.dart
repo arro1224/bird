@@ -16,6 +16,7 @@ abstract final class AppSpacing {
 
   // Semantic layout tokens for the redesigned screens.
   static const pageHorizontal = 22.0;
+  static const settingsPageHorizontal = 16.0;
   static const pageVertical = 20.0;
   static const sectionGap = 24.0;
   static const cardPadding = 20.0;
@@ -29,6 +30,7 @@ abstract final class AppSpacing {
   static const radiusPill = 999.0;
 
   static const minimumTouchTarget = 48.0;
+  static const minimumControl = 48.0;
   static const buttonHeight = 58.0;
   static const largeButtonHeight = 62.0;
   static const navigationBarHeight = 72.0;

@@ -22,21 +22,24 @@ class MdnsDeviceDiscoverySource implements DeviceDiscoverySource {
     final result = <DeviceConnection>[];
     try {
       await client.start();
-      await for (final pointer in client
-          .lookup<PtrResourceRecord>(
-            ResourceRecordQuery.serverPointer(serviceName),
-          )
-          .timeout(timeout)) {
-        await for (final service in client
-            .lookup<SrvResourceRecord>(
-              ResourceRecordQuery.service(pointer.domainName),
-            )
-            .timeout(timeout)) {
-          await for (final address in client
-              .lookup<IPAddressResourceRecord>(
-                ResourceRecordQuery.addressIPv4(service.target),
+      await for (final pointer
+          in client
+              .lookup<PtrResourceRecord>(
+                ResourceRecordQuery.serverPointer(serviceName),
               )
               .timeout(timeout)) {
+        await for (final service
+            in client
+                .lookup<SrvResourceRecord>(
+                  ResourceRecordQuery.service(pointer.domainName),
+                )
+                .timeout(timeout)) {
+          await for (final address
+              in client
+                  .lookup<IPAddressResourceRecord>(
+                    ResourceRecordQuery.addressIPv4(service.target),
+                  )
+                  .timeout(timeout)) {
             result.add(
               DeviceConnection(
                 id: service.target,

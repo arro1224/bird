@@ -1,0 +1,63 @@
+{
+  "contract": "birdbox-v1@1.0.0",
+  "consumers": [
+    "flutter-client",
+    "mock-box",
+    "real-box"
+  ],
+  "fixtures": [
+    {
+      "file": "fixtures/device-status.response.json",
+      "schema": "docs/contracts/schemas/device-status.schema.json",
+      "expected_valid": true
+    },
+    {
+      "file": "fixtures/project.response.json",
+      "schema": "docs/contracts/schemas/project.schema.json",
+      "expected_valid": true
+    },
+    {
+      "file": "fixtures/photo.response.json",
+      "schema": "docs/contracts/schemas/photo.schema.json",
+      "expected_valid": true
+    },
+    {
+      "file": "fixtures/user-decision-patch.request.json",
+      "schema": "docs/contracts/schemas/user-decision-patch.schema.json",
+      "expected_valid": true
+    },
+    {
+      "file": "fixtures/bird-job-status.response.json",
+      "schema": "docs/contracts/schemas/bird-job-status.schema.json",
+      "expected_valid": true
+    },
+    {
+      "file": "fixtures/event-envelope.response.json",
+      "schema": "docs/contracts/schemas/event-envelope.schema.json",
+      "expected_valid": true
+    },
+    {
+      "file": "fixtures/error.response.json",
+      "schema": "docs/contracts/schemas/error-response.schema.json",
+      "expected_valid": true
+    },
+    {
+      "file": "fixtures/invalid-job-progress.response.json",
+      "schema": "docs/contracts/schemas/bird-job-status.schema.json",
+      "expected_valid": false,
+      "expected_error_contains": "maximum"
+    },
+    {
+      "file": "fixtures/invalid-partial-event.response.json",
+      "schema": "docs/contracts/schemas/event-envelope.schema.json",
+      "expected_valid": false,
+      "expected_error_contains": "oneOf"
+    },
+    {
+      "file": "fixtures/invalid-empty-decision-patch.request.json",
+      "schema": "docs/contracts/schemas/user-decision-patch.schema.json",
+      "expected_valid": false,
+      "expected_error_contains": "anyOf"
+    }
+  ]
+}

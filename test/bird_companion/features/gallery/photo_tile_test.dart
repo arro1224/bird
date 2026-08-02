@@ -72,4 +72,38 @@ void main() {
     expect(status.icon, Icons.circle);
     expect(status.color, AppColors.danger);
   });
+
+  testWidgets('rating and status overlays can be hidden without hiding selection', (tester) async {
+    const photo = PhotoSummary(
+      id: 'photo-overlay',
+      filename: 'photo-overlay.jpg',
+      format: 'JPEG',
+      preview: PreviewRef(),
+      analysisState: AnalysisState.completed,
+      keepState: 'discard',
+      rating: RatingResult(totalScore: 4.7),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 120,
+            height: 160,
+            child: PhotoTile(
+              photo: photo,
+              selected: true,
+              showRatingOverlay: false,
+              onTap: () {},
+              onLongPress: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('4.7'), findsNothing);
+    expect(find.byKey(const ValueKey('photo-status-discard')), findsNothing);
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+  });
 }

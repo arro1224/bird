@@ -45,22 +45,29 @@ class PhotoDetailPage extends StatelessWidget {
   final ReviewContext? reviewContext;
 
   @override
-  Widget build(BuildContext context) => BlocProvider(
-    create: (_) => PhotoDetailCubit(
-      BirdCompanionScope.of(context).reviewRepository,
-      BirdCompanionScope.of(context).refreshCoordinator,
-      BirdCompanionScope.of(context).dataChangeBus,
-    )..load(fileId),
-    child: _View(
-      fileId: fileId,
-      displayIndex: displayIndex,
-      totalCount: totalCount,
-      sequence: sequence,
-      hasMoreSequence: hasMoreSequence,
-      loadMoreSequence: loadMoreSequence,
-      reviewContext: reviewContext,
-    ),
-  );
+  Widget build(BuildContext context) {
+    final dependencies = BirdCompanionScope.of(context);
+    final preferences = dependencies.settingsStore.read();
+    return BlocProvider(
+      create: (_) => PhotoDetailCubit(
+        dependencies.reviewRepository,
+        dependencies.refreshCoordinator,
+        dependencies.dataChangeBus,
+        reviewContext?.batchId,
+      )..load(fileId),
+      child: _View(
+        fileId: fileId,
+        displayIndex: displayIndex,
+        totalCount: totalCount,
+        sequence: sequence,
+        hasMoreSequence: hasMoreSequence,
+        loadMoreSequence: loadMoreSequence,
+        reviewContext: reviewContext,
+        initialShowSubjects: preferences.showSubjectBox,
+        autoAdvance: preferences.autoAdvance,
+      ),
+    );
+  }
 }
 
 class _View extends StatefulWidget {
@@ -70,6 +77,8 @@ class _View extends StatefulWidget {
     this.totalCount,
     required this.sequence,
     required this.hasMoreSequence,
+    required this.initialShowSubjects,
+    required this.autoAdvance,
     this.loadMoreSequence,
     this.reviewContext,
   });
@@ -78,6 +87,8 @@ class _View extends StatefulWidget {
   final int? totalCount;
   final List<String> sequence;
   final bool hasMoreSequence;
+  final bool initialShowSubjects;
+  final bool autoAdvance;
   final PhotoSequenceLoader? loadMoreSequence;
   final ReviewContext? reviewContext;
 
@@ -92,7 +103,7 @@ class _ViewState extends State<_View> {
   final _score = TextEditingController();
   final _tags = TextEditingController();
   String? _appliedRevision;
-  var _showSubjects = false;
+  late bool _showSubjects;
   late int _currentIndex;
   late List<String> _loadedSequence;
   late bool _hasMoreSequence;
@@ -111,6 +122,7 @@ class _ViewState extends State<_View> {
       widget.reviewContext?.photoIds.isNotEmpty == true ? widget.reviewContext!.photoIds : widget.sequence,
     );
     _hasMoreSequence = widget.hasMoreSequence;
+    _showSubjects = widget.initialShowSubjects;
     final contextIndex = widget.reviewContext?.safeCurrentIndex;
     final sequenceIndex = _sequence.indexOf(widget.fileId);
     _currentIndex = contextIndex ?? (sequenceIndex < 0 ? 0 : sequenceIndex);
@@ -355,7 +367,7 @@ class _ViewState extends State<_View> {
     setState(() {
       _currentIndex = index;
       _appliedRevision = null;
-      _showSubjects = false;
+      _showSubjects = widget.initialShowSubjects;
     });
     _saveCheckpoint(context);
     await context.read<PhotoDetailCubit>().load(id);
@@ -409,7 +421,17 @@ class _ViewState extends State<_View> {
 
   Future<void> _save(BuildContext context, ReviewDetail detail, KeepState value) async {
     setState(() => _keep = value);
-    await context.read<PhotoDetailCubit>().save(_decision(detail, keepState: value));
+    final cubit = context.read<PhotoDetailCubit>();
+    await cubit.save(_decision(detail, keepState: value));
+    if (!mounted || !widget.autoAdvance || (value != KeepState.keep && value != KeepState.discard) || cubit.state.conflict) {
+      return;
+    }
+    final nextId = _nextId;
+    if (nextId != null) {
+      await _openInPlace(context, nextId);
+    } else if (_hasMoreSequence) {
+      await _loadNextPage(context);
+    }
   }
 
   UserDecision _decision(ReviewDetail detail, {KeepState? keepState}) => UserDecision(

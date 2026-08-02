@@ -2,10 +2,15 @@ import 'package:aves/bird_companion/core/models/batch_models.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/features/batches/domain/batch_page.dart';
+import 'package:aves/bird_companion/features/batches/domain/project_create_request.dart';
 
 class BatchApi {
   BatchApi(this._client);
   final ApiClient _client;
+
+  Future<BatchSummary> create(ProjectCreateRequest request) async => BatchSummary.fromJson(
+    await _client.post(ApiEndpoints.batches, data: request.toJson()),
+  );
 
   Future<BatchPage> page({String? state, String? sort, String? cursor}) async {
     final query = <String, dynamic>{'page_size': 30};

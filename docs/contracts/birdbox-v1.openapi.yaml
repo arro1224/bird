@@ -1,0 +1,1666 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "BirdBox Local API",
+    "version": "1.0.0",
+    "description": "Authoritative birdbox-v1@1.0.0 contract for birdpart2. New success responses use a data envelope. Errors use top-level error_code and error_message."
+  },
+  "servers": [
+    {
+      "url": "http://{boxHost}/api/v1",
+      "variables": {
+        "boxHost": {
+          "default": "192.168.4.1:8080"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/device/status": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        }
+      ],
+      "get": {
+        "operationId": "getDeviceStatus",
+        "summary": "Read the complete device status",
+        "security": [],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/DeviceStatusResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/device/pair": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        }
+      ],
+      "post": {
+        "operationId": "pairDevice",
+        "summary": "Exchange a pairing code for a device-scoped access token",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "pairing_code",
+                  "client_name"
+                ],
+                "properties": {
+                  "pairing_code": {
+                    "type": "string",
+                    "minLength": 4
+                  },
+                  "client_name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/PairResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/events": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        }
+      ],
+      "get": {
+        "operationId": "openEventStream",
+        "summary": "Upgrade to the authenticated v1 WebSocket event stream",
+        "description": "Every v1 message contains a complete DeviceStatus or BirdJobStatus payload. Incremental payloads and required sequence numbers are reserved for v2.",
+        "x-websocket-message-schema": {
+          "$ref": "./schemas/event-envelope.schema.json"
+        },
+        "responses": {
+          "101": {
+            "description": "Switching Protocols"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/storage/cards/current/scan": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        }
+      ],
+      "get": {
+        "operationId": "getCurrentCardScan",
+        "summary": "Read the latest scan for the current storage card",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CardScanResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/storage/cards/current/rescan": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        }
+      ],
+      "post": {
+        "operationId": "rescanCurrentCard",
+        "summary": "Start or replay an idempotent card scan",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/JobResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/projects": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        }
+      ],
+      "get": {
+        "operationId": "listProjects",
+        "summary": "List projects",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ProjectListResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createProject",
+        "summary": "Create a real project from the current card",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "card_id"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "card_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/ProjectResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/projects/current": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        }
+      ],
+      "get": {
+        "operationId": "getCurrentProject",
+        "summary": "Read the current project; data is null when none exists",
+        "responses": {
+          "200": {
+            "description": "Current project or null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "oneOf": [
+                        {
+                          "$ref": "./schemas/project.schema.json"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/resume": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        }
+      ],
+      "post": {
+        "operationId": "resumeProject",
+        "summary": "Resume an incomplete project",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ProjectResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/imports": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        }
+      ],
+      "post": {
+        "operationId": "createImportJob",
+        "summary": "Create an import/index job",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "source",
+                  "read_only",
+                  "generate_thumbnails",
+                  "generate_previews"
+                ],
+                "properties": {
+                  "source": {
+                    "const": "card"
+                  },
+                  "read_only": {
+                    "const": true
+                  },
+                  "generate_thumbnails": {
+                    "type": "boolean"
+                  },
+                  "generate_previews": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/JobResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/analysis-jobs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        }
+      ],
+      "post": {
+        "operationId": "createAnalysisJob",
+        "summary": "Create an AI analysis job",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode",
+                  "include_grouping"
+                ],
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "standard"
+                    ]
+                  },
+                  "include_grouping": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/JobResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/files": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        }
+      ],
+      "get": {
+        "operationId": "listPhotos",
+        "summary": "List photos in a project",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "keep_state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "analysis_state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "group_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scene_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/PhotoListResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/files/actions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        }
+      ],
+      "post": {
+        "operationId": "applyPhotoBatchAction",
+        "summary": "Apply an idempotent batch photo operation",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file_ids",
+                  "operation",
+                  "version"
+                ],
+                "properties": {
+                  "file_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "operation": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "keep",
+                      "discard",
+                      "featured",
+                      "add_tags",
+                      "remove_tags"
+                    ]
+                  },
+                  "value": {},
+                  "version": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/GenericDataResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/groups": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        }
+      ],
+      "get": {
+        "operationId": "listGroups",
+        "summary": "List burst or scene groups",
+        "parameters": [
+          {
+            "name": "scene_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/GenericDataResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/scenes": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        }
+      ],
+      "get": {
+        "operationId": "listScenes",
+        "summary": "List scenes",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/GenericDataResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/species": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        }
+      ],
+      "get": {
+        "operationId": "searchSpecies",
+        "summary": "Search species",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/GenericDataResponse"
+          }
+        }
+      }
+    },
+    "/files/{fileId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/FileId"
+        }
+      ],
+      "get": {
+        "operationId": "getPhoto",
+        "summary": "Read a photo detail",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/PhotoResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/files/{fileId}/decision": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/FileId"
+        }
+      ],
+      "post": {
+        "operationId": "patchUserDecision",
+        "summary": "Patch a review decision using three-state field semantics",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./schemas/user-decision-patch.schema.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/PhotoResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/files/{fileId}/history": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/FileId"
+        }
+      ],
+      "get": {
+        "operationId": "getPhotoHistory",
+        "summary": "Read review history",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/GenericDataResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/copy/estimate": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        }
+      ],
+      "get": {
+        "operationId": "estimateCopy",
+        "summary": "Estimate a copy operation",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "keep",
+                "all",
+                "dual"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/GenericDataResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/copy": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectId"
+        }
+      ],
+      "post": {
+        "operationId": "createCopyJob",
+        "summary": "Create a copy job",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode",
+                  "target_id",
+                  "xmp_enabled",
+                  "verify_after_copy",
+                  "version"
+                ],
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "keep",
+                      "all",
+                      "dual"
+                    ]
+                  },
+                  "target_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "xmp_enabled": {
+                    "type": "boolean"
+                  },
+                  "verify_after_copy": {
+                    "type": "boolean"
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/JobResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/jobs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        }
+      ],
+      "get": {
+        "operationId": "listJobs",
+        "summary": "List jobs",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JobListResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/jobs/{jobId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/JobId"
+        }
+      ],
+      "get": {
+        "operationId": "getJob",
+        "summary": "Read a complete job snapshot",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JobResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTerminalJob",
+        "summary": "Delete a terminal job record",
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/jobs/{jobId}/actions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/JobId"
+        }
+      ],
+      "post": {
+        "operationId": "controlJob",
+        "summary": "Control a job",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "action",
+                  "version"
+                ],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "pause",
+                      "resume",
+                      "cancel",
+                      "retry_failed",
+                      "skip_failed"
+                    ]
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JobResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/jobs/{jobId}/failures": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/JobId"
+        }
+      ],
+      "get": {
+        "operationId": "listJobFailures",
+        "summary": "List failed files",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/GenericDataResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/jobs/{jobId}/report": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        },
+        {
+          "$ref": "#/components/parameters/JobId"
+        }
+      ],
+      "get": {
+        "operationId": "getJobReport",
+        "summary": "Read the authoritative job result",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JobReportResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/logs/export": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ApiVersion"
+        }
+      ],
+      "post": {
+        "operationId": "exportLogs",
+        "summary": "Create a short-lived signed log download",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scope"
+                ],
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "device",
+                      "jobs",
+                      "device_and_jobs"
+                    ]
+                  },
+                  "job_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "time_from": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time"
+                  },
+                  "time_to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/LogExportResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "opaque-device-token"
+      }
+    },
+    "parameters": {
+      "ApiVersion": {
+        "name": "X-Api-Version",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "const": "v1"
+        }
+      },
+      "IdempotencyKey": {
+        "name": "X-Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 8
+        }
+      },
+      "ProjectId": {
+        "name": "projectId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "FileId": {
+        "name": "fileId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "JobId": {
+        "name": "jobId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "Cursor": {
+        "name": "cursor",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "PageSize": {
+        "name": "page_size",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 30
+        }
+      }
+    },
+    "responses": {
+      "ErrorResponse": {
+        "description": "Top-level v1 error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "./schemas/error-response.schema.json"
+            }
+          }
+        }
+      },
+      "DeviceStatusResponse": {
+        "description": "Complete device snapshot",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "data"
+              ],
+              "properties": {
+                "data": {
+                  "$ref": "./schemas/device-status.schema.json"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "PairResponse": {
+        "description": "Paired session",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "data"
+              ],
+              "properties": {
+                "data": {
+                  "type": "object",
+                  "required": [
+                    "access_token",
+                    "expires_at",
+                    "device_id",
+                    "api_version"
+                  ],
+                  "properties": {
+                    "access_token": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "expires_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "device_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "api_version": {
+                      "const": "v1"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "ProjectResponse": {
+        "description": "Project",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "data"
+              ],
+              "properties": {
+                "data": {
+                  "$ref": "./schemas/project.schema.json"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "ProjectListResponse": {
+        "description": "Project page",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "data"
+              ],
+              "properties": {
+                "data": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "has_more",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "./schemas/project.schema.json"
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "PhotoResponse": {
+        "description": "Photo",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "data"
+              ],
+              "properties": {
+                "data": {
+                  "$ref": "./schemas/photo.schema.json"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "PhotoListResponse": {
+        "description": "Photo page",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "data"
+              ],
+              "properties": {
+                "data": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "has_more",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "./schemas/photo.schema.json"
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "JobResponse": {
+        "description": "Complete job snapshot",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "data"
+              ],
+              "properties": {
+                "data": {
+                  "$ref": "./schemas/bird-job-status.schema.json"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "JobListResponse": {
+        "description": "Job page",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "data"
+              ],
+              "properties": {
+                "data": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "has_more",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "./schemas/bird-job-status.schema.json"
+                      }
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "CardScanResponse": {
+        "description": "Current card scan",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "data"
+              ],
+              "properties": {
+                "data": {
+                  "type": "object",
+                  "required": [
+                    "scan_state"
+                  ],
+                  "properties": {
+                    "scan_state": {
+                      "type": "string",
+                      "enum": [
+                        "detected",
+                        "scanning",
+                        "missing",
+                        "unreadable",
+                        "empty"
+                      ]
+                    },
+                    "card_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "card_name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "photo_count": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "raw_count": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "jpeg_count": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "required_bytes": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "error_code": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "error_message": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "JobReportResponse": {
+        "description": "Job report",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "data"
+              ],
+              "properties": {
+                "data": {
+                  "type": "object",
+                  "required": [
+                    "job_id",
+                    "result",
+                    "total_count",
+                    "success_count",
+                    "failed_count",
+                    "skipped_count"
+                  ],
+                  "properties": {
+                    "job_id": {
+                      "type": "string"
+                    },
+                    "result": {
+                      "type": "string",
+                      "enum": [
+                        "success",
+                        "partial_success",
+                        "failed",
+                        "cancelled"
+                      ]
+                    },
+                    "total_count": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "success_count": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "failed_count": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "skipped_count": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "copied_bytes": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "manifest_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "started_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "finished_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "LogExportResponse": {
+        "description": "Short-lived signed log export",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "data"
+              ],
+              "properties": {
+                "data": {
+                  "type": "object",
+                  "required": [
+                    "export_id",
+                    "state",
+                    "download_url",
+                    "expires_at"
+                  ],
+                  "properties": {
+                    "export_id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "const": "ready"
+                    },
+                    "download_url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "expires_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "GenericDataResponse": {
+        "description": "Endpoint-specific data",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "data"
+              ],
+              "properties": {
+                "data": {}
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      }
+    }
+  }
+}

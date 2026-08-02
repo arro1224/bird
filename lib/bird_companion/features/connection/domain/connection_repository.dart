@@ -10,6 +10,12 @@ abstract interface class ConnectionRepository {
     required NetworkMode networkMode,
     CancelToken? cancelToken,
   });
+  Future<DeviceStatus> pair(
+    Uri baseUri, {
+    required NetworkMode networkMode,
+    required String pairingCode,
+    CancelToken? cancelToken,
+  });
   Future<DeviceStatus> reconnect({CancelToken? cancelToken});
   Future<void> disconnect();
   Future<void> forgetDevice();

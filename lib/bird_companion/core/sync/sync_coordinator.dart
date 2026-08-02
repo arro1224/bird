@@ -49,6 +49,16 @@ class SyncCoordinator {
         await _store.remove(operation.id);
         syncedCount++;
       } catch (error) {
+        final authenticationRequired = error is ApiException && (error.statusCode == 401 || error.statusCode == 403);
+        if (authenticationRequired) {
+          await _store.save(
+            operation.copyWith(
+              status: PendingOperationStatus.pending,
+              clearFailureReason: true,
+            ),
+          );
+          break;
+        }
         final conflict = error is ApiException && error.statusCode == 409;
         final retried = operation.copyWith(
           retryCount: operation.retryCount + 1,

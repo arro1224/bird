@@ -10,6 +10,7 @@ import 'package:aves/bird_companion/core/models/tag_input.dart';
 import 'package:aves/bird_companion/core/widgets/bird_navigation.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:aves/bird_companion/core/files/media_cache_identity.dart';
 import 'package:flutter/material.dart';
 
 class ReviewEditResult {
@@ -261,6 +262,11 @@ class _CurrentResultCard extends StatelessWidget {
               height: 112,
               child: CachedNetworkImage(
                 imageUrl: uri.toString(),
+                cacheKey: mediaCacheIdentity(
+                  uri: uri,
+                  mediaId: uri.path,
+                  variant: 'review-edit-preview',
+                ),
                 fit: BoxFit.cover,
                 placeholder: (_, _) => const ColoredBox(
                   color: AppColors.brandLight,
