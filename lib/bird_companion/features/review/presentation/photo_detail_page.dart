@@ -22,6 +22,7 @@ import 'package:aves/bird_companion/features/review/presentation/widgets/exif_pa
 import 'package:aves/bird_companion/features/review/presentation/widgets/rating_reason_panel.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/recognition_panel.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/subject_overlay_view.dart';
+import 'package:aves/bird_companion/features/review/presentation/widgets/tag_editor_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -446,35 +447,17 @@ class _ViewState extends State<_View> {
   );
 
   Future<void> _editTags(BuildContext context, ReviewDetail detail) async {
-    final controller = TextEditingController(text: _tags.text);
     final value = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.viewInsetsOf(sheetContext).bottom + 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('添加标签', style: Theme.of(sheetContext).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(hintText: '例如：翠鸟，水鸟，枝头'),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(onPressed: () => Navigator.pop(sheetContext, controller.text), child: const Text('保存标签')),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) => TagEditorSheet(initialTags: _tags.text),
     );
-    controller.dispose();
     if (value == null || !mounted) return;
     setState(() => _tags.text = value);
-    await context.read<PhotoDetailCubit>().save(_decision(detail));
+    await context.read<PhotoDetailCubit>().save(
+      _decision(detail),
+      successMessage: '标签添加成功',
+    );
   }
 
   Future<void> _openEditor(BuildContext context, ReviewDetail detail) async {

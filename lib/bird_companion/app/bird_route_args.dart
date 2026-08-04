@@ -218,12 +218,20 @@ class ComparisonReviewArgs {
     ReviewContext context, {
     List<ReviewContext> groups = const [],
     int initialGroupIndex = 0,
-  }) => ComparisonReviewArgs(
-    groupId: context.groupId ?? '',
-    fileIds: context.photoIds,
-    reviewContext: context,
-    groups: groups,
-    initialGroupIndex: initialGroupIndex,
+  }) {
+    final comparisonContext = _topTwo(context);
+    return ComparisonReviewArgs(
+      groupId: comparisonContext.groupId ?? '',
+      fileIds: comparisonContext.photoIds,
+      reviewContext: comparisonContext,
+      groups: groups.map(_topTwo).toList(growable: false),
+      initialGroupIndex: initialGroupIndex,
+    );
+  }
+
+  static ReviewContext _topTwo(ReviewContext context) => context.openPhotos(
+    context.photoIds.take(2).toList(growable: false),
+    initialIndex: context.currentIndex,
   );
 
   final String groupId;

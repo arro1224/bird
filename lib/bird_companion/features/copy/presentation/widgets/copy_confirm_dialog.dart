@@ -71,14 +71,29 @@ class CopyConfirmDialog extends StatelessWidget {
         ],
       ],
     ),
+    actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
     actions: [
-      OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-      FilledButton(
-        onPressed: () {
-          Navigator.pop(context);
-          onConfirm();
-        },
-        child: const Text('确认开始复制'),
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              key: const Key('copy-confirm-cancel'),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: FilledButton(
+              key: const Key('copy-confirm-submit'),
+              onPressed: () {
+                Navigator.pop(context);
+                onConfirm();
+              },
+              child: const Text('确认开始复制'),
+            ),
+          ),
+        ],
       ),
     ],
   );

@@ -75,30 +75,43 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
     }
   }
 
-  Future<void> save(UserDecision decision) async {
+  Future<void> save(
+    UserDecision decision, {
+    String successMessage = '修改已保存',
+  }) async {
     final previous = state.detail?.decision ?? UserDecision(fileId: decision.fileId, keepState: KeepState.pending, updatedAt: DateTime.now());
     emit(state.copyWith(saving: true));
-    final result = await _repository.save(
-      decision,
-      projectId: projectId,
-    );
-    if (result.conflict) {
-      emit(state.copyWith(saving: false, conflict: true, pendingConflictDecision: decision, message: result.message));
-      return;
+    try {
+      final result = await _repository.save(
+        decision,
+        projectId: projectId,
+      );
+      if (result.conflict) {
+        emit(state.copyWith(saving: false, conflict: true, pendingConflictDecision: decision, message: result.message));
+        return;
+      }
+      final undo = ReviewUndoEntry(before: previous, after: decision);
+      final refreshed = await _refreshedDetail(decision.fileId);
+      final updated = refreshed == null ? null : _withDecision(refreshed, decision);
+      _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'photo_review_saved');
+      emit(
+        state.copyWith(
+          detail: updated,
+          saving: false,
+          message: result.queued ? result.message : successMessage,
+          messageIsError: false,
+          undoEntry: undo,
+        ),
+      );
+    } catch (_) {
+      emit(
+        state.copyWith(
+          saving: false,
+          message: '保存失败，请稍后重试',
+          messageIsError: true,
+        ),
+      );
     }
-    final undo = ReviewUndoEntry(before: previous, after: decision);
-    final refreshed = await _refreshedDetail(decision.fileId);
-    final updated = refreshed == null ? null : _withDecision(refreshed, decision);
-    _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'photo_review_saved');
-    emit(
-      state.copyWith(
-        detail: updated,
-        saving: false,
-        message: result.queued ? result.message : '修改已保存',
-        messageIsError: false,
-        undoEntry: undo,
-      ),
-    );
   }
 
   Future<void> undo() async {

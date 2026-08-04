@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/app/app_dependencies.dart';
+import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
@@ -96,7 +97,7 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> {
                         children: [
                           TextButton.icon(
                             key: const Key('device-reconnect'),
-                            onPressed: () => _reconnect(context),
+                            onPressed: () => openReconnectConnection(context),
                             icon: const BirdSettingsAssetIcon(
                               BirdSettingsAssetCatalog.reconnect,
                               label: '重新连接',
@@ -271,30 +272,6 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> {
     setState(() {
       _statusFuture = dependencies.deviceRepository.fetchStatus();
     });
-  }
-
-  Future<void> _reconnect(BuildContext context) async {
-    final scope = context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>();
-    if (scope == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已开始重新连接拍鸟伴侣 K7')),
-      );
-      return;
-    }
-    try {
-      await scope.dependencies.deviceSessionCubit.reconnect();
-      if (!context.mounted) return;
-      _reload();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已重新连接拍鸟盒子')),
-      );
-    } catch (error) {
-      if (!context.mounted) return;
-      final message = UserMessageMapper.fromError(error);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${message.title}：${message.message}')),
-      );
-    }
   }
 }
 

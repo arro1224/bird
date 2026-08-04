@@ -1,4 +1,6 @@
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
+import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/features/settings/presentation/bird_settings_controller.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/device_details_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/device_management_page.dart';
@@ -32,16 +34,36 @@ void main() {
     expect(find.text('正在重新搜索附近设备…'), findsOneWidget);
   });
 
-  testWidgets('device details reconnects and expands technical details', (tester) async {
+  testWidgets('device details reconnect opens device discovery', (tester) async {
     final controller = BirdSettingsController();
+    RouteSettings? route;
     addTearDown(controller.dispose);
-    await tester.pumpWidget(_app(DeviceDetailsPage(controller: controller)));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        onGenerateRoute: (settings) {
+          route = settings;
+          return MaterialPageRoute<void>(
+            settings: settings,
+            builder: (_) => const Scaffold(body: Text('connection')),
+          );
+        },
+        home: DeviceDetailsPage(controller: controller),
+      ),
+    );
 
     expect(find.text('设备详情'), findsOneWidget);
     expect(find.text('BirdAI 3.0.2'), findsOneWidget);
     await tester.tap(find.byKey(const Key('device-reconnect')));
-    await tester.pump();
-    expect(find.text('已开始重新连接拍鸟伴侣 K7'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(route?.name, BirdRoutes.connection);
+    expect((route!.arguments! as ConnectionArgs).entryMode, ConnectionEntryMode.addOrSwitch);
+  });
+
+  testWidgets('device details expands technical details', (tester) async {
+    final controller = BirdSettingsController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(DeviceDetailsPage(controller: controller)));
 
     await tester.scrollUntilVisible(
       find.byKey(const Key('device-technical-details')),

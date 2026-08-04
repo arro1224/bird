@@ -371,12 +371,20 @@ class TaskDetailPage extends StatelessWidget {
   Future<void> _confirmCancel(BuildContext context, TaskSummary task) async {
     final approved = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('取消任务？'),
         content: const Text('盒子会停止当前任务，已经完成的文件不会被删除。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('继续任务')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('确认取消')),
+          TextButton(
+            key: const Key('task-cancel-continue'),
+            onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(false),
+            child: const Text('继续任务'),
+          ),
+          FilledButton(
+            key: const Key('task-cancel-confirm'),
+            onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(true),
+            child: const Text('确认取消'),
+          ),
         ],
       ),
     );

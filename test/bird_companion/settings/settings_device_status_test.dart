@@ -1,4 +1,6 @@
 import 'package:aves/bird_companion/app/app_dependencies.dart';
+import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
@@ -9,29 +11,46 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('default reconnect opens device management without a production scope', (tester) async {
+  testWidgets('default reconnect opens device discovery without a production scope', (tester) async {
+    RouteSettings? route;
     await tester.pumpWidget(
-      const MaterialApp(
-        home: SettingsShowcasePage(embedded: true),
+      MaterialApp(
+        onGenerateRoute: (settings) {
+          route = settings;
+          return MaterialPageRoute<void>(
+            settings: settings,
+            builder: (_) => const Scaffold(body: Text('connection')),
+          );
+        },
+        home: const SettingsShowcasePage(embedded: true),
       ),
     );
 
     await tester.tap(find.byKey(const Key('showcase-device-primary-action')));
     await tester.pumpAndSettle();
 
-    expect(find.text('更换设备'), findsOneWidget);
+    expect(route?.name, BirdRoutes.connection);
+    expect((route!.arguments! as ConnectionArgs).entryMode, ConnectionEntryMode.addOrSwitch);
   });
 
-  testWidgets('default reconnect opens device management when the scoped session has no device', (tester) async {
+  testWidgets('default reconnect opens device discovery when the scoped session has no device', (tester) async {
     final session = _TestDeviceSessionCubit(const DeviceSessionState());
     final dependencies = _TestDependencies(session);
+    RouteSettings? route;
     addTearDown(session.close);
 
     await tester.pumpWidget(
       BirdCompanionScope(
         dependencies: dependencies,
-        child: const MaterialApp(
-          home: SettingsShowcasePage(embedded: true),
+        child: MaterialApp(
+          onGenerateRoute: (settings) {
+            route = settings;
+            return MaterialPageRoute<void>(
+              settings: settings,
+              builder: (_) => const Scaffold(body: Text('connection')),
+            );
+          },
+          home: const SettingsShowcasePage(embedded: true),
         ),
       ),
     );
@@ -40,20 +59,29 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(session.reconnectCount, 0);
-    expect(find.text('更换设备'), findsOneWidget);
+    expect(route?.name, BirdRoutes.connection);
+    expect((route!.arguments! as ConnectionArgs).entryMode, ConnectionEntryMode.addOrSwitch);
   });
 
-  testWidgets('default reconnect reads the latest scoped device when tapped', (tester) async {
+  testWidgets('default reconnect preserves the latest scoped device and opens discovery', (tester) async {
     final session = _TestDeviceSessionCubit(const DeviceSessionState());
     final dependencies = _TestDependencies(session);
     final connection = _connection(id: 'known', name: '已知盒子');
+    RouteSettings? route;
     addTearDown(session.close);
 
     await tester.pumpWidget(
       BirdCompanionScope(
         dependencies: dependencies,
-        child: const MaterialApp(
-          home: SettingsShowcasePage(embedded: true),
+        child: MaterialApp(
+          onGenerateRoute: (settings) {
+            route = settings;
+            return MaterialPageRoute<void>(
+              settings: settings,
+              builder: (_) => const Scaffold(body: Text('connection')),
+            );
+          },
+          home: const SettingsShowcasePage(embedded: true),
         ),
       ),
     );
@@ -72,8 +100,9 @@ void main() {
     await tester.tap(find.byKey(const Key('showcase-device-primary-action')));
     await tester.pump();
 
-    expect(session.reconnectCount, 1);
-    expect(find.text('更换设备'), findsNothing);
+    expect(session.reconnectCount, 0);
+    expect(route?.name, BirdRoutes.connection);
+    expect((route!.arguments! as ConnectionArgs).entryMode, ConnectionEntryMode.addOrSwitch);
   });
 
   testWidgets('reconnect action invokes the injected callback once', (tester) async {

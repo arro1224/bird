@@ -60,13 +60,30 @@ class DeviceStatusCubit extends Cubit<DeviceStatusState> {
       }
       emit(state.copyWith(phase: DeviceStatusPhase.ready, status: status));
       await _subscription?.cancel();
-      _subscription = _repository.watchStatus().listen((eventStatus) => emit(state.copyWith(phase: DeviceStatusPhase.ready, status: eventStatus)));
+      _subscription = _repository.watchStatus().listen(
+        (eventStatus) => emit(
+          state.copyWith(
+            phase: DeviceStatusPhase.ready,
+            status: eventStatus,
+            clearError: true,
+          ),
+        ),
+        onError: _recordStatusFailure,
+      );
     } catch (error) {
-      _sessionCubit.disconnected('无法读取盒子状态。');
-      emit(state.copyWith(phase: DeviceStatusPhase.failure, error: error));
+      _recordStatusFailure(error);
     } finally {
       _loadInFlight = false;
     }
+  }
+
+  /// A failed status refresh is not enough evidence to invalidate the whole
+  /// device session. It can be caused by a transient request timeout or a
+  /// temporarily unavailable event stream. Authentication failures are still
+  /// handled centrally by [SessionCoordinator].
+  void _recordStatusFailure(Object error, [StackTrace? stackTrace]) {
+    if (isClosed) return;
+    emit(state.copyWith(phase: DeviceStatusPhase.failure, error: error));
   }
 
   Future<void> controlCurrentJob(String action) async {

@@ -571,6 +571,12 @@ class _GalleryHeader extends StatelessWidget {
               _PendingSyncNotice(
                 pendingCount: state.pendingOperationCount,
                 conflictCount: state.conflictOperationCount,
+                onOpenConflict: state.firstConflictFileId == null
+                    ? null
+                    : () => _openConflictPhoto(
+                        context,
+                        state.firstConflictFileId!,
+                      ),
               ),
               const SizedBox(height: 12),
             ],
@@ -648,6 +654,23 @@ class _GalleryHeader extends StatelessWidget {
       );
     },
   );
+
+  void _openConflictPhoto(BuildContext context, String fileId) {
+    final photoIds = state.items.map((item) => item.id).toList(growable: true);
+    if (!photoIds.contains(fileId)) photoIds.insert(0, fileId);
+    final photoContext = reviewContext.openPhotos(
+      photoIds,
+      initialIndex: photoIds.indexOf(fileId),
+    );
+    Navigator.of(context).pushNamed(
+      BirdRoutes.photoDetail,
+      arguments: PhotoDetailArgs.fromReview(
+        photoContext,
+        fileId: fileId,
+        totalCount: photoIds.length,
+      ),
+    );
+  }
 }
 
 class _AlbumDeviceArea extends StatelessWidget {
@@ -659,7 +682,7 @@ class _AlbumDeviceArea extends StatelessWidget {
   Widget build(BuildContext context) {
     if (offline) {
       return _OfflineConnectionBanner(
-        onReconnect: BirdCompanionScope.of(context).deviceSessionCubit.reconnect,
+        onReconnect: () => openReconnectConnection(context),
       );
     }
     return const _AlbumDeviceAlert();
@@ -737,11 +760,16 @@ class _AlbumDeviceAlert extends StatelessWidget {
                   session: session,
                   onReconnect: () {
                     Navigator.of(context).pop();
-                    dependencies.deviceSessionCubit.reconnect();
+                    openReconnectConnection(context);
                   },
                   onOpenDetails: () {
                     Navigator.of(context).pop();
-                    Navigator.of(context).pushNamed(BirdRoutes.deviceStatus);
+                    final navigation = BirdShellNavigation.maybeOf(context);
+                    if (navigation != null) {
+                      navigation.openTabRoute(2, BirdRoutes.settingsDeviceDetails);
+                    } else {
+                      Navigator.of(context).pushNamed(BirdRoutes.settingsDeviceDetails);
+                    }
                   },
                   onOpenTask: status.currentJob == null
                       ? null
@@ -1015,7 +1043,7 @@ class _OfflineSnapshotNotice extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: BirdCompanionScope.of(context).deviceSessionCubit.reconnect,
+              onPressed: () => openReconnectConnection(context),
               child: const Text('重新连接'),
             ),
           ),
@@ -1031,10 +1059,15 @@ class _OfflineSnapshotNotice extends StatelessWidget {
 }
 
 class _PendingSyncNotice extends StatelessWidget {
-  const _PendingSyncNotice({required this.pendingCount, required this.conflictCount});
+  const _PendingSyncNotice({
+    required this.pendingCount,
+    required this.conflictCount,
+    this.onOpenConflict,
+  });
 
   final int pendingCount;
   final int conflictCount;
+  final VoidCallback? onOpenConflict;
 
   @override
   Widget build(BuildContext context) {
@@ -1056,6 +1089,14 @@ class _PendingSyncNotice extends StatelessWidget {
           Expanded(
             child: Text(text, style: TextStyle(color: hasConflict ? AppColors.danger : AppColors.ink)),
           ),
+          if (hasConflict && onOpenConflict != null)
+            IconButton(
+              key: const Key('gallery-conflict-open-button'),
+              tooltip: '处理冲突照片',
+              onPressed: onOpenConflict,
+              icon: const Icon(Icons.chevron_right_rounded),
+              color: AppColors.danger,
+            ),
         ],
       ),
     );

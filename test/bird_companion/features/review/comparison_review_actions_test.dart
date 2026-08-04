@@ -19,7 +19,7 @@ void main() {
             width: 390,
             child: ComparisonReviewActions(
               selectedState: KeepState.pending,
-              itemCount: 3,
+              itemCount: 2,
               busy: false,
               onDiscardSelected: () => discardCount++,
               onKeepSelected: () => keepCount++,
@@ -35,12 +35,12 @@ void main() {
     expect(find.text('弃用当前'), findsOneWidget);
     expect(find.text('保留当前'), findsOneWidget);
     expect(find.text('设为精选'), findsOneWidget);
-    expect(find.text('保留全部 3 张'), findsOneWidget);
+    expect(find.text('保留全部 2 张'), findsOneWidget);
 
     await tester.tap(find.text('弃用当前'));
     await tester.tap(find.text('保留当前'));
     await tester.tap(find.text('设为精选'));
-    await tester.tap(find.text('保留全部 3 张'));
+    await tester.tap(find.text('保留全部 2 张'));
 
     expect(discardCount, 1);
     expect(keepCount, 1);

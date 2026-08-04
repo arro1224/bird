@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
+import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/app/theme/bird_asset_catalog.dart';
@@ -213,13 +214,7 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
         return;
       }
 
-      final deviceSessionCubit = dependencies?.deviceSessionCubit;
-      if (deviceSessionCubit?.state.device != null) {
-        unawaited(deviceSessionCubit!.reconnect());
-        return;
-      }
-
-      _open(_SettingsPage.deviceManagement);
+      openReconnectConnection(context);
     }
 
     return _LiveDeviceCard(

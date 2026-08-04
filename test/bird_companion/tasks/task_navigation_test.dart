@@ -430,6 +430,44 @@ void main() {
     expect(tester.getBottomRight(find.text('取消任务')).dy, lessThan(800));
   });
 
+  testWidgets('取消任务确认框关闭后保留任务详情页，并正确执行所选操作', (tester) async {
+    final controller = TaskExperienceController(const DemoTaskExperienceDataSource());
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        // 任务详情在应用内嵌导航器中；确认框则由根导航器承载。
+        // 这与实际底部导航结构一致，可防止关闭确认框时误弹出详情页。
+        home: Navigator(
+          onGenerateRoute: (_) => MaterialPageRoute<void>(
+            builder: (_) => TaskDetailPage(controller: controller),
+          ),
+        ),
+      ),
+    );
+
+    final cancelButton = find.widgetWithText(OutlinedButton, '取消任务');
+    await tester.ensureVisible(cancelButton);
+    await tester.tap(cancelButton);
+    await tester.pumpAndSettle();
+    expect(find.text('取消任务？'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('task-cancel-continue')));
+    await tester.pumpAndSettle();
+    expect(find.text('任务详情'), findsOneWidget);
+    expect(find.text('取消任务？'), findsNothing);
+    expect(controller.currentTask.state, TaskRunState.running);
+
+    await tester.ensureVisible(cancelButton);
+    await tester.tap(cancelButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('task-cancel-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('任务详情'), findsOneWidget);
+    expect(find.text('取消任务？'), findsNothing);
+    expect(controller.taskById('demo-import-running').state, TaskRunState.cancelled);
+  });
+
   testWidgets('任务详情 follows the selected task operational data', (tester) async {
     final controller = TaskExperienceController(const DemoTaskExperienceDataSource());
     addTearDown(controller.dispose);

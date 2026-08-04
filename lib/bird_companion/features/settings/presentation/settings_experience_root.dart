@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
+import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
@@ -89,6 +90,7 @@ class _SettingsExperienceRootState extends State<SettingsExperienceRoot> {
               : '项目编号 ${currentJob.sourceProjectId}',
           currentTaskTitle: currentJob?.type.label ?? '暂无当前任务',
           currentTaskSummary: _taskSummary(currentJob),
+          onReconnect: () => openReconnectConnection(context),
           onOpenCurrentBatch: widget.onOpenAlbum,
           onOpenCurrentTask: widget.onOpenTasks,
         );

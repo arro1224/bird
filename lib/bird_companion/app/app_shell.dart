@@ -69,7 +69,7 @@ class _BirdAppShellState extends State<BirdAppShell> {
                 builder: (context, state) => DisconnectedBanner(
                   isConnected: state.isConnected,
                   lastUpdatedAt: state.lastUpdatedAt,
-                  onReconnect: () => BirdCompanionScope.of(context).deviceSessionCubit.reconnect(),
+                  onReconnect: () => openReconnectConnection(context),
                 ),
               ),
             Expanded(

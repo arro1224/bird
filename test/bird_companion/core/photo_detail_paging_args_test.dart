@@ -41,8 +41,12 @@ void main() {
     );
 
     expect(args.groupId, 'group-2');
-    expect(args.fileIds, ['p3', 'p4', 'p5']);
-    expect(args.groups, groups);
+    expect(args.fileIds, ['p3', 'p4']);
+    expect(args.reviewContext?.photoIds, ['p3', 'p4']);
+    expect(args.groups.map((group) => group.photoIds), [
+      ['p1', 'p2'],
+      ['p3', 'p4'],
+    ]);
     expect(args.initialGroupIndex, 1);
   });
 }

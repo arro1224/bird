@@ -43,6 +43,24 @@ void main() {
       expect(repository.savedProjectId, 'project-7');
     });
 
+    test('标签保存可以提供专用的成功提示', () async {
+      final cubit = PhotoDetailCubit(_StaleReviewRepository(_originalDetail()));
+      addTearDown(cubit.close);
+      await cubit.load('photo-1');
+
+      await cubit.save(
+        const UserDecision(
+          fileId: 'photo-1',
+          keepState: KeepState.pending,
+          userTags: ['湿地'],
+        ),
+        successMessage: '标签添加成功',
+      );
+
+      expect(cubit.state.message, '标签添加成功');
+      expect(cubit.state.messageIsError, isFalse);
+    });
+
     test('详情加载失败时保留异常对象而不是暴露原始异常文本', () async {
       final repository = _FailingReviewRepository();
       final cubit = PhotoDetailCubit(repository);

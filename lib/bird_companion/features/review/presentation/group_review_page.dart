@@ -404,7 +404,7 @@ class _GroupContent extends StatelessWidget {
                       ? reviewContext.enterGroup(
                           group.id,
                           name: _displayGroupName(group.id),
-                          photos: rankedIds.take(3).toList(growable: false),
+                          photos: rankedIds.take(2).toList(growable: false),
                         )
                       : comparisonGroups[comparisonGroupIndex];
                   Navigator.of(context).pushNamed(

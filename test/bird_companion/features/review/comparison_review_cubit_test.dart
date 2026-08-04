@@ -5,7 +5,7 @@ import 'package:aves/bird_companion/features/review/presentation/comparison_revi
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('左右照片的保留状态互斥', () async {
+  test('重复调整单张状态不会改写另一张照片', () async {
     final repository = _ComparisonRepository({
       'left': _detail('left'),
       'right': _detail('right'),
@@ -15,11 +15,15 @@ void main() {
 
     await cubit.load(const ['left', 'right']);
     await cubit.mark('left', KeepState.keep);
-    expect(_states(cubit), [KeepState.keep, KeepState.discard]);
+    expect(_states(cubit), [KeepState.keep, KeepState.pending]);
+
+    await cubit.mark('left', KeepState.discard);
+    expect(_states(cubit), [KeepState.discard, KeepState.pending]);
 
     await cubit.mark('right', KeepState.keep);
     expect(_states(cubit), [KeepState.discard, KeepState.keep]);
-    expect(_states(cubit).where((state) => state.isRetained), hasLength(1));
+    expect(cubit.state.message, '照片状态已更新');
+    expect(cubit.state.messageIsError, isFalse);
   });
 
   test('将保留照片设为精选后仍只有该照片处于保留状态', () async {
@@ -34,7 +38,7 @@ void main() {
     await cubit.mark('right', KeepState.keep);
     await cubit.mark('right', KeepState.featured);
 
-    expect(_states(cubit), [KeepState.discard, KeepState.featured]);
+    expect(_states(cubit), [KeepState.pending, KeepState.featured]);
     expect(_states(cubit).where((state) => state.isRetained), hasLength(1));
   });
 
@@ -101,7 +105,7 @@ void main() {
     expect(_states(cubit).where((state) => state.isRetained), hasLength(2));
   });
 
-  test('three-photo comparison loads Top 3 and can retain all', () async {
+  test('comparison limits a larger candidate list to the top two photos', () async {
     final repository = _ComparisonRepository({
       'first': _detail('first'),
       'second': _detail('second'),
@@ -115,19 +119,19 @@ void main() {
 
     expect(
       cubit.state.items.map((item) => item.photo.summary.id),
-      ['first', 'second', 'third'],
+      ['first', 'second'],
     );
 
     await cubit.keepAll();
 
     expect(
       _states(cubit),
-      [KeepState.keep, KeepState.keep, KeepState.keep],
+      [KeepState.keep, KeepState.keep],
     );
     expect(cubit.state.message, '已保留全部对比照片');
   });
 
-  test('keeping one of three comparison photos discards the other two', () async {
+  test('keeping one comparison photo only affects the two loaded candidates', () async {
     final repository = _ComparisonRepository({
       'first': _detail('first'),
       'second': _detail('second'),
@@ -141,12 +145,38 @@ void main() {
 
     expect(
       _states(cubit),
-      [KeepState.discard, KeepState.keep, KeepState.discard],
+      [KeepState.pending, KeepState.keep],
     );
+  });
+
+  test('version conflict keeps the current comparison and emits a Chinese error message', () async {
+    final repository = _ComparisonRepository(
+      {
+        'left': _detail('left'),
+        'right': _detail('right'),
+      },
+      saveResult: const ReviewSaveResult(
+        conflict: true,
+        message: 'The photo decision changed on the box. Reload before saving.',
+      ),
+    );
+    final cubit = ComparisonReviewCubit(repository);
+    addTearDown(cubit.close);
+
+    await cubit.load(const ['left', 'right']);
+    await cubit.mark('left', KeepState.keep);
+
+    expect(_states(cubit), [KeepState.pending, KeepState.pending]);
+    expect(cubit.state.message, '照片状态已在盒子端更新，请重新加载后再试。');
+    expect(cubit.state.messageIsError, isTrue);
   });
 }
 
-List<KeepState> _states(ComparisonReviewCubit cubit) => cubit.state.items.map((item) => item.decision!.keepState).toList();
+List<KeepState> _states(ComparisonReviewCubit cubit) => cubit.state.items
+    .map(
+      (item) => item.decision?.keepState ?? KeepStateWireValue.fromWire(item.photo.summary.keepState),
+    )
+    .toList();
 
 ReviewDetail _detail(String id) => ReviewDetail(
   photo: PhotoDetail(
@@ -162,9 +192,10 @@ ReviewDetail _detail(String id) => ReviewDetail(
 );
 
 class _ComparisonRepository implements ReviewRepository {
-  _ComparisonRepository(this.details);
+  _ComparisonRepository(this.details, {this.saveResult = const ReviewSaveResult()});
 
   final Map<String, ReviewDetail> details;
+  final ReviewSaveResult saveResult;
 
   @override
   Future<ReviewDetail> detail(String fileId) async => details[fileId]!;
@@ -176,5 +207,5 @@ class _ComparisonRepository implements ReviewRepository {
   Future<ReviewSaveResult> save(
     UserDecision value, {
     String? projectId,
-  }) async => const ReviewSaveResult();
+  }) async => saveResult;
 }

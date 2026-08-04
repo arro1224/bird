@@ -119,7 +119,7 @@ class _ConnectionViewState extends State<_ConnectionView> {
           child: ConnectionSuccessView(
             status: state.status!,
             onOpenGallery: () => _finishConnection(0),
-            onOpenDevice: () => _finishConnection(2, initialRoute: BirdRoutes.deviceStatus),
+            onOpenDevice: () => _finishConnection(2, initialRoute: BirdRoutes.settingsDeviceDetails),
           ),
         );
       }

@@ -5,7 +5,6 @@ import 'package:aves/bird_companion/core/widgets/empty_state.dart';
 import 'package:aves/bird_companion/features/batches/presentation/batch_list_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_page.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_confirmation_page.dart';
-import 'package:aves/bird_companion/features/device/presentation/device_status_page.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_page.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/scene_list_page.dart';
@@ -40,7 +39,6 @@ abstract final class BirdRoutes {
   static const jobCenter = '/job-center';
   static const batches = '/batches';
   static const diagnostics = '/diagnostics';
-  static const deviceStatus = '/device-status';
   static const settingsDeviceManagement = '/settings/device-management';
   static const settingsDeviceDetails = '/settings/device-details';
   static const settingsDisplay = '/settings/display';
@@ -50,6 +48,17 @@ abstract final class BirdRoutes {
   static const settingsNetworkDiagnostics = '/settings/network-diagnostics';
   static const settingsSystemLogs = '/settings/system-logs';
   static const settingsHelp = '/settings/help';
+}
+
+/// Opens the device discovery flow in reconnect mode from any in-app entry.
+///
+/// Reconnect actions intentionally use the root navigator so an alert in a
+/// tab, bottom sheet, or nested page always reaches the same connection flow.
+void openReconnectConnection(BuildContext context) {
+  Navigator.of(context, rootNavigator: true).pushNamed(
+    BirdRoutes.connection,
+    arguments: const ConnectionArgs(entryMode: ConnectionEntryMode.addOrSwitch),
+  );
 }
 
 abstract final class BirdAppRouter {
@@ -141,8 +150,6 @@ abstract final class BirdAppRouter {
         page = BatchListPage(openMode: args is BatchOpenMode ? args : BatchOpenMode.gallery);
       case BirdRoutes.diagnostics:
         page = const DiagnosticsPage();
-      case BirdRoutes.deviceStatus:
-        page = const DeviceStatusPage();
       case BirdRoutes.settingsDeviceManagement:
         page = _SettingsControllerRoute(
           builder: (context, controller) => DeviceManagementPage(

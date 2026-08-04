@@ -15,10 +15,20 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       if (!isClosed && available && state.phase == DeviceSessionPhase.disconnected && state.device != null) reconnect();
     });
     _eventSubscription = _eventClient.connectionStates.listen((eventState) {
-      if (!isClosed && eventState == EventConnectionState.disconnected && state.device != null) {
-        // HTTP 状态查询仍可正常工作；模拟盒子或旧版真实盒子未提供 WebSocket 时，
-        // 不应把整台设备误判为断线。
-        emit(state.copyWith(message: '实时事件连接暂不可用，页面会在刷新时读取最新状态。'));
+      if (isClosed || !state.isConnected) return;
+      switch (eventState) {
+        case EventConnectionState.disconnected:
+          // A WebSocket outage does not prove that the device REST session is
+          // unavailable. Keep the device connected and let ordinary refreshes
+          // read the latest state until the event channel returns.
+          emit(state.copyWith(message: _eventUnavailableMessage));
+        case EventConnectionState.connected:
+          if (state.message == _eventUnavailableMessage) {
+            emit(state.copyWith(clearMessage: true));
+          }
+        case EventConnectionState.connecting:
+        case EventConnectionState.reconnecting:
+          break;
       }
     });
     _authenticationSubscription = sessionCoordinator?.authenticationFailures.listen((_) {
@@ -38,6 +48,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   final EventClient _eventClient;
   final SessionRefreshCoordinator _refreshCoordinator;
   final Future<void> Function()? onConnectionRecovered;
+  static const _eventUnavailableMessage = '实时事件连接暂不可用，页面会在刷新时读取最新状态。';
   late final StreamSubscription<bool> _networkSubscription;
   late final StreamSubscription<EventConnectionState> _eventSubscription;
   StreamSubscription<SessionAuthenticationFailure>? _authenticationSubscription;

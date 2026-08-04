@@ -13,6 +13,7 @@ class ComparisonReviewState {
     this.savingBoth = false,
     this.error,
     this.message,
+    this.messageIsError = false,
   });
   final List<ReviewDetail> items;
   final bool loading;
@@ -20,6 +21,7 @@ class ComparisonReviewState {
   final bool savingBoth;
   final Object? error;
   final String? message;
+  final bool messageIsError;
 
   bool get saving => savingId != null || savingBoth;
 }
@@ -42,7 +44,7 @@ class ComparisonReviewCubit extends Cubit<ComparisonReviewState> {
       emit(
         ComparisonReviewState(
           items: await Future.wait(
-            ids.take(3).map(_repository.detail),
+            ids.take(2).map(_repository.detail),
           ),
         ),
       );
@@ -53,17 +55,17 @@ class ComparisonReviewCubit extends Cubit<ComparisonReviewState> {
 
   Future<void> mark(String fileId, KeepState value) async {
     if (state.saving || !state.items.any((item) => item.photo.summary.id == fileId)) return;
-    final retainingBoth = value == KeepState.featured && state.items.length >= 2 && state.items.every((item) => _decisionState(item).isRetained);
-    final nextStates = {
-      for (final item in state.items)
-        item.photo.summary.id: item.photo.summary.id == fileId
-            ? value
-            : retainingBoth && _decisionState(item) == KeepState.featured
-            ? KeepState.keep
-            : value.isRetained && !retainingBoth
-            ? KeepState.discard
-            : _decisionState(item),
-    };
+    final nextStates = <String, KeepState>{fileId: value};
+    // A comparison can have only one featured photo, but changing a normal
+    // keep/discard state must never rewrite the other photo's decision.
+    if (value == KeepState.featured) {
+      for (final item in state.items) {
+        final id = item.photo.summary.id;
+        if (id != fileId && _decisionState(item) == KeepState.featured) {
+          nextStates[id] = KeepState.keep;
+        }
+      }
+    }
     await _saveStates(nextStates, savingId: fileId);
   }
 
@@ -121,7 +123,13 @@ class ComparisonReviewCubit extends Cubit<ComparisonReviewState> {
       );
       final conflict = results.where((result) => result.conflict).firstOrNull;
       if (conflict != null) {
-        emit(ComparisonReviewState(items: originalItems, message: conflict.message ?? '盒子端已有更新，请返回照片详情处理冲突'));
+        emit(
+          ComparisonReviewState(
+            items: originalItems,
+            message: '照片状态已在盒子端更新，请重新加载后再试。',
+            messageIsError: true,
+          ),
+        );
         return;
       }
       final updated = originalItems

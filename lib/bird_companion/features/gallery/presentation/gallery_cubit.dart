@@ -40,6 +40,7 @@ class GalleryState {
     this.cachedAt,
     this.pendingOperationCount = 0,
     this.conflictOperationCount = 0,
+    this.conflictFileIds = const [],
     this.error,
     this.gridColumns = 3,
     this.showRatingOverlay = true,
@@ -51,6 +52,7 @@ class GalleryState {
   final DateTime? cachedAt;
   final int pendingOperationCount;
   final int conflictOperationCount;
+  final List<String> conflictFileIds;
   final Object? error;
   final int gridColumns;
   final bool showRatingOverlay;
@@ -63,6 +65,7 @@ class GalleryState {
     DateTime? cachedAt,
     int? pendingOperationCount,
     int? conflictOperationCount,
+    List<String>? conflictFileIds,
     Object? error,
     bool clearError = false,
     int? gridColumns,
@@ -76,10 +79,13 @@ class GalleryState {
     cachedAt: cachedAt ?? this.cachedAt,
     pendingOperationCount: pendingOperationCount ?? this.pendingOperationCount,
     conflictOperationCount: conflictOperationCount ?? this.conflictOperationCount,
+    conflictFileIds: conflictFileIds ?? this.conflictFileIds,
     error: clearError ? null : error ?? this.error,
     gridColumns: gridColumns ?? this.gridColumns,
     showRatingOverlay: showRatingOverlay ?? this.showRatingOverlay,
   );
+
+  String? get firstConflictFileId => conflictFileIds.isEmpty ? null : conflictFileIds.first;
 }
 
 class GalleryCubit extends Cubit<GalleryState> {
@@ -174,6 +180,7 @@ class GalleryCubit extends Cubit<GalleryState> {
           cachedAt: p.cachedAt,
           pendingOperationCount: operationCounts.pending,
           conflictOperationCount: operationCounts.conflict,
+          conflictFileIds: operationCounts.conflictFileIds,
         ),
       );
       await _cache?.write(_viewCacheKey(), q.toJson());
@@ -226,6 +233,7 @@ class GalleryCubit extends Cubit<GalleryState> {
           cachedAt: p.cachedAt,
           pendingOperationCount: operationCounts.pending,
           conflictOperationCount: operationCounts.conflict,
+          conflictFileIds: operationCounts.conflictFileIds,
           clearError: true,
         ),
       );
@@ -266,11 +274,30 @@ class GalleryCubit extends Cubit<GalleryState> {
         )
         .where(
           (operation) => operation.type == PendingOperationType.updateReview || operation.type == PendingOperationType.batchReview,
-        );
+        )
+        .toList(growable: false);
+    final conflicts = operations.where((operation) => operation.status == PendingOperationStatus.conflict).toList(growable: false);
     return _OperationCounts(
       pending: operations.where((operation) => operation.status != PendingOperationStatus.conflict).length,
-      conflict: operations.where((operation) => operation.status == PendingOperationStatus.conflict).length,
+      conflict: conflicts.length,
+      conflictFileIds: _conflictFileIds(conflicts),
     );
+  }
+
+  List<String> _conflictFileIds(List<PendingOperation> operations) {
+    final ids = <String>{};
+    for (final operation in operations) {
+      final fileId = operation.fileId ?? operation.payload['file_id']?.toString();
+      if (fileId != null && fileId.trim().isNotEmpty) ids.add(fileId.trim());
+      final rawIds = operation.payload['file_ids'];
+      if (rawIds is Iterable) {
+        for (final value in rawIds) {
+          final id = value.toString().trim();
+          if (id.isNotEmpty) ids.add(id);
+        }
+      }
+    }
+    return ids.toList(growable: false);
   }
 
   @override
@@ -318,8 +345,13 @@ PhotoQuery _applyPhotoDefaults(
 }
 
 class _OperationCounts {
-  const _OperationCounts({this.pending = 0, this.conflict = 0});
+  const _OperationCounts({
+    this.pending = 0,
+    this.conflict = 0,
+    this.conflictFileIds = const [],
+  });
 
   final int pending;
   final int conflict;
+  final List<String> conflictFileIds;
 }

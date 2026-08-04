@@ -58,7 +58,7 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
       BirdCompanionScope.of(context).refreshCoordinator,
       BirdCompanionScope.of(context).dataChangeBus,
       _activeGroup?.batchId,
-    )..load(_activeFileIds.take(3).toList()),
+    )..load(_activeFileIds.take(2).toList()),
     child: Scaffold(
       backgroundColor: AppColors.paper,
       appBar: BirdSecondaryAppBar(
@@ -84,7 +84,11 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
               final message = UserMessageMapper.fromError(state.error!);
               BirdFeedback.error(context, message.message);
             } else if (state.message != null) {
-              BirdFeedback.success(context, state.message!);
+              if (state.messageIsError) {
+                BirdFeedback.error(context, state.message!);
+              } else {
+                BirdFeedback.success(context, state.message!);
+              }
             }
           },
           builder: (context, state) {
@@ -95,7 +99,7 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
                 title: '无法加载对比照片',
                 message: message.message,
                 onRetry: () => context.read<ComparisonReviewCubit>().load(
-                  _activeFileIds.take(3).toList(),
+                  _activeFileIds.take(2).toList(),
                 ),
               );
             }
@@ -247,7 +251,7 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
       _transform.value = Matrix4.identity();
     });
     context.read<ComparisonReviewCubit>().load(
-      _activeFileIds.take(3).toList(),
+      _activeFileIds.take(2).toList(),
     );
   }
 }
