@@ -1,7 +1,7 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="bird-ui" type="FlutterRunConfigurationType" factoryName="Flutter">
     <option name="additionalArgs" value="--no-pub" />
-    <option name="buildFlavor" value="bird" />
+    <option name="buildFlavor" value="birdV1" />
     <option name="filePath" value="$PROJECT_DIR$/lib/main.dart" />
     <method v="2" />
   </configuration>
