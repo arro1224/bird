@@ -4,6 +4,7 @@ import 'package:aves/bird_companion/features/settings/presentation/bird_settings
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_card.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_scaffold.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/device_information_pages.dart';
 import 'package:flutter/material.dart';
 
 class StorageTargetPage extends StatelessWidget {
@@ -44,8 +45,10 @@ class StorageTargetPage extends StatelessWidget {
           BirdSettingsCard(
             padding: EdgeInsets.zero,
             child: InkWell(
-              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('请连接新的存储设备后重新检测')),
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const AddStorageTargetPage(),
+                ),
               ),
               borderRadius: BorderRadius.circular(AppSpacing.radiusMedium),
               child: const Padding(

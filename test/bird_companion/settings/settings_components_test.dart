@@ -42,13 +42,17 @@ void main() {
     final back = tester.getSize(find.byKey(const Key('settings-back')));
     expect(back.width, greaterThanOrEqualTo(48));
     expect(back.height, greaterThanOrEqualTo(48));
+    final appBar = tester.widget<AppBar>(find.byType(AppBar));
+    expect(appBar.systemOverlayStyle?.statusBarIconBrightness, Brightness.dark);
   });
 
-  testWidgets('settings device icon uses the standard router glyph', (tester) async {
+  testWidgets('settings device icon uses the v1 K7 line illustration', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: Scaffold(body: BirdSettingsDeviceIcon())),
     );
 
-    expect(find.byIcon(Icons.router_rounded), findsOneWidget);
+    expect(find.byKey(const Key('v1-device-illustration')), findsOneWidget);
+    expect(find.bySemanticsLabel('拍鸟伴侣 K7 设备'), findsOneWidget);
+    expect(find.byIcon(Icons.router_rounded), findsNothing);
   });
 }

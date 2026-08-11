@@ -32,6 +32,17 @@ void main() {
     expect(controller.showSubjectBox, isTrue);
   });
 
+  testWidgets('display segmented controls animate without text interpolation errors', (tester) async {
+    final controller = BirdSettingsController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(DisplaySettingsPage(controller: controller)));
+
+    await tester.tap(find.text('5列'));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('photo settings sort sheet updates selected sort order', (tester) async {
     final controller = BirdSettingsController();
     addTearDown(controller.dispose);

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- QR-code connection is the only Bird Companion feature that needs the camera. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+</manifest>

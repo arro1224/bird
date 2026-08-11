@@ -7,6 +7,7 @@ import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_row.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_scaffold.dart';
+import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_sheet.dart';
 import 'package:flutter/material.dart';
 
 class CopyBackupSettingsPage extends StatelessWidget {
@@ -37,7 +38,8 @@ class CopyBackupSettingsPage extends StatelessWidget {
                 const Text('复制任务的默认选项', style: TextStyle(color: AppColors.mutedInk)),
                 const SizedBox(height: AppSpacing.md),
                 SegmentedButton<BirdCopyMode>(
-                  showSelectedIcon: true,
+                  showSelectedIcon: false,
+                  style: BirdSettingsControlStyles.segmented,
                   segments: BirdCopyMode.values.map((mode) => ButtonSegment(value: mode, label: Text(mode.label))).toList(),
                   selected: {controller.copyMode},
                   onSelectionChanged: (value) => controller.setCopyMode(value.first),
@@ -169,19 +171,39 @@ class CopyBackupSettingsPage extends StatelessWidget {
     );
   }
 
-  Future<void> _showNamingPolicy(BuildContext context) => showDialog<void>(
+  Future<void> _showNamingPolicy(BuildContext context) => showBirdSettingsSheet<void>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('命名与目录规则'),
-      content: const Text(
-        '当前 BirdBox v1 协议没有开放文件重命名或目录模板字段。复制时会保留原文件名，并由盒子按项目目录组织，避免显示保存后不会生效的设置。',
+    title: '命名与目录规则',
+    child: const BirdSettingsCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '保留原始文件名',
+            style: TextStyle(color: AppColors.forestDeep, fontSize: 17, fontWeight: FontWeight.w800),
+          ),
+          SizedBox(height: AppSpacing.xs),
+          Text('复制时不修改相机生成的文件名，避免与原始素材失去对应关系。', style: TextStyle(color: AppColors.mutedInk, height: 1.5)),
+          SizedBox(height: AppSpacing.md),
+          Text(
+            '按项目组织目录',
+            style: TextStyle(color: AppColors.forestDeep, fontSize: 17, fontWeight: FontWeight.w800),
+          ),
+          SizedBox(height: AppSpacing.xs),
+          Text('盒子会使用项目名称和日期建立目录，例如：\n崇明东滩_2025-07-16 / 原片', style: TextStyle(color: AppColors.mutedInk, height: 1.5)),
+          SizedBox(height: AppSpacing.md),
+          Text(
+            '协议限制',
+            style: TextStyle(color: AppColors.forestDeep, fontSize: 17, fontWeight: FontWeight.w800),
+          ),
+          SizedBox(height: AppSpacing.xs),
+          Text('BirdBox v1 暂不支持自定义重命名模板。', style: TextStyle(color: AppColors.mutedInk, height: 1.5)),
+        ],
       ),
-      actions: [
-        FilledButton(
-          onPressed: () => Navigator.pop(dialogContext),
-          child: const Text('知道了'),
-        ),
-      ],
+    ),
+    footer: BirdSettingsPrimaryButton(
+      label: '知道了',
+      onPressed: () => Navigator.pop(context),
     ),
   );
 

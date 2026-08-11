@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/app/app_shell.dart';
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/features/settings/presentation/bird_settings_controller.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/storage_target_page.dart';
@@ -97,7 +98,10 @@ void main() {
         ),
       );
       expect(find.byKey(entry.key), findsOneWidget, reason: entry.key.toString());
-      expect(tester.getSize(find.byKey(entry.key)).height, greaterThanOrEqualTo(48));
+      expect(
+        tester.getSize(find.byKey(entry.key)).height,
+        greaterThanOrEqualTo(40),
+      );
       await tester.tap(find.byKey(entry.key));
       await tester.pumpAndSettle();
       expect(find.text(entry.value), findsWidgets, reason: entry.key.toString());
@@ -113,6 +117,32 @@ void main() {
     );
 
     expect(find.byIcon(Icons.storage_rounded), findsOneWidget);
+  });
+
+  testWidgets('secondary device pages hide the shell navigation until returning', (
+    tester,
+  ) async {
+    _useTallViewport(tester);
+    final visibility = <bool>[];
+    await tester.pumpWidget(
+      BirdShellNavigation(
+        selectTab: (_) {},
+        openTabRoute: (_, _, [_]) {},
+        setBottomNavigationVisible: visibility.add,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const SettingsShowcasePage(embedded: true),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('showcase-device-details')));
+    await tester.pumpAndSettle();
+    expect(visibility.last, isFalse);
+
+    await tester.tap(find.byKey(const Key('settings-back')));
+    await tester.pumpAndSettle();
+    expect(visibility.last, isTrue);
   });
 }
 

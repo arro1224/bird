@@ -1,5 +1,6 @@
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/app/app_shell.dart';
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:flutter/material.dart';
@@ -21,7 +22,10 @@ class BirdCompanionApp extends StatelessWidget {
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
         themeMode: ThemeMode.system,
-        initialRoute: dependencies.deviceSessionCubit.state.isConnected ? BirdRoutes.shell : BirdRoutes.connection,
+        home: const BirdAppShell(
+          initialIndex: 2,
+          onGenerateRoute: BirdAppRouter.onGenerateRoute,
+        ),
         onGenerateRoute: BirdAppRouter.onGenerateRoute,
       ),
     );

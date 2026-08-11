@@ -21,18 +21,18 @@ class BirdSettingsCard extends StatelessWidget {
     margin: margin,
     padding: padding,
     decoration: BoxDecoration(
-      color: AppColors.settingsSurface,
-      borderRadius: BorderRadius.circular(AppSpacing.radiusMedium),
-      border: Border.all(color: borderColor ?? AppColors.divider.withValues(alpha: .75)),
+      color: AppColors.settingsSurface.withValues(alpha: .96),
+      borderRadius: BorderRadius.circular(16),
+      border: borderColor == null ? null : Border.all(color: borderColor!),
       boxShadow: const [
         BoxShadow(
-          color: Color(0x10142A1B),
-          blurRadius: 18,
-          offset: Offset(0, 6),
+          color: Color(0x15142A1B),
+          blurRadius: 22,
+          offset: Offset(0, 7),
         ),
       ],
     ),
-    child: child,
+    child: Material(type: MaterialType.transparency, child: child),
   );
 }
 
@@ -46,8 +46,9 @@ class BirdSettingsSectionLabel extends StatelessWidget {
     child: Text(
       label,
       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-        color: AppColors.mutedInk,
-        fontWeight: FontWeight.w600,
+        color: AppColors.forestDeep,
+        fontWeight: FontWeight.w800,
+        fontSize: 20,
       ),
     ),
   );

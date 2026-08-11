@@ -35,6 +35,7 @@ class DisplaySettingsPage extends StatelessWidget {
                     width: 168,
                     child: SegmentedButton<int>(
                       showSelectedIcon: false,
+                      style: BirdSettingsControlStyles.segmented,
                       segments: const [
                         ButtonSegment(value: 3, label: Text('3列')),
                         ButtonSegment(value: 4, label: Text('4列')),
@@ -100,6 +101,7 @@ class DisplaySettingsPage extends StatelessWidget {
                     width: 180,
                     child: SegmentedButton<BirdThumbnailSize>(
                       showSelectedIcon: false,
+                      style: BirdSettingsControlStyles.segmented,
                       segments: BirdThumbnailSize.values.map((item) => ButtonSegment(value: item, label: Text(item.label))).toList(),
                       selected: {controller.thumbnailSize},
                       onSelectionChanged: (value) => controller.setThumbnailSize(value.first),

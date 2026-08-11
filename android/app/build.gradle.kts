@@ -42,7 +42,7 @@ if (hasAnyReleaseCredential && !hasCompleteReleaseCredentials) {
 
 android {
     namespace = "deckers.thibault.aves"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -63,6 +63,10 @@ android {
         create("bird") {
             dimension = "app"
             applicationIdSuffix = ".bird"
+        }
+        create("birdV1") {
+            dimension = "app"
+            applicationIdSuffix = ".bird.v1"
         }
     }
 

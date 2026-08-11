@@ -72,9 +72,9 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> {
             child: Row(
               children: [
                 const SizedBox(
-                  width: 126,
-                  height: 124,
-                  child: Center(child: BirdSettingsDeviceIcon(size: 94)),
+                  width: 96,
+                  height: 112,
+                  child: Center(child: BirdSettingsDeviceIcon(size: 82)),
                 ),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
@@ -83,7 +83,10 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> {
                     children: [
                       Text(
                         status?.connection.name ?? (legacy ? '拍鸟伴侣 K7' : '拍鸟盒子'),
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          color: AppColors.forestDeep,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: AppSpacing.xs),
                       _DeviceHealthBadge(
@@ -92,7 +95,7 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> {
                       ),
                       const SizedBox(height: AppSpacing.md),
                       Wrap(
-                        spacing: AppSpacing.md,
+                        spacing: AppSpacing.xxs,
                         runSpacing: AppSpacing.xs,
                         children: [
                           TextButton.icon(
@@ -103,6 +106,10 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> {
                               label: '重新连接',
                               size: 24,
                             ),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+                              minimumSize: const Size(0, AppSpacing.minimumControl),
+                            ),
                             label: const Text('重新连接'),
                           ),
                           TextButton.icon(
@@ -112,6 +119,10 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> {
                               ),
                             ),
                             icon: const Icon(Icons.description_outlined),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+                              minimumSize: const Size(0, AppSpacing.minimumControl),
+                            ),
                             label: const Text('导出日志'),
                           ),
                         ],
@@ -359,7 +370,13 @@ class _CardTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-    child: Text(label, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+    child: Text(
+      label,
+      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+        color: AppColors.forestDeep,
+        fontWeight: FontWeight.w800,
+      ),
+    ),
   );
 }
 
@@ -372,6 +389,8 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => BirdSettingsRow(
     title: label,
+    titleColor: const Color(0xFF2D2D2A),
+    titleFontWeight: FontWeight.w500,
     showDivider: showDivider,
     leading: Icon(icon, color: AppColors.forestPrimary),
     trailing: Flexible(
@@ -393,6 +412,8 @@ class _AssetInfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => BirdSettingsRow(
     title: label,
+    titleColor: const Color(0xFF2D2D2A),
+    titleFontWeight: FontWeight.w500,
     showDivider: showDivider,
     leading: BirdSettingsAssetIcon(asset, label: label, size: 24),
     trailing: Flexible(

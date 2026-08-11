@@ -50,15 +50,12 @@ abstract final class BirdRoutes {
   static const settingsHelp = '/settings/help';
 }
 
-/// Opens the device discovery flow in reconnect mode from any in-app entry.
-///
-/// Reconnect actions intentionally use the root navigator so an alert in a
-/// tab, bottom sheet, or nested page always reaches the same connection flow.
+/// Opens the canonical v1 device-management flow from any reconnect entry.
 void openReconnectConnection(BuildContext context) {
-  Navigator.of(context, rootNavigator: true).pushNamed(
-    BirdRoutes.connection,
-    arguments: const ConnectionArgs(entryMode: ConnectionEntryMode.addOrSwitch),
-  );
+  Navigator.of(
+    context,
+    rootNavigator: true,
+  ).pushNamed(BirdRoutes.settingsDeviceManagement);
 }
 
 abstract final class BirdAppRouter {

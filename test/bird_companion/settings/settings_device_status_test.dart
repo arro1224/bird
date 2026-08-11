@@ -1,6 +1,5 @@
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
-import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
@@ -29,8 +28,8 @@ void main() {
     await tester.tap(find.byKey(const Key('showcase-device-primary-action')));
     await tester.pumpAndSettle();
 
-    expect(route?.name, BirdRoutes.connection);
-    expect((route!.arguments! as ConnectionArgs).entryMode, ConnectionEntryMode.addOrSwitch);
+    expect(route?.name, BirdRoutes.settingsDeviceManagement);
+    expect(route?.arguments, isNull);
   });
 
   testWidgets('default reconnect opens device discovery when the scoped session has no device', (tester) async {
@@ -59,8 +58,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(session.reconnectCount, 0);
-    expect(route?.name, BirdRoutes.connection);
-    expect((route!.arguments! as ConnectionArgs).entryMode, ConnectionEntryMode.addOrSwitch);
+    expect(route?.name, BirdRoutes.settingsDeviceManagement);
+    expect(route?.arguments, isNull);
   });
 
   testWidgets('default reconnect preserves the latest scoped device and opens discovery', (tester) async {
@@ -101,8 +100,8 @@ void main() {
     await tester.pump();
 
     expect(session.reconnectCount, 0);
-    expect(route?.name, BirdRoutes.connection);
-    expect((route!.arguments! as ConnectionArgs).entryMode, ConnectionEntryMode.addOrSwitch);
+    expect(route?.name, BirdRoutes.settingsDeviceManagement);
+    expect(route?.arguments, isNull);
   });
 
   testWidgets('reconnect action invokes the injected callback once', (tester) async {

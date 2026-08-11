@@ -33,6 +33,7 @@ class PhotoSettingsPage extends StatelessWidget {
                 BirdSettingsRow(
                   key: const Key('photo-sort'),
                   title: '默认照片排序',
+                  minHeight: 86,
                   onTap: () => _showSortSheet(context),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -46,6 +47,7 @@ class PhotoSettingsPage extends StatelessWidget {
                 BirdSettingsRow(
                   key: const Key('photo-default-filter'),
                   title: '筛选默认条件',
+                  minHeight: 86,
                   onTap: () => _showDefaultFilterSheet(context),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -61,6 +63,7 @@ class PhotoSettingsPage extends StatelessWidget {
                 ),
                 BirdSettingsRow(
                   title: '仅显示鸟类照片',
+                  minHeight: 86,
                   showDivider: false,
                   trailing: Switch(value: controller.birdPhotosOnly, onChanged: controller.setBirdPhotosOnly),
                 ),

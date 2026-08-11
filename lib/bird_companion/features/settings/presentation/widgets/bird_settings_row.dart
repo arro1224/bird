@@ -13,6 +13,11 @@ class BirdSettingsRow extends StatelessWidget {
     this.showDivider = true,
     this.minHeight = 48,
     this.titleFontSize,
+    this.subtitleFontSize,
+    this.titleColor,
+    this.titleFontWeight,
+    this.leadingSize = 44,
+    this.leadingGap = AppSpacing.sm,
   });
 
   final String title;
@@ -23,6 +28,11 @@ class BirdSettingsRow extends StatelessWidget {
   final bool showDivider;
   final double minHeight;
   final double? titleFontSize;
+  final double? subtitleFontSize;
+  final Color? titleColor;
+  final FontWeight? titleFontWeight;
+  final double leadingSize;
+  final double leadingGap;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -37,8 +47,11 @@ class BirdSettingsRow extends StatelessWidget {
             child: Row(
               children: [
                 if (leading != null) ...[
-                  SizedBox.square(dimension: 44, child: Center(child: leading)),
-                  const SizedBox(width: AppSpacing.sm),
+                  SizedBox.square(
+                    dimension: leadingSize,
+                    child: Center(child: leading),
+                  ),
+                  SizedBox(width: leadingGap),
                 ],
                 Expanded(
                   child: Column(
@@ -48,8 +61,8 @@ class BirdSettingsRow extends StatelessWidget {
                       Text(
                         title,
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: AppColors.ink,
-                          fontWeight: FontWeight.w600,
+                          color: titleColor ?? AppColors.forestDeep,
+                          fontWeight: titleFontWeight ?? FontWeight.w700,
                           height: 1.2,
                           fontSize: titleFontSize,
                         ),
@@ -60,7 +73,7 @@ class BirdSettingsRow extends StatelessWidget {
                           subtitle!,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: AppColors.mutedInk,
-                            fontSize: 13,
+                            fontSize: subtitleFontSize ?? 14,
                             height: 1.25,
                           ),
                         ),

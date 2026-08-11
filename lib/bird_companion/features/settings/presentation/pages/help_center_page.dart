@@ -1,6 +1,7 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/help_detail_pages.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_card.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_row.dart';
@@ -77,7 +78,9 @@ class _HelpCenterPageState extends State<HelpCenterPage> {
                       title: visibleQuestions[index],
                       showDivider: index != visibleQuestions.length - 1,
                       trailing: const BirdChevron(),
-                      onTap: () => _message('已打开“${visibleQuestions[index]}”帮助内容'),
+                      onTap: () => _open(
+                        FaqDetailPage(question: visibleQuestions[index]),
+                      ),
                     ),
               ],
             ),
@@ -102,7 +105,7 @@ class _HelpCenterPageState extends State<HelpCenterPage> {
                   title: '提交问题反馈',
                   leading: const Icon(Icons.chat_bubble_outline_rounded, color: AppColors.forestPrimary),
                   trailing: const BirdChevron(),
-                  onTap: _showFeedbackGuide,
+                  onTap: () => _open(const FeedbackPage()),
                 ),
                 BirdSettingsRow(
                   key: const Key('help-send-diagnostics'),
@@ -116,7 +119,7 @@ class _HelpCenterPageState extends State<HelpCenterPage> {
                   showDivider: false,
                   leading: const Icon(Icons.menu_book_outlined, color: AppColors.forestPrimary),
                   trailing: const BirdChevron(),
-                  onTap: _showUserGuide,
+                  onTap: () => _open(const UserGuidePage()),
                 ),
               ],
             ),
@@ -146,60 +149,15 @@ class _HelpCenterPageState extends State<HelpCenterPage> {
     );
   }
 
-  void _message(String value) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
+  void _open(Widget page) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => page),
+    );
+  }
 
   void _openSystemLogs() {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: (_) => const SystemLogsPage()),
     );
   }
-
-  Future<void> _showFeedbackGuide() => showDialog<void>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('提交问题反馈'),
-      content: const Text('请先导出诊断包，并将问题发生时间、操作步骤和诊断文件一并提供给售后支持人员。'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext),
-          child: const Text('知道了'),
-        ),
-        FilledButton(
-          onPressed: () {
-            Navigator.pop(dialogContext);
-            _openSystemLogs();
-          },
-          child: const Text('导出诊断包'),
-        ),
-      ],
-    ),
-  );
-
-  Future<void> _showUserGuide() => showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    builder: (sheetContext) => const SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.sm,
-          AppSpacing.lg,
-          AppSpacing.xl,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('快速使用指南', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-            SizedBox(height: AppSpacing.md),
-            Text('1. 连接拍鸟盒子并确认设备状态正常。'),
-            SizedBox(height: AppSpacing.xs),
-            Text('2. 插入 SD 卡，创建批次并等待导入和 AI 分析完成。'),
-            SizedBox(height: AppSpacing.xs),
-            Text('3. 在相册中完成审阅，再从任务页创建复制任务。'),
-          ],
-        ),
-      ),
-    ),
-  );
 }

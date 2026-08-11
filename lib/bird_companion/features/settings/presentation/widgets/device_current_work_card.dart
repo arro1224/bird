@@ -25,9 +25,11 @@ class DeviceCurrentWorkCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Material(
     key: const Key('device-current-work-card'),
-    color: AppColors.surface.withValues(alpha: .9),
-    borderRadius: BorderRadius.circular(AppSpacing.radiusLarge),
+    color: AppColors.surface.withValues(alpha: .97),
+    borderRadius: BorderRadius.circular(14),
     clipBehavior: Clip.antiAlias,
+    elevation: 3,
+    shadowColor: const Color(0x15142A1B),
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -70,16 +72,21 @@ class _CurrentWorkRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ConstrainedBox(
-    constraints: const BoxConstraints(minHeight: 56),
+    constraints: const BoxConstraints(minHeight: 54),
     child: InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xxs),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xxs,
+        ),
         child: Row(
           children: [
             SizedBox.square(
-              dimension: 40,
-              child: Center(child: Icon(icon, size: 23, color: AppColors.forestDeep)),
+              dimension: 36,
+              child: Center(
+                child: Icon(icon, size: 21, color: AppColors.forestPrimary),
+              ),
             ),
             const SizedBox(width: AppSpacing.xs),
             Expanded(
@@ -91,13 +98,20 @@ class _CurrentWorkRow extends StatelessWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppColors.ink, fontSize: 15, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                      color: AppColors.forestDeep,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   Text(
                     summary,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppColors.mutedInk, fontSize: 13),
+                    style: const TextStyle(
+                      color: AppColors.mutedInk,
+                      fontSize: 12.5,
+                    ),
                   ),
                 ],
               ),
@@ -119,7 +133,11 @@ class _CurrentWorkRow extends StatelessWidget {
               ),
             ],
             const SizedBox(width: AppSpacing.xxs),
-            const Icon(Icons.chevron_right_rounded, size: 24, color: AppColors.forestDeep),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 22,
+              color: AppColors.forestDeep,
+            ),
           ],
         ),
       ),

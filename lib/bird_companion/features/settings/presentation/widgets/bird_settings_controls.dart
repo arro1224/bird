@@ -1,6 +1,23 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
+import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_atmosphere.dart';
 import 'package:flutter/material.dart';
+
+abstract final class BirdSettingsControlStyles {
+  static final segmented = ButtonStyle(
+    backgroundColor: WidgetStateProperty.resolveWith(
+      (states) => states.contains(WidgetState.selected) ? AppColors.forestPrimary : AppColors.settingsSurface,
+    ),
+    foregroundColor: WidgetStateProperty.resolveWith(
+      (states) => states.contains(WidgetState.selected) ? Colors.white : AppColors.forestDeep,
+    ),
+    side: WidgetStateProperty.resolveWith(
+      (states) => BorderSide(
+        color: states.contains(WidgetState.selected) ? AppColors.forestPrimary : AppColors.divider,
+      ),
+    ),
+  );
+}
 
 class BirdSettingsAssetIcon extends StatelessWidget {
   const BirdSettingsAssetIcon(this.asset, {super.key, required this.label, this.size = 26});
@@ -22,38 +39,31 @@ class BirdSettingsDeviceIcon extends StatelessWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    image: true,
-    label: '拍鸟设备',
-    child: Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: AppColors.forestSoft.withValues(alpha: .78),
-        shape: BoxShape.circle,
-        border: Border.all(color: AppColors.forestPrimary.withValues(alpha: .14)),
-      ),
-      child: Icon(Icons.router_rounded, size: size * .5, color: AppColors.forestPrimary),
-    ),
-  );
+  Widget build(BuildContext context) => BirdDeviceLineArt(size: size);
 }
 
 class BirdSettingsPrimaryButton extends StatelessWidget {
-  const BirdSettingsPrimaryButton({super.key, required this.label, required this.onPressed, this.icon});
+  const BirdSettingsPrimaryButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.height = 52,
+  });
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
+  final double height;
 
   @override
   Widget build(BuildContext context) => SizedBox(
     width: double.infinity,
-    height: 52,
+    height: height,
     child: FilledButton.icon(
       onPressed: onPressed,
       style: FilledButton.styleFrom(
         backgroundColor: AppColors.forestPrimary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppSpacing.radiusSmall)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppSpacing.radiusCompact)),
       ),
       icon: icon == null ? const SizedBox.shrink() : Icon(icon),
       label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -70,11 +80,16 @@ class BirdSettingsOutlineButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SizedBox(
     width: double.infinity,
-    height: 54,
+    height: 58,
     child: OutlinedButton.icon(
       onPressed: onPressed,
       icon: icon == null ? const SizedBox.shrink() : Icon(icon),
-      label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.forestPrimary,
+        side: const BorderSide(color: AppColors.forestPrimary, width: 1.4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppSpacing.radiusCompact)),
+      ),
+      label: Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
     ),
   );
 }
@@ -101,7 +116,10 @@ class BirdSettingsDropdownFrame extends StatelessWidget {
 }
 
 class BirdChevron extends StatelessWidget {
-  const BirdChevron({super.key});
+  const BirdChevron({super.key, this.color = AppColors.mutedInk});
+
+  final Color color;
+
   @override
-  Widget build(BuildContext context) => const Icon(Icons.chevron_right_rounded, color: AppColors.mutedInk);
+  Widget build(BuildContext context) => Icon(Icons.chevron_right_rounded, color: color);
 }

@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/app/app_shell.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
-import 'package:aves/bird_companion/app/theme/bird_asset_catalog.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
 import 'package:aves/bird_companion/features/settings/presentation/adapters/device_overview_adapter.dart';
@@ -19,6 +19,7 @@ import 'package:aves/bird_companion/features/settings/presentation/pages/photo_s
 import 'package:aves/bird_companion/features/settings/presentation/pages/storage_target_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
+import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_atmosphere.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/device_current_work_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -76,14 +77,19 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     backgroundColor: AppColors.paper,
     body: Stack(
       children: [
-        const Positioned.fill(child: _DevicePageAtmosphere()),
+        const Positioned.fill(child: BirdSettingsAtmosphere(home: true)),
         SafeArea(
           bottom: false,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, AppSpacing.sm),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.xs,
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                ),
                 sliver: SliverToBoxAdapter(child: _PageTitle()),
               ),
               SliverPadding(
@@ -91,38 +97,45 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
                 sliver: SliverToBoxAdapter(child: _buildDeviceCard(context)),
               ),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.lg),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                ),
                 sliver: SliverList.list(
                   children: [
                     _buildCurrentWork(context),
-                    const SizedBox(height: AppSpacing.md),
+                    const SizedBox(height: AppSpacing.sm),
                     _buildSection(
                       context,
+                      sectionKey: const Key('device-section-connection'),
                       title: '设备与连接',
                       items: [
                         _HomeItem(
                           key: const Key('showcase-device-management'),
                           title: '连接设备',
-                          icon: Icons.devices_rounded,
+                          icon: Icons.link_rounded,
                           onTap: () => _open(_SettingsPage.deviceManagement),
                         ),
                         _HomeItem(
                           key: const Key('showcase-device-details'),
                           title: '设备详情',
-                          icon: Icons.description_outlined,
+                          icon: Icons.info_outline_rounded,
                           onTap: () => _open(_SettingsPage.deviceDetails),
                         ),
                         _HomeItem(
                           key: const Key('showcase-network-diagnostics'),
                           title: '网络诊断',
-                          icon: Icons.wifi_find_rounded,
+                          icon: Icons.wifi_rounded,
                           onTap: () => _open(_SettingsPage.networkDiagnostics),
                         ),
                       ],
                     ),
-                    const SizedBox(height: AppSpacing.md),
+                    const SizedBox(height: AppSpacing.sm),
                     _buildSection(
                       context,
+                      sectionKey: const Key('device-section-photo'),
                       title: '照片与审阅',
                       items: [
                         _HomeItem(
@@ -134,14 +147,15 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
                         _HomeItem(
                           key: const Key('showcase-photo-settings'),
                           title: '照片处理默认值',
-                          icon: Icons.photo_library_outlined,
+                          icon: Icons.tune_rounded,
                           onTap: () => _open(_SettingsPage.photos),
                         ),
                       ],
                     ),
-                    const SizedBox(height: AppSpacing.md),
+                    const SizedBox(height: AppSpacing.sm),
                     _buildSection(
                       context,
+                      sectionKey: const Key('device-section-copy'),
                       title: '复制与导出',
                       items: [
                         _HomeItem(
@@ -158,9 +172,10 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: AppSpacing.md),
+                    const SizedBox(height: AppSpacing.sm),
                     _buildSection(
                       context,
+                      sectionKey: const Key('device-section-support'),
                       title: '系统支持',
                       items: [
                         _HomeItem(
@@ -234,7 +249,11 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
           padding: EdgeInsets.only(left: AppSpacing.xs, bottom: AppSpacing.xs),
           child: Text(
             '当前工作',
-            style: TextStyle(color: AppColors.forestDeep, fontSize: 21, fontWeight: FontWeight.w800),
+            style: TextStyle(
+              color: AppColors.forestDeep,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
         DeviceCurrentWorkCard(
@@ -250,12 +269,25 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     );
   }
 
-  Widget _buildSection(BuildContext context, {required String title, required List<_HomeItem> items}) => Material(
-    color: AppColors.surface.withValues(alpha: .9),
-    borderRadius: BorderRadius.circular(AppSpacing.radiusLarge),
+  Widget _buildSection(
+    BuildContext context, {
+    required Key sectionKey,
+    required String title,
+    required List<_HomeItem> items,
+  }) => Material(
+    key: sectionKey,
+    color: AppColors.surface.withValues(alpha: .96),
+    borderRadius: BorderRadius.circular(14),
     clipBehavior: Clip.antiAlias,
+    shadowColor: const Color(0x15142A1B),
+    elevation: 3,
     child: Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.sm, AppSpacing.xs, AppSpacing.sm, 0),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.sm,
+        AppSpacing.xxs,
+        AppSpacing.sm,
+        0,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -263,7 +295,11 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: 2),
             child: Text(
               title,
-              style: const TextStyle(color: AppColors.forestDeep, fontSize: 21, fontWeight: FontWeight.w800),
+              style: const TextStyle(
+                color: AppColors.forestDeep,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
           const Divider(height: 1, color: AppColors.divider),
@@ -277,15 +313,33 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     key: item.key,
     onTap: item.onTap,
     child: SizedBox(
-      height: 48,
+      height: 40,
       child: Row(
         children: [
-          SizedBox(width: 44, child: Icon(item.icon, size: 25, color: AppColors.forestDeep)),
+          SizedBox(
+            width: 40,
+            child: Icon(
+              item.icon,
+              size: 20,
+              color: AppColors.forestPrimary,
+            ),
+          ),
           const SizedBox(width: AppSpacing.xs),
           Expanded(
-            child: Text(item.title, style: const TextStyle(fontSize: 16, color: AppColors.ink)),
+            child: Text(
+              item.title,
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppColors.ink,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
-          const Icon(Icons.chevron_right_rounded, size: 26, color: AppColors.forestDeep),
+          const Icon(
+            Icons.chevron_right_rounded,
+            size: 22,
+            color: AppColors.forestDeep,
+          ),
         ],
       ),
     ),
@@ -302,8 +356,16 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
 
   void _showMessage(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 
-  void _open(_SettingsPage page) {
-    Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (context) => _buildPage(context, page)));
+  Future<void> _open(_SettingsPage page) async {
+    final shell = BirdShellNavigation.maybeOf(context);
+    shell?.setBottomNavigationVisible(false);
+    try {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (context) => _buildPage(context, page)),
+      );
+    } finally {
+      if (mounted) shell?.setBottomNavigationVisible(true);
+    }
   }
 
   Widget _buildPage(BuildContext context, _SettingsPage page) => switch (page) {
@@ -375,20 +437,21 @@ class SettingsDeviceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Material(
     key: const Key('showcase-device-card'),
-    color: AppColors.surface.withValues(alpha: .9),
-    borderRadius: BorderRadius.circular(AppSpacing.radiusLarge),
+    color: AppColors.surface.withValues(alpha: .97),
+    borderRadius: BorderRadius.circular(14),
     clipBehavior: Clip.antiAlias,
-    elevation: 0,
+    elevation: 3,
     shadowColor: const Color(0x241B2E20),
     child: InkWell(
       onTap: _isConnecting ? null : _primaryAction,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(AppSpacing.xs, AppSpacing.xs, AppSpacing.sm, AppSpacing.xs),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.sm, AppSpacing.xs, AppSpacing.sm, AppSpacing.xs),
         child: Row(
           children: [
-            const SizedBox.square(
-              dimension: 104,
-              child: Center(child: BirdSettingsDeviceIcon(size: 82)),
+            const SizedBox(
+              width: 78,
+              height: 86,
+              child: Center(child: BirdSettingsDeviceIcon(size: 66)),
             ),
             const SizedBox(width: AppSpacing.xs),
             Expanded(
@@ -400,24 +463,42 @@ class SettingsDeviceCard extends StatelessWidget {
                     overview.deviceName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppColors.forestDeep, fontSize: 18, fontWeight: FontWeight.w800),
+                    style: const TextStyle(
+                      color: AppColors.forestDeep,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                  const SizedBox(height: AppSpacing.xs),
+                  const SizedBox(height: AppSpacing.xxs),
                   Row(
                     children: [
-                      Icon(_statusIcon(overview.connectionKind), size: 20, color: _statusColor(overview.connectionKind)),
+                      Icon(
+                        _statusIcon(overview.connectionKind),
+                        size: 18,
+                        color: _statusColor(overview.connectionKind),
+                      ),
                       const SizedBox(width: AppSpacing.xs),
                       Text(
                         overview.statusLabel,
-                        style: TextStyle(color: _statusColor(overview.connectionKind), fontSize: 16, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          color: _statusColor(overview.connectionKind),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: AppSpacing.xs),
+                  const SizedBox(height: AppSpacing.xxs),
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
-                    child: Text(overview.metricsLabel, style: const TextStyle(color: AppColors.mutedInk, fontSize: 14)),
+                    child: Text(
+                      overview.metricsLabel,
+                      style: const TextStyle(
+                        color: AppColors.mutedInk,
+                        fontSize: 13,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -427,10 +508,11 @@ class SettingsDeviceCard extends StatelessWidget {
               key: const Key('showcase-device-primary-action'),
               onPressed: _isConnecting ? null : _primaryAction,
               style: OutlinedButton.styleFrom(
-                minimumSize: const Size(72, AppSpacing.minimumControl),
+                minimumSize: const Size(86, AppSpacing.minimumControl),
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                 side: const BorderSide(color: AppColors.forestPrimary, width: 1.5),
                 foregroundColor: AppColors.forestPrimary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppSpacing.radiusCompact)),
               ),
               child: _isConnecting
                   ? Semantics(
@@ -442,7 +524,13 @@ class SettingsDeviceCard extends StatelessWidget {
                         ),
                       ),
                     )
-                  : Text(_primaryActionLabel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  : Text(
+                      _primaryActionLabel,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
             ),
           ],
         ),
@@ -477,53 +565,6 @@ class SettingsDeviceCard extends StatelessWidget {
   };
 }
 
-class _DevicePageAtmosphere extends StatelessWidget {
-  const _DevicePageAtmosphere();
-
-  @override
-  Widget build(BuildContext context) => Stack(
-    fit: StackFit.expand,
-    children: [
-      Image.asset(BirdAssetCatalog.mountains, fit: BoxFit.cover, alignment: Alignment.topCenter),
-      Opacity(opacity: .48, child: Image.asset(BirdAssetCatalog.paper, fit: BoxFit.cover)),
-      Positioned(
-        top: 88,
-        right: -24,
-        width: 190,
-        height: 360,
-        child: Opacity(
-          opacity: .56,
-          child: Image.asset(BirdAssetCatalog.reedsRight, fit: BoxFit.contain, alignment: Alignment.topRight),
-        ),
-      ),
-      Positioned(
-        left: -32,
-        bottom: 40,
-        width: 190,
-        height: 360,
-        child: Opacity(
-          opacity: .54,
-          child: Image.asset(BirdAssetCatalog.reedsLeft, fit: BoxFit.contain, alignment: Alignment.bottomLeft),
-        ),
-      ),
-      Positioned(
-        top: 108,
-        left: 172,
-        width: 32,
-        height: 24,
-        child: Opacity(opacity: .42, child: Image.asset(BirdAssetCatalog.birdGliding, fit: BoxFit.contain)),
-      ),
-      Positioned(
-        top: 72,
-        right: 120,
-        width: 26,
-        height: 20,
-        child: Opacity(opacity: .3, child: Image.asset(BirdAssetCatalog.birdAscending, fit: BoxFit.contain)),
-      ),
-    ],
-  );
-}
-
 class _PageTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
@@ -532,6 +573,7 @@ class _PageTitle extends StatelessWidget {
       color: AppColors.forestDeep,
       fontWeight: FontWeight.w800,
       height: 1,
+      fontSize: 34,
     ),
   );
 }

@@ -8,10 +8,12 @@ import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/features/settings/presentation/bird_settings_asset_catalog.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/help_center_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_card.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_row.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_scaffold.dart';
+import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_sheet.dart';
 import 'package:flutter/material.dart';
 
 class NetworkDiagnosticsPage extends StatefulWidget {
@@ -47,7 +49,7 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
       actions: [
         IconButton(
           tooltip: '帮助',
-          onPressed: () => _message('网络帮助将在帮助中心中打开'),
+          onPressed: _openHelpCenter,
           icon: const Icon(Icons.help_outline_rounded, color: AppColors.forestPrimary),
         ),
         const SizedBox(width: AppSpacing.sm),
@@ -164,16 +166,15 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
                   subtitle: '切换至其他可用网络',
                   leading: const BirdSettingsAssetIcon(BirdSettingsAssetCatalog.wifi, label: '切换网络', size: 28),
                   trailing: const BirdChevron(),
-                  onTap: production ? _openDeviceManagement : () => _message('演示模式未扫描真实 Wi-Fi'),
+                  onTap: _openDeviceManagement,
                 ),
                 BirdSettingsRow(
+                  key: const Key('network-hotspot-details'),
                   title: '查看热点信息',
                   subtitle: '查看当前热点详细信息',
                   leading: const Icon(Icons.info_outline_rounded, color: AppColors.forestPrimary),
                   trailing: const BirdChevron(),
-                  onTap: () => _message(
-                    _status == null ? '当前没有可用的盒子网络信息' : '${_status!.connection.name} · ${_status!.connection.baseUri.authority}',
-                  ),
+                  onTap: _showHotspotDetails,
                 ),
                 BirdSettingsRow(
                   title: '导出诊断结果',
@@ -181,7 +182,7 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
                   showDivider: false,
                   leading: const Icon(Icons.download_outlined, color: AppColors.forestPrimary),
                   trailing: const BirdChevron(),
-                  onTap: production ? _openSystemLogs : () => _message('演示模式不会生成真实诊断文件'),
+                  onTap: _openSystemLogs,
                 ),
               ],
             ),
@@ -272,7 +273,40 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
     );
   }
 
-  void _message(String value) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
+  void _openHelpCenter() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => const HelpCenterPage()),
+    );
+  }
+
+  Future<void> _showHotspotDetails() => showBirdSettingsSheet<void>(
+    context: context,
+    title: '热点信息',
+    child: BirdSettingsCard(
+      child: Column(
+        children: [
+          BirdSettingsValueRow(
+            label: '热点名称',
+            value: _status?.connection.name ?? 'K7_7B2A',
+          ),
+          BirdSettingsValueRow(
+            label: '频段',
+            value: _status?.connection.networkMode.label ?? '5 GHz',
+          ),
+          BirdSettingsValueRow(
+            label: '设备地址',
+            value: _status?.connection.baseUri.host ?? '192.168.4.1',
+          ),
+          const BirdSettingsValueRow(label: '信号强度', value: '良好'),
+          const BirdSettingsValueRow(
+            label: '安全类型',
+            value: 'WPA2',
+            showDivider: false,
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _StatusPill extends StatelessWidget {

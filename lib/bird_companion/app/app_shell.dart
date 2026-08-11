@@ -50,8 +50,12 @@ class _BirdAppShellState extends State<BirdAppShell> {
 
   static const _destinations = <NavigationDestination>[
     NavigationDestination(icon: Icon(Icons.photo_outlined), selectedIcon: Icon(Icons.photo), label: '相册'),
-    NavigationDestination(icon: Icon(Icons.task_outlined), selectedIcon: Icon(Icons.task), label: '处理进度'),
-    NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
+    NavigationDestination(icon: Icon(Icons.task_outlined), selectedIcon: Icon(Icons.task), label: '任务'),
+    NavigationDestination(
+      icon: Icon(Icons.devices_outlined),
+      selectedIcon: Icon(Icons.devices_rounded),
+      label: '设备',
+    ),
   ];
 
   @override
@@ -63,7 +67,7 @@ class _BirdAppShellState extends State<BirdAppShell> {
         setBottomNavigationVisible: _setBottomNavigationVisible,
         child: Column(
           children: [
-            if (_selectedIndex != 0)
+            if (_selectedIndex == 1)
               BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
                 bloc: BirdCompanionScope.of(context).deviceSessionCubit,
                 builder: (context, state) => DisconnectedBanner(
@@ -81,6 +85,7 @@ class _BirdAppShellState extends State<BirdAppShell> {
                   selectedTab: _selectedTab,
                   navigatorKey: _navigatorKeys[index],
                   onGenerateRoute: widget.onGenerateRoute,
+                  onChildRouteChanged: _setBottomNavigationVisible,
                   root: switch (index) {
                     0 => const AlbumHomePage(),
                     1 => TaskExperienceRoot(
@@ -144,13 +149,21 @@ class _BirdAppShellState extends State<BirdAppShell> {
 }
 
 class _TabNavigator extends StatelessWidget {
-  const _TabNavigator({required this.index, required this.selectedTab, required this.navigatorKey, required this.root, this.onGenerateRoute});
+  const _TabNavigator({
+    required this.index,
+    required this.selectedTab,
+    required this.navigatorKey,
+    required this.root,
+    this.onGenerateRoute,
+    this.onChildRouteChanged,
+  });
 
   final int index;
   final ValueListenable<int> selectedTab;
   final GlobalKey<NavigatorState> navigatorKey;
   final Widget root;
   final RouteFactory? onGenerateRoute;
+  final ValueChanged<bool>? onChildRouteChanged;
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<int>(
@@ -160,7 +173,14 @@ class _TabNavigator extends StatelessWidget {
       onPopWithResult: (result) => navigatorKey.currentState?.pop(result),
       child: Navigator(
         key: navigatorKey,
-        observers: [BirdFeedbackNavigatorObserver()],
+        observers: [
+          BirdFeedbackNavigatorObserver(),
+          if (onChildRouteChanged != null)
+            _TabRouteVisibilityObserver(
+              enabled: index == 2,
+              onChanged: onChildRouteChanged!,
+            ),
+        ],
         onGenerateRoute: (settings) {
           if (settings.name == Navigator.defaultRouteName) {
             return MaterialPageRoute<void>(settings: settings, builder: (_) => root);
@@ -175,6 +195,31 @@ class _TabNavigator extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _TabRouteVisibilityObserver extends NavigatorObserver {
+  _TabRouteVisibilityObserver({required this.enabled, required this.onChanged});
+
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    if (enabled && previousRoute != null) onChanged(false);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    if (enabled && previousRoute?.isFirst == true) onChanged(true);
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didRemove(route, previousRoute);
+    if (enabled && (previousRoute == null || previousRoute.isFirst)) onChanged(true);
+  }
 }
 
 class BirdShellNavigation extends InheritedWidget {
