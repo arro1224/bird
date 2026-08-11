@@ -73,6 +73,34 @@ flutter run --dart-define=BIRD_TEST_BASE_URL=http://10.0.2.2:8787
 - `GET /api/v1/species`
 - `GET /mock/media/{asset}.png`
 
+任务、存储卡和复制验收接口：
+
+- `GET /api/v1/storage/cards/current/scan`
+- `POST /api/v1/storage/cards/current/rescan`
+- `POST /api/v1/projects`
+- `POST /api/v1/projects/{batchId}/imports`
+- `POST /api/v1/projects/{batchId}/analysis-jobs`
+- `GET /api/v1/projects/{batchId}/copy/estimate`
+- `POST /api/v1/projects/{batchId}/copy`
+- `GET /api/v1/jobs`
+- `GET /api/v1/jobs/{jobId}`
+- `POST /api/v1/jobs/{jobId}/actions`
+- `GET /api/v1/jobs/{jobId}/report`
+- `GET /api/v1/jobs/{jobId}/failures`
+
+## B12-A 已启动模拟盒子验收
+
+当 K7 模拟盒子已经启动时，可直接运行生产 API 与本地筛选组合门禁：
+
+```powershell
+dart run tool/acceptance/b12a_k7_acceptance.dart --base-url=http://127.0.0.1:8787
+```
+
+该命令会读取健康状态、设备、项目、存储卡、场景和照片，验证“白鹭”、
+“普通翠鸟”及组合筛选，并在模拟器内创建隔离的 B12-A 项目和任务以检查
+暂停、恢复、取消、409、422、复制报告和日志下载。写入仅存在于模拟器进程；
+重启未指定 `--state-file` 的模拟盒子即可恢复初始数据。
+
 B3 鉴权联调接口：
 
 - `POST /api/v1/device/pair`

@@ -26,4 +26,20 @@ void main() {
 
     expect(restored.deviceId, isNull);
   });
+
+  test('legacy batch review keeps project routing outside the wire payload', () {
+    final restored = PendingOperation.fromJson({
+      'id': 'legacy-batch',
+      'type': 'batchReview',
+      'payload': const {
+        'batch_id': 'project-1',
+        'file_ids': ['photo-1'],
+      },
+      'created_at': DateTime.utc(2026, 7, 22).toIso8601String(),
+    });
+
+    expect(restored.projectId, 'project-1');
+    expect(restored.payload, isNot(contains('project_id')));
+    expect(restored.payload, isNot(contains('batch_id')));
+  });
 }

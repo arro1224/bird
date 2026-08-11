@@ -190,6 +190,7 @@ class _TaskTabNavigator extends StatelessWidget {
       builder: (detailContext) => TaskDetailPage(
         controller: controller,
         taskId: taskId,
+        allowDemoCompletion: true,
         onShowResult: () => _openResult(detailContext),
         onTaskCompleted: (type) => _advanceAfterCompletion(detailContext, type),
       ),
@@ -204,6 +205,7 @@ class _TaskTabNavigator extends StatelessWidget {
             builder: (analysisContext) => TaskDetailPage(
               controller: controller,
               taskId: 'demo-analysis-paused',
+              allowDemoCompletion: true,
               onTaskCompleted: (nextType) => _advanceAfterCompletion(analysisContext, nextType),
             ),
           ),

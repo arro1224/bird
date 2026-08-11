@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "captured_at": "REQUIRED_ISO_8601_TIMESTAMP",
+  "final_result": "REQUIRED_PASSED_AFTER_ALL_CASES",
+  "environment": {
+    "real_hardware": false,
+    "android_device_serial": "REQUIRED_PHYSICAL_ANDROID_SERIAL",
+    "operator": "REQUIRED_OPERATOR",
+    "location": "REQUIRED_TEST_LOCATION"
+  },
+  "app": {
+    "git_sha": "REQUIRED_40_CHAR_GIT_SHA",
+    "package_id": "deckers.thibault.aves.bird",
+    "build_mode": "release",
+    "signed": false,
+    "signature_verified": false,
+    "certificate_sha256": "REQUIRED_APPROVED_CERT_SHA256",
+    "apk_sha256": "REQUIRED_RELEASE_APK_SHA256"
+  },
+  "box": {
+    "device_id": "REQUIRED_REAL_DEVICE_ID",
+    "device_model": "REQUIRED_REAL_DEVICE_MODEL",
+    "hardware_serial": "REQUIRED_HARDWARE_SERIAL",
+    "firmware_sha": "REQUIRED_FROZEN_FIRMWARE_SHA",
+    "api_version": "v1",
+    "database_schema_version": "REQUIRED_SCHEMA_VERSION",
+    "base_url": "REQUIRED_REAL_LAN_OR_HOTSPOT_URL"
+  },
+  "metrics": {
+    "photo_count": 0,
+    "egret_matches": 0,
+    "other_species_matches": 0,
+    "first_feedback_ms": 0,
+    "complete_search_ms": 0,
+    "memory_peak_mb": 0,
+    "cancel_verified": false
+  },
+  "cases": [
+    {"id": "connect_mdns", "status": "pending", "evidence": []},
+    {"id": "connect_qr", "status": "pending", "evidence": []},
+    {"id": "connect_manual", "status": "pending", "evidence": []},
+    {"id": "pair_session_restore_revocation", "status": "pending", "evidence": []},
+    {"id": "device_status", "status": "pending", "evidence": []},
+    {"id": "sd_detected", "status": "pending", "evidence": []},
+    {"id": "sd_missing", "status": "pending", "evidence": []},
+    {"id": "sd_unreadable", "status": "pending", "evidence": []},
+    {"id": "sd_empty", "status": "pending", "evidence": []},
+    {"id": "sd_reinsert_rescan", "status": "pending", "evidence": []},
+    {"id": "scan_project_import_analysis", "status": "pending", "evidence": []},
+    {"id": "job_resume_after_app_kill", "status": "pending", "evidence": []},
+    {"id": "network_disconnect_reconnect", "status": "pending", "evidence": []},
+    {"id": "ws_rest_convergence", "status": "pending", "evidence": []},
+    {"id": "device_switch", "status": "pending", "evidence": []},
+    {"id": "gallery_review", "status": "pending", "evidence": []},
+    {"id": "egret_cross_page_search", "status": "pending", "evidence": []},
+    {"id": "other_species_search", "status": "pending", "evidence": []},
+    {"id": "combined_filter", "status": "pending", "evidence": []},
+    {"id": "filter_cancel_partial_cache", "status": "pending", "evidence": []},
+    {"id": "offline_replay_conflict", "status": "pending", "evidence": []},
+    {"id": "copy_target_online", "status": "pending", "evidence": []},
+    {"id": "copy_target_offline", "status": "pending", "evidence": []},
+    {"id": "copy_target_insufficient_space", "status": "pending", "evidence": []},
+    {"id": "copy_interrupted_resume", "status": "pending", "evidence": []},
+    {"id": "copy_failures_report_logs", "status": "pending", "evidence": []},
+    {"id": "battery_low", "status": "pending", "evidence": []},
+    {"id": "external_power", "status": "pending", "evidence": []},
+    {"id": "over_temperature", "status": "pending", "evidence": []},
+    {"id": "layout_360_1_5x", "status": "pending", "evidence": []},
+    {"id": "layout_426_1_3x", "status": "pending", "evidence": []},
+    {"id": "signed_install", "status": "pending", "evidence": []},
+    {"id": "rollback", "status": "pending", "evidence": []}
+  ],
+  "rollback": {
+    "app_artifact": "REQUIRED_PREVIOUS_APK_PATH",
+    "firmware_artifact": "REQUIRED_PREVIOUS_FIRMWARE_PATH",
+    "instructions": "REQUIRED_ROLLBACK_INSTRUCTIONS_PATH"
+  },
+  "approvals": {
+    "protocol": {"status": "pending", "evidence": "REQUIRED_APPROVAL_PATH"},
+    "flutter_core": {"status": "pending", "evidence": "REQUIRED_APPROVAL_PATH"},
+    "box_api": {"status": "pending", "evidence": "REQUIRED_APPROVAL_PATH"},
+    "qa_release": {"status": "pending", "evidence": "REQUIRED_APPROVAL_PATH"}
+  }
+}

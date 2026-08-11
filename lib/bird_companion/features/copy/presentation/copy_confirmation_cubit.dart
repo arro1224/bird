@@ -43,11 +43,13 @@ class CopyConfirmationState {
     String? jobId,
     bool? xmpEnabled,
     bool? verifyAfterCopy,
+    bool clearEstimate = false,
+    bool clearTargetId = false,
   }) => CopyConfirmationState(
     mode: mode ?? this.mode,
     loading: loading ?? this.loading,
-    estimate: estimate ?? this.estimate,
-    targetId: targetId ?? this.targetId,
+    estimate: clearEstimate ? null : estimate ?? this.estimate,
+    targetId: clearTargetId ? null : targetId ?? this.targetId,
     preferredTargetId: preferredTargetId ?? this.preferredTargetId,
     error: clearError ? null : error ?? this.error,
     submitted: submitted ?? this.submitted,
@@ -77,18 +79,39 @@ class CopyConfirmationCubit extends Cubit<CopyConfirmationState> {
   final CopyRepository _repository;
   final String batchId;
   final AppDataChangeBus? _dataChanges;
+  int _loadGeneration = 0;
+
   Future<void> load([String? mode]) async {
     final value = mode ?? state.mode;
-    emit(state.copyWith(loading: true, mode: value, clearError: true, submitted: false));
+    final generation = ++_loadGeneration;
+    emit(
+      state.copyWith(
+        loading: true,
+        mode: value,
+        clearError: true,
+        submitted: false,
+        clearEstimate: value != state.mode,
+      ),
+    );
     try {
       final estimate = await _repository.estimate(batchId, value);
+      if (isClosed || generation != _loadGeneration) return;
       final available = estimate.targets.where(
         (item) => item.online && item.freeBytes >= estimate.requiredBytes,
       );
+      final selected = available.where((item) => item.id == state.targetId).firstOrNull;
       final preferred = available.where((item) => item.id == state.preferredTargetId).firstOrNull;
-      final target = preferred ?? available.firstOrNull;
-      emit(state.copyWith(loading: false, estimate: estimate, targetId: target?.id));
+      final target = selected ?? preferred ?? available.firstOrNull;
+      emit(
+        state.copyWith(
+          loading: false,
+          estimate: estimate,
+          targetId: target?.id,
+          clearTargetId: target == null,
+        ),
+      );
     } catch (error) {
+      if (isClosed || generation != _loadGeneration) return;
       emit(state.copyWith(loading: false, error: error));
     }
   }
@@ -96,18 +119,25 @@ class CopyConfirmationCubit extends Cubit<CopyConfirmationState> {
   Future<void> submit() async {
     final target = state.targetId;
     if (target == null || state.loading || state.submitted || !state.hasEnoughSpace) return;
+    ++_loadGeneration;
+    final mode = state.mode;
+    final xmpEnabled = state.xmpEnabled;
+    final verifyAfterCopy = state.verifyAfterCopy;
+    CopyEstimate? refreshedEstimate;
     emit(state.copyWith(loading: true, clearError: true));
     try {
       // Capacity and target availability may have changed while the user was
       // reviewing the confirmation page. Always validate against a fresh
       // estimate immediately before creating the task.
-      final estimate = await _repository.estimate(batchId, state.mode);
+      final estimate = await _repository.estimate(batchId, mode);
+      refreshedEstimate = estimate;
       final refreshedTarget = estimate.targets.where((item) => item.id == target).firstOrNull;
       if (refreshedTarget == null || !refreshedTarget.online || refreshedTarget.freeBytes < estimate.requiredBytes) {
         emit(
           state.copyWith(
             loading: false,
             estimate: estimate,
+            clearTargetId: true,
             error: StateError('目标盘已断开或剩余空间不足，请重新选择后再试。'),
           ),
         );
@@ -115,20 +145,33 @@ class CopyConfirmationCubit extends Cubit<CopyConfirmationState> {
       }
       final job = await _repository.create(
         batchId,
-        state.mode,
+        mode,
         target,
-        xmpEnabled: state.xmpEnabled,
-        verifyAfterCopy: state.verifyAfterCopy,
+        xmpEnabled: xmpEnabled,
+        verifyAfterCopy: verifyAfterCopy,
         version: estimate.version,
       );
       _dataChanges?.publish({AppDataResource.jobs, AppDataResource.device, AppDataResource.batches}, reason: 'copy_job_created');
       emit(state.copyWith(loading: false, estimate: estimate, submitted: true, jobId: job.id));
     } catch (error) {
-      emit(state.copyWith(loading: false, error: error));
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          loading: false,
+          estimate: refreshedEstimate,
+          error: error,
+        ),
+      );
     }
   }
 
-  void selectTarget(String id) => emit(state.copyWith(targetId: id));
+  void selectTarget(String id) {
+    final estimate = state.estimate;
+    if (state.loading || estimate == null) return;
+    final target = estimate.targets.where((item) => item.id == id).firstOrNull;
+    if (target == null || !target.online || target.freeBytes < estimate.requiredBytes) return;
+    emit(state.copyWith(targetId: id, clearError: true));
+  }
 
   void setXmpEnabled(bool value) => emit(state.copyWith(xmpEnabled: value));
 }

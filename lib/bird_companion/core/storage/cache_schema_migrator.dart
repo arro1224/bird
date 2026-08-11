@@ -21,7 +21,11 @@ abstract final class CacheSchemaMigrator {
       final valid = <Object?>[];
       final quarantine = <Object?>[];
       for (final value in legacyPending is List ? legacyPending : const []) {
-        (_validPendingOperation(value) ? valid : quarantine).add(value);
+        if (_validPendingOperation(value)) {
+          valid.add(_normalizePendingOperation(value));
+        } else {
+          quarantine.add(value);
+        }
       }
       writes[pendingOperationsKey] = valid;
       if (quarantine.isNotEmpty) {
@@ -62,5 +66,36 @@ abstract final class CacheSchemaMigrator {
         }.contains(type) &&
         payload is Map &&
         createdAt != null;
+  }
+
+  static Object? _normalizePendingOperation(Object? value) {
+    if (value is! Map || value['type']?.toString() != 'batchReview') {
+      return value;
+    }
+    final payloadValue = value['payload'];
+    if (payloadValue is! Map) return value;
+
+    final normalized = Map<Object?, Object?>.from(value);
+    final payload = Map<Object?, Object?>.from(payloadValue);
+    final projectId = _firstNonEmpty([
+      value['project_id'],
+      payload['project_id'],
+      payload['batch_id'],
+    ]);
+    payload.remove('batch_id');
+    if (projectId != null) {
+      normalized['project_id'] = projectId;
+      payload['project_id'] = projectId;
+    }
+    normalized['payload'] = payload;
+    return normalized;
+  }
+
+  static String? _firstNonEmpty(Iterable<Object?> values) {
+    for (final value in values) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty) return text;
+    }
+    return null;
   }
 }

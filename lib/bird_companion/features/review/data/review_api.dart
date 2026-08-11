@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
@@ -35,6 +36,7 @@ class ReviewApi {
       );
     }).toList();
     final decisionMap = data['decision'] is Map ? Map<String, dynamic>.from(data['decision'] as Map) : null;
+    final decisionVersion = decisionMap == null ? null : ProtocolValidation.optionalNonNegativeInt(decisionMap, 'version');
     final decision = decisionMap == null
         ? null
         : UserDecision(
@@ -44,7 +46,7 @@ class ReviewApi {
             userSpeciesId: decisionMap['user_species_id']?.toString(),
             userSpecies: decisionMap['user_species']?.toString(),
             userTags: (decisionMap['user_tags'] as List? ?? const []).map((tag) => tag.toString()).toList(),
-            version: (decisionMap['version'] as num?)?.toInt(),
+            version: decisionVersion ?? photo.version,
           );
     return ReviewDetail(
       photo: PhotoDetail(
@@ -58,8 +60,28 @@ class ReviewApi {
     );
   }
 
-  Future<void> save(UserDecisionPatch value) => _client.post(
-    ApiEndpoints.photoDecision.replaceFirst('{fileId}', value.fileId),
-    data: value.toJson(),
-  );
+  Future<void> save(
+    UserDecisionPatch value, {
+    String? idempotencyKey,
+  }) {
+    if (value.fileId.trim().isEmpty) {
+      throw const ProtocolCompatibilityException('file_id', '不能为空');
+    }
+    if (value.version == null || value.version! < 0) {
+      throw const ProtocolCompatibilityException('version', '必须是非负整数');
+    }
+    if (!value.hasChanges) {
+      throw const ProtocolCompatibilityException(
+        'decision',
+        '至少包含一个待修改字段',
+      );
+    }
+    return _client
+        .post(
+          ApiEndpoints.photoDecision.replaceFirst('{fileId}', value.fileId),
+          data: value.toJson(),
+          idempotencyKey: idempotencyKey,
+        )
+        .then((_) {});
+  }
 }

@@ -6,6 +6,7 @@ param(
     [string]$DartCommand = "dart",
     [string]$EvidencePath = "build\b7\b7-gate-evidence.json",
     [string]$RealBoxEvidencePath,
+    [string]$B12BEvidencePath,
     [switch]$SkipPubGet
 )
 
@@ -222,9 +223,16 @@ try {
         if ([string]::IsNullOrWhiteSpace($RealBoxEvidencePath)) {
             throw "Release mode requires -RealBoxEvidencePath."
         }
+        if ([string]::IsNullOrWhiteSpace($B12BEvidencePath)) {
+            throw "Release mode requires -B12BEvidencePath."
+        }
         $resolvedRealBoxEvidence = Resolve-EvidencePath $RealBoxEvidencePath
         if (-not (Test-Path -LiteralPath $resolvedRealBoxEvidence)) {
             throw "Real-box evidence was not found: $resolvedRealBoxEvidence"
+        }
+        $resolvedB12BEvidence = Resolve-EvidencePath $B12BEvidencePath
+        if (-not (Test-Path -LiteralPath $resolvedB12BEvidence)) {
+            throw "B12-B evidence was not found: $resolvedB12BEvidence"
         }
         $realBoxEvidence = Get-Content -LiteralPath $resolvedRealBoxEvidence -Raw |
             ConvertFrom-Json
@@ -287,6 +295,14 @@ try {
             if ($LASTEXITCODE -ne 0) {
                 throw "Android release signature verification failed."
             }
+        }
+        Invoke-GateStep "B12-B real-hardware evidence" {
+            Invoke-NativeCommand $DartCommand @(
+                "run",
+                "tool/acceptance/b12b_release_gate.dart",
+                "--evidence=$resolvedB12BEvidence",
+                "--apk=build/app/outputs/flutter-apk/app-bird-release.apk"
+            )
         }
     }
     $status = "passed"

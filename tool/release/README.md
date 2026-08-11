@@ -67,7 +67,8 @@ powershell -ExecutionPolicy Bypass -File tool/release/run_b7_gate.ps1 `
 ```powershell
 powershell -ExecutionPolicy Bypass -File tool/release/run_b7_gate.ps1 `
   -Mode Release `
-  -RealBoxEvidencePath C:\secure\bird-real-box-e2e.json
+  -RealBoxEvidencePath C:\secure\bird-real-box-e2e.json `
+  -B12BEvidencePath C:\secure\b12b-real-hardware-evidence.json
 ```
 
 正式门禁不会把缺失盒子材料、调试签名或手工声明当作通过。发布包生成后还可单独
@@ -76,3 +77,22 @@ powershell -ExecutionPolicy Bypass -File tool/release/run_b7_gate.ps1 `
 ```powershell
 powershell -ExecutionPolicy Bypass -File tool/release/verify_android_release.ps1
 ```
+
+## B12-B 真实硬件专项证据
+
+B7 正式门禁之外，任务设计与相册搜索筛选的最终硬件放行还必须填写
+`docs/acceptance/b12b-real-hardware-evidence.template.json`，并运行：
+
+```powershell
+dart run tool/acceptance/b12b_release_gate.dart `
+  --evidence=C:\secure\b12b-real-hardware-evidence.json `
+  --apk=build\app\outputs\flutter-apk\app-bird-release.apk
+```
+
+B12-B 校验器要求 33 个真机用例、3,672 张以上真实照片性能指标、正式签名
+Release APK、真实固件与数据库版本、回滚材料和四方批准证据。它会拒绝
+`mock-k7-*`、模拟器序列号、回环地址、Debug APK、脏工作树、占位字段和包含
+Token/密码/配对码的证据文件。
+
+`run_b7_gate.ps1 -Mode Release` 已强制要求 `-B12BEvidencePath`，并在正式 APK
+验签完成后调用同一校验器；不能通过跳过独立命令绕过 B12-B。

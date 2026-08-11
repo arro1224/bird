@@ -249,7 +249,13 @@ class _ViewState extends State<_View> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
-              SubjectOverlayView(photo: detail.photo, subjects: _showSubjects ? detail.photo.subjects : const []),
+              SubjectOverlayView(
+                photo: detail.photo,
+                subjects: _showSubjects ? detail.photo.subjects : const [],
+                onPrevious: _previousId == null ? null : () => _goPrevious(context),
+                onNext: _nextId == null && !_hasMoreSequence ? null : () => _goNext(context),
+                navigationEnabled: !state.loading && !state.saving && !_loadingMoreSequence,
+              ),
               const SizedBox(height: 12),
               _RecognitionSummary(
                 detail: detail,
@@ -336,7 +342,7 @@ class _ViewState extends State<_View> {
 
   void _handleMenu(BuildContext context, PhotoDetailState state, String value) {
     final detail = state.detail;
-    if (detail == null || state.loading || state.saving) return;
+    if (detail == null || state.loading || state.saving || _loadingMoreSequence) return;
     if (value == 'undo') {
       context.read<PhotoDetailCubit>().undo();
       return;
@@ -353,13 +359,25 @@ class _ViewState extends State<_View> {
       _save(context, detail, KeepState.pending);
       return;
     }
-    if (value == 'next' && _nextId == null) {
-      _loadNextPage(context);
+    if (value == 'previous') {
+      _goPrevious(context);
       return;
     }
-    final id = value == 'previous' ? _previousId : _nextId;
-    if (id == null) return;
-    _openInPlace(context, id);
+    if (value == 'next') _goNext(context);
+  }
+
+  Future<void> _goPrevious(BuildContext context) async {
+    final id = _previousId;
+    if (id != null) await _openInPlace(context, id);
+  }
+
+  Future<void> _goNext(BuildContext context) async {
+    final id = _nextId;
+    if (id != null) {
+      await _openInPlace(context, id);
+      return;
+    }
+    await _loadNextPage(context);
   }
 
   Future<void> _openInPlace(BuildContext context, String id) async {
@@ -443,7 +461,7 @@ class _ViewState extends State<_View> {
     userScore: double.tryParse(_score.text),
     userTags: parseUserTags(_tags.text),
     updatedAt: DateTime.now(),
-    version: detail.decision?.version,
+    version: detail.decision?.version ?? detail.photo.summary.version,
   );
 
   Future<void> _editTags(BuildContext context, ReviewDetail detail) async {
@@ -551,7 +569,7 @@ class _RecognitionSummary extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                confidence == null ? '识别度：等待确认' : '识别度：${UserFacingText.recognitionCertaintyWithPercent(confidence)}',
+                confidence == null ? '识别度：等待确认' : '识别度：${UserFacingText.recognitionPercent(confidence)}',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               if (confidence != null) ...[

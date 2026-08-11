@@ -10,7 +10,7 @@ class ProductionTaskExperienceDataSource implements TaskExperienceDataSource {
   List<TaskSummary> initialTasks() => const [];
 
   @override
-  List<TaskType> executableTaskTypes() => const [TaskType.importIndex];
+  List<TaskType> executableTaskTypes() => const [];
 
   @override
   SdCardSnapshot initialSdCard() => SdCardSnapshot(

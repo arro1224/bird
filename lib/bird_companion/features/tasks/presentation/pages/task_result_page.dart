@@ -30,6 +30,7 @@ class TaskResultPage extends StatelessWidget {
           const SizedBox(height: 18),
           const Text(
             '照片复制完成',
+            textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.forestDeep, fontSize: 31, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
@@ -74,23 +75,20 @@ class TaskResultPage extends StatelessWidget {
           const SizedBox(height: 12),
           TaskActionButton(
             '查看复制报告',
+            key: const Key('task-result-open-report'),
             filled: false,
-            onPressed: () => showModalBottomSheet<void>(
-              context: context,
-              builder: (_) => SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: Text(
-                    '复制报告\n${_count(result.photoCount)} 个文件已完成，'
-                    '待复核 ${_count(result.pendingReviewCount)} 个。',
-                    style: const TextStyle(fontSize: 18, height: 1.7),
-                  ),
-                ),
-              ),
+            onPressed: () => _showReport(
+              context,
+              photoCount: result.photoCount,
+              pendingReviewCount: result.pendingReviewCount,
             ),
           ),
           const SizedBox(height: 10),
-          TaskActionButton('进入相册', onPressed: onOpenAlbum ?? () {}),
+          TaskActionButton(
+            '进入相册',
+            key: const Key('task-result-open-album'),
+            onPressed: onOpenAlbum ?? () {},
+          ),
           const SizedBox(height: 8),
         ],
       ),
@@ -105,18 +103,52 @@ class TaskResultPage extends StatelessWidget {
     );
   }
 
-  Widget _row(IconData icon, String label, String value, {bool divider = true}) => Column(
-    children: [
-      ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: Icon(icon, color: AppColors.forestPrimary),
-        title: Text(label),
-        trailing: Text(
-          value,
-          style: const TextStyle(color: AppColors.forestPrimary, fontSize: 20, fontWeight: FontWeight.w700),
+  Future<void> _showReport(
+    BuildContext context, {
+    required int photoCount,
+    required int pendingReviewCount,
+  }) => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: AppColors.paper,
+    builder: (sheetContext) => SafeArea(
+      child: FractionallySizedBox(
+        heightFactor: .72,
+        child: ListView(
+          key: const Key('task-result-report-scroll'),
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          children: [
+            const Text(
+              '复制报告',
+              style: TextStyle(
+                color: AppColors.forestDeep,
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '${_count(photoCount)} 个文件已完成，待复核 ${_count(pendingReviewCount)} 个。',
+              style: const TextStyle(fontSize: 18, height: 1.7),
+            ),
+            const SizedBox(height: 20),
+            FilledButton(
+              key: const Key('task-result-close-report'),
+              onPressed: () => Navigator.pop(sheetContext),
+              child: const Text('完成'),
+            ),
+          ],
         ),
       ),
-      if (divider) const Divider(height: 1),
-    ],
+    ),
+  );
+
+  Widget _row(IconData icon, String label, String value, {bool divider = true}) => TaskMetricRow(
+    icon: icon,
+    label: label,
+    value: value,
+    divider: divider,
+    valueStyle: const TextStyle(color: AppColors.forestPrimary, fontSize: 20, fontWeight: FontWeight.w700),
   );
 }

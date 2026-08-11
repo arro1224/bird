@@ -33,6 +33,28 @@ class BirdSettingsSnapshot {
   final bool autoOpenReport;
   final String selectedStorageId;
 
+  BirdSettingsSnapshot copyWith({
+    String? copyMode,
+    String? xmpStrategy,
+    bool? verifyCopies,
+    String? selectedStorageId,
+  }) => BirdSettingsSnapshot(
+    gridColumns: gridColumns,
+    showSubjectBox: showSubjectBox,
+    autoAdvance: autoAdvance,
+    showRatingOverlay: showRatingOverlay,
+    thumbnailSize: thumbnailSize,
+    sortOrder: sortOrder,
+    birdPhotosOnly: birdPhotosOnly,
+    defaultPhotoFilter: defaultPhotoFilter,
+    copyMode: copyMode ?? this.copyMode,
+    xmpStrategy: xmpStrategy ?? this.xmpStrategy,
+    verifyCopies: verifyCopies ?? this.verifyCopies,
+    lowBatteryReminder: lowBatteryReminder,
+    autoOpenReport: autoOpenReport,
+    selectedStorageId: selectedStorageId ?? this.selectedStorageId,
+  );
+
   factory BirdSettingsSnapshot.fromJson(Map<String, dynamic> json) => BirdSettingsSnapshot(
     gridColumns: (json['grid_columns'] as num?)?.toInt() ?? 4,
     showSubjectBox: json['show_subject_box'] as bool? ?? true,

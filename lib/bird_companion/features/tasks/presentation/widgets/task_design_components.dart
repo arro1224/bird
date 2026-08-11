@@ -67,6 +67,75 @@ class TaskStatusChip extends StatelessWidget {
   );
 }
 
+class TaskMetricRow extends StatelessWidget {
+  const TaskMetricRow({
+    super.key,
+    required this.label,
+    required this.value,
+    this.icon,
+    this.divider = true,
+    this.valueStyle,
+  });
+
+  final String label;
+  final String value;
+  final IconData? icon;
+  final bool divider;
+  final TextStyle? valueStyle;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final stacked = constraints.maxWidth < 240 || MediaQuery.textScalerOf(context).scale(1) >= 1.3;
+          final labelWidget = Text(label);
+          final valueWidget = Text(
+            value,
+            key: ValueKey('task-metric-value-$label'),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            textAlign: stacked ? TextAlign.start : TextAlign.end,
+            style: valueStyle ?? const TextStyle(color: AppColors.forestPrimary, fontWeight: FontWeight.w700),
+          );
+          return ConstrainedBox(
+            key: ValueKey('task-metric-row-$label'),
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, color: AppColors.forestPrimary),
+                    const SizedBox(width: 12),
+                  ],
+                  Expanded(
+                    child: stacked
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [labelWidget, const SizedBox(height: 4), valueWidget],
+                          )
+                        : Row(
+                            children: [
+                              labelWidget,
+                              const SizedBox(width: 12),
+                              Expanded(child: valueWidget),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+      if (divider) const Divider(height: 1),
+    ],
+  );
+}
+
 class TaskGroupFilter extends StatelessWidget {
   const TaskGroupFilter({
     super.key,

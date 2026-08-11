@@ -45,17 +45,24 @@ void main() {
 
       final restored = PhotoQuery.fromJson(query.toJson());
 
-      expect(restored.parameters, {
+      expect(restored.toJson(), {
         'page_size': 60,
         'sort': 'score_desc',
         'search': '翠鸟',
-        'min_score': 4.0,
+        'min_score': 4,
         'min_confidence': .85,
-        'tags': '湿地',
+        'tags': ['湿地'],
         'keep_state': 'pending',
         'analysis_state': 'completed',
         'clarity_state': 'clear',
         'recognition_state': 'recognized',
+        'scene_id': 'scene-01',
+      });
+      expect(restored.parameters, {
+        'page_size': 60,
+        'sort': 'score_desc',
+        'keep_state': 'pending',
+        'analysis_state': 'completed',
         'scene_id': 'scene-01',
       });
     });

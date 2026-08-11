@@ -52,6 +52,7 @@ class MockBoxServer {
   final Set<WebSocket> _eventSockets = {};
   Future<void> _stateWrite = Future<void>.value();
   String? _currentCreatedProjectId;
+  bool _currentProjectAvailable = true;
   int _projectSequence = 0;
   int _jobSequence = 0;
   String? _activeToken;
@@ -72,6 +73,10 @@ class MockBoxServer {
   void revokeAccessToken() {
     _activeToken = null;
     _tokenExpiresAt = null;
+  }
+
+  void setCurrentProjectAvailable(bool value) {
+    _currentProjectAvailable = value;
   }
 
   List<Map<String, dynamic>> get jobs => _jobs.values.map(Map<String, dynamic>.of).toList();
@@ -232,6 +237,10 @@ class MockBoxServer {
       return;
     }
     if (method == 'GET' && path == '/api/v1/projects/current') {
+      if (!_currentProjectAvailable) {
+        await _json(request, HttpStatus.ok, const {});
+        return;
+      }
       await _json(request, HttpStatus.ok, {
         'batch': _currentCreatedProjectId == null ? _currentBatch() : _createdProjects[_currentCreatedProjectId],
       });
@@ -263,8 +272,23 @@ class MockBoxServer {
     }
     if (method == 'GET' && path == '/api/v1/jobs') {
       jobListRequestCount++;
+      final query = request.uri.queryParameters;
+      var items = _jobs.values.toList().reversed.toList();
+      final state = query['state'];
+      final type = query['type'];
+      if (state?.isNotEmpty == true) {
+        items = items.where((job) => job['job_state'] == state).toList();
+      }
+      if (type?.isNotEmpty == true) {
+        items = items.where((job) => job['job_type'] == type).toList();
+      }
+      final pageSize = (int.tryParse(query['page_size'] ?? '') ?? 50).clamp(1, 100);
+      final cursor = (int.tryParse(query['cursor'] ?? '') ?? 0).clamp(0, items.length);
+      final end = min(cursor + pageSize, items.length);
       await _json(request, HttpStatus.ok, {
-        'items': _jobs.values.toList().reversed.toList(),
+        'items': items.sublist(cursor, end),
+        'has_more': end < items.length,
+        if (end < items.length) 'next_cursor': '$end',
       });
       return;
     }
@@ -707,17 +731,22 @@ class MockBoxServer {
       return;
     }
     final failedCount = job['failed_count'] as int;
+    final query = request.uri.queryParameters;
+    final pageSize = (int.tryParse(query['page_size'] ?? '') ?? 50).clamp(1, 100);
+    final cursor = (int.tryParse(query['cursor'] ?? '') ?? 0).clamp(0, failedCount);
+    final end = min(cursor + pageSize, failedCount);
     await _json(request, HttpStatus.ok, {
       'items': List.generate(
-        failedCount,
+        end - cursor,
         (index) => {
-          'file_id': 'mock-failed-${index + 1}',
+          'file_id': 'mock-failed-${cursor + index + 1}',
           'error_code': 'copy_io_error',
           'reason': 'The target rejected this file.',
           'retryable': true,
         },
       ),
-      'has_more': false,
+      'has_more': end < failedCount,
+      if (end < failedCount) 'next_cursor': '$end',
     });
   }
 

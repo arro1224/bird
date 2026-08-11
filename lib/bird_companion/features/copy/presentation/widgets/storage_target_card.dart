@@ -3,15 +3,23 @@ import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 import 'package:flutter/material.dart';
 
 class StorageTargetCard extends StatelessWidget {
-  const StorageTargetCard({super.key, required this.target, required this.selected, required this.onTap});
+  const StorageTargetCard({
+    super.key,
+    required this.target,
+    required this.selected,
+    required this.onTap,
+    this.requiredBytes,
+  });
 
   final StorageTarget target;
   final bool selected;
   final VoidCallback onTap;
+  final int? requiredBytes;
 
   @override
   Widget build(BuildContext context) {
     final used = target.totalBytes <= 0 ? 0.0 : ((target.totalBytes - target.freeBytes) / target.totalBytes).clamp(0.0, 1.0);
+    final selectable = target.online && (requiredBytes == null || target.freeBytes >= requiredBytes!);
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -19,7 +27,7 @@ class StorageTargetCard extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: target.online ? onTap : null,
+        onTap: selectable ? onTap : null,
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -41,6 +49,16 @@ class StorageTargetCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               LinearProgressIndicator(value: used, minHeight: 7, borderRadius: BorderRadius.circular(8), backgroundColor: AppColors.mist),
+              if (requiredBytes != null) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '预计使用：${_formatBytes(requiredBytes!)}',
+                    style: const TextStyle(color: AppColors.inkMuted),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

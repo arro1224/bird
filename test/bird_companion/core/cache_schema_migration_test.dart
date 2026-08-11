@@ -53,4 +53,33 @@ void main() {
       isEmpty,
     );
   });
+
+  test('migrated batch review replaces legacy batch_id with project_id', () {
+    final pending = [
+      {
+        'id': 'batch-1',
+        'type': 'batchReview',
+        'payload': {
+          'file_ids': ['photo-1'],
+          'operation': 'mark_keep',
+          'batch_id': 'project-1',
+        },
+        'created_at': '2026-07-29T08:00:00Z',
+      },
+    ];
+
+    final writes = CacheSchemaMigrator.writesFor({
+      CacheSchemaMigrator.legacyPendingOperationsKey: pending,
+    });
+
+    final backup = writes[CacheSchemaMigrator.pendingBackupKey] as List;
+    expect((backup.single as Map)['payload'], containsPair('batch_id', 'project-1'));
+
+    final migrated = writes[CacheSchemaMigrator.pendingOperationsKey] as List;
+    final operation = migrated.single as Map;
+    final payload = operation['payload'] as Map;
+    expect(operation['project_id'], 'project-1');
+    expect(payload['project_id'], 'project-1');
+    expect(payload, isNot(contains('batch_id')));
+  });
 }

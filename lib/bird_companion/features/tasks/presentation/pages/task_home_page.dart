@@ -46,7 +46,7 @@ class TaskHomePage extends StatelessWidget {
                       ],
                       const SizedBox(height: 14),
                       const TaskSectionTitle('当前任务'),
-                      _currentTask(),
+                      _currentTask(context),
                       const SizedBox(height: 12),
                       const TaskSectionTitle('下一步'),
                       _actionGrid(context),
@@ -75,39 +75,33 @@ class TaskHomePage extends StatelessWidget {
       const Text(
         '任务',
         style: TextStyle(
-          color: AppColors.forestDeep,
-          fontSize: 42,
+          color: AppColors.brandDark,
+          fontSize: 28,
           fontWeight: FontWeight.w800,
         ),
       ),
-      IconButton.filled(
+      _TaskExecutableActionsButton(
         key: const Key('task-executable-actions-button'),
         tooltip: '查看可执行操作',
-        onPressed: controller.executableTaskTypes.isEmpty ? null : () => _showExecutableActions(context),
-        style: IconButton.styleFrom(
-          backgroundColor: AppColors.forestPrimary,
-          minimumSize: const Size(48, 48),
-          maximumSize: const Size(48, 48),
-        ),
-        icon: const Icon(Icons.add_rounded, size: 30),
+        onPressed: () => _showExecutableActions(context),
       ),
     ],
   );
 
-  Widget _currentTask() {
+  Widget _currentTask(BuildContext context) {
     final task = controller.currentTaskOrNull;
     if (task == null) {
-      return const TaskSurface(
-        key: Key('task-empty-current'),
-        padding: EdgeInsets.all(20),
+      return TaskSurface(
+        key: const Key('task-empty-current'),
+        padding: const EdgeInsets.all(20),
         child: Row(
           children: [
-            Icon(Icons.hourglass_empty_rounded, color: AppColors.forestPrimary),
-            SizedBox(width: 12),
+            const Icon(Icons.hourglass_empty_rounded, color: AppColors.forestPrimary),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                '暂无盒子任务，连接设备后会自动同步。',
-                style: TextStyle(color: AppColors.mutedInk, fontSize: 15),
+                _emptyTaskMessage(),
+                style: const TextStyle(color: AppColors.mutedInk, fontSize: 15),
               ),
             ),
           ],
@@ -123,28 +117,12 @@ class TaskHomePage extends StatelessWidget {
         }
       },
       child: TaskSurface(
+        key: const Key('task-current-card'),
         padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    task.title,
-                    style: const TextStyle(
-                      fontSize: 21,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.forestDeep,
-                    ),
-                  ),
-                ),
-                TaskStatusChip(
-                  label: _stateLabel(task),
-                  icon: _stateIcon(task.state),
-                ),
-              ],
-            ),
+            _currentTaskHeader(context, task),
             if (task.sourceBatch case final sourceBatch?) ...[
               const SizedBox(height: 7),
               Text(
@@ -183,31 +161,7 @@ class TaskHomePage extends StatelessWidget {
             ),
             if (task.currentFile != null || task.speed != null) ...[
               const SizedBox(height: 9),
-              Row(
-                children: [
-                  if (task.currentFile case final currentFile?)
-                    Expanded(
-                      child: Text(
-                        '当前 $currentFile',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.mutedInk,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  if (task.speed case final speed?)
-                    Text(
-                      speed,
-                      style: const TextStyle(
-                        color: AppColors.forestDeep,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                ],
-              ),
+              _currentTaskActivity(context, task),
             ],
             const SizedBox(height: 9),
             Row(
@@ -233,79 +187,156 @@ class TaskHomePage extends StatelessWidget {
     );
   }
 
-  Widget _actionGrid(BuildContext context) {
-    const descriptions = {
-      TaskType.importIndex: '读取存储卡并建立批次',
-      TaskType.aiAnalysis: '分析当前批次照片',
-      TaskType.copy: '确认范围和目标硬盘',
-      TaskType.sync: '同步批次和审片结果',
-    };
-    if (controller.executableTaskTypes.isEmpty) {
-      return const TaskSurface(
-        key: Key('task-actions-unavailable'),
-        padding: EdgeInsets.all(16),
-        child: Text(
-          '任务创建将在盒子任务接口接入后开放；当前页面只展示真实任务。',
-          style: TextStyle(color: AppColors.mutedInk, height: 1.4),
+  Widget _currentTaskHeader(BuildContext context, TaskSummary task) => LayoutBuilder(
+    builder: (context, constraints) {
+      final stacked = constraints.maxWidth < 280 || MediaQuery.textScalerOf(context).scale(1) >= 1.3;
+      final title = Text(
+        task.title,
+        key: const Key('task-current-title'),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 21,
+          fontWeight: FontWeight.w700,
+          color: AppColors.forestDeep,
         ),
       );
+      final status = TaskStatusChip(
+        key: const Key('task-current-status'),
+        label: _stateLabel(task),
+        icon: _stateIcon(task.state),
+      );
+      if (stacked) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [title, const SizedBox(height: 8), status],
+        );
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: title),
+          const SizedBox(width: 10),
+          status,
+        ],
+      );
+    },
+  );
+
+  Widget _currentTaskActivity(BuildContext context, TaskSummary task) {
+    final currentFile = task.currentFile;
+    final speed = task.speed;
+    final file = currentFile == null
+        ? null
+        : Text(
+            '当前 $currentFile',
+            key: const Key('task-current-file'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AppColors.mutedInk, fontSize: 13),
+          );
+    final speedLabel = speed == null
+        ? null
+        : Text(
+            speed,
+            key: const Key('task-current-speed'),
+            style: const TextStyle(
+              color: AppColors.forestDeep,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          );
+    if (MediaQuery.textScalerOf(context).scale(1) >= 1.3) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget?>[
+          file,
+          file != null && speedLabel != null ? const SizedBox(height: 4) : null,
+          speedLabel,
+        ].nonNulls.toList(),
+      );
     }
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisExtent: 78,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 10,
-      ),
-      itemCount: controller.executableTaskTypes.length,
-      itemBuilder: (_, index) {
-        final type = controller.executableTaskTypes[index];
-        return InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () => _activateType(context, type),
-          child: TaskSurface(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            child: Row(
-              children: [
-                Icon(
-                  _typeIcon(type),
-                  color: AppColors.forestPrimary,
-                  size: 30,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      children: <Widget?>[
+        file == null ? null : Expanded(child: file),
+        file != null && speedLabel != null ? const SizedBox(width: 10) : null,
+        speedLabel,
+      ].nonNulls.toList(),
+    );
+  }
+
+  Widget _actionGrid(BuildContext context) {
+    final capabilities = controller.taskHomeCapabilities;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScale = MediaQuery.textScalerOf(context).scale(1);
+        final singleColumn = constraints.maxWidth < 320 || textScale >= 1.3;
+        final itemHeight = singleColumn ? (78 + 32 * (textScale - 1)).clamp(78, 110).toDouble() : 78.0;
+        return GridView.builder(
+          key: const Key('task-action-grid'),
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: singleColumn ? 1 : 2,
+            mainAxisExtent: itemHeight,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 10,
+          ),
+          itemCount: capabilities.length,
+          itemBuilder: (_, index) {
+            final capability = capabilities[index];
+            final type = capability.type;
+            return Opacity(
+              opacity: capability.enabled ? 1 : .58,
+              child: InkWell(
+                key: Key('task-action-${type.name}'),
+                borderRadius: BorderRadius.circular(18),
+                onTap: capability.enabled ? () => _activateType(context, type) : null,
+                child: TaskSurface(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  child: Row(
                     children: [
-                      Text(
-                        type.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.forestDeep,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                        ),
+                      Icon(
+                        _typeIcon(type),
+                        color: capability.enabled ? AppColors.forestPrimary : AppColors.mutedInk,
+                        size: 30,
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        descriptions[type]!,
-                        style: const TextStyle(
-                          color: AppColors.mutedInk,
-                          fontSize: 10.5,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              type.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.forestDeep,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              capability.enabled ? capability.description : capability.disabledReason ?? capability.description,
+                              key: Key('task-action-reason-${type.name}'),
+                              style: const TextStyle(
+                                color: AppColors.mutedInk,
+                                fontSize: 10.5,
+                              ),
+                              maxLines: singleColumn ? 2 : 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -314,14 +345,26 @@ class TaskHomePage extends StatelessWidget {
   Widget _taskList() {
     final tasks = controller.visibleTasks;
     if (tasks.isEmpty) {
-      return const TaskSurface(
-        key: Key('task-list-empty'),
-        padding: EdgeInsets.all(18),
-        child: Center(
-          child: Text(
-            '当前分组没有任务',
-            style: TextStyle(color: AppColors.mutedInk),
-          ),
+      return TaskSurface(
+        key: const Key('task-list-empty'),
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          children: [
+            const Text(
+              '当前分组没有任务',
+              style: TextStyle(color: AppColors.mutedInk),
+            ),
+            if (controller.hasMoreTasks) ...[
+              const SizedBox(height: 10),
+              controller.loadingMoreTasks
+                  ? const CircularProgressIndicator()
+                  : TextButton.icon(
+                      onPressed: controller.loadMoreTasks,
+                      icon: const Icon(Icons.expand_more_rounded),
+                      label: const Text('继续加载任务'),
+                    ),
+            ],
+          ],
         ),
       );
     }
@@ -332,6 +375,19 @@ class TaskHomePage extends StatelessWidget {
           for (var index = 0; index < tasks.length; index++) ...[
             _taskRow(tasks[index]),
             if (index != tasks.length - 1) const Divider(height: 1),
+          ],
+          if (controller.hasMoreTasks) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: controller.loadingMoreTasks
+                  ? const CircularProgressIndicator()
+                  : TextButton.icon(
+                      onPressed: controller.loadMoreTasks,
+                      icon: const Icon(Icons.expand_more_rounded),
+                      label: const Text('加载更多任务'),
+                    ),
+            ),
           ],
         ],
       ),
@@ -400,19 +456,25 @@ class TaskHomePage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          for (final type in controller.executableTaskTypes)
+          for (final capability in controller.taskHomeCapabilities)
             ListTile(
               minTileHeight: 56,
               leading: Icon(
-                _typeIcon(type),
-                color: AppColors.forestPrimary,
+                _typeIcon(capability.type),
+                color: capability.enabled ? AppColors.forestPrimary : AppColors.mutedInk,
               ),
-              title: Text(type.label),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _activateType(context, type);
-              },
+              title: Text(capability.type.label),
+              subtitle: Text(
+                capability.enabled ? capability.description : capability.disabledReason ?? capability.description,
+              ),
+              trailing: Icon(capability.enabled ? Icons.chevron_right_rounded : Icons.lock_outline_rounded),
+              enabled: capability.enabled,
+              onTap: capability.enabled
+                  ? () {
+                      Navigator.pop(sheetContext);
+                      _activateType(context, capability.type);
+                    }
+                  : null,
             ),
         ],
       ),
@@ -420,6 +482,8 @@ class TaskHomePage extends StatelessWidget {
   );
 
   void _activateType(BuildContext context, TaskType type) {
+    final capability = controller.taskHomeCapabilities.where((item) => item.type == type).firstOrNull;
+    if (capability?.enabled != true) return;
     if (type == TaskType.importIndex && onOpenSdCard != null) {
       onOpenSdCard!();
       return;
@@ -428,10 +492,15 @@ class TaskHomePage extends StatelessWidget {
       onStartTask!(type);
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${type.label}已进入当前可执行流程')),
-    );
   }
+
+  String _emptyTaskMessage() => switch (controller.connectionState) {
+    TaskConnectionState.disconnected => '连接已断开；盒子任务可能仍在运行，重新连接后将刷新进度。',
+    TaskConnectionState.reconnecting => '正在重新连接盒子，连接恢复后将读取当前任务。',
+    TaskConnectionState.connected when controller.loading => '正在读取盒子任务状态…',
+    TaskConnectionState.connected when controller.error != null => '盒子任务状态读取失败，请刷新或重新连接。',
+    TaskConnectionState.connected => '当前没有运行中的盒子任务。',
+  };
 
   IconData _typeIcon(TaskType type) => switch (type) {
     TaskType.importIndex => Icons.sd_card_outlined,
@@ -466,5 +535,51 @@ class TaskHomePage extends StatelessWidget {
       buffer.write(digits[index]);
     }
     return buffer.toString();
+  }
+}
+
+class _TaskExecutableActionsButton extends StatelessWidget {
+  const _TaskExecutableActionsButton({
+    super.key,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: tooltip,
+        child: SizedBox.square(
+          dimension: 48,
+          child: InkResponse(
+            onTap: onPressed,
+            radius: 24,
+            child: Center(
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: enabled ? AppColors.brand : AppColors.outline,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.add_rounded,
+                  size: 22,
+                  color: enabled ? Colors.white : AppColors.inkFaint,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

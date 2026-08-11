@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
+import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
@@ -10,11 +11,16 @@ import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
 import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
+import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
+import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/features/batches/data/batch_api.dart';
 import 'package:aves/bird_companion/features/batches/data/batch_repository_impl.dart';
+import 'package:aves/bird_companion/features/batches/presentation/batch_list_cubit.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_repository_impl.dart';
+import 'package:aves/bird_companion/features/device/data/device_repository_impl.dart';
+import 'package:aves/bird_companion/features/device/data/device_status_api.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_api.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_repository_impl.dart';
 import 'package:aves/bird_companion/features/storage/data/storage_api.dart';
@@ -34,6 +40,9 @@ void main() {
   late RepositoryTaskExperienceController controller;
   late JobRepositoryImpl jobs;
   late DeviceStatus status;
+  late PendingOperationStore pendingOperations;
+  late BatchRepositoryImpl batches;
+  late AppDataChangeBus dataChanges;
 
   setUp(() async {
     server = MockBoxServer(
@@ -48,21 +57,7 @@ void main() {
       baseUri.replace(scheme: 'ws', path: '/api/v1/events'),
       accessToken: 'test-token',
     );
-    status = DeviceStatus(
-      connection: DeviceConnection(
-        id: 'box-b4',
-        name: 'B4 mock box',
-        baseUri: baseUri,
-        networkMode: NetworkMode.manual,
-        apiVersion: 'v1',
-        isPaired: true,
-      ),
-      card: const CardStatus(
-        inserted: true,
-        readable: true,
-        name: 'MOCK-SD',
-      ),
-    );
+    status = await DeviceStatusApi(apiClient).fetchStatus();
     session = DeviceSessionCubit(
       _ConnectionRepository(status),
       _OnlineConnectivityMonitor(),
@@ -71,13 +66,23 @@ void main() {
     );
     await session.setConnectedFromStatus(status);
     jobs = JobRepositoryImpl(JobApi(apiClient));
+    batches = BatchRepositoryImpl(BatchApi(apiClient));
+    dataChanges = AppDataChangeBus();
+    pendingOperations = PendingOperationStore.memory();
     controller = RepositoryTaskExperienceController(
+      deviceRepository: DeviceRepositoryImpl(
+        DeviceStatusApi(apiClient),
+        eventClient,
+        apiClient,
+      ),
       storageRepository: StorageRepositoryImpl(StorageApi(apiClient)),
-      batchRepository: BatchRepositoryImpl(BatchApi(apiClient)),
+      batchRepository: batches,
       jobRepository: jobs,
       copyRepository: CopyRepositoryImpl(CopyApi(apiClient)),
       eventClient: eventClient,
       deviceSessionCubit: session,
+      pendingOperationStore: pendingOperations,
+      dataChangeBus: dataChanges,
       pollInterval: const Duration(milliseconds: 25),
     );
     await controller.initialize();
@@ -85,10 +90,71 @@ void main() {
 
   tearDown(() async {
     controller.dispose();
+    await dataChanges.dispose();
+    await pendingOperations.dispose();
     await session.close();
     await eventClient.dispose();
     await apiClient.dispose();
     await server.close();
+  });
+
+  test('B1 computes home entries from frozen reads and device pending writes', () async {
+    expect(controller.homeInputsReady, isTrue);
+    expect(
+      controller.executableTaskTypes,
+      containsAll([
+        TaskType.importIndex,
+        TaskType.aiAnalysis,
+        TaskType.copy,
+      ]),
+    );
+    expect(controller.executableTaskTypes, isNot(contains(TaskType.sync)));
+
+    await pendingOperations.save(
+      PendingOperation(
+        id: 'other-device-write',
+        type: PendingOperationType.updateReview,
+        payload: const {'file_id': 'photo-1', 'version': 1},
+        createdAt: DateTime.utc(2026, 8, 10),
+        deviceId: 'box-other',
+        projectId: controller.activeBatchId,
+        fileId: 'photo-1',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.executableTaskTypes, isNot(contains(TaskType.sync)));
+
+    await pendingOperations.save(
+      PendingOperation(
+        id: 'active-device-write',
+        type: PendingOperationType.updateReview,
+        payload: const {'file_id': 'photo-2', 'version': 1},
+        createdAt: DateTime.utc(2026, 8, 10, 0, 1),
+        deviceId: status.connection.id,
+        projectId: controller.activeBatchId,
+        fileId: 'photo-2',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.executableTaskTypes, contains(TaskType.sync));
+
+    session.disconnected('B1 disconnect');
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.executableTaskTypes, isEmpty);
+  });
+
+  test('creating an import project refreshes a retained album current batch', () async {
+    final album = BatchListCubit(batches, null, dataChanges);
+    addTearDown(album.close);
+    await album.load();
+    final previousId = album.state.current?.id;
+
+    final projectId = await controller.startImportBatch('cross-tab-refresh');
+    await _waitUntil(() => album.state.current?.id == projectId);
+
+    expect(projectId, isNot(previousId));
+    expect(album.state.current?.id, projectId);
+    expect(album.state.current?.totalFiles, 0);
   });
 
   test(
@@ -103,6 +169,8 @@ void main() {
       expect(importId, startsWith('job-import-'));
       expect(projectId, isNot(startsWith('demo-')));
       expect(importId, isNot(startsWith('demo-')));
+      expect(controller.taskById(importId).sourceBatch, 'B4 实施批次');
+      expect(controller.taskById(importId).sourceBatchId, projectId);
 
       final beforeDisconnect = controller.taskById(importId);
       session.disconnected('test disconnect');
@@ -151,7 +219,7 @@ void main() {
     );
 
     await expectLater(
-      jobs.control(job.id, 'pause', version: job.version + 1),
+      jobs.control(job.id, 'pause', version: job.version! + 1),
       throwsA(
         isA<ApiException>().having(
           (error) => UserMessageMapper.fromError(error).title,
@@ -164,11 +232,11 @@ void main() {
     final paused = await jobs.control(
       job.id,
       'pause',
-      version: job.version,
+      version: job.version!,
     );
     expect(paused.state, BirdJobState.paused);
     await expectLater(
-      jobs.control(paused.id, 'pause', version: paused.version),
+      jobs.control(paused.id, 'pause', version: paused.version!),
       throwsA(
         isA<ApiException>().having(
           (error) => UserMessageMapper.fromError(error).title,
@@ -176,6 +244,133 @@ void main() {
           '当前操作不可用',
         ),
       ),
+    );
+  });
+
+  test('409 refreshes the task snapshot without retrying the write', () async {
+    await controller.startImportBatch('conflict-refresh');
+    final stale = controller.jobs.singleWhere(
+      (candidate) => candidate.type == BirdJobType.import,
+    );
+
+    final authoritative = await jobs.control(
+      stale.id,
+      'pause',
+      version: stale.version!,
+    );
+    expect(authoritative.state, BirdJobState.paused);
+
+    await expectLater(
+      controller.controlJob(stale.id, TaskAction.pause),
+      throwsA(
+        isA<ApiException>().having(
+          (error) => error.statusCode,
+          'statusCode',
+          409,
+        ),
+      ),
+    );
+
+    final refreshed = controller.jobs.singleWhere(
+      (candidate) => candidate.id == stale.id,
+    );
+    expect(refreshed.state, BirdJobState.paused);
+    expect(refreshed.version, authoritative.version);
+  });
+
+  test('disconnect blocks task controls before a box write is sent', () async {
+    await controller.startImportBatch('disconnect-control-guard');
+    final job = controller.jobs.singleWhere(
+      (candidate) => candidate.type == BirdJobType.import,
+    );
+    session.disconnected('test disconnect');
+
+    await expectLater(
+      controller.controlJob(job.id, TaskAction.pause),
+      throwsA(isA<StateError>()),
+    );
+
+    final authoritative = await jobs.detail(job.id);
+    expect(authoritative.state, BirdJobState.running);
+    expect(authoritative.version, job.version);
+  });
+
+  test('WS recovery converges missed task events through a full REST snapshot', () async {
+    await controller.startImportBatch('b6-event-recovery');
+    final importJob = controller.jobs.singleWhere(
+      (candidate) => candidate.type == BirdJobType.import,
+    );
+
+    // Keep the REST device session healthy while the event channel is down.
+    await eventClient.disconnect();
+    await server.completeJob(importJob.id, emitEvent: false);
+    expect(
+      controller.jobs.singleWhere((candidate) => candidate.id == importJob.id).state,
+      BirdJobState.running,
+    );
+
+    await eventClient.connect(
+      status.connection.baseUri.replace(
+        scheme: 'ws',
+        path: '/api/v1/events',
+      ),
+      accessToken: 'test-token',
+    );
+
+    await _waitUntil(
+      () => controller.jobs.any((candidate) => candidate.id == importJob.id && candidate.state == BirdJobState.completed),
+    );
+    expect(controller.homeInputsReady, isTrue);
+  });
+
+  test('concurrent controls submit only the first task write', () async {
+    await controller.startImportBatch('duplicate-control-guard');
+    final job = controller.jobs.singleWhere(
+      (candidate) => candidate.type == BirdJobType.import,
+    );
+
+    final first = controller.controlJob(job.id, TaskAction.pause);
+    final duplicate = controller.controlJob(job.id, TaskAction.cancel);
+    await Future.wait([first, duplicate]);
+
+    final authoritative = await jobs.detail(job.id);
+    expect(authoritative.state, BirdJobState.paused);
+    expect(authoritative.availableActions, containsAll(['resume', 'cancel']));
+  });
+
+  test('concurrent manual AI analysis reuses one real job identity', () async {
+    final projectId = await controller.startImportBatch('manual-analysis');
+
+    final firstRequest = controller.startAnalysisForActiveProject();
+    final duplicateRequest = controller.startAnalysisForActiveProject();
+    final results = await Future.wait(<Future<String>>[
+      firstRequest,
+      duplicateRequest,
+    ]);
+    final firstJobId = results.first;
+    final secondJobId = await controller.startAnalysisForActiveProject();
+
+    expect(firstJobId, startsWith('job-analysis-'));
+    expect(results.last, firstJobId);
+    expect(secondJobId, firstJobId);
+    expect(firstJobId, isNot(startsWith('demo-')));
+    expect(
+      controller.jobs.where((job) => job.type == BirdJobType.analysis && job.sourceProjectId == projectId),
+      hasLength(1),
+    );
+  });
+
+  test('clears the active project when the box reports no current project', () async {
+    final projectId = await controller.startImportBatch('cleared-project');
+    expect(controller.activeBatchId, projectId);
+
+    server.setCurrentProjectAvailable(false);
+    await controller.refreshFromBox();
+
+    expect(controller.activeBatchId, isNull);
+    await expectLater(
+      controller.startAnalysisForActiveProject(),
+      throwsA(isA<StateError>()),
     );
   });
 
@@ -239,8 +434,12 @@ void main() {
       accessToken: 'test-token',
     );
     final afterReconnect = server.jobListRequestCount;
+    await _waitUntil(
+      () => server.jobListRequestCount > afterReconnect,
+    );
+    final afterRecoverySnapshot = server.jobListRequestCount;
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    expect(server.jobListRequestCount, afterReconnect);
+    expect(server.jobListRequestCount, afterRecoverySnapshot);
   });
 }
 

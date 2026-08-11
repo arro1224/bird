@@ -1,5 +1,15 @@
-import 'package:equatable/equatable.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
+import 'package:equatable/equatable.dart';
+
+const jobControlActions = {
+  'pause',
+  'resume',
+  'cancel',
+  'retry_failed',
+  'skip_failed',
+};
+
+const jobAvailableActions = {...jobControlActions, 'delete'};
 
 enum BirdJobType { import, analysis, copy, sync, unknown }
 
@@ -73,11 +83,13 @@ class BirdJobStatus extends Equatable {
     this.skippedCount = 0,
     this.estimatedRemainingSeconds,
     this.availableActions = const [],
+    this.startedAt,
     this.createdAt,
     this.updatedAt,
+    this.finishedAt,
     this.errorCode,
     this.errorMessage,
-    this.version = 0,
+    this.version,
   });
 
   final String id;
@@ -95,30 +107,52 @@ class BirdJobStatus extends Equatable {
   final int skippedCount;
   final int? estimatedRemainingSeconds;
   final List<String> availableActions;
+  final DateTime? startedAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final DateTime? finishedAt;
   final String? errorCode;
   final String? errorMessage;
-  final int version;
+  final int? version;
 
-  bool get canPause => state == BirdJobState.running;
-  bool get canResume => state == BirdJobState.paused;
-  bool get canRetry => state == BirdJobState.failed;
-  bool get canDelete => state == BirdJobState.completed || state == BirdJobState.failed || state == BirdJobState.cancelled;
-  bool get canRestore => state == BirdJobState.cancelled;
+  bool get canPause => availableActions.contains('pause');
+  bool get canResume => state != BirdJobState.cancelled && availableActions.contains('resume');
+  bool get canRetry => availableActions.contains('retry_failed');
+  bool get canCancel => availableActions.contains('cancel');
+  bool get canSkipFailed => availableActions.contains('skip_failed');
+  bool get canDelete => availableActions.contains('delete');
+  bool get canRestore => state == BirdJobState.cancelled && availableActions.contains('resume');
 
   factory BirdJobStatus.fromJson(Map<String, dynamic> json) {
+    final type = BirdJobTypeWireValue.fromWire(
+      ProtocolValidation.requiredId(json, 'job_type'),
+    );
+    final state = BirdJobStateWireValue.fromWire(
+      ProtocolValidation.requiredId(json, 'job_state'),
+    );
+    if (type == BirdJobType.unknown) {
+      throw const ProtocolCompatibilityException(
+        'job_type',
+        '不是 birdbox-v1 支持的任务类型',
+      );
+    }
+    if (state == BirdJobState.unknown || state == BirdJobState.idle) {
+      throw const ProtocolCompatibilityException(
+        'job_state',
+        '不是 birdbox-v1 支持的任务状态',
+      );
+    }
     return BirdJobStatus(
       id: ProtocolValidation.requiredId(json, 'job_id'),
-      type: BirdJobTypeWireValue.fromWire(json['job_type']?.toString()),
-      state: BirdJobStateWireValue.fromWire(json['job_state']?.toString()),
-      progress: ProtocolValidation.unitInterval(json, 'progress'),
-      totalCount: ProtocolValidation.nonNegativeInt(json, 'total_count'),
-      finishedCount: ProtocolValidation.nonNegativeInt(
+      type: type,
+      state: state,
+      progress: _requiredUnitInterval(json, 'progress'),
+      totalCount: _requiredNonNegativeInt(json, 'total_count'),
+      finishedCount: _requiredNonNegativeInt(
         json,
         'finished_count',
       ),
-      failedCount: ProtocolValidation.nonNegativeInt(json, 'failed_count'),
+      failedCount: _requiredNonNegativeInt(json, 'failed_count'),
       currentFile: json['current_file']?.toString(),
       speedBytesPerSecond: ProtocolValidation.optionalNonNegativeDouble(
         json,
@@ -127,19 +161,21 @@ class BirdJobStatus extends Equatable {
       sourceProjectId: json['source_project_id']?.toString(),
       sourceProjectName: json['source_project_name']?.toString(),
       workflowStage: json['workflow_stage']?.toString(),
-      skippedCount: ProtocolValidation.nonNegativeInt(json, 'skipped_count'),
+      skippedCount: _requiredNonNegativeInt(json, 'skipped_count'),
       estimatedRemainingSeconds: json['estimated_remaining_seconds'] == null
           ? null
           : ProtocolValidation.nonNegativeInt(
               json,
               'estimated_remaining_seconds',
             ),
-      availableActions: (json['available_actions'] as List? ?? const []).map((value) => value.toString()).toList(growable: false),
+      availableActions: _availableActions(json),
+      startedAt: ProtocolValidation.optionalDateTime(json, 'started_at'),
       createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
       updatedAt: ProtocolValidation.optionalDateTime(json, 'updated_at'),
+      finishedAt: ProtocolValidation.optionalDateTime(json, 'finished_at'),
       errorCode: json['error_code']?.toString(),
       errorMessage: json['error_message']?.toString(),
-      version: ProtocolValidation.nonNegativeInt(json, 'version'),
+      version: ProtocolValidation.optionalNonNegativeInt(json, 'version'),
     );
   }
 
@@ -159,11 +195,13 @@ class BirdJobStatus extends Equatable {
     if (sourceProjectName != null) 'source_project_name': sourceProjectName,
     if (workflowStage != null) 'workflow_stage': workflowStage,
     if (estimatedRemainingSeconds != null) 'estimated_remaining_seconds': estimatedRemainingSeconds,
+    if (startedAt != null) 'started_at': startedAt!.toUtc().toIso8601String(),
     if (createdAt != null) 'created_at': createdAt!.toUtc().toIso8601String(),
     if (updatedAt != null) 'updated_at': updatedAt!.toUtc().toIso8601String(),
+    if (finishedAt != null) 'finished_at': finishedAt!.toUtc().toIso8601String(),
     if (errorCode != null) 'error_code': errorCode,
     if (errorMessage != null) 'error_message': errorMessage,
-    'version': version,
+    if (version != null) 'version': version,
   };
 
   @override
@@ -183,12 +221,57 @@ class BirdJobStatus extends Equatable {
     skippedCount,
     estimatedRemainingSeconds,
     availableActions,
+    startedAt,
     createdAt,
     updatedAt,
+    finishedAt,
     errorCode,
     errorMessage,
     version,
   ];
+}
+
+int _requiredNonNegativeInt(Map<String, dynamic> json, String key) {
+  if (!json.containsKey(key)) {
+    throw ProtocolCompatibilityException(key, '不能为空');
+  }
+  return ProtocolValidation.nonNegativeInt(json, key);
+}
+
+double _requiredUnitInterval(Map<String, dynamic> json, String key) {
+  if (!json.containsKey(key)) {
+    throw ProtocolCompatibilityException(key, '不能为空');
+  }
+  return ProtocolValidation.unitInterval(json, key);
+}
+
+List<String> _availableActions(Map<String, dynamic> json) {
+  final raw = json['available_actions'];
+  if (raw is! List) {
+    throw const ProtocolCompatibilityException(
+      'available_actions',
+      '必须是动作列表',
+    );
+  }
+  final actions = <String>[];
+  final seen = <String>{};
+  for (var index = 0; index < raw.length; index++) {
+    final value = raw[index];
+    if (value is! String || !jobAvailableActions.contains(value)) {
+      throw ProtocolCompatibilityException(
+        'available_actions[$index]',
+        '不是 birdbox-v1 支持的任务动作',
+      );
+    }
+    if (!seen.add(value)) {
+      throw ProtocolCompatibilityException(
+        'available_actions[$index]',
+        '不能重复',
+      );
+    }
+    actions.add(value);
+  }
+  return List.unmodifiable(actions);
 }
 
 class CopyJob extends Equatable {

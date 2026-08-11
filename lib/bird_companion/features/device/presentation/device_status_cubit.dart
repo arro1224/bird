@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/bird_companion/core/models/device_models.dart';
+import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
@@ -89,12 +90,31 @@ class DeviceStatusCubit extends Cubit<DeviceStatusState> {
   Future<void> controlCurrentJob(String action) async {
     final job = state.status?.currentJob;
     if (job == null) return;
+    if (!jobControlActions.contains(action) || !job.availableActions.contains(action)) {
+      emit(
+        state.copyWith(
+          phase: DeviceStatusPhase.failure,
+          error: StateError('$action is unavailable for ${job.id}'),
+        ),
+      );
+      return;
+    }
+    final version = job.version;
+    if (version == null) {
+      emit(
+        state.copyWith(
+          phase: DeviceStatusPhase.failure,
+          error: StateError('The task version is unavailable'),
+        ),
+      );
+      return;
+    }
     emit(state.copyWith(isControllingJob: true, clearError: true));
     try {
       await _repository.controlJob(
         jobId: job.id,
         action: action,
-        version: job.version,
+        version: version,
       );
       await load();
       _dataChanges?.publish({AppDataResource.device, AppDataResource.jobs}, reason: 'job_$action');

@@ -102,6 +102,7 @@ class _ControlledPhotoRepository implements PhotoRepository {
     String batchId,
     List<String> ids,
     String operation, {
+    required int version,
     Object? value,
   }) => throw UnimplementedError();
 
@@ -130,6 +131,7 @@ class _RepeatingCursorPhotoRepository implements PhotoRepository {
     String batchId,
     List<String> ids,
     String operation, {
+    required int version,
     Object? value,
   }) => throw UnimplementedError();
 

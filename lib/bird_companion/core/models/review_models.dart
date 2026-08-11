@@ -204,6 +204,13 @@ class UserDecisionPatch extends Equatable {
   final DateTime? updatedAt;
   final int? version;
 
+  bool get hasChanges =>
+      keepState.state != PatchFieldState.unchanged ||
+      userScore.state != PatchFieldState.unchanged ||
+      userSpeciesId.state != PatchFieldState.unchanged ||
+      userSpecies.state != PatchFieldState.unchanged ||
+      userTags.state != PatchFieldState.unchanged;
+
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
     _writePatch(
@@ -216,9 +223,6 @@ class UserDecisionPatch extends Equatable {
     _writePatch(json, 'user_species_id', userSpeciesId);
     _writePatch(json, 'user_species', userSpecies);
     _writePatch(json, 'user_tags', userTags, clearValue: const <String>[]);
-    if (updatedAt != null) {
-      json['updated_at'] = updatedAt!.toUtc().toIso8601String();
-    }
     if (version != null) json['version'] = version;
     return json;
   }

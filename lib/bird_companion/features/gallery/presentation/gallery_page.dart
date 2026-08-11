@@ -5,7 +5,9 @@ import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/app_shell.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
+import 'package:aves/bird_companion/core/models/batch_models.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/tag_input.dart';
@@ -18,7 +20,10 @@ import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
 import 'package:aves/bird_companion/features/device/presentation/widgets/device_status_pills.dart';
 import 'package:aves/bird_companion/features/device/presentation/widgets/device_status_sheet.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_entry_guard.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
+import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
+import 'package:aves/bird_companion/features/gallery/domain/photo_version_batch_coordinator.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_cubit.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/selection_cubit.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/active_filter_summary.dart';
@@ -29,6 +34,7 @@ import 'package:aves/bird_companion/features/gallery/presentation/widgets/photo_
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/photo_tile.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/selection_action_bar.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/sort_sheet.dart';
+import 'package:aves/bird_companion/features/jobs/domain/job_page.dart';
 import 'package:aves/bird_companion/features/review/domain/review_checkpoint.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
@@ -130,6 +136,43 @@ class _GalleryView extends StatelessWidget {
 
   ReviewContext get _reviewContext => reviewContext ?? ReviewContext(batchId: batchId, batchName: batchName);
 
+  Future<void> _openCurrentBatchCopy(BuildContext context) async {
+    final dependencies = BirdCompanionScope.of(context);
+    try {
+      // Start both frozen-v1 reads together, then navigate only with their
+      // authoritative result instead of the album tab's retained batch id.
+      final results = await Future.wait<Object?>([
+        dependencies.batchRepository.current(),
+        dependencies.jobRepository.page(),
+      ]);
+      final currentProject = results[0] as BatchSummary?;
+      final jobs = results[1] as JobPage;
+      if (!context.mounted) return;
+
+      final decision = resolveCurrentCopyEntry(
+        displayedBatchId: batchId,
+        currentProject: currentProject,
+        jobs: jobs.items,
+      );
+      if (!decision.enabled) {
+        dependencies.dataChangeBus.publish(
+          const {AppDataResource.batches, AppDataResource.photos},
+          reason: 'album_copy_entry_revalidated',
+        );
+        BirdFeedback.error(context, decision.reason!);
+        return;
+      }
+      await Navigator.of(context).pushNamed<void>(
+        BirdRoutes.copyConfirmation,
+        arguments: CopyConfirmationArgs(decision.batchId!),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      final message = UserMessageMapper.fromError(error);
+      BirdFeedback.error(context, '${message.title}：${message.message}');
+    }
+  }
+
   @override
   Widget build(BuildContext context) => BlocListener<SelectionCubit, SelectionState>(
     listenWhen: (previous, current) => previous.ids.isEmpty != current.ids.isEmpty,
@@ -190,10 +233,7 @@ class _GalleryView extends StatelessWidget {
                             key: const Key('album-copy-project-button'),
                             tooltip: '复制当前拍摄',
                             icon: const Icon(Icons.copy_all_outlined),
-                            onPressed: () => Navigator.of(context).pushNamed(
-                              BirdRoutes.copyConfirmation,
-                              arguments: CopyConfirmationArgs(batchId),
-                            ),
+                            onPressed: totalCount != null && totalCount! <= 0 ? null : () => _openCurrentBatchCopy(context),
                           ),
                         if (rootMode)
                           Padding(
@@ -298,7 +338,9 @@ class _GalleryView extends StatelessWidget {
           ),
           body: BlocBuilder<GalleryCubit, GalleryState>(
             builder: (context, state) {
-              if (state.loading && state.items.isEmpty) return const Center(child: CircularProgressIndicator());
+              if (state.loading && state.items.isEmpty && !state.filtering) {
+                return const Center(child: CircularProgressIndicator());
+              }
               if (state.error != null && state.items.isEmpty) {
                 final message = UserMessageMapper.fromError(state.error!);
                 return NaturalBackdrop(
@@ -360,7 +402,11 @@ class _GalleryView extends StatelessWidget {
                             if (state.items.isEmpty)
                               SliverFillRemaining(
                                 hasScrollBody: false,
-                                child: _GalleryEmptyState(onReset: () => context.read<GalleryCubit>().refresh(query: const PhotoQuery())),
+                                child: _GalleryEmptyState(
+                                  filtering: state.filtering,
+                                  incomplete: !state.resultComplete,
+                                  onReset: () => context.read<GalleryCubit>().refresh(query: const PhotoQuery()),
+                                ),
                               )
                             else
                               SliverPadding(
@@ -447,10 +493,21 @@ class _GalleryView extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (state.filtering)
+                      Positioned(
+                        left: 12,
+                        right: 12,
+                        bottom: rootMode ? 76 : 12,
+                        child: _FilterScanProgress(
+                          scannedCount: state.scannedCount,
+                          matchedCount: state.matchedCount,
+                          onCancel: context.read<GalleryCubit>().cancelFiltering,
+                        ),
+                      ),
                     if (rootMode)
                       BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
                         bloc: BirdCompanionScope.of(context).deviceSessionCubit,
-                        builder: (context, session) => state.fromCache || !session.isConnected
+                        builder: (context, session) => !session.isConnected || state.cacheScope == PhotoCacheScope.partial
                             ? const Positioned(
                                 left: 12,
                                 right: 12,
@@ -561,7 +618,7 @@ class _GalleryHeader extends StatelessWidget {
   Widget build(BuildContext context) => BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
     bloc: BirdCompanionScope.of(context).deviceSessionCubit,
     builder: (context, session) {
-      final offline = !session.isConnected || state.fromCache;
+      final offline = !session.isConnected;
       return Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
         child: Column(
@@ -586,6 +643,8 @@ class _GalleryHeader extends StatelessWidget {
                   cachedAt: state.cachedAt,
                   loadedCount: state.items.length,
                   totalCount: totalCount,
+                  resultComplete: state.resultComplete,
+                  offline: !session.isConnected,
                 ),
                 const SizedBox(height: 12),
               ],
@@ -613,6 +672,8 @@ class _GalleryHeader extends StatelessWidget {
                   cachedAt: state.cachedAt,
                   loadedCount: state.items.length,
                   totalCount: totalCount,
+                  resultComplete: state.resultComplete,
+                  offline: !session.isConnected,
                 ),
                 const SizedBox(height: 12),
               ],
@@ -1006,22 +1067,37 @@ class _AlbumPathChevron extends StatelessWidget {
 }
 
 class _OfflineSnapshotNotice extends StatelessWidget {
-  const _OfflineSnapshotNotice({this.cachedAt, required this.loadedCount, this.totalCount});
+  const _OfflineSnapshotNotice({
+    this.cachedAt,
+    required this.loadedCount,
+    this.totalCount,
+    required this.resultComplete,
+    required this.offline,
+  });
 
   final DateTime? cachedAt;
   final int loadedCount;
   final int? totalCount;
+  final bool resultComplete;
+  final bool offline;
 
   @override
   Widget build(BuildContext context) {
     final savedAt = cachedAt == null ? '' : ' · 保存于 ${_time(cachedAt!)}';
-    final completeness = totalCount == null ? '仅包含手机已访问的照片' : '仅包含已加载的 $loadedCount / $totalCount 张照片';
+    final completeness = resultComplete
+        ? '已使用完整候选缓存筛选'
+        : totalCount == null
+        ? '仅在已缓存照片中查找，结果可能不完整'
+        : '仅在已缓存的 $loadedCount / $totalCount 张照片中查找，结果可能不完整';
+    final color = offline || !resultComplete ? AppColors.danger : AppColors.brand;
+    final background = offline || !resultComplete ? AppColors.dangerSoft : AppColors.brandSoft;
+    final message = offline ? '设备暂时无法连接；$completeness$savedAt' : '使用本地缓存加速筛选；$completeness$savedAt';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.dangerSoft,
-        border: Border.all(color: AppColors.danger.withValues(alpha: .25)),
+        color: background,
+        border: Border.all(color: color.withValues(alpha: .25)),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -1030,13 +1106,13 @@ class _OfflineSnapshotNotice extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding: EdgeInsets.only(top: 2),
-                child: Icon(Icons.link_off_rounded, color: AppColors.danger),
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(offline ? Icons.link_off_rounded : Icons.offline_bolt_rounded, color: color),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text('设备暂时无法连接，当前显示手机上已保存的照片；$completeness$savedAt', style: const TextStyle(color: AppColors.danger)),
+                child: Text(message, style: TextStyle(color: color)),
               ),
             ],
           ),
@@ -1260,18 +1336,75 @@ String _formatCount(int value) {
 }
 
 class _GalleryEmptyState extends StatelessWidget {
-  const _GalleryEmptyState({required this.onReset});
+  const _GalleryEmptyState({
+    required this.onReset,
+    required this.filtering,
+    required this.incomplete,
+  });
   final VoidCallback onReset;
+  final bool filtering;
+  final bool incomplete;
   @override
   Widget build(BuildContext context) => Center(
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.photo_library_outlined, size: 52),
+        Icon(filtering ? Icons.manage_search_rounded : Icons.photo_library_outlined, size: 52),
         const SizedBox(height: 12),
-        const Text('没有符合条件的照片'),
+        Text(
+          filtering
+              ? '正在筛选照片…'
+              : incomplete
+              ? '已缓存照片中没有符合条件的结果'
+              : '没有符合条件的照片',
+        ),
         const SizedBox(height: 8),
-        OutlinedButton(onPressed: onReset, child: const Text('清除筛选')),
+        if (!filtering) OutlinedButton(onPressed: onReset, child: const Text('清除筛选')),
+      ],
+    ),
+  );
+}
+
+class _FilterScanProgress extends StatelessWidget {
+  const _FilterScanProgress({
+    required this.scannedCount,
+    required this.matchedCount,
+    required this.onCancel,
+  });
+
+  final int scannedCount;
+  final int matchedCount;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+    decoration: BoxDecoration(
+      color: AppColors.brandSoft,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: AppColors.brand.withValues(alpha: .22)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const SizedBox.square(
+              dimension: 18,
+              child: CircularProgressIndicator(strokeWidth: 2.2),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '正在筛选 · 已扫描 $scannedCount 张 · 命中 $matchedCount 张',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            TextButton(onPressed: onCancel, child: const Text('取消')),
+          ],
+        ),
+        const SizedBox(height: 6),
+        const LinearProgressIndicator(minHeight: 3),
       ],
     ),
   );
@@ -1284,7 +1417,12 @@ Future<void> _batchAction(BuildContext context, String batchId, List<String> ids
     for (final photo in context.read<GalleryCubit>().state.items.where((photo) => ids.contains(photo.id))) photo.id: photo.keepState ?? 'pending',
   };
   selection.begin();
-  final outcome = await BirdCompanionScope.of(context).photoRepository.batchOperation(batchId, ids, action);
+  final outcome = await _batchOperationByPhotoVersion(
+    context,
+    batchId,
+    ids,
+    action,
+  );
   selection.complete(succeededIds: outcome.succeededIds, failed: outcome.failed);
   if (!outcome.queued) {
     final grouped = <String, List<String>>{};
@@ -1369,7 +1507,13 @@ Future<void> _showTagDialog(BuildContext context, String batchId, List<String> i
   final selection = context.read<SelectionCubit>();
   selection.begin();
   final operation = remove ? 'remove_tags' : 'add_tags';
-  final outcome = await BirdCompanionScope.of(context).photoRepository.batchOperation(batchId, ids, operation, value: tags);
+  final outcome = await _batchOperationByPhotoVersion(
+    context,
+    batchId,
+    ids,
+    operation,
+    value: tags,
+  );
   selection.complete(succeededIds: outcome.succeededIds, failed: outcome.failed);
   if (!outcome.queued) {
     selection.setUndoActions([
@@ -1405,7 +1549,8 @@ Future<void> _undoBatch(BuildContext context, String batchId) async {
   final failed = <String, String>{};
   final succeeded = <String>[];
   for (final action in actions) {
-    final outcome = await BirdCompanionScope.of(context).photoRepository.batchOperation(
+    final outcome = await _batchOperationByPhotoVersion(
+      context,
       batchId,
       action.ids,
       action.operation,
@@ -1425,4 +1570,24 @@ Future<void> _undoBatch(BuildContext context, String batchId) async {
       '已撤销 ${succeeded.length} 张，${failed.length} 张撤销失败',
     );
   }
+}
+
+Future<BatchOperationOutcome> _batchOperationByPhotoVersion(
+  BuildContext context,
+  String batchId,
+  List<String> ids,
+  String operation, {
+  Object? value,
+}) async {
+  final dependencies = BirdCompanionScope.of(context);
+  return PhotoVersionBatchCoordinator(
+    dependencies.photoRepository,
+    dependencies.reviewRepository,
+  ).apply(
+    projectId: batchId,
+    fileIds: ids,
+    currentPhotos: context.read<GalleryCubit>().state.items,
+    operation: operation,
+    value: value,
+  );
 }

@@ -4,12 +4,29 @@ import 'package:aves/bird_companion/features/jobs/domain/job_repository.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_failure.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_create_requests.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_report.dart';
+import 'package:aves/bird_companion/features/jobs/domain/job_page.dart';
 
 class JobRepositoryImpl implements JobRepository {
   JobRepositoryImpl(this._a);
   final JobApi _a;
   @override
-  Future<List<BirdJobStatus>> list() => _a.list();
+  Future<List<BirdJobStatus>> list() async {
+    final items = <BirdJobStatus>[];
+    final seenIds = <String>{};
+    final seenCursors = <String>{};
+    String? cursor;
+    do {
+      final result = await page(cursor: cursor);
+      items.addAll(result.items.where((item) => seenIds.add(item.id)));
+      final next = result.nextCursor;
+      if (!result.hasMore || next == null || !seenCursors.add(next)) break;
+      cursor = next;
+    } while (true);
+    return items;
+  }
+
+  @override
+  Future<JobPage> page({String? cursor, int pageSize = 50, String? state, String? type}) => _a.page(cursor: cursor, pageSize: pageSize, state: state, type: type);
   @override
   Future<BirdJobStatus> detail(String id) => _a.detail(id);
   @override
@@ -38,5 +55,21 @@ class JobRepositoryImpl implements JobRepository {
     String? jobId,
   }) => _a.exportLogs(scope: scope, jobId: jobId);
   @override
-  Future<List<JobFailure>> failures(String jobId) => _a.failures(jobId);
+  Future<List<JobFailure>> failures(String jobId) async {
+    final items = <JobFailure>[];
+    final seenIds = <String>{};
+    final seenCursors = <String>{};
+    String? cursor;
+    do {
+      final result = await failurePage(jobId, cursor: cursor);
+      items.addAll(result.items.where((item) => seenIds.add(item.fileId)));
+      final next = result.nextCursor;
+      if (!result.hasMore || next == null || !seenCursors.add(next)) break;
+      cursor = next;
+    } while (true);
+    return items;
+  }
+
+  @override
+  Future<JobFailurePage> failurePage(String jobId, {String? cursor, int pageSize = 50}) => _a.failurePage(jobId, cursor: cursor, pageSize: pageSize);
 }

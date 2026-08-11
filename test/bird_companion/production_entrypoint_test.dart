@@ -42,6 +42,8 @@ void main() {
 
     expect(root, contains('RepositoryTaskExperienceController'));
     expect(root, isNot(contains('DemoTaskExperienceDataSource')));
+    expect(root, contains('onStartTask: _startTask'));
+    expect(root, contains('BirdRoutes.copyConfirmation'));
     expect(repositoryController, contains('const Duration(seconds: 4)'));
     expect(repositoryController, contains("startsWith('demo-')"));
     expect(sdPage, isNot(contains('3,672')));

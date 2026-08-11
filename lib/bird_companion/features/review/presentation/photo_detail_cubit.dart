@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/features/review/domain/review_undo_entry.dart';
@@ -79,7 +80,14 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
     UserDecision decision, {
     String successMessage = '修改已保存',
   }) async {
-    final previous = state.detail?.decision ?? UserDecision(fileId: decision.fileId, keepState: KeepState.pending, updatedAt: DateTime.now());
+    final previous =
+        state.detail?.decision ??
+        UserDecision(
+          fileId: decision.fileId,
+          keepState: KeepState.pending,
+          updatedAt: DateTime.now(),
+          version: state.detail?.photo.summary.version,
+        );
     emit(state.copyWith(saving: true));
     try {
       final result = await _repository.save(
@@ -103,12 +111,13 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
           undoEntry: undo,
         ),
       );
-    } catch (_) {
+    } catch (error) {
       emit(
         state.copyWith(
           saving: false,
-          message: '保存失败，请稍后重试',
+          message: error is ProtocolCompatibilityException ? '照片缺少有效版本，请刷新后重试' : '保存失败，请稍后重试',
           messageIsError: true,
+          error: error,
         ),
       );
     }
@@ -133,8 +142,40 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
   }
 
   Future<void> useRemote(String fileId) async {
-    emit(state.copyWith(clearConflict: true));
-    await load(fileId);
+    emit(state.copyWith(saving: true));
+    try {
+      final repository = _repository;
+      if (repository is RemoteReviewConflictResolver) {
+        await (repository as RemoteReviewConflictResolver).acceptRemoteDecision(
+          fileId,
+          projectId: projectId,
+        );
+      }
+      final remote = await _repository.detail(fileId);
+      emit(
+        state.copyWith(
+          detail: remote,
+          saving: false,
+          clearConflict: true,
+          clearUndo: true,
+          message: '已使用盒子中的最新内容',
+          messageIsError: false,
+        ),
+      );
+      _dataChanges?.publish(
+        {AppDataResource.photos, AppDataResource.batches},
+        reason: 'photo_review_remote_accepted',
+      );
+    } catch (error) {
+      emit(
+        state.copyWith(
+          saving: false,
+          message: '无法获取盒子中的最新内容，请稍后重试',
+          messageIsError: true,
+          error: error,
+        ),
+      );
+    }
   }
 
   Future<void> keepLocal() async {

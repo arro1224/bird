@@ -1,0 +1,20 @@
+{
+  "contract": "birdbox-v1@1.0.0",
+  "api_version": "v1",
+  "policy": "immutable",
+  "effective_date": "2026-08-06",
+  "source_baseline": "任务模块接口冻结与新增接口评估说明书_2026-08-06.docx",
+  "new_interface_count": 0,
+  "artifacts": {
+    "docs/contracts/birdbox-v1.openapi.yaml": "44f8a04a6daf94e2b41533ec0303fcc2249c749e1f1eecae69123e33c725d76f",
+    "docs/contracts/schemas/bird-job-status.schema.json": "6b3b2c1e80e6ccebe2fe2da8823d7b3c7034df2809a05a65e2b0779c1ba29e00",
+    "docs/contracts/schemas/device-status.schema.json": "f27111d5b5f21e48a3a0c0440f585f6a7f4880c36298aa19b22d1079011f7e48",
+    "docs/contracts/schemas/error-response.schema.json": "44164207e1e82a738bbdcea408554592a7a2dc83b851a9b084c45956adae5fc1",
+    "docs/contracts/schemas/event-envelope.schema.json": "a66734ea4169005dc41fd434b8c910ed3b18b361baa93daf0241e2d8c3ffa661",
+    "docs/contracts/schemas/photo.schema.json": "956e99cef368ebef773f8b01e34ce6eecc93487571c808d88ebca0737f1b35a7",
+    "docs/contracts/schemas/project.schema.json": "d76615ca68c8362f9fcd294508825e2106a8083a7e21f0c12df2ad6acddae671",
+    "docs/contracts/schemas/user-decision-patch.schema.json": "0589b45d983b0c890073241947654d47d9acffe1eecf17b5182650c73d106961",
+    "docs/decisions/ADR-001-birdbox-v1.md": "c64aece279a6b4a7fd0f740fc8af3f9cb0dd5c5a8ae2ebd3b0eda90f319f7d79",
+    "docs/盒子端接口说明7.24.md": "afda6c1db055a8035171e239f600a2142500f44126051a95897769a1bc67a9a4"
+  }
+}

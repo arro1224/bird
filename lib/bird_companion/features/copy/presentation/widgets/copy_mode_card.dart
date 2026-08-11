@@ -14,7 +14,7 @@ class CopyModeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = switch (mode) {
       'keep' => '仅复制保留照片',
-      'all' => '全量复制',
+      'all' => '复制全部照片',
       'dual' => '双轨复制',
       _ => mode,
     };

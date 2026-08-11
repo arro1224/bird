@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
@@ -126,6 +128,7 @@ void main() {
           'file_ids': <String>['photo-1', 'photo-2'],
           'operation': 'keep',
           'value': null,
+          'version': 3,
         },
         createdAt: DateTime.utc(2026, 8, 1),
         deviceId: 'box-a',
@@ -145,12 +148,113 @@ void main() {
     expect(result.syncedCount, 1);
     expect(client.paths, ['/api/v1/projects/project-7/files/actions']);
     expect(client.payloads.single, {
-      'project_id': 'project-7',
       'file_ids': ['photo-1', 'photo-2'],
       'operation': 'keep',
       'value': null,
+      'version': 3,
     });
     expect((client.payloads.single as Map).containsKey('batch_id'), isFalse);
+  });
+
+  test('batch replay without a version is retained locally and never sent', () async {
+    final store = PendingOperationStore.memory();
+    await store.save(
+      PendingOperation(
+        id: 'invalid-batch-review',
+        type: PendingOperationType.batchReview,
+        payload: const {
+          'project_id': 'project-7',
+          'file_ids': <String>['photo-1'],
+          'operation': 'keep',
+          'value': null,
+        },
+        createdAt: DateTime.utc(2026, 8, 1),
+        deviceId: 'box-a',
+        projectId: 'project-7',
+      ),
+    );
+    final client = _RecordingApiClient();
+    final service = BirdSyncService(
+      ConnectivityMonitor(),
+      SyncCoordinator(store),
+      client,
+      null,
+      () => 'box-a',
+    );
+
+    final result = await service.synchronize();
+
+    expect(result.syncedCount, 0);
+    expect(result.failedOperations, hasLength(1));
+    expect(client.paths, isEmpty);
+    expect(store.read('invalid-batch-review')?.status, PendingOperationStatus.failed);
+  });
+
+  test('B6 coalesces concurrent reconnect synchronization requests', () async {
+    final store = PendingOperationStore.memory();
+    await store.save(_operation('coalesced-1', 'photo-1'));
+    await store.save(_operation('coalesced-2', 'photo-2'));
+    final firstStarted = Completer<void>();
+    final releaseFirst = Completer<void>();
+    final client = _RecordingApiClient(
+      beforePost: (key) async {
+        if (key != 'coalesced-1') return;
+        if (!firstStarted.isCompleted) firstStarted.complete();
+        await releaseFirst.future;
+      },
+    );
+    final service = BirdSyncService(
+      ConnectivityMonitor(),
+      SyncCoordinator(store),
+      client,
+      null,
+      () => 'box-a',
+    );
+
+    final first = service.synchronize();
+    await firstStarted.future;
+    final concurrent = service.synchronize();
+    expect(identical(first, concurrent), isTrue);
+    releaseFirst.complete();
+
+    final result = await first;
+    expect(result.syncedCount, 2);
+    expect(client.idempotencyKeys, ['coalesced-1', 'coalesced-2']);
+    expect(store.readAll(), isEmpty);
+  });
+
+  test('B6 stops replay before a queued write can cross device identity', () async {
+    final store = PendingOperationStore.memory();
+    await store.save(_operation('device-switch-1', 'photo-1'));
+    await store.save(_operation('device-switch-2', 'photo-2'));
+    final firstStarted = Completer<void>();
+    final releaseFirst = Completer<void>();
+    final client = _RecordingApiClient(
+      beforePost: (key) async {
+        if (key != 'device-switch-1') return;
+        if (!firstStarted.isCompleted) firstStarted.complete();
+        await releaseFirst.future;
+      },
+    );
+    var activeDeviceId = 'box-a';
+    final service = BirdSyncService(
+      ConnectivityMonitor(),
+      SyncCoordinator(store),
+      client,
+      null,
+      () => activeDeviceId,
+    );
+
+    final synchronization = service.synchronize();
+    await firstStarted.future;
+    activeDeviceId = 'box-b';
+    releaseFirst.complete();
+    final result = await synchronization;
+
+    expect(result.syncedCount, 1);
+    expect(client.idempotencyKeys, ['device-switch-1']);
+    expect(store.read('device-switch-1'), isNull);
+    expect(store.read('device-switch-2')?.status, PendingOperationStatus.pending);
   });
 }
 
@@ -173,9 +277,13 @@ PendingOperation _operation(
 );
 
 class _RecordingApiClient extends ApiClient {
-  _RecordingApiClient({this.conflictKeys = const {}});
+  _RecordingApiClient({
+    this.conflictKeys = const {},
+    this.beforePost,
+  });
 
   final Set<String> conflictKeys;
+  final Future<void> Function(String key)? beforePost;
   final List<String> idempotencyKeys = [];
   final List<String> paths = [];
   final List<Object?> payloads = [];
@@ -189,9 +297,11 @@ class _RecordingApiClient extends ApiClient {
     Object? data,
     String? idempotencyKey,
   }) async {
-    idempotencyKeys.add(idempotencyKey ?? '');
+    final key = idempotencyKey ?? '';
+    idempotencyKeys.add(key);
     paths.add(path);
     payloads.add(data);
+    await beforePost?.call(key);
     if (conflictKeys.contains(idempotencyKey)) {
       throw const ApiException(
         message: 'internal conflict detail',
