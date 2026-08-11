@@ -4,6 +4,7 @@ import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
+import 'package:aves/bird_companion/features/gallery/domain/photo_query_plan.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
@@ -44,6 +45,11 @@ class GalleryState {
     this.error,
     this.gridColumns = 3,
     this.showRatingOverlay = true,
+    this.filtering = false,
+    this.scannedCount = 0,
+    this.matchedCount = 0,
+    this.resultComplete = true,
+    this.cacheScope = PhotoCacheScope.none,
   });
   final bool loading, hasMore;
   final bool fromCache;
@@ -56,6 +62,11 @@ class GalleryState {
   final Object? error;
   final int gridColumns;
   final bool showRatingOverlay;
+  final bool filtering;
+  final int scannedCount;
+  final int matchedCount;
+  final bool resultComplete;
+  final PhotoCacheScope cacheScope;
   GalleryState copyWith({
     bool? loading,
     List<PhotoSummary>? items,
@@ -70,6 +81,11 @@ class GalleryState {
     bool clearError = false,
     int? gridColumns,
     bool? showRatingOverlay,
+    bool? filtering,
+    int? scannedCount,
+    int? matchedCount,
+    bool? resultComplete,
+    PhotoCacheScope? cacheScope,
   }) => GalleryState(
     loading: loading ?? this.loading,
     items: items ?? this.items,
@@ -83,6 +99,11 @@ class GalleryState {
     error: clearError ? null : error ?? this.error,
     gridColumns: gridColumns ?? this.gridColumns,
     showRatingOverlay: showRatingOverlay ?? this.showRatingOverlay,
+    filtering: filtering ?? this.filtering,
+    scannedCount: scannedCount ?? this.scannedCount,
+    matchedCount: matchedCount ?? this.matchedCount,
+    resultComplete: resultComplete ?? this.resultComplete,
+    cacheScope: cacheScope ?? this.cacheScope,
   );
 
   String? get firstConflictFileId => conflictFileIds.isEmpty ? null : conflictFileIds.first;
@@ -110,13 +131,7 @@ class GalleryCubit extends Cubit<GalleryState> {
         .where(
           (change) => change.affects(AppDataResource.photos) || change.affects(AppDataResource.cache) || change.affects(AppDataResource.photoPreferences),
         )
-        .listen((change) {
-          if (change.affects(AppDataResource.photoPreferences)) {
-            _applyPhotoPreferences();
-          } else {
-            refresh();
-          }
-        });
+        .listen((change) => unawaited(_handleDataChange(change)));
   }
   final PhotoRepository _repo;
   final String batchId;
@@ -129,6 +144,7 @@ class GalleryCubit extends Cubit<GalleryState> {
   StreamSubscription<AppDataChange>? _dataSubscription;
   Timer? _searchDebounce;
   int _requestGeneration = 0;
+  PhotoQueryCancellationToken? _activeCancellation;
 
   Future<void> restoreAndRefresh(
     PhotoQuery fallback, {
@@ -155,29 +171,61 @@ class GalleryCubit extends Cubit<GalleryState> {
 
   void search(String value) {
     _searchDebounce?.cancel();
+    _cancelActiveQuery(invalidateGeneration: true);
     final query = state.query.copyWith(search: value.trim(), clearCursor: true);
-    emit(state.copyWith(query: query));
+    emit(state.copyWith(query: query, filtering: false, loading: false));
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       refresh(query: query);
     });
   }
 
   Future<void> refresh({PhotoQuery? query}) async {
+    _cancelActiveQuery();
     final generation = ++_requestGeneration;
     final q = (query ?? state.query).copyWith(clearCursor: true);
-    emit(state.copyWith(loading: true, query: q, clearError: true));
+    final filtering = PhotoQueryPlan(q).requiresLocalScan;
+    final cancellationToken = PhotoQueryCancellationToken();
+    _activeCancellation = cancellationToken;
+    emit(
+      state.copyWith(
+        loading: true,
+        filtering: filtering,
+        scannedCount: 0,
+        matchedCount: 0,
+        resultComplete: !filtering,
+        cacheScope: PhotoCacheScope.none,
+        query: q,
+        clearError: true,
+      ),
+    );
     try {
-      final p = await _repo.page(batchId, q);
+      final p = _repo is PhotoQueryExecutionRepository
+          ? await (_repo as PhotoQueryExecutionRepository).pageWithProgress(
+              batchId,
+              q,
+              cancellationToken: cancellationToken,
+              onProgress: (progress) => _onQueryProgress(
+                generation,
+                progress,
+              ),
+            )
+          : await _repo.page(batchId, q);
       if (generation != _requestGeneration) return;
+      _activeCancellation = null;
       final operationCounts = _operationCounts();
       emit(
         state.copyWith(
           loading: false,
+          filtering: false,
           items: p.items,
           query: q.next(p.nextCursor),
           hasMore: p.hasMore && p.nextCursor != null,
           fromCache: p.fromCache,
           cachedAt: p.cachedAt,
+          scannedCount: p.scannedCount,
+          matchedCount: p.matchedCount ?? p.items.length,
+          resultComplete: p.resultComplete,
+          cacheScope: p.cacheScope,
           pendingOperationCount: operationCounts.pending,
           conflictOperationCount: operationCounts.conflict,
           conflictFileIds: operationCounts.conflictFileIds,
@@ -197,10 +245,51 @@ class GalleryCubit extends Cubit<GalleryState> {
           // gallery request into a visible load failure.
         }
       }
+    } on PhotoQueryCancelled {
+      if (generation != _requestGeneration) return;
+      _activeCancellation = null;
+      emit(state.copyWith(loading: false, filtering: false));
     } catch (e) {
       if (generation != _requestGeneration) return;
-      emit(state.copyWith(loading: false, error: e));
+      _activeCancellation = null;
+      emit(state.copyWith(loading: false, filtering: false, error: e));
     }
+  }
+
+  void cancelFiltering() {
+    if (!state.filtering) return;
+    _cancelActiveQuery(invalidateGeneration: true);
+    emit(state.copyWith(loading: false, filtering: false));
+  }
+
+  void _onQueryProgress(int generation, PhotoQueryProgress progress) {
+    if (isClosed || generation != _requestGeneration) return;
+    emit(
+      state.copyWith(
+        filtering: !progress.complete,
+        scannedCount: progress.scannedCount,
+        matchedCount: progress.matchedCount,
+        resultComplete: progress.complete,
+      ),
+    );
+  }
+
+  void _cancelActiveQuery({bool invalidateGeneration = false}) {
+    _activeCancellation?.cancel();
+    _activeCancellation = null;
+    if (invalidateGeneration) _requestGeneration++;
+  }
+
+  Future<void> _handleDataChange(AppDataChange change) async {
+    if (change.affects(AppDataResource.photoPreferences)) {
+      _applyPhotoPreferences();
+      return;
+    }
+    final repository = _repo;
+    if (repository case final PhotoQueryExecutionRepository execution) {
+      await execution.invalidateLocalQueries(batchId);
+    }
+    if (!isClosed) await refresh();
   }
 
   String _viewCacheKey() {
@@ -231,6 +320,10 @@ class GalleryCubit extends Cubit<GalleryState> {
           hasMore: hasMore,
           fromCache: p.fromCache,
           cachedAt: p.cachedAt,
+          scannedCount: p.scannedCount,
+          matchedCount: p.matchedCount ?? merged.length,
+          resultComplete: p.resultComplete,
+          cacheScope: p.cacheScope,
           pendingOperationCount: operationCounts.pending,
           conflictOperationCount: operationCounts.conflict,
           conflictFileIds: operationCounts.conflictFileIds,
@@ -303,6 +396,7 @@ class GalleryCubit extends Cubit<GalleryState> {
   @override
   Future<void> close() async {
     _requestGeneration++;
+    _cancelActiveQuery();
     _searchDebounce?.cancel();
     await _refreshSubscription?.cancel();
     await _dataSubscription?.cancel();

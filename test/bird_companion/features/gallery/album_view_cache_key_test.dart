@@ -190,6 +190,7 @@ class _EmptyPhotoRepository implements PhotoRepository {
     String batchId,
     List<String> ids,
     String operation, {
+    required int version,
     Object? value,
   }) async => const BatchOperationOutcome(succeededIds: []);
 

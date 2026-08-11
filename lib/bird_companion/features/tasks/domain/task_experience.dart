@@ -21,6 +21,20 @@ enum SdCardReadState { detected, scanning, missing, readFailed, empty }
 
 enum CopyMode { keep, all, dual }
 
+class TaskHomeActionCapability {
+  const TaskHomeActionCapability({
+    required this.type,
+    required this.enabled,
+    required this.description,
+    this.disabledReason,
+  });
+
+  final TaskType type;
+  final bool enabled;
+  final String description;
+  final String? disabledReason;
+}
+
 class TaskControlIntent {
   const TaskControlIntent(this.taskId, this.action);
 
@@ -44,7 +58,9 @@ class TaskSummary {
     required this.progressPercent,
     required this.remainingMinutes,
     required this.state,
+    this.workflowStage,
     this.sourceBatch,
+    this.sourceBatchId,
     this.currentFile,
     this.speed,
     this.failedCount,
@@ -63,7 +79,9 @@ class TaskSummary {
   final int progressPercent;
   final int remainingMinutes;
   final TaskRunState state;
+  final String? workflowStage;
   final String? sourceBatch;
+  final String? sourceBatchId;
   final String? currentFile;
   final String? speed;
   final int? failedCount;
@@ -83,10 +101,12 @@ class TaskSummary {
     TaskRunState? state,
     Set<TaskAction>? availableActions,
     String? sourceBatch,
+    String? sourceBatchId,
     int? processed,
     int? progressPercent,
     int? remainingMinutes,
     bool clearFailure = false,
+    String? workflowStage,
   }) => TaskSummary(
     id: id,
     type: type,
@@ -96,7 +116,9 @@ class TaskSummary {
     progressPercent: progressPercent ?? this.progressPercent,
     remainingMinutes: remainingMinutes ?? this.remainingMinutes,
     state: state ?? this.state,
+    workflowStage: workflowStage ?? this.workflowStage,
     sourceBatch: sourceBatch ?? this.sourceBatch,
+    sourceBatchId: sourceBatchId ?? this.sourceBatchId,
     currentFile: currentFile,
     speed: speed,
     failedCount: clearFailure ? 0 : failedCount,
@@ -126,6 +148,7 @@ class SdCardSnapshot {
   final int rawCount;
   final int jpegCount;
   final DateTime captureDate;
+  DateTime get scannedAt => captureDate;
 
   SdCardSnapshot copyWith({
     SdCardReadState? state,

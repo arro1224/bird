@@ -31,6 +31,10 @@ void main() {
 
     expect(find.text('普通翠鸟'), findsWidgets);
     expect(find.text('白鹭'), findsOneWidget);
+    expect(find.text('识别度：92%'), findsOneWidget);
+    expect(find.text('识别度：73%'), findsOneWidget);
+    expect(find.text('很有把握'), findsNothing);
+    expect(find.text('比较有把握'), findsNothing);
     expect(find.text('湿地'), findsOneWidget);
     expect(find.text('翠鸟'), findsOneWidget);
 

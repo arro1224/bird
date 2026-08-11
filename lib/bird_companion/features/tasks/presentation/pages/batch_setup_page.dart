@@ -23,7 +23,7 @@ class _BatchSetupPageState extends State<BatchSetupPage> {
   @override
   void initState() {
     super.initState();
-    final date = widget.controller.sdCard.captureDate;
+    final date = widget.controller.sdCard.scannedAt;
     _nameController = TextEditingController(
       text: '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')} 拍摄批次',
     );
@@ -109,23 +109,19 @@ class _BatchSetupPageState extends State<BatchSetupPage> {
           const SizedBox(height: 20),
           TaskActionButton(
             _submitting ? '正在创建任务…' : '开始导入并建立索引',
-            onPressed: _submitting
+            onPressed: _submitting || widget.onStartImport == null
                 ? null
                 : () async {
                     if (_nameController.text.trim().isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先填写批次名称')));
                       return;
                     }
-                    final action = widget.onStartImport;
-                    if (action != null) {
-                      setState(() => _submitting = true);
-                      try {
-                        await action(_nameController.text.trim());
-                      } finally {
-                        if (mounted) setState(() => _submitting = false);
-                      }
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('演示模式：导入与索引任务已准备')));
+                    final action = widget.onStartImport!;
+                    setState(() => _submitting = true);
+                    try {
+                      await action(_nameController.text.trim());
+                    } finally {
+                      if (mounted) setState(() => _submitting = false);
                     }
                   },
           ),

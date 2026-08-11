@@ -284,7 +284,7 @@ class _CurrentResultCard extends StatelessWidget {
                 Text(species.isEmpty ? '待确认鸟种' : species, style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
                 if (candidate != null) ...[
                   const SizedBox(height: AppSpacing.xs),
-                  Text('识别度：${UserFacingText.recognitionCertaintyWithPercent(candidate!.confidence)}', style: const TextStyle(color: AppColors.inkMuted)),
+                  Text('识别度：${UserFacingText.recognitionPercent(candidate!.confidence)}', style: const TextStyle(color: AppColors.inkMuted)),
                 ],
                 const SizedBox(height: AppSpacing.sm),
                 const Chip(label: Text('当前结果')),
@@ -309,9 +309,8 @@ class _CandidateTile extends StatelessWidget {
     minVerticalPadding: AppSpacing.sm,
     leading: Icon(selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, color: AppColors.brand),
     title: Text(candidate.name),
-    subtitle: Text('识别度：${UserFacingText.recognitionCertainty(candidate.confidence)}'),
-    trailing: Text(
-      '${(candidate.confidence * 100).round()}%',
+    subtitle: Text(
+      '识别度：${UserFacingText.recognitionPercent(candidate.confidence)}',
       style: TextStyle(color: selected ? AppColors.brand : AppColors.inkMuted, fontWeight: FontWeight.w700),
     ),
     onTap: onTap,

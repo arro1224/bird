@@ -203,6 +203,7 @@ void main() {
       'mock-batch-current',
       const ['photo-0002', 'missing-photo'],
       'featured',
+      version: 1,
     );
     final updated = await reviewApi.detail('photo-0002');
 

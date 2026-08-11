@@ -18,7 +18,7 @@ class TaskDetailPage extends StatelessWidget {
     this.onTaskCompleted,
     this.onControl,
     this.onExportLog,
-    this.allowDemoCompletion = true,
+    this.allowDemoCompletion = false,
   });
 
   final TaskExperienceController controller;
@@ -140,9 +140,10 @@ class TaskDetailPage extends StatelessWidget {
       TaskType.copy => const ['确认复制范围', '复制照片', '校验文件', '生成报告'],
       TaskType.sync => const ['准备同步', '同步结果', '校验差异', '完成同步'],
     };
-    final currentIndex = task.progressPercent >= 100 ? 4 : (task.progressPercent * 4 ~/ 100).clamp(0, 3);
+    final position = _workflowPosition(task);
+    final currentIndex = position.index;
     return TaskSurface(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       child: Column(
         children: [
           for (var index = 0; index < labels.length; index++)
@@ -156,13 +157,46 @@ class TaskDetailPage extends StatelessWidget {
               index < currentIndex
                   ? '已完成'
                   : index == currentIndex
-                  ? _stateLabel(task)
+                  ? position.known
+                        ? _stateLabel(task)
+                        : '处理中'
                   : '等待中',
               last: index == labels.length - 1,
             ),
         ],
       ),
     );
+  }
+
+  ({int index, bool known}) _workflowPosition(TaskSummary task) {
+    if (task.state == TaskRunState.completed || task.workflowStage == 'completed') {
+      return (index: 4, known: true);
+    }
+    final index = switch ((task.type, task.workflowStage)) {
+      (TaskType.importIndex, 'scanning') => 0,
+      (TaskType.importIndex, 'importing') => 1,
+      (TaskType.aiAnalysis, 'analyzing') => 1,
+      (TaskType.aiAnalysis, 'awaiting_review') => 3,
+      (TaskType.aiAnalysis, 'reviewing') => 3,
+      (TaskType.copy, 'awaiting_copy') => 0,
+      (TaskType.copy, 'copying') => 1,
+      (TaskType.copy, 'verifying') => 2,
+      (TaskType.copy, 'exporting_xmp') => 3,
+      (TaskType.sync, 'scanning') => 0,
+      (TaskType.sync, 'importing') => 1,
+      (TaskType.sync, 'verifying') => 2,
+      _ => 0,
+    };
+    final known =
+        task.workflowStage == null ||
+        switch ((task.type, task.workflowStage)) {
+          (TaskType.importIndex, 'scanning' || 'importing') => true,
+          (TaskType.aiAnalysis, 'analyzing' || 'awaiting_review' || 'reviewing') => true,
+          (TaskType.copy, 'awaiting_copy' || 'copying' || 'verifying' || 'exporting_xmp') => true,
+          (TaskType.sync, 'scanning' || 'importing' || 'verifying') => true,
+          _ => false,
+        };
+    return (index: index, known: known);
   }
 
   Widget _details(TaskSummary task) => TaskSurface(
@@ -218,6 +252,7 @@ class TaskDetailPage extends StatelessWidget {
 
   Widget _actions(BuildContext context, TaskSummary task) {
     final actions = task.availableActions;
+    final enabled = controller.canSubmitTaskWrites;
     return Wrap(
       spacing: 10,
       runSpacing: 10,
@@ -225,7 +260,7 @@ class TaskDetailPage extends StatelessWidget {
         if (task.type == TaskType.aiAnalysis && task.state == TaskRunState.queued && actions.contains(TaskAction.resume))
           _actionButton(
             '开始 AI 分析',
-            () => _performAction(task, TaskAction.resume),
+            enabled ? () => _performAction(task, TaskAction.resume) : null,
           ),
         if (allowDemoCompletion && task.state == TaskRunState.running && task.type != TaskType.sync)
           _actionButton(
@@ -235,51 +270,71 @@ class TaskDetailPage extends StatelessWidget {
               TaskType.copy => '演示完成复制',
               TaskType.sync => '',
             },
-            () {
-              controller.completeTask(task.id);
-              onTaskCompleted?.call(task.type);
-            },
+            enabled
+                ? () {
+                    controller.completeTask(task.id);
+                    onTaskCompleted?.call(task.type);
+                  }
+                : null,
           ),
         if (actions.contains(TaskAction.pause))
           _actionButton(
             '暂停任务',
-            () => _performAction(task, TaskAction.pause),
+            enabled ? () => _performAction(task, TaskAction.pause) : null,
             filled: false,
           ),
         if (actions.contains(TaskAction.resume) && task.state != TaskRunState.queued)
           _actionButton(
             '继续任务',
-            () => _performAction(task, TaskAction.resume),
+            enabled ? () => _performAction(task, TaskAction.resume) : null,
           ),
         if (actions.contains(TaskAction.retry))
           _actionButton(
             '重试失败项',
-            () => _performAction(task, TaskAction.retry),
+            enabled ? () => _performAction(task, TaskAction.retry) : null,
           ),
         if (actions.contains(TaskAction.skipFailed))
           _actionButton(
             '跳过失败项',
-            () => _performAction(task, TaskAction.skipFailed),
+            enabled ? () => _performAction(task, TaskAction.skipFailed) : null,
             filled: false,
           ),
-        if (actions.contains(TaskAction.cancel)) _actionButton('取消任务', () => _confirmCancel(context, task), filled: false),
+        if (actions.contains(TaskAction.cancel))
+          _actionButton(
+            '取消任务',
+            enabled ? () => _confirmCancel(context, task) : null,
+            filled: false,
+          ),
         if (actions.contains(TaskAction.exportLog))
           _actionButton(
             '导出日志',
-            () => unawaited(_exportLog(context, task)),
+            enabled ? () => unawaited(_exportLog(context, task)) : null,
             filled: false,
           ),
       ],
     );
   }
 
-  Widget _actionButton(String label, VoidCallback onPressed, {bool filled = true}) => SizedBox(
+  Widget _actionButton(String label, VoidCallback? onPressed, {bool filled = true}) => SizedBox(
     width: 164,
-    height: 48,
-    child: filled ? FilledButton(onPressed: onPressed, child: Text(label)) : OutlinedButton(onPressed: onPressed, child: Text(label)),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48),
+      child: filled
+          ? FilledButton(
+              onPressed: onPressed,
+              child: Text(label, textAlign: TextAlign.center),
+            )
+          : OutlinedButton(
+              onPressed: onPressed,
+              child: Text(label, textAlign: TextAlign.center),
+            ),
+    ),
   );
 
   void _performAction(TaskSummary task, TaskAction action) {
+    if (!controller.canSubmitTaskWrites) {
+      return;
+    }
     final productionControl = onControl;
     if (productionControl != null) {
       unawaited(productionControl(task.id, action));
@@ -291,6 +346,7 @@ class TaskDetailPage extends StatelessWidget {
   Future<void> _exportLog(BuildContext context, TaskSummary task) async {
     final export = onExportLog;
     if (export == null) {
+      if (!allowDemoCompletion) return;
       _performAction(task, TaskAction.exportLog);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('演示模式：日志导出请求已记录')),
@@ -312,56 +368,76 @@ class TaskDetailPage extends StatelessWidget {
     }
   }
 
-  Widget _step(IconData icon, String title, String state, {bool last = false}) => SizedBox(
-    height: 55,
-    child: Row(
-      children: [
-        SizedBox(
-          width: 34,
-          height: 55,
-          child: Stack(
-            alignment: Alignment.topCenter,
-            children: [
-              if (!last)
-                Positioned(
-                  key: const Key('task-timeline-connector'),
-                  top: 29,
-                  bottom: -1,
-                  child: Container(width: 1.5, color: state == '已完成' ? AppColors.forestPrimary : const Color(0xFFD5D5CF)),
-                ),
-              Positioned(top: 8, child: Icon(icon, color: state == '等待中' ? const Color(0xFF9A9D96) : AppColors.forestPrimary, size: 24)),
-            ],
+  Widget _step(IconData icon, String title, String state, {bool last = false}) => ConstrainedBox(
+    key: ValueKey('task-timeline-step-$title'),
+    constraints: const BoxConstraints(minHeight: 55),
+    child: IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 34,
+            child: Stack(
+              alignment: Alignment.topCenter,
+              children: [
+                if (!last)
+                  Positioned(
+                    key: const Key('task-timeline-connector'),
+                    top: 29,
+                    bottom: -1,
+                    child: Container(width: 1.5, color: state == '已完成' ? AppColors.forestPrimary : const Color(0xFFD5D5CF)),
+                  ),
+                Positioned(top: 8, child: Icon(icon, color: state == '等待中' ? const Color(0xFF9A9D96) : AppColors.forestPrimary, size: 24)),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        ),
-        Text(state, style: TextStyle(color: state == '等待中' ? AppColors.mutedInk : AppColors.forestPrimary)),
-      ],
+          const SizedBox(width: 10),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                state,
+                textAlign: TextAlign.end,
+                style: TextStyle(color: state == '等待中' ? AppColors.mutedInk : AppColors.forestPrimary),
+              ),
+            ),
+          ),
+        ],
+      ),
     ),
   );
 
   Widget _line(IconData icon, String label, String value, {bool divider = true}) => Column(
     children: [
-      SizedBox(
-        height: 38,
-        child: Row(
-          children: [
-            Icon(icon, key: const Key('task-detail-info-icon'), size: 22, color: AppColors.forestPrimary),
-            const SizedBox(width: 12),
-            Text(label),
-            const Spacer(),
-            Flexible(
-              child: Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.end,
-                style: const TextStyle(color: AppColors.mutedInk),
+      ConstrainedBox(
+        key: ValueKey('task-detail-info-row-$label'),
+        constraints: const BoxConstraints(minHeight: 38),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              Icon(icon, key: const Key('task-detail-info-icon'), size: 22, color: AppColors.forestPrimary),
+              const SizedBox(width: 12),
+              Text(label),
+              const Spacer(),
+              Flexible(
+                child: Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: const TextStyle(color: AppColors.mutedInk),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       if (divider) const Divider(height: 1),

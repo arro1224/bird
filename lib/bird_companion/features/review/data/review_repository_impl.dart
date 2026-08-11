@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/data/review_api.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
@@ -8,7 +9,7 @@ import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 
-class ReviewRepositoryImpl implements ReviewRepository {
+class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictResolver {
   ReviewRepositoryImpl(
     this._api,
     this._connectivity,
@@ -74,16 +75,27 @@ class ReviewRepositoryImpl implements ReviewRepository {
   }) async {
     final previous = _optimisticDecisions[_optimisticKey(v.fileId)] ?? _cachedDecision(v.fileId);
     final patch = previous == null ? UserDecisionPatch.fromDecision(v) : UserDecisionPatch.diff(previous, v);
+    if (patch.version == null || patch.version! < 0) {
+      throw const ProtocolCompatibilityException('version', '必须是非负整数');
+    }
+    if (!patch.hasChanges) return const ReviewSaveResult();
+    final deviceId = _activeDeviceId;
+    if (deviceId == null) {
+      throw StateError('没有可用于隔离修改的设备身份');
+    }
+    final operationId = 'review-${v.fileId}-${DateTime.now().microsecondsSinceEpoch}';
     try {
       if (!await _connectivity.hasNetwork) {
         return _queue(
           v,
           patch,
+          operationId,
+          deviceId,
           '设备离线，修改将在重新连接后同步',
           projectId: projectId,
         );
       }
-      await _api.save(patch);
+      await _api.save(patch, idempotencyKey: operationId);
       await _removeQueuedReviewOperationsSafely(
         v.fileId,
         projectId: projectId,
@@ -94,9 +106,12 @@ class ReviewRepositoryImpl implements ReviewRepository {
     } on ApiException catch (error) {
       if (error.statusCode == 409) return ReviewSaveResult(conflict: true, message: error.message);
       if (error.statusCode == 401 || error.statusCode == 403) rethrow;
+      if (error.statusCode != null && !error.retryable) rethrow;
       return _queue(
         v,
         patch,
+        operationId,
+        deviceId,
         '暂时无法连接盒子，修改已保存在本机',
         projectId: projectId,
       );
@@ -106,16 +121,44 @@ class ReviewRepositoryImpl implements ReviewRepository {
   Future<ReviewSaveResult> _queue(
     UserDecision value,
     UserDecisionPatch patch,
+    String operationId,
+    String deviceId,
     String message, {
     String? projectId,
   }) async {
+    final matching = _pending
+        .readAll()
+        .where((operation) {
+          return operation.type == PendingOperationType.updateReview && operation.deviceId == deviceId && operation.projectId == projectId && (operation.fileId ?? operation.payload['file_id']?.toString()) == value.fileId;
+        })
+        .toList(growable: false);
+    if (matching.any(
+      (operation) => operation.status == PendingOperationStatus.conflict,
+    )) {
+      throw StateError('该照片存在待处理的同步冲突');
+    }
+    final existing = matching.lastOrNull;
+    final payload = <String, dynamic>{
+      if (existing != null)
+        for (final entry in existing.payload.entries)
+          if (_decisionWireFields.contains(entry.key)) entry.key: entry.value,
+      ...patch.toJson(),
+    };
+    final baseVersion = existing == null
+        ? patch.version!
+        : ProtocolValidation.optionalNonNegativeInt(
+                existing.payload,
+                'version',
+              ) ??
+              patch.version!;
+    payload['version'] = baseVersion;
     final operation = PendingOperation(
-      id: 'review-${value.fileId}-${DateTime.now().microsecondsSinceEpoch}',
+      id: operationId,
       type: PendingOperationType.updateReview,
-      payload: patch.toJson(),
+      payload: payload,
       createdAt: DateTime.now(),
-      version: value.version,
-      deviceId: _activeDeviceId,
+      version: baseVersion,
+      deviceId: deviceId,
       projectId: projectId,
       fileId: value.fileId,
     );
@@ -214,9 +257,14 @@ class ReviewRepositoryImpl implements ReviewRepository {
     }
   }
 
-  Future<void> acceptRemoteDecision(String fileId) async {
+  @override
+  Future<void> acceptRemoteDecision(
+    String fileId, {
+    String? projectId,
+  }) async {
     final remote = await _api.detail(fileId);
     _optimisticDecisions.remove(_optimisticKey(fileId));
+    await _removeQueuedReviewOperations(fileId, projectId: projectId);
     await _cache.write(
       'album:detail:${_cacheNamespace()}:$fileId',
       _detailToJson(remote),
@@ -407,6 +455,15 @@ class ReviewRepositoryImpl implements ReviewRepository {
     );
   }
 }
+
+const _decisionWireFields = <String>{
+  'version',
+  'keep_state',
+  'user_score',
+  'user_species_id',
+  'user_species',
+  'user_tags',
+};
 
 Map<String, dynamic> mergeReviewDecisionIntoPhotoJson(
   Map<dynamic, dynamic> source,

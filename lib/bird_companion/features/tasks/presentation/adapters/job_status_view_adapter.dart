@@ -5,10 +5,25 @@ import 'package:flutter/foundation.dart';
 
 abstract final class JobStatusViewAdapter {
   static ValueChanged<BirdJobState>? legacyStateReporter;
+  static ValueChanged<String>? unknownWorkflowStageReporter;
+
+  static const _knownWorkflowStages = {
+    'scanning',
+    'importing',
+    'analyzing',
+    'awaiting_review',
+    'reviewing',
+    'awaiting_copy',
+    'copying',
+    'verifying',
+    'exporting_xmp',
+    'completed',
+  };
 
   static TaskSummary? toTaskSummary(
     BirdJobStatus job, {
     String? sourceBatch,
+    String? sourceBatchId,
     TaskConnectionState connectionState = TaskConnectionState.connected,
     int? remainingMinutes,
   }) {
@@ -17,6 +32,11 @@ abstract final class JobStatusViewAdapter {
     final state = _state(job.state);
     final rawProgress = job.progress <= 1 ? job.progress * 100 : job.progress;
     final progressPercent = rawProgress.round().clamp(0, 100);
+    final workflowStage = job.workflowStage?.trim();
+    if (workflowStage?.isNotEmpty == true && !_knownWorkflowStages.contains(workflowStage)) {
+      unknownWorkflowStageReporter?.call(workflowStage!);
+      debugPrint('Unknown job workflow_stage: $workflowStage');
+    }
     return TaskSummary(
       id: job.id,
       type: type,
@@ -26,7 +46,9 @@ abstract final class JobStatusViewAdapter {
       progressPercent: progressPercent,
       remainingMinutes: remainingMinutes ?? ((job.estimatedRemainingSeconds ?? 0) / 60).ceil(),
       state: state,
-      sourceBatch: sourceBatch,
+      workflowStage: workflowStage,
+      sourceBatch: _sourceName(job, sourceBatch),
+      sourceBatchId: _nonEmpty(job.sourceProjectId) ?? sourceBatchId,
       currentFile: job.currentFile,
       speed: _speed(job.speedBytesPerSecond),
       failedCount: job.failedCount,
@@ -37,7 +59,7 @@ abstract final class JobStatusViewAdapter {
               message: job.errorMessage,
             ).message,
       connectionState: connectionState,
-      availableActions: _actions(job, state),
+      availableActions: _actions(job),
     );
   }
 
@@ -69,25 +91,12 @@ abstract final class JobStatusViewAdapter {
     };
   }
 
-  static Set<TaskAction> _actions(
-    BirdJobStatus job,
-    TaskRunState state,
-  ) {
-    if (job.availableActions.isNotEmpty) {
-      return job.availableActions.map(_action).whereType<TaskAction>().toSet();
-    }
-    return switch (state) {
-      TaskRunState.queued => const {TaskAction.cancel, TaskAction.exportLog},
-      TaskRunState.running => const {TaskAction.pause, TaskAction.cancel, TaskAction.exportLog},
-      TaskRunState.paused => const {TaskAction.resume, TaskAction.cancel, TaskAction.exportLog},
-      TaskRunState.failed => {
-        TaskAction.retry,
-        if (job.failedCount > 0) TaskAction.skipFailed,
-        TaskAction.exportLog,
-      },
-      TaskRunState.completed || TaskRunState.cancelled => const {TaskAction.exportLog},
-    };
-  }
+  static Set<TaskAction> _actions(BirdJobStatus job) => {
+    ...job.availableActions.map(_action).whereType<TaskAction>(),
+    // Log export is a separate read-only diagnostics endpoint and is not part
+    // of the box task-control available_actions contract.
+    TaskAction.exportLog,
+  };
 
   static TaskAction? _action(String action) => switch (action) {
     'pause' => TaskAction.pause,
@@ -101,5 +110,12 @@ abstract final class JobStatusViewAdapter {
   static String? _speed(double? bytesPerSecond) {
     if (bytesPerSecond == null) return null;
     return '${(bytesPerSecond / 1024 / 1024).toStringAsFixed(1)} MB/s';
+  }
+
+  static String? _sourceName(BirdJobStatus job, String? fallback) => _nonEmpty(job.sourceProjectName) ?? _nonEmpty(fallback) ?? _nonEmpty(job.sourceProjectId);
+
+  static String? _nonEmpty(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
   }
 }

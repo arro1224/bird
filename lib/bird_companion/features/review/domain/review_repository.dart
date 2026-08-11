@@ -23,3 +23,12 @@ abstract interface class ReviewRepository {
     String? projectId,
   });
 }
+
+/// Optional capability for repositories that can discard a local review
+/// conflict and restore the box-authoritative decision.
+abstract interface class RemoteReviewConflictResolver {
+  Future<void> acceptRemoteDecision(
+    String fileId, {
+    String? projectId,
+  });
+}

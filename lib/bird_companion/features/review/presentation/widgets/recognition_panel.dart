@@ -76,10 +76,9 @@ class RecognitionPanel extends StatelessWidget {
                           )
                         else ...[
                           Text(
-                            UserFacingText.recognitionCertainty(currentConfidence),
+                            UserFacingText.recognitionPercent(currentConfidence),
                             style: const TextStyle(fontSize: 24, color: AppColors.brand, fontWeight: FontWeight.w800),
                           ),
-                          Text('${(currentConfidence * 100).round()}%', style: const TextStyle(color: AppColors.inkMuted)),
                         ],
                       ],
                     ),
@@ -104,7 +103,7 @@ class RecognitionPanel extends StatelessWidget {
                               child: Text('${index + 1}', style: const TextStyle(fontSize: 11)),
                             ),
                             title: Text(candidates[index].name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            trailing: Text(UserFacingText.recognitionCertainty(candidates[index].confidence)),
+                            trailing: Text(UserFacingText.recognitionPercent(candidates[index].confidence)),
                           ),
                       ],
                     ),

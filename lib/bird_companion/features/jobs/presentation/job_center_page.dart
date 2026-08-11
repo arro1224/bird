@@ -111,6 +111,19 @@ class _JobCenterViewState extends State<_JobCenterView> {
                     ),
                   ),
                 ),
+              if (state.hasMore) ...[
+                const SizedBox(height: 4),
+                Center(
+                  child: state.loadingMore
+                      ? const CircularProgressIndicator()
+                      : OutlinedButton.icon(
+                          onPressed: () => context.read<JobCenterCubit>().loadMore(),
+                          icon: const Icon(Icons.expand_more_rounded),
+                          label: const Text('加载更多任务'),
+                        ),
+                ),
+                const SizedBox(height: 12),
+              ],
               if (!_showCompleted && jobs.isNotEmpty)
                 const Card(
                   child: Padding(

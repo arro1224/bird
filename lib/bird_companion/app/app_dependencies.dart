@@ -222,6 +222,7 @@ class BirdCompanionDependencies {
     unawaited(birdSyncService.dispose());
     unawaited(refreshCoordinator.dispose());
     unawaited(dataChangeBus.dispose());
+    unawaited(pendingOperationStore.dispose());
     unawaited(cache.close());
   }
 }

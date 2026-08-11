@@ -26,8 +26,33 @@ class TaskExperienceController extends ChangeNotifier {
   bool loading = false;
   bool acting = false;
   Object? error;
+  String? sdCardErrorCode;
+  String? sdCardErrorMessage;
 
   List<TaskSummary> get tasks => List.unmodifiable(_tasks);
+
+  bool get canSubmitTaskWrites => connectionState == TaskConnectionState.connected && !loading && !acting;
+  List<TaskHomeActionCapability> get taskHomeCapabilities => [
+    for (final type in TaskType.values)
+      TaskHomeActionCapability(
+        type: type,
+        enabled: executableTaskTypes.contains(type) && canSubmitTaskWrites,
+        description: switch (type) {
+          TaskType.importIndex => '读取存储卡并建立批次',
+          TaskType.aiAnalysis => '分析当前批次照片',
+          TaskType.copy => '确认范围和目标硬盘',
+          TaskType.sync => '同步批次和审片结果',
+        },
+        disabledReason: executableTaskTypes.contains(type) && canSubmitTaskWrites
+            ? null
+            : connectionState != TaskConnectionState.connected
+            ? '连接盒子后可用'
+            : '当前状态不可执行',
+      ),
+  ];
+  bool get hasMoreTasks => false;
+  bool get loadingMoreTasks => false;
+  Future<void> loadMoreTasks() async {}
 
   TaskSummary? get currentTaskOrNull {
     final currentTaskId = _currentTaskId;
@@ -178,8 +203,14 @@ class TaskExperienceController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void replaceSdCard(SdCardSnapshot value) {
+  void replaceSdCard(
+    SdCardSnapshot value, {
+    String? errorCode,
+    String? errorMessage,
+  }) {
     sdCard = value;
+    sdCardErrorCode = errorCode;
+    sdCardErrorMessage = errorMessage;
     notifyListeners();
   }
 
@@ -295,7 +326,7 @@ class TaskExperienceController extends ChangeNotifier {
     if (normalizedName.isEmpty) {
       throw ArgumentError.value(batchName, 'batchName', 'Batch name cannot be empty');
     }
-    final date = sdCard.captureDate;
+    final date = sdCard.scannedAt;
     activeBatchId = 'demo-batch-${date.year}${date.month.toString().padLeft(2, '0')}${date.day.toString().padLeft(2, '0')}';
     final fixtures = _dataSource.initialTasks();
     _replaceTask(_taskByType(TaskType.aiAnalysis, fixtures));
@@ -346,5 +377,7 @@ class TaskExperienceController extends ChangeNotifier {
     loading = false;
     acting = false;
     error = null;
+    sdCardErrorCode = null;
+    sdCardErrorMessage = null;
   }
 }

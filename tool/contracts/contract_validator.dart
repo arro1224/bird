@@ -1,7 +1,53 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
+
 const contractVersion = 'birdbox-v1@1.0.0';
+
+const _frozenContractArtifacts = <String>{
+  'docs/contracts/birdbox-v1.openapi.yaml',
+  'docs/contracts/schemas/bird-job-status.schema.json',
+  'docs/contracts/schemas/device-status.schema.json',
+  'docs/contracts/schemas/error-response.schema.json',
+  'docs/contracts/schemas/event-envelope.schema.json',
+  'docs/contracts/schemas/photo.schema.json',
+  'docs/contracts/schemas/project.schema.json',
+  'docs/contracts/schemas/user-decision-patch.schema.json',
+  'docs/decisions/ADR-001-birdbox-v1.md',
+  'docs/盒子端接口说明7.24.md',
+};
+
+const _frozenOperations = <String>{
+  'GET /device/status',
+  'POST /device/pair',
+  'GET /events',
+  'GET /storage/cards/current/scan',
+  'POST /storage/cards/current/rescan',
+  'GET /projects',
+  'POST /projects',
+  'GET /projects/current',
+  'POST /projects/{projectId}/resume',
+  'POST /projects/{projectId}/imports',
+  'POST /projects/{projectId}/analysis-jobs',
+  'GET /projects/{projectId}/files',
+  'POST /projects/{projectId}/files/actions',
+  'GET /projects/{projectId}/groups',
+  'GET /projects/{projectId}/scenes',
+  'GET /species',
+  'GET /files/{fileId}',
+  'POST /files/{fileId}/decision',
+  'GET /files/{fileId}/history',
+  'GET /projects/{projectId}/copy/estimate',
+  'POST /projects/{projectId}/copy',
+  'GET /jobs',
+  'GET /jobs/{jobId}',
+  'DELETE /jobs/{jobId}',
+  'POST /jobs/{jobId}/actions',
+  'GET /jobs/{jobId}/failures',
+  'GET /jobs/{jobId}/report',
+  'POST /logs/export',
+};
 
 const _requiredExternalBaselineValues = <String>[
   'box.repository',
@@ -31,6 +77,9 @@ Future<ContractValidationResult> validateBirdBoxContracts({
   bool strictBaseline = false,
 }) async {
   final errors = <String>[];
+  errors.addAll(
+    validateBirdBoxContractFreeze(repositoryRoot: repositoryRoot).errors,
+  );
   final openApiFile = File(
     _join(repositoryRoot.path, 'docs/contracts/birdbox-v1.openapi.yaml'),
   );
@@ -63,6 +112,66 @@ Future<ContractValidationResult> validateBirdBoxContracts({
   }
   _validateVersionReferences(repositoryRoot, errors);
 
+  return ContractValidationResult(errors);
+}
+
+ContractValidationResult validateBirdBoxContractFreeze({
+  required Directory repositoryRoot,
+}) {
+  final errors = <String>[];
+  final freezeFile = File(
+    _join(repositoryRoot.path, 'docs/contracts/birdbox-v1-freeze.json'),
+  );
+  final freeze = _readJsonMap(freezeFile, errors);
+  if (freeze == null) {
+    return ContractValidationResult(errors);
+  }
+  if (freeze['contract'] != contractVersion || freeze['api_version'] != 'v1' || freeze['policy'] != 'immutable' || freeze['new_interface_count'] != 0) {
+    errors.add(
+      '${freezeFile.path}: must freeze $contractVersion / API v1 as immutable with zero new interfaces',
+    );
+  }
+
+  final rawArtifacts = freeze['artifacts'];
+  if (rawArtifacts is! Map) {
+    errors.add('${freezeFile.path}: artifacts must be an object');
+    return ContractValidationResult(errors);
+  }
+  final artifacts = rawArtifacts.map(
+    (key, value) => MapEntry(key.toString(), value.toString().toLowerCase()),
+  );
+  final actualPaths = artifacts.keys.toSet();
+  for (final path in _frozenContractArtifacts.difference(actualPaths)) {
+    errors.add('${freezeFile.path}: missing frozen artifact $path');
+  }
+  for (final path in actualPaths.difference(_frozenContractArtifacts)) {
+    errors.add(
+      '${freezeFile.path}: unexpected frozen artifact $path; register new-version work in a separate proposal',
+    );
+  }
+
+  final digestPattern = RegExp(r'^[0-9a-f]{64}$');
+  for (final path in _frozenContractArtifacts) {
+    final expectedDigest = artifacts[path];
+    if (expectedDigest == null) {
+      continue;
+    }
+    if (!digestPattern.hasMatch(expectedDigest)) {
+      errors.add('${freezeFile.path}: invalid SHA-256 for $path');
+      continue;
+    }
+    final artifact = File(_join(repositoryRoot.path, path));
+    if (!artifact.existsSync()) {
+      errors.add('missing frozen artifact: ${artifact.path}');
+      continue;
+    }
+    final actualDigest = sha256.convert(artifact.readAsBytesSync()).toString();
+    if (actualDigest != expectedDigest) {
+      errors.add(
+        'frozen contract drift: $path changed; do not modify $contractVersion. Create an independent versioned interface proposal.',
+      );
+    }
+  }
   return ContractValidationResult(errors);
 }
 
@@ -133,6 +242,28 @@ void _validateOpenApi(
   final actualPaths = paths.keys.map((value) => value.toString()).toSet();
   for (final path in requiredPaths.difference(actualPaths)) {
     errors.add('${openApiFile.path}: missing required path $path');
+  }
+
+  final actualOperations = <String>{};
+  const httpMethods = <String>{'get', 'post', 'put', 'patch', 'delete'};
+  for (final entry in paths.entries) {
+    final pathItem = entry.value;
+    if (pathItem is! Map) {
+      continue;
+    }
+    for (final method in httpMethods) {
+      if (pathItem[method] is Map) {
+        actualOperations.add('${method.toUpperCase()} ${entry.key}');
+      }
+    }
+  }
+  for (final operation in _frozenOperations.difference(actualOperations)) {
+    errors.add('${openApiFile.path}: missing frozen operation $operation');
+  }
+  for (final operation in actualOperations.difference(_frozenOperations)) {
+    errors.add(
+      '${openApiFile.path}: new v1 operation is forbidden: $operation; create an independent versioned interface proposal',
+    );
   }
 
   for (final entry in paths.entries) {

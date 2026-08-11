@@ -11,6 +11,12 @@ void main() {
       'job_state': 'completed',
       'source_project_id': 'project-7',
       'source_project_name': '河岸翠鸟',
+      'progress': 1.0,
+      'total_count': 20,
+      'finished_count': 20,
+      'failed_count': 0,
+      'skipped_count': 0,
+      'available_actions': <String>[],
     });
 
     expect(job.sourceProjectId, 'project-7');
@@ -33,6 +39,7 @@ void main() {
     expect(task.availableActions, {
       TaskAction.resume,
       TaskAction.cancel,
+      TaskAction.exportLog,
     });
   });
 
@@ -64,6 +71,7 @@ void main() {
       currentFile: 'DSC_0151.NEF',
       speedBytesPerSecond: 12582912,
       errorMessage: '目标盘已断开',
+      availableActions: ['retry_failed', 'skip_failed'],
     );
 
     final task = JobStatusViewAdapter.toTaskSummary(
@@ -82,6 +90,18 @@ void main() {
     expect(task.speed, '12.0 MB/s');
     expect(task.failureReason, '目标盘已断开');
     expect(task.availableActions, containsAll([TaskAction.retry, TaskAction.skipFailed, TaskAction.exportLog]));
+  });
+
+  test('does not infer write actions when available_actions is empty', () {
+    const job = BirdJobStatus(
+      id: 'job-running-without-actions',
+      type: BirdJobType.copy,
+      state: BirdJobState.running,
+    );
+
+    final task = JobStatusViewAdapter.toTaskSummary(job)!;
+
+    expect(task.availableActions, const {TaskAction.exportLog});
   });
 
   test('ignores unknown production task types', () {

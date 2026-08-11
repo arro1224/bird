@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/scene_models.dart';
 import 'package:aves/bird_companion/features/gallery/data/photo_api.dart';
+import 'package:aves/bird_companion/features/gallery/data/photo_local_query_executor.dart';
+import 'package:aves/bird_companion/features/gallery/domain/photo_local_filter_engine.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
@@ -9,7 +14,7 @@ import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 
-class PhotoRepositoryImpl implements PhotoRepository {
+class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionRepository {
   PhotoRepositoryImpl(
     this._api,
     this._connectivity,
@@ -25,23 +30,38 @@ class PhotoRepositoryImpl implements PhotoRepository {
   final LocalCache _cache;
   final String Function() _cacheNamespace;
   final String? Function() _deviceId;
+  late final PhotoLocalQueryExecutor _localQueryExecutor = PhotoLocalQueryExecutor(
+    _loadAndCacheServerPage,
+    searchSpecies,
+    const PhotoLocalFilterEngine(),
+    _readCandidateSnapshot,
+    _writeCandidateSnapshot,
+  );
 
   static const _photoPrefix = 'album:photos:';
   static const _scenePrefix = 'album:scenes:';
   static const _speciesPrefix = 'album:species:';
+  static const _candidatePrefix = 'album:query-candidates:';
+  static const _candidateTtl = Duration(minutes: 10);
 
   @override
-  Future<PhotoPage> page(String id, PhotoQuery q) async {
+  Future<PhotoPage> page(String id, PhotoQuery q) => pageWithProgress(id, q);
+
+  @override
+  Future<PhotoPage> pageWithProgress(
+    String id,
+    PhotoQuery q, {
+    PhotoQueryProgressCallback? onProgress,
+    PhotoQueryCancellationToken? cancellationToken,
+  }) async {
     final key = '$_photoPrefix${_cacheNamespace()}:$id:${_queryKey(q)}';
     try {
-      final page = await _api.page(id, q);
-      await _cache.write(key, {
-        'items': page.items.map((item) => item.toJson()).toList(),
-        'has_more': page.hasMore,
-        'next_cursor': page.nextCursor,
-        'cached_at': DateTime.now().toIso8601String(),
-      });
-      return page;
+      return await _localQueryExecutor.page(
+        id,
+        q,
+        onProgress: onProgress,
+        cancellationToken: cancellationToken,
+      );
     } on ApiException {
       final cached = _cache.read<Map>(key);
       if (cached != null) return _photoPageFromCache(cached);
@@ -49,6 +69,57 @@ class PhotoRepositoryImpl implements PhotoRepository {
       if (local != null) return local;
       rethrow;
     }
+  }
+
+  PhotoCandidateSnapshot? _readCandidateSnapshot(
+    String batchId,
+    PhotoQuery serverQuery,
+  ) {
+    final raw = _cache.read<Map>(_candidateKey(batchId, serverQuery));
+    if (raw == null || raw['complete'] != true) return null;
+    final cachedAt = DateTime.tryParse(raw['cached_at']?.toString() ?? '');
+    if (cachedAt == null || DateTime.now().difference(cachedAt) > _candidateTtl) {
+      unawaited(_cache.remove(_candidateKey(batchId, serverQuery)));
+      return null;
+    }
+    final items = (raw['items'] as List? ?? const []).whereType<Map>().map((item) => PhotoSummary.fromJson(Map<String, dynamic>.from(item))).toList(growable: false);
+    return PhotoCandidateSnapshot(items: items, cachedAt: cachedAt);
+  }
+
+  Future<void> _writeCandidateSnapshot(
+    String batchId,
+    PhotoQuery serverQuery,
+    PhotoCandidateSnapshot snapshot,
+  ) => _cache.write(_candidateKey(batchId, serverQuery), {
+    'complete': true,
+    'items': snapshot.items.map((item) => item.toJson()).toList(growable: false),
+    'cached_at': snapshot.cachedAt.toIso8601String(),
+  });
+
+  String _candidateKey(String batchId, PhotoQuery serverQuery) => '$_candidatePrefix${_cacheNamespace()}:$batchId:${_queryKey(serverQuery)}';
+
+  @override
+  Future<void> invalidateLocalQueries(String batchId) async {
+    _localQueryExecutor.invalidateBatch(batchId);
+    final prefix = '$_candidatePrefix${_cacheNamespace()}:$batchId:';
+    for (final key in _cache.keysWithPrefix(prefix)) {
+      await _cache.remove(key);
+    }
+  }
+
+  Future<PhotoPage> _loadAndCacheServerPage(
+    String batchId,
+    PhotoQuery query,
+  ) async {
+    final page = await _api.page(batchId, query);
+    final key = '$_photoPrefix${_cacheNamespace()}:$batchId:${_queryKey(query)}';
+    await _cache.write(key, {
+      'items': page.items.map((item) => item.toJson()).toList(),
+      'has_more': page.hasMore,
+      'next_cursor': page.nextCursor,
+      'cached_at': DateTime.now().toIso8601String(),
+    });
+    return page;
   }
 
   @override
@@ -81,32 +152,93 @@ class PhotoRepositoryImpl implements PhotoRepository {
   }
 
   @override
-  Future<BatchOperationOutcome> batchOperation(String id, List<String> ids, String action, {Object? value}) async {
+  Future<BatchOperationOutcome> batchOperation(
+    String id,
+    List<String> ids,
+    String action, {
+    required int version,
+    Object? value,
+  }) async {
+    if (version < 0) {
+      throw const ProtocolCompatibilityException('version', '必须是非负整数');
+    }
     final targetIds = ids.map((value) => value.trim()).where((value) => value.isNotEmpty).toSet().toList();
     if (targetIds.isEmpty) return const BatchOperationOutcome(succeededIds: []);
+    final deviceId = _activeDeviceId;
+    if (deviceId == null) {
+      throw StateError('没有可用于隔离修改的设备身份');
+    }
+    final operationId = 'batch-$id-${DateTime.now().microsecondsSinceEpoch}';
     try {
-      if (await _connectivity.hasNetwork) return await _api.batchOperation(id, targetIds, action, value: value);
+      if (await _connectivity.hasNetwork) {
+        final outcome = await _api.batchOperation(
+          id,
+          targetIds,
+          action,
+          version: version,
+          value: value,
+          idempotencyKey: operationId,
+        );
+        await invalidateLocalQueries(id);
+        return outcome;
+      }
     } on ApiException catch (error) {
       if (error.statusCode == 401 || error.statusCode == 403) rethrow;
+      if (error.statusCode == 409) {
+        return BatchOperationOutcome(
+          succeededIds: const [],
+          failed: {
+            for (final fileId in targetIds) fileId: '照片版本已变化，请刷新后重试',
+          },
+        );
+      }
+      if (error.statusCode != null && !error.retryable) rethrow;
       // A failed request is retained below and replayed after a reconnect.
+    }
+    final queuedIds = <String>[];
+    final failed = <String, String>{};
+    final alreadyPending = _pending
+        .readAll()
+        .where(
+          (operation) => operation.type == PendingOperationType.batchReview && operation.deviceId == deviceId && operation.projectId == id,
+        )
+        .expand(
+          (operation) => (operation.payload['file_ids'] as List? ?? const <Object>[]).map((fileId) => fileId.toString()),
+        )
+        .toSet();
+    for (final fileId in targetIds) {
+      if (alreadyPending.contains(fileId)) {
+        failed[fileId] = '该照片已有待同步修改，请先完成同步';
+      } else {
+        queuedIds.add(fileId);
+      }
+    }
+    if (queuedIds.isEmpty) {
+      return BatchOperationOutcome(succeededIds: const [], failed: failed);
     }
     await _pending.save(
       PendingOperation(
-        id: 'batch-$id-${DateTime.now().microsecondsSinceEpoch}',
+        id: operationId,
         type: PendingOperationType.batchReview,
         payload: {
-          'project_id': id,
-          'file_ids': targetIds,
+          'file_ids': queuedIds,
           'operation': action,
           'value': value,
+          'version': version,
         },
         createdAt: DateTime.now(),
-        deviceId: _activeDeviceId,
+        version: version,
+        deviceId: deviceId,
         projectId: id,
       ),
     );
-    await _updateCachedPhotos(id, targetIds, action, value);
-    return BatchOperationOutcome(succeededIds: targetIds, queued: true);
+    await _updateCachedPhotos(id, queuedIds, action, value);
+    await invalidateLocalQueries(id);
+    return BatchOperationOutcome(
+      succeededIds: queuedIds,
+      failed: failed,
+      queued: true,
+    );
   }
 
   Future<void> _updateCachedPhotos(String batchId, List<String> ids, String operation, Object? value) async {
@@ -170,8 +302,7 @@ class PhotoRepositoryImpl implements PhotoRepository {
     }
     if (byId.isEmpty) return null;
 
-    var items = byId.values.where((photo) => _matches(photo, query)).toList();
-    items.sort((left, right) => _compare(left, right, query.sort));
+    final items = const PhotoLocalFilterEngine().filterAndSort(byId.values, query);
     final offset = int.tryParse(query.cursor ?? '') ?? 0;
     final start = offset.clamp(0, items.length);
     final end = (start + query.pageSize).clamp(start, items.length);
@@ -182,63 +313,9 @@ class PhotoRepositoryImpl implements PhotoRepository {
       nextCursor: end < items.length ? '$end' : null,
       fromCache: true,
       cachedAt: cachedAt,
+      resultComplete: false,
+      cacheScope: PhotoCacheScope.partial,
+      scannedCount: byId.length,
     );
-  }
-
-  bool _matches(PhotoSummary photo, PhotoQuery query) {
-    final search = query.search?.trim().toLowerCase();
-    final candidates = photo.recognition?.candidates ?? const [];
-    if (search?.isNotEmpty == true) {
-      final searchable = [
-        photo.filename,
-        ...photo.userTags,
-        ...candidates.expand((candidate) => [candidate.name, candidate.englishName ?? '', candidate.latinName ?? '']),
-      ].join(' ').toLowerCase();
-      if (!searchable.contains(search!)) return false;
-    }
-    final species = query.species?.trim().toLowerCase();
-    if (species?.isNotEmpty == true && !candidates.any((candidate) => candidate.speciesId?.toLowerCase() == species || candidate.name.toLowerCase().contains(species!))) {
-      return false;
-    }
-    if (query.minScore != null && (photo.rating?.totalScore ?? -1) < query.minScore!) return false;
-    if (query.minConfidence != null && (candidates.isEmpty || candidates.first.confidence < query.minConfidence!)) return false;
-    if (query.tags.isNotEmpty && !query.tags.every(photo.userTags.contains)) return false;
-    if (query.keepState?.isNotEmpty == true && photo.keepState != query.keepState) return false;
-    if (query.analysisState?.isNotEmpty == true && photo.analysisState.wireValue != query.analysisState) return false;
-    if (query.clarityState?.isNotEmpty == true && photo.clarityState.wireValue != query.clarityState) return false;
-    if (query.recommendedOnly && !photo.isRecommended) return false;
-    if (query.groupId?.isNotEmpty == true && photo.groupId != query.groupId) return false;
-    if (query.sceneId?.isNotEmpty == true && photo.sceneId != query.sceneId) return false;
-    switch (query.recognitionState) {
-      case 'recognized':
-        if (candidates.isEmpty || photo.recognition?.isLowConfidence == true) return false;
-        break;
-      case 'needs_review':
-        if (photo.recognition?.isLowConfidence != true) return false;
-        break;
-      case 'unknown':
-        if (candidates.isNotEmpty) return false;
-        break;
-    }
-    return true;
-  }
-
-  int _compare(PhotoSummary left, PhotoSummary right, String sort) {
-    switch (sort) {
-      case 'score_desc':
-        return (right.rating?.totalScore ?? -1).compareTo(left.rating?.totalScore ?? -1);
-      case 'confidence_desc':
-        final rightConfidence = right.recognition?.candidates.firstOrNull?.confidence ?? -1;
-        final leftConfidence = left.recognition?.candidates.firstOrNull?.confidence ?? -1;
-        return rightConfidence.compareTo(leftConfidence);
-      case 'recommended_desc':
-        final recommendation = (right.isRecommended ? 1 : 0).compareTo(left.isRecommended ? 1 : 0);
-        if (recommendation != 0) return recommendation;
-        return (right.rating?.totalScore ?? -1).compareTo(left.rating?.totalScore ?? -1);
-      default:
-        final rightTime = right.capturedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final leftTime = left.capturedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return rightTime.compareTo(leftTime);
-    }
   }
 }

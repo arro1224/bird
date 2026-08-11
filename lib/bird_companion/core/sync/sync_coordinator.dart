@@ -32,11 +32,13 @@ class SyncCoordinator {
   Future<SyncResult> synchronize(
     Future<void> Function(PendingOperation operation) submit, {
     bool Function(PendingOperation operation)? canSynchronize,
+    bool Function()? canContinue,
   }) async {
     var syncedCount = 0;
     final failed = <PendingOperation>[];
     for (final operation in _store.readAll()) {
       if (canSynchronize != null && !canSynchronize(operation)) continue;
+      if (canContinue != null && !canContinue()) break;
       if (operation.status == PendingOperationStatus.conflict) continue;
       try {
         await _store.save(

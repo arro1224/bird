@@ -8,13 +8,24 @@ import 'package:aves/bird_companion/features/jobs/domain/job_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class JobCenterState {
-  const JobCenterState({this.loading = false, this.jobs = const [], this.error, this.actingJobId});
+  const JobCenterState({this.loading = false, this.loadingMore = false, this.jobs = const [], this.hasMore = false, this.nextCursor, this.error, this.actingJobId});
   final bool loading;
+  final bool loadingMore;
+  final bool hasMore;
+  final String? nextCursor;
   final List<BirdJobStatus> jobs;
   final Object? error;
   final String? actingJobId;
-  JobCenterState copyWith({bool? loading, List<BirdJobStatus>? jobs, Object? error, String? actingJobId, bool clearError = false, bool clearActing = false}) =>
-      JobCenterState(loading: loading ?? this.loading, jobs: jobs ?? this.jobs, error: clearError ? null : error ?? this.error, actingJobId: clearActing ? null : actingJobId ?? this.actingJobId);
+  JobCenterState copyWith({bool? loading, bool? loadingMore, List<BirdJobStatus>? jobs, bool? hasMore, String? nextCursor, Object? error, String? actingJobId, bool clearError = false, bool clearActing = false, bool clearCursor = false}) =>
+      JobCenterState(
+        loading: loading ?? this.loading,
+        loadingMore: loadingMore ?? this.loadingMore,
+        jobs: jobs ?? this.jobs,
+        hasMore: hasMore ?? this.hasMore,
+        nextCursor: clearCursor ? null : nextCursor ?? this.nextCursor,
+        error: clearError ? null : error ?? this.error,
+        actingJobId: clearActing ? null : actingJobId ?? this.actingJobId,
+      );
 }
 
 class JobCenterCubit extends Cubit<JobCenterState> {
@@ -48,24 +59,79 @@ class JobCenterCubit extends Cubit<JobCenterState> {
     _loadInFlight = true;
     emit(state.copyWith(loading: true, clearError: true));
     try {
-      final jobs = await _repository.list();
-      emit(state.copyWith(loading: false, jobs: jobs));
+      final page = await _repository.page();
+      emit(state.copyWith(loading: false, jobs: page.items, hasMore: page.hasMore && page.nextCursor != null, nextCursor: page.nextCursor, clearCursor: page.nextCursor == null));
     } catch (error) {
-      emit(state.copyWith(loading: false, jobs: const [], error: error));
+      emit(
+        state.copyWith(
+          loading: false,
+          jobs: const [],
+          hasMore: false,
+          clearCursor: true,
+          error: error,
+        ),
+      );
     } finally {
       _loadInFlight = false;
     }
   }
 
+  Future<void> loadMore() async {
+    final cursor = state.nextCursor;
+    if (state.loadingMore || !state.hasMore || cursor == null) return;
+    emit(state.copyWith(loadingMore: true, clearError: true));
+    try {
+      final page = await _repository.page(cursor: cursor);
+      final known = state.jobs.map((job) => job.id).toSet();
+      emit(
+        state.copyWith(
+          loadingMore: false,
+          jobs: [...state.jobs, ...page.items.where((job) => known.add(job.id))],
+          hasMore: page.hasMore && page.nextCursor != null && page.nextCursor != cursor,
+          nextCursor: page.nextCursor,
+          clearCursor: page.nextCursor == null,
+        ),
+      );
+    } catch (error) {
+      emit(state.copyWith(loadingMore: false, error: error));
+    }
+  }
+
   Future<void> control(String jobId, String action) async {
     if (state.actingJobId != null) return;
+    final current = state.jobs.where((job) => job.id == jobId).firstOrNull;
+    if (current == null) {
+      emit(
+        state.copyWith(
+          error: ArgumentError.value(jobId, 'jobId', 'Unknown task'),
+        ),
+      );
+      return;
+    }
+    final wireAction = action == 'retry' ? 'retry_failed' : action;
+    if (!jobControlActions.contains(wireAction) || !current.availableActions.contains(wireAction)) {
+      emit(
+        state.copyWith(
+          error: StateError('$wireAction is unavailable for $jobId'),
+        ),
+      );
+      return;
+    }
+    final version = current.version;
+    if (version == null) {
+      emit(
+        state.copyWith(
+          error: StateError('The task version is unavailable'),
+        ),
+      );
+      return;
+    }
     emit(state.copyWith(actingJobId: jobId, clearError: true));
     try {
-      final current = state.jobs.firstWhere((job) => job.id == jobId);
       final updated = await _repository.control(
         jobId,
-        action == 'retry' ? 'retry_failed' : action,
-        version: current.version,
+        wireAction,
+        version: version,
       );
       final jobs = state.jobs.map((job) => job.id == jobId ? updated : job).toList();
       _dataChanges?.publish({AppDataResource.jobs, AppDataResource.device}, reason: 'job_$action');
@@ -77,6 +143,15 @@ class JobCenterCubit extends Cubit<JobCenterState> {
 
   Future<void> delete(String jobId) async {
     if (state.actingJobId != null) return;
+    final current = state.jobs.where((job) => job.id == jobId).firstOrNull;
+    if (current?.canDelete != true) {
+      emit(
+        state.copyWith(
+          error: StateError('delete is unavailable for $jobId'),
+        ),
+      );
+      return;
+    }
     emit(state.copyWith(actingJobId: jobId, clearError: true));
     try {
       await _repository.delete(jobId);

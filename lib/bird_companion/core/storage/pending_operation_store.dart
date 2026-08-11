@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/storage/cache_schema_migrator.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
@@ -31,6 +33,9 @@ class PendingOperationStore {
   final _ReadPendingValue _read;
   final _WritePendingValue _write;
   Future<void> _mutationTail = Future.value();
+  final StreamController<List<PendingOperation>> _changes = StreamController<List<PendingOperation>>.broadcast();
+
+  Stream<List<PendingOperation>> get changes => _changes.stream;
 
   List<PendingOperation> readAll() {
     final raw = _read(_key) ?? _read(_legacyKey);
@@ -70,7 +75,12 @@ class PendingOperationStore {
     () => _writeAll(readAll().where((item) => !test(item)).toList()),
   );
 
-  Future<void> _writeAll(List<PendingOperation> operations) => _write(_key, operations.map((item) => item.toJson()).toList());
+  Future<void> _writeAll(List<PendingOperation> operations) async {
+    await _write(_key, operations.map((item) => item.toJson()).toList());
+    if (!_changes.isClosed) {
+      _changes.add(List<PendingOperation>.unmodifiable(operations));
+    }
+  }
 
   Future<void> _mutate(Future<void> Function() action) {
     final result = _mutationTail.then((_) => action());
@@ -80,4 +90,6 @@ class PendingOperationStore {
     );
     return result;
   }
+
+  Future<void> dispose() => _changes.close();
 }

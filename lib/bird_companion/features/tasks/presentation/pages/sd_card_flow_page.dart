@@ -1,10 +1,14 @@
 import 'dart:async';
 
+import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/app/app_shell.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/task_experience_controller.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_design_components.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_nature_background.dart';
+import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_page_frame.dart';
 import 'package:flutter/material.dart';
 
 class SdCardFlowPage extends StatelessWidget {
@@ -45,30 +49,14 @@ class SdCardFlowPage extends StatelessWidget {
     ),
   );
 
-  Widget _header(BuildContext context) => SizedBox(
-    width: double.infinity,
-    height: 66,
-    child: Stack(
-      alignment: Alignment.center,
-      children: [
-        Text(
-          controller.sdCard.state == SdCardReadState.detected
-              ? '检测到 SD 卡'
-              : controller.sdCard.state == SdCardReadState.scanning
-              ? '正在扫描 SD 卡'
-              : '读取 SD 卡',
-          style: const TextStyle(color: AppColors.forestDeep, fontSize: 23, fontWeight: FontWeight.w700),
-        ),
-        Positioned(
-          left: 8,
-          child: IconButton(
-            key: const Key('sd-card-back-button'),
-            onPressed: () => Navigator.maybePop(context),
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.forestDeep),
-          ),
-        ),
-      ],
-    ),
+  Widget _header(BuildContext context) => TaskFlowHeader(
+    title: controller.sdCard.state == SdCardReadState.detected
+        ? '检测到 SD 卡'
+        : controller.sdCard.state == SdCardReadState.scanning
+        ? '正在扫描 SD 卡'
+        : '读取 SD 卡',
+    backButtonKey: const Key('sd-card-back-button'),
+    onBack: () => Navigator.maybePop(context),
   );
 
   Widget _content(BuildContext context) => switch (controller.sdCard.state) {
@@ -135,8 +123,8 @@ class SdCardFlowPage extends StatelessWidget {
             ),
             _info(
               Icons.calendar_month_outlined,
-              '扫描日期',
-              _date(controller.sdCard.captureDate),
+              '扫描时间',
+              _dateTime(controller.sdCard.scannedAt),
               divider: false,
             ),
           ],
@@ -168,7 +156,7 @@ class SdCardFlowPage extends StatelessWidget {
       const SizedBox(height: 20),
       _button('重新检测', () => _rescan(context), filled: true),
       const SizedBox(height: 10),
-      _button('查看设备状态', () => Navigator.maybePop(context)),
+      _button('查看设备状态', () => _openDeviceStatus(context)),
     ],
   );
 
@@ -191,7 +179,7 @@ class SdCardFlowPage extends StatelessWidget {
       const SizedBox(height: 20),
       _button('重新读取', () => _rescan(context), filled: true),
       const SizedBox(height: 10),
-      if (controller.error != null) _button('查看详细原因', () => _message(context, '${controller.error}')),
+      if (controller.sdCardErrorCode != null || controller.sdCardErrorMessage != null || controller.error != null) _button('查看详细原因', () => _showFailureReason(context)),
       const SizedBox(height: 10),
       _button('返回任务中心', () => Navigator.maybePop(context)),
     ],
@@ -216,30 +204,41 @@ class SdCardFlowPage extends StatelessWidget {
       const SizedBox(height: 20),
       _button('重新扫描', () => _rescan(context), filled: true),
       const SizedBox(height: 10),
-      _button('更换存储卡', () => controller.setSdState(SdCardReadState.missing)),
+      _button('更换存储卡', () => _showReplaceCardGuide(context)),
     ],
   );
 
   Widget _info(IconData icon, String label, String value, {bool divider = true}) => Column(
     children: [
-      SizedBox(
-        height: 58,
-        child: Row(
-          children: [
-            Icon(icon, color: AppColors.forestPrimary, size: 24),
-            const SizedBox(width: 8),
-            SizedBox(width: 104, child: Text(label, maxLines: 1, style: const TextStyle(fontSize: 16))),
-            Expanded(
-              child: Text(
-                value,
-                maxLines: 1,
-                textAlign: TextAlign.end,
-                style: TextStyle(color: AppColors.forestDeep, fontSize: value.length > 15 ? 12.5 : 17),
+      ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 58),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Icon(icon, color: AppColors.forestPrimary, size: 24),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 104,
+                child: Text(
+                  label,
+                  maxLines: 2,
+                  style: const TextStyle(fontSize: 16),
+                ),
               ),
-            ),
-            const SizedBox(width: 2),
-            const Icon(Icons.chevron_right_rounded, key: Key('sd-card-info-chevron'), size: 18, color: AppColors.forestPrimary),
-          ],
+              Expanded(
+                child: Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: TextStyle(color: AppColors.forestDeep, fontSize: value.length > 15 ? 12.5 : 17),
+                ),
+              ),
+              const SizedBox(width: 2),
+              const Icon(Icons.chevron_right_rounded, key: Key('sd-card-info-chevron'), size: 18, color: AppColors.forestPrimary),
+            ],
+          ),
         ),
       ),
       if (divider) const Divider(height: 1),
@@ -265,13 +264,17 @@ class SdCardFlowPage extends StatelessWidget {
     try {
       await action();
     } catch (error) {
-      if (context.mounted) _message(context, '重新扫描失败：$error');
+      if (context.mounted) {
+        final message = UserMessageMapper.fromError(error);
+        _message(context, '${message.title}：${message.message}');
+      }
     }
   }
 
-  String _date(DateTime value) {
+  String _dateTime(DateTime value) {
     if (value.millisecondsSinceEpoch == 0) return '—';
-    return '${value.year}.${value.month.toString().padLeft(2, '0')}.${value.day.toString().padLeft(2, '0')}';
+    return '${value.year}.${value.month.toString().padLeft(2, '0')}.${value.day.toString().padLeft(2, '0')} '
+        '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
   }
 
   String _count(int value) {
@@ -306,11 +309,88 @@ class SdCardFlowPage extends StatelessWidget {
       style: const TextStyle(color: AppColors.forestPrimary),
     ),
   );
-  Widget _button(String label, VoidCallback action, {bool filled = false}) => SizedBox(
-    width: double.infinity,
-    height: 56,
-    child: filled ? FilledButton(onPressed: action, child: Text(label)) : OutlinedButton(onPressed: action, child: Text(label)),
+  Widget _button(String label, VoidCallback action, {bool filled = false}) => ConstrainedBox(
+    constraints: const BoxConstraints(minWidth: double.infinity, minHeight: 56),
+    child: filled
+        ? FilledButton(
+            onPressed: action,
+            child: Text(label, textAlign: TextAlign.center),
+          )
+        : OutlinedButton(
+            onPressed: action,
+            child: Text(label, textAlign: TextAlign.center),
+          ),
   );
+
+  void _openDeviceStatus(BuildContext context) {
+    final navigation = BirdShellNavigation.maybeOf(context);
+    if (navigation != null) {
+      navigation.openTabRoute(2, BirdRoutes.settingsDeviceDetails);
+      return;
+    }
+    Navigator.maybePop(context);
+  }
+
+  void _showFailureReason(BuildContext context) {
+    final message = controller.sdCardErrorCode != null || controller.sdCardErrorMessage != null
+        ? UserMessageMapper.fromStorageFailure(
+            code: controller.sdCardErrorCode,
+            message: controller.sdCardErrorMessage,
+          )
+        : UserMessageMapper.fromError(controller.error!);
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(message.title),
+        content: Text(message.message),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showReplaceCardGuide(BuildContext context) async {
+    final retry = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: AppColors.paper,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '更换存储卡',
+                style: TextStyle(
+                  color: AppColors.forestDeep,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text('请拔出当前存储卡，插入新的 SD 卡并等待指示灯稳定，然后重新检测。'),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(sheetContext, true),
+                  child: const Text('已更换，重新检测'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (retry == true && context.mounted) await _rescan(context);
+  }
+
   void _message(BuildContext context, String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 }
 
@@ -399,17 +479,20 @@ class _Instruction extends StatelessWidget {
   final String text;
   final IconData icon;
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 86,
-    child: Row(
-      children: [
-        CircleAvatar(backgroundColor: AppColors.forestPrimary, foregroundColor: Colors.white, child: Text(number)),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        ),
-        Icon(icon, size: 46, color: AppColors.forestPrimary.withValues(alpha: .65)),
-      ],
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(minHeight: 86),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          CircleAvatar(backgroundColor: AppColors.forestPrimary, foregroundColor: Colors.white, child: Text(number)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          ),
+          Icon(icon, size: 46, color: AppColors.forestPrimary.withValues(alpha: .65)),
+        ],
+      ),
     ),
   );
 }

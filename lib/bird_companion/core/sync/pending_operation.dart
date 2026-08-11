@@ -68,20 +68,49 @@ class PendingOperation extends Equatable {
     'failure_reason': failureReason,
   };
 
-  factory PendingOperation.fromJson(Map<String, dynamic> json) => PendingOperation(
-    id: json['id']?.toString() ?? '',
-    type: PendingOperationType.values.firstWhere((type) => type.name == json['type'], orElse: () => PendingOperationType.updateReview),
-    payload: json['payload'] is Map ? Map<String, dynamic>.from(json['payload'] as Map) : const {},
-    createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
-    version: (json['version'] as num?)?.toInt(),
-    retryCount: (json['retry_count'] as num?)?.toInt() ?? 0,
-    source: json['source']?.toString() ?? 'app',
-    deviceId: json['device_id']?.toString(),
-    projectId: json['project_id']?.toString() ?? (json['payload'] is Map ? (json['payload'] as Map)['project_id']?.toString() ?? (json['payload'] as Map)['batch_id']?.toString() : null),
-    fileId: json['file_id']?.toString() ?? (json['payload'] is Map ? (json['payload'] as Map)['file_id']?.toString() : null),
-    status: PendingOperationStatus.values.firstWhere((value) => value.name == json['status'], orElse: () => PendingOperationStatus.pending),
-    failureReason: json['failure_reason']?.toString(),
-  );
+  factory PendingOperation.fromJson(Map<String, dynamic> json) {
+    final type = PendingOperationType.values.firstWhere(
+      (type) => type.name == json['type'],
+      orElse: () => PendingOperationType.updateReview,
+    );
+    final payload = json['payload'] is Map ? Map<String, dynamic>.from(json['payload'] as Map) : <String, dynamic>{};
+    final projectId = _firstNonEmpty([
+      json['project_id'],
+      payload['project_id'],
+      payload['batch_id'],
+    ]);
+    if (type == PendingOperationType.batchReview) {
+      payload
+        ..remove('batch_id')
+        ..remove('project_id');
+    }
+
+    return PendingOperation(
+      id: json['id']?.toString() ?? '',
+      type: type,
+      payload: payload,
+      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
+      version: (json['version'] as num?)?.toInt(),
+      retryCount: (json['retry_count'] as num?)?.toInt() ?? 0,
+      source: json['source']?.toString() ?? 'app',
+      deviceId: json['device_id']?.toString(),
+      projectId: projectId,
+      fileId: json['file_id']?.toString() ?? payload['file_id']?.toString(),
+      status: PendingOperationStatus.values.firstWhere(
+        (value) => value.name == json['status'],
+        orElse: () => PendingOperationStatus.pending,
+      ),
+      failureReason: json['failure_reason']?.toString(),
+    );
+  }
+
+  static String? _firstNonEmpty(Iterable<Object?> values) {
+    for (final value in values) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty) return text;
+    }
+    return null;
+  }
 
   @override
   List<Object?> get props => [

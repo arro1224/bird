@@ -12,6 +12,8 @@ class UserMessage {
 }
 
 abstract final class UserMessageMapper {
+  static UserMessage fromStorageFailure({String? code, String? message}) => fromError(ApiException(message: message ?? '', code: code));
+
   static UserMessage fromJobFailure({
     String? code,
     String? message,

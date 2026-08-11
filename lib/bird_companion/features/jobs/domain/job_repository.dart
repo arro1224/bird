@@ -2,9 +2,11 @@ import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_failure.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_create_requests.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_report.dart';
+import 'package:aves/bird_companion/features/jobs/domain/job_page.dart';
 
 abstract interface class JobRepository {
   Future<List<BirdJobStatus>> list();
+  Future<JobPage> page({String? cursor, int pageSize = 50, String? state, String? type});
   Future<BirdJobStatus> detail(String id);
   Future<BirdJobStatus> createImport(
     String projectId,
@@ -26,4 +28,5 @@ abstract interface class JobRepository {
     String? jobId,
   });
   Future<List<JobFailure>> failures(String jobId);
+  Future<JobFailurePage> failurePage(String jobId, {String? cursor, int pageSize = 50});
 }

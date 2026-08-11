@@ -7,16 +7,9 @@ class CopyApi {
   CopyApi(this._c);
   final ApiClient _c;
   Future<CopyEstimate> estimate(String id, String mode) async {
+    _validateRequest(id, mode);
     final d = await _c.get(ApiEndpoints.copyEstimate.replaceFirst('{batchId}', id), queryParameters: {'mode': mode});
-    final t = (d['targets'] as List? ?? const []).whereType<Map>().map((x) => StorageTarget.fromJson(Map<String, dynamic>.from(x))).toList();
-    return CopyEstimate(
-      mode: mode,
-      fileCount: (d['file_count'] as num?)?.toInt() ?? 0,
-      requiredBytes: (d['required_bytes'] as num?)?.toInt() ?? 0,
-      pendingCount: (d['pending_count'] as num?)?.toInt() ?? 0,
-      targets: t,
-      version: (d['version'] as num?)?.toInt() ?? 0,
-    );
+    return CopyEstimate.fromJson(d, requestedMode: mode);
   }
 
   Future<BirdJobStatus> create(
@@ -26,16 +19,34 @@ class CopyApi {
     required bool xmpEnabled,
     required bool verifyAfterCopy,
     required int version,
-  }) => _c
-      .post(
-        ApiEndpoints.copyCreate.replaceFirst('{batchId}', i),
-        data: {
-          'mode': m,
-          'target_id': t,
-          'xmp_enabled': xmpEnabled,
-          'verify_after_copy': verifyAfterCopy,
-          'version': version,
-        },
-      )
-      .then(BirdJobStatus.fromJson);
+  }) {
+    _validateRequest(i, m);
+    if (t.trim().isEmpty) {
+      throw ArgumentError.value(t, 'targetId', 'must not be empty');
+    }
+    if (version < 0) {
+      throw ArgumentError.value(version, 'version', 'must be non-negative');
+    }
+    return _c
+        .post(
+          ApiEndpoints.copyCreate.replaceFirst('{batchId}', i),
+          data: {
+            'mode': m,
+            'target_id': t,
+            'xmp_enabled': xmpEnabled,
+            'verify_after_copy': verifyAfterCopy,
+            'version': version,
+          },
+        )
+        .then(BirdJobStatus.fromJson);
+  }
+
+  static void _validateRequest(String projectId, String mode) {
+    if (projectId.trim().isEmpty) {
+      throw ArgumentError.value(projectId, 'projectId', 'must not be empty');
+    }
+    if (!copyModes.contains(mode)) {
+      throw ArgumentError.value(mode, 'mode', 'must match birdbox-v1');
+    }
+  }
 }

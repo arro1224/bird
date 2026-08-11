@@ -1,15 +1,18 @@
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
+import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
+import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
-import 'package:aves/bird_companion/features/jobs/domain/job_failure.dart';
+import 'package:aves/bird_companion/features/jobs/domain/job_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/batch_setup_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/sd_card_flow_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/task_detail_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/task_home_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/production_task_result_page.dart';
+import 'package:aves/bird_companion/features/tasks/presentation/pages/task_sync_result_sheet.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/repository_task_experience_controller.dart';
 import 'package:flutter/material.dart';
 
@@ -28,6 +31,8 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
   StreamSubscription<String>? _analysisSubscription;
   StreamSubscription<String>? _copySubscription;
   var _autoOpeningReport = false;
+  final Set<String> _openingReportJobs = {};
+  var _syncing = false;
 
   @override
   void didChangeDependencies() {
@@ -35,12 +40,15 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
     if (_controller != null) return;
     final dependencies = BirdCompanionScope.of(context);
     final controller = RepositoryTaskExperienceController(
+      deviceRepository: dependencies.deviceRepository,
       storageRepository: dependencies.storageRepository,
       batchRepository: dependencies.batchRepository,
       jobRepository: dependencies.jobRepository,
       copyRepository: dependencies.copyRepository,
       eventClient: dependencies.eventClient,
       deviceSessionCubit: dependencies.deviceSessionCubit,
+      pendingOperationStore: dependencies.pendingOperationStore,
+      dataChangeBus: dependencies.dataChangeBus,
     );
     _controller = controller;
     _analysisSubscription = controller.analysisCompletedProjects.listen(
@@ -86,7 +94,80 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       controller: controller,
       onOpenSdCard: _openSdCard,
       onOpenTask: _openTask,
+      onStartTask: _startTask,
     );
+  }
+
+  Future<void> _startTask(TaskType type) async {
+    final controller = _controller!;
+    try {
+      if (!controller.canSubmitTaskWrites) {
+        throw StateError('The task home state is refreshing');
+      }
+      switch (type) {
+        case TaskType.importIndex:
+          _openSdCard();
+          return;
+        case TaskType.aiAnalysis:
+          final jobId = await controller.startAnalysisForActiveProject();
+          if (mounted) await _openTask(jobId);
+          return;
+        case TaskType.copy:
+          final batchId = controller.activeBatchId?.trim();
+          if (batchId == null || batchId.isEmpty) {
+            throw StateError('There is no active project to copy');
+          }
+          if (mounted) {
+            await Navigator.of(context).pushNamed<void>(
+              BirdRoutes.copyConfirmation,
+              arguments: batchId,
+            );
+            await controller.refreshFromBox();
+          }
+          return;
+        case TaskType.sync:
+          if (_syncing) return;
+          if (controller.connectionState != TaskConnectionState.connected) {
+            throw StateError('The box is not connected');
+          }
+          _syncing = true;
+          try {
+            final result = await BirdCompanionScope.of(
+              context,
+            ).birdSyncService.synchronize();
+            await controller.refreshFromBox(includeScan: true);
+            if (!mounted) return;
+            final firstConflictProjectId = result.remainingOperations
+                .where(
+                  (operation) => operation.status == PendingOperationStatus.conflict && (operation.projectId?.trim().isNotEmpty ?? false),
+                )
+                .map((operation) => operation.projectId!.trim())
+                .firstOrNull;
+            await showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              showDragHandle: true,
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              builder: (_) => TaskSyncResultSheet(
+                result: result,
+                onOpenConflicts: firstConflictProjectId == null
+                    ? null
+                    : () => widget.onOpenGallery(
+                        GalleryArgs(firstConflictProjectId),
+                      ),
+              ),
+            );
+            if (!mounted) return;
+            final refreshError = controller.error;
+            if (refreshError != null) _showError(context, refreshError);
+          } finally {
+            _syncing = false;
+          }
+          return;
+      }
+    } catch (error) {
+      if (mounted) _showError(context, error);
+    }
   }
 
   void _openSdCard() {
@@ -133,23 +214,32 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
     );
   }
 
-  void _openTask(String taskId) {
+  Future<void> _openTask(String taskId) async {
     final controller = _controller!;
-    final task = controller.taskById(taskId);
-    final sourceProjectId = task.sourceBatch?.trim();
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => TaskDetailPage(
-          controller: controller,
-          taskId: taskId,
-          allowDemoCompletion: false,
-          onControl: _control,
-          onExportLog: _exportTaskLog,
-          onShowResult: task.state == TaskRunState.completed && task.type == TaskType.copy
-              ? () => unawaited(
-                  _openReport(taskId, sourceProjectId),
-                )
-              : null,
+    try {
+      await controller.refreshJobDetail(taskId);
+    } catch (error) {
+      if (mounted) _showError(context, error);
+      return;
+    }
+    if (!mounted) return;
+    final refreshedTask = controller.taskById(taskId);
+    final sourceProjectId = refreshedTask.sourceBatchId?.trim();
+    unawaited(
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => TaskDetailPage(
+            controller: controller,
+            taskId: taskId,
+            allowDemoCompletion: false,
+            onControl: _control,
+            onExportLog: _exportTaskLog,
+            onShowResult: refreshedTask.state == TaskRunState.completed && refreshedTask.type == TaskType.copy
+                ? () => unawaited(
+                    _openReport(taskId, sourceProjectId),
+                  )
+                : null,
+          ),
         ),
       ),
     );
@@ -160,23 +250,37 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
     String? sourceProjectId, {
     bool automatic = false,
   }) async {
+    if (!_openingReportJobs.add(jobId)) return;
     if (automatic) {
-      if (_autoOpeningReport) return;
+      if (_autoOpeningReport) {
+        _openingReportJobs.remove(jobId);
+        return;
+      }
       _autoOpeningReport = true;
     }
     try {
+      final jobRepository = BirdCompanionScope.of(context).jobRepository;
       final report = await _controller!.report(jobId);
-      final List<JobFailure> failures = report.failedCount > 0
-          ? await BirdCompanionScope.of(
-              context,
-            ).jobRepository.failures(jobId)
-          : const <JobFailure>[];
+      var failurePage = const JobFailurePage.empty();
+      Object? failureError;
+      if (report.failedCount > 0) {
+        try {
+          failurePage = await jobRepository.failurePage(jobId);
+        } catch (error) {
+          failureError = error;
+        }
+      }
       if (!mounted) return;
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
           builder: (_) => ProductionTaskResultPage(
             report: report,
-            failures: failures,
+            initialFailurePage: failurePage,
+            initialFailureError: failureError,
+            loadFailurePage: (cursor) => jobRepository.failurePage(
+              jobId,
+              cursor: cursor,
+            ),
             onOpenAlbum: sourceProjectId == null || sourceProjectId.isEmpty
                 ? null
                 : () => widget.onOpenGallery(
@@ -189,6 +293,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       if (mounted) _showError(context, error);
     } finally {
       if (automatic) _autoOpeningReport = false;
+      _openingReportJobs.remove(jobId);
     }
   }
 

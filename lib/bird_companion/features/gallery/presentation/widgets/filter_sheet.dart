@@ -24,6 +24,7 @@ class _FilterSheetState extends State<FilterSheet> {
   late String? _recognition = widget.initial.recognitionState;
   late double? _certainty = widget.initial.minConfidence;
   late String _sort = widget.initial.sort;
+  var _resetContextFilters = false;
 
   @override
   void dispose() {
@@ -160,6 +161,7 @@ class _FilterSheetState extends State<FilterSheet> {
     _species.clear();
     _tags.clear();
     setState(() {
+      _resetContextFilters = true;
       _score = null;
       _keep = null;
       _analysis = null;
@@ -183,9 +185,9 @@ class _FilterSheetState extends State<FilterSheet> {
         analysisState: _analysis,
         clarityState: _clarity,
         recognitionState: _recognition,
-        recommendedOnly: widget.initial.recommendedOnly,
-        groupId: widget.initial.groupId,
-        sceneId: widget.initial.sceneId,
+        recommendedOnly: _resetContextFilters ? false : widget.initial.recommendedOnly,
+        groupId: _resetContextFilters ? null : widget.initial.groupId,
+        sceneId: _resetContextFilters ? null : widget.initial.sceneId,
       ),
     );
     Navigator.pop(context);

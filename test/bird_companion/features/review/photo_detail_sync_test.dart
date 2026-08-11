@@ -105,6 +105,8 @@ void main() {
       expect(cubit.state.conflict, isFalse);
       expect(cubit.state.detail?.decision?.keepState, KeepState.discard);
       expect(cubit.state.detail?.decision?.version, 2);
+      expect(repository.remoteAcceptedFileId, 'photo-1');
+      expect(repository.remoteAcceptedProjectId, 'project-7');
     });
 
     testWidgets('详细鸟种指标优先显示用户保存的结果', (tester) async {
@@ -125,6 +127,10 @@ void main() {
       );
       expect(current.data, '东方大苇莺');
       expect(find.text('当前结果'), findsOneWidget);
+      expect(find.text('11%'), findsNWidgets(2));
+      expect(find.text('89%'), findsOneWidget);
+      expect(find.text('很有把握'), findsNothing);
+      expect(find.text('仅供参考'), findsNothing);
     });
 
     testWidgets('详细评分指标优先显示用户保存的分数', (tester) async {
@@ -228,9 +234,11 @@ class _FailingReviewRepository implements ReviewRepository {
   }) async => const ReviewSaveResult();
 }
 
-class _ConflictReviewRepository implements ReviewRepository {
+class _ConflictReviewRepository implements ReviewRepository, RemoteReviewConflictResolver {
   var reads = 0;
   String? savedProjectId;
+  String? remoteAcceptedFileId;
+  String? remoteAcceptedProjectId;
 
   @override
   Future<ReviewDetail> detail(String fileId) async {
@@ -272,5 +280,14 @@ class _ConflictReviewRepository implements ReviewRepository {
       conflict: true,
       message: '照片审阅结果已更新',
     );
+  }
+
+  @override
+  Future<void> acceptRemoteDecision(
+    String fileId, {
+    String? projectId,
+  }) async {
+    remoteAcceptedFileId = fileId;
+    remoteAcceptedProjectId = projectId;
   }
 }

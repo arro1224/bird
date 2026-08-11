@@ -67,4 +67,32 @@ void main() {
       throwsA(isA<ProtocolCompatibilityException>()),
     );
   });
+
+  test('action capability getters use available_actions instead of state', () {
+    const runningWithoutActions = BirdJobStatus(
+      id: 'job-running-1',
+      type: BirdJobType.copy,
+      state: BirdJobState.running,
+    );
+    const queuedWithActions = BirdJobStatus(
+      id: 'job-queued-1',
+      type: BirdJobType.copy,
+      state: BirdJobState.queued,
+      availableActions: ['pause', 'cancel', 'retry_failed', 'skip_failed'],
+    );
+    const completedWithDelete = BirdJobStatus(
+      id: 'job-completed-1',
+      type: BirdJobType.copy,
+      state: BirdJobState.completed,
+      availableActions: ['delete'],
+    );
+
+    expect(runningWithoutActions.canPause, isFalse);
+    expect(runningWithoutActions.canCancel, isFalse);
+    expect(queuedWithActions.canPause, isTrue);
+    expect(queuedWithActions.canCancel, isTrue);
+    expect(queuedWithActions.canRetry, isTrue);
+    expect(queuedWithActions.canSkipFailed, isTrue);
+    expect(completedWithDelete.canDelete, isTrue);
+  });
 }

@@ -74,8 +74,10 @@ class ApiClient {
   Uri? _baseUri;
   String? _accessToken;
   String _apiVersion = 'v1';
+  int _sessionGeneration = 0;
 
   void setSession({String? accessToken, String? apiVersion}) {
+    _sessionGeneration++;
     _accessToken = accessToken;
     if (apiVersion != null && apiVersion.isNotEmpty) _apiVersion = apiVersion;
     _dio.options.headers['X-Api-Version'] = _apiVersion;
@@ -103,6 +105,7 @@ class ApiClient {
 
   /// Clear the in-memory address as well as persisted connection metadata.
   void clearSession() {
+    _sessionGeneration++;
     _baseUri = null;
     _accessToken = null;
     _dio.options.baseUrl = '';
@@ -153,6 +156,7 @@ class ApiClient {
     Future<Response<Map<String, dynamic>>> Function() request, {
     bool reportAuthenticationFailure = true,
   }) async {
+    final sessionGeneration = _sessionGeneration;
     try {
       final response = await request();
       final payload = unwrapResponse(response.data);
@@ -164,7 +168,7 @@ class ApiClient {
       );
     } on DioException catch (error) {
       final exception = ApiException.fromDio(error);
-      if (reportAuthenticationFailure && (exception.statusCode == 401 || exception.statusCode == 403)) {
+      if (reportAuthenticationFailure && sessionGeneration == _sessionGeneration && (exception.statusCode == 401 || exception.statusCode == 403)) {
         _authenticationFailures.add(exception.statusCode!);
       }
       throw exception;

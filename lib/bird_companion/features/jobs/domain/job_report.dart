@@ -35,23 +35,73 @@ class JobReport {
 
   factory JobReport.fromJson(Map<String, dynamic> json) => JobReport(
     jobId: ProtocolValidation.requiredId(json, 'job_id'),
-    result: switch (json['result']?.toString()) {
+    result: _requiredResult(json),
+    totalCount: _requiredNonNegativeInt(json, 'total_count'),
+    successCount: _requiredNonNegativeInt(json, 'success_count'),
+    failedCount: _requiredNonNegativeInt(json, 'failed_count'),
+    skippedCount: _requiredNonNegativeInt(json, 'skipped_count'),
+    copiedBytes: _optionalNonNegativeInt(json, 'copied_bytes'),
+    manifestId: _optionalString(json, 'manifest_id'),
+    startedAt: _optionalDateTime(json, 'started_at'),
+    finishedAt: _optionalDateTime(json, 'finished_at'),
+  );
+
+  static JobReportResult _requiredResult(Map<String, dynamic> json) {
+    final result = json['result'];
+    return switch (result) {
       'success' => JobReportResult.success,
       'partial_success' => JobReportResult.partialSuccess,
       'failed' => JobReportResult.failed,
       'cancelled' => JobReportResult.cancelled,
-      _ => JobReportResult.unknown,
-    },
-    totalCount: ProtocolValidation.nonNegativeInt(json, 'total_count'),
-    successCount: ProtocolValidation.nonNegativeInt(json, 'success_count'),
-    failedCount: ProtocolValidation.nonNegativeInt(json, 'failed_count'),
-    skippedCount: ProtocolValidation.nonNegativeInt(json, 'skipped_count'),
-    copiedBytes: ProtocolValidation.optionalNonNegativeInt(
-      json,
-      'copied_bytes',
-    ),
-    manifestId: json['manifest_id']?.toString(),
-    startedAt: ProtocolValidation.optionalDateTime(json, 'started_at'),
-    finishedAt: ProtocolValidation.optionalDateTime(json, 'finished_at'),
-  );
+      _ => throw const ProtocolCompatibilityException(
+        'result',
+        '必须是 birdbox-v1 定义的任务结果',
+      ),
+    };
+  }
+
+  static int _requiredNonNegativeInt(
+    Map<String, dynamic> json,
+    String key,
+  ) {
+    if (!json.containsKey(key) || json[key] == null) {
+      throw ProtocolCompatibilityException(key, '不能为空');
+    }
+    return ProtocolValidation.nonNegativeInt(json, key);
+  }
+
+  static int? _optionalNonNegativeInt(
+    Map<String, dynamic> json,
+    String key,
+  ) {
+    if (!json.containsKey(key)) return null;
+    if (json[key] == null) {
+      throw ProtocolCompatibilityException(key, '存在时必须是非负整数');
+    }
+    return ProtocolValidation.nonNegativeInt(json, key);
+  }
+
+  static String? _optionalString(
+    Map<String, dynamic> json,
+    String key,
+  ) {
+    final value = json[key];
+    if (value == null) return null;
+    if (value is! String) {
+      throw ProtocolCompatibilityException(key, '必须是字符串或 null');
+    }
+    return value;
+  }
+
+  static DateTime? _optionalDateTime(
+    Map<String, dynamic> json,
+    String key,
+  ) {
+    final value = json[key];
+    if (value == null) return null;
+    if (value is! String) {
+      throw ProtocolCompatibilityException(key, '必须是 ISO-8601 时间或 null');
+    }
+    return ProtocolValidation.optionalDateTime(json, key);
+  }
 }
