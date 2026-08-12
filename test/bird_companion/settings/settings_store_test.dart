@@ -60,6 +60,26 @@ void main() {
     );
     expect(store.snapshot.verifyCopies, isFalse);
   });
+
+  test('default gallery sort persists before its change event is published', () async {
+    final store = _MemorySettingsStore();
+    final bus = AppDataChangeBus();
+    final controller = BirdSettingsController(
+      store: store,
+      dataChangeBus: bus,
+    );
+    addTearDown(controller.dispose);
+    addTearDown(bus.dispose);
+
+    final changed = bus.changes.first;
+    controller.setSortOrder(BirdPhotoSortOrder.confidenceDescending);
+
+    expect(
+      (await changed).resources,
+      {AppDataResource.photoPreferences},
+    );
+    expect(store.snapshot.sortOrder, 'confidenceDescending');
+  });
 }
 
 class _MemorySettingsStore implements SettingsStore {

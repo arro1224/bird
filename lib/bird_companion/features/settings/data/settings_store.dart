@@ -1,5 +1,12 @@
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 
+String photoQuerySortFromPreference(String value) => switch (value) {
+  'qualityDescending' => 'score_desc',
+  'recommendedFirst' => 'recommended_desc',
+  'confidenceDescending' => 'confidence_desc',
+  _ => 'captured_at_desc',
+};
+
 class BirdSettingsSnapshot {
   const BirdSettingsSnapshot({
     this.gridColumns = 4,

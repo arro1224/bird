@@ -17,9 +17,10 @@ PhotoQuery resolveInitialPhotoQuery({
   required PhotoQuery fallback,
   required Map<dynamic, dynamic>? savedView,
   required bool restoreSavedView,
+  String? preferredSort,
 }) {
-  if (!restoreSavedView || savedView == null) return fallback;
-  return PhotoQuery.fromJson(Map<String, dynamic>.from(savedView));
+  final restored = !restoreSavedView || savedView == null ? fallback : PhotoQuery.fromJson(Map<String, dynamic>.from(savedView));
+  return preferredSort == null ? restored : restored.copyWith(sort: preferredSort, clearCursor: true);
 }
 
 String albumViewCacheKey({
@@ -156,7 +157,7 @@ class GalleryCubit extends Cubit<GalleryState> {
         ? fallback
         : _applyPhotoDefaults(
             fallback.copyWith(
-              sort: _settingsSort(preferences.sortOrder),
+              sort: photoQuerySortFromPreference(preferences.sortOrder),
               clearCursor: true,
             ),
             preferences,
@@ -165,6 +166,7 @@ class GalleryCubit extends Cubit<GalleryState> {
       fallback: preferredFallback,
       savedView: raw,
       restoreSavedView: restoreSavedView,
+      preferredSort: preferences == null ? null : photoQuerySortFromPreference(preferences.sortOrder),
     );
     await refresh(query: restored);
   }
@@ -339,7 +341,7 @@ class GalleryCubit extends Cubit<GalleryState> {
   void _applyPhotoPreferences() {
     final settings = _settingsStore?.read();
     if (settings == null) return;
-    final sort = _settingsSort(settings.sortOrder);
+    final sort = photoQuerySortFromPreference(settings.sortOrder);
     emit(
       state.copyWith(
         gridColumns: settings.gridColumns.clamp(2, 6),
@@ -407,15 +409,6 @@ class GalleryCubit extends Cubit<GalleryState> {
 int _settingsGridColumns(SettingsStore? store) => store?.read().gridColumns.clamp(2, 6) ?? 3;
 
 bool _settingsShowRatingOverlay(SettingsStore? store) => store?.read().showRatingOverlay ?? true;
-
-String _settingsSort(String value) => switch (value) {
-  'oldest' => 'captured_at_asc',
-  'fileNameAscending' => 'filename_asc',
-  'fileNameDescending' => 'filename_desc',
-  'sizeDescending' => 'size_desc',
-  'sizeAscending' => 'size_asc',
-  _ => 'captured_at_desc',
-};
 
 PhotoQuery _applyDefaultFilter(PhotoQuery query, String preference) => switch (preference) {
   'pendingReview' when query.keepState == null => query.copyWith(keepState: 'pending'),

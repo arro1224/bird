@@ -27,6 +27,53 @@ void main() {
     );
   });
 
+  test('global default sort overrides only the cached gallery sort', () {
+    final resolved = resolveInitialPhotoQuery(
+      fallback: const PhotoQuery(),
+      savedView: const PhotoQuery(
+        sort: 'score_desc',
+        search: 'egret',
+        keepState: 'pending',
+      ).toJson(),
+      restoreSavedView: true,
+      preferredSort: 'recommended_desc',
+    );
+
+    expect(resolved.sort, 'recommended_desc');
+    expect(resolved.search, 'egret');
+    expect(resolved.keepState, 'pending');
+  });
+
+  test('gallery-local sort changes do not overwrite the global default', () async {
+    final store = _MemorySettingsStore(
+      const BirdSettingsSnapshot(sortOrder: 'recommendedFirst'),
+    );
+    final cubit = GalleryCubit(
+      _EmptyPhotoRepository(),
+      'project-7',
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      store,
+    );
+    addTearDown(cubit.close);
+
+    await cubit.restoreAndRefresh(const PhotoQuery());
+    await cubit.refresh(
+      query: cubit.state.query.copyWith(
+        sort: 'score_desc',
+        clearCursor: true,
+      ),
+    );
+
+    expect(cubit.state.query.sort, 'score_desc');
+    expect(store.snapshot.sortOrder, 'recommendedFirst');
+    expect(store.writeCount, 0);
+  });
+
   test('gallery only counts pending reviews for its device and project', () async {
     final pending = PendingOperationStore.memory();
     await pending.save(
@@ -119,7 +166,7 @@ void main() {
       const BirdSettingsSnapshot(
         gridColumns: 5,
         showRatingOverlay: false,
-        sortOrder: 'oldest',
+        sortOrder: 'qualityDescending',
         birdPhotosOnly: true,
         defaultPhotoFilter: 'pendingReview',
       ),
@@ -142,18 +189,18 @@ void main() {
 
     expect(cubit.state.gridColumns, 5);
     expect(cubit.state.showRatingOverlay, isFalse);
-    expect(cubit.state.query.sort, 'captured_at_asc');
+    expect(cubit.state.query.sort, 'score_desc');
     expect(cubit.state.query.keepState, 'pending');
     expect(cubit.state.query.recognitionState, 'recognized');
 
     store.snapshot = const BirdSettingsSnapshot(
       gridColumns: 4,
       showRatingOverlay: true,
-      sortOrder: 'newest',
+      sortOrder: 'confidenceDescending',
       birdPhotosOnly: false,
     );
     final updated = cubit.stream.firstWhere(
-      (state) => state.gridColumns == 4 && state.showRatingOverlay && state.query.sort == 'captured_at_desc' && !state.loading,
+      (state) => state.gridColumns == 4 && state.showRatingOverlay && state.query.sort == 'confidence_desc' && !state.loading,
     );
     bus.publish(
       {AppDataResource.photoPreferences},
@@ -205,12 +252,14 @@ class _MemorySettingsStore implements SettingsStore {
   _MemorySettingsStore(this.snapshot);
 
   BirdSettingsSnapshot snapshot;
+  int writeCount = 0;
 
   @override
   BirdSettingsSnapshot read() => snapshot;
 
   @override
   Future<void> write(BirdSettingsSnapshot value) async {
+    writeCount += 1;
     snapshot = value;
   }
 }

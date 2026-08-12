@@ -17,14 +17,32 @@ void main() {
 
     controller
       ..setGridColumns(5)
-      ..setSortOrder(BirdPhotoSortOrder.fileNameAscending)
+      ..setSortOrder(BirdPhotoSortOrder.recommendedFirst)
       ..setCopyMode(BirdCopyMode.dualTrack)
       ..setStorageTarget('local');
 
     expect(controller.gridColumns, 5);
-    expect(controller.sortOrder, BirdPhotoSortOrder.fileNameAscending);
+    expect(controller.sortOrder, BirdPhotoSortOrder.recommendedFirst);
     expect(controller.copyMode, BirdCopyMode.dualTrack);
     expect(controller.selectedStorageId, 'local');
+  });
+
+  test('default photo sorts match the gallery sort protocol', () {
+    expect(BirdPhotoSortOrder.values, [
+      BirdPhotoSortOrder.newest,
+      BirdPhotoSortOrder.qualityDescending,
+      BirdPhotoSortOrder.recommendedFirst,
+      BirdPhotoSortOrder.confidenceDescending,
+    ]);
+    expect(
+      BirdPhotoSortOrder.values.map((value) => value.querySort),
+      [
+        'captured_at_desc',
+        'score_desc',
+        'recommended_desc',
+        'confidence_desc',
+      ],
+    );
   });
 
   testWidgets('settings scaffold provides a 48dp back target and centered title', (tester) async {

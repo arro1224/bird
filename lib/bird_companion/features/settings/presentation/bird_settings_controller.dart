@@ -5,15 +5,15 @@ import 'package:aves/bird_companion/features/settings/data/settings_store.dart';
 import 'package:flutter/foundation.dart';
 
 enum BirdPhotoSortOrder {
-  newest('拍摄时间（最新）'),
-  oldest('拍摄时间（最早）'),
-  fileNameAscending('文件名（A-Z）'),
-  fileNameDescending('文件名（Z-A）'),
-  sizeDescending('文件大小（大到小）'),
-  sizeAscending('文件大小（小到大）');
+  newest('拍摄时间最新'),
+  qualityDescending('照片质量从高到低'),
+  recommendedFirst('系统推荐优先'),
+  confidenceDescending('识别置信度从高到低');
 
   const BirdPhotoSortOrder(this.label);
   final String label;
+
+  String get querySort => photoQuerySortFromPreference(name);
 }
 
 enum BirdCopyMode {

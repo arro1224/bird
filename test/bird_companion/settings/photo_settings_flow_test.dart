@@ -52,10 +52,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('默认照片排序'), findsWidgets);
 
-    await tester.tap(find.text('文件名（A-Z）'));
+    for (final option in BirdPhotoSortOrder.values) {
+      expect(find.text(option.label), findsWidgets);
+    }
+    expect(find.textContaining('文件名'), findsNothing);
+    expect(find.textContaining('文件大小'), findsNothing);
+
+    await tester.tap(find.text(BirdPhotoSortOrder.recommendedFirst.label));
     await tester.pumpAndSettle();
-    expect(controller.sortOrder, BirdPhotoSortOrder.fileNameAscending);
-    expect(find.text('文件名（A-Z）'), findsOneWidget);
+    expect(controller.sortOrder, BirdPhotoSortOrder.recommendedFirst);
+    expect(
+      find.text(BirdPhotoSortOrder.recommendedFirst.label),
+      findsOneWidget,
+    );
   });
 
   testWidgets('photo settings persist a default album filter', (tester) async {
