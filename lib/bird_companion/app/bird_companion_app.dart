@@ -2,6 +2,7 @@ import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/app_shell.dart';
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
+import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:flutter/material.dart';
 
@@ -22,8 +23,10 @@ class BirdCompanionApp extends StatelessWidget {
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
         themeMode: ThemeMode.system,
-        home: const BirdAppShell(
-          initialIndex: 2,
+        home: BirdAppShell(
+          initialIndex: initialBirdTabFor(
+            dependencies.deviceSessionCubit.state,
+          ),
           onGenerateRoute: BirdAppRouter.onGenerateRoute,
         ),
         onGenerateRoute: BirdAppRouter.onGenerateRoute,
@@ -31,3 +34,10 @@ class BirdCompanionApp extends StatelessWidget {
     );
   }
 }
+
+/// Selects the production startup destination after saved-session recovery.
+///
+/// A verified box session goes straight to the cached album experience. A
+/// first install or an unavailable saved box stays on the device tab so the
+/// user can connect explicitly.
+int initialBirdTabFor(DeviceSessionState session) => session.isConnected ? 0 : 2;

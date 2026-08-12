@@ -50,12 +50,17 @@ abstract final class BirdRoutes {
   static const settingsHelp = '/settings/help';
 }
 
-/// Opens the canonical v1 device-management flow from any reconnect entry.
+/// Opens the canonical connection flow from any reconnect entry.
 void openReconnectConnection(BuildContext context) {
   Navigator.of(
     context,
     rootNavigator: true,
-  ).pushNamed(BirdRoutes.settingsDeviceManagement);
+  ).pushNamed(
+    BirdRoutes.connection,
+    arguments: const ConnectionArgs(
+      entryMode: ConnectionEntryMode.addOrSwitch,
+    ),
+  );
 }
 
 abstract final class BirdAppRouter {

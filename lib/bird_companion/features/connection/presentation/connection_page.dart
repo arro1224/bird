@@ -40,13 +40,15 @@ class ConnectionPage extends StatelessWidget {
         BirdCompanionScope.of(context).deviceSessionCubit,
         preserveExistingSession: entryMode == ConnectionEntryMode.addOrSwitch,
       )..load(),
-      child: const _ConnectionView(),
+      child: _ConnectionView(entryMode: entryMode),
     ),
   );
 }
 
 class _ConnectionView extends StatefulWidget {
-  const _ConnectionView();
+  const _ConnectionView({required this.entryMode});
+
+  final ConnectionEntryMode entryMode;
 
   @override
   State<_ConnectionView> createState() => _ConnectionViewState();
@@ -54,6 +56,7 @@ class _ConnectionView extends StatefulWidget {
 
 class _ConnectionViewState extends State<_ConnectionView> {
   var _showManualAddress = false;
+  var _completedAutomatically = false;
   DeviceConnection? _selectedDevice;
 
   @override
@@ -108,6 +111,13 @@ class _ConnectionViewState extends State<_ConnectionView> {
       }
 
       if (state.phase == ConnectionPhase.connected && state.status != null) {
+        final destination = automaticConnectionDestination(widget.entryMode);
+        if (destination != null && !_completedAutomatically) {
+          _completedAutomatically = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _finishConnection(destination);
+          });
+        }
         return _stateScaffold(
           title: '设备已连接',
           showBack: false,
@@ -334,6 +344,10 @@ class _ConnectionViewState extends State<_ConnectionView> {
     );
   }
 }
+
+/// Reconnect and device-switch entries return to the album immediately after
+/// verification. Initial setup retains the explicit success confirmation.
+int? automaticConnectionDestination(ConnectionEntryMode entryMode) => entryMode == ConnectionEntryMode.addOrSwitch ? 0 : null;
 
 class _ConnectionTopBar extends StatelessWidget {
   const _ConnectionTopBar({required this.title, required this.onHelp, this.showBack = true});

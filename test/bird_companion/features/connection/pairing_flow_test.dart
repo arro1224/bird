@@ -3,13 +3,26 @@ import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
 import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
+import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/features/connection/data/connection_api.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_cubit.dart';
+import 'package:aves/bird_companion/features/connection/presentation/connection_page.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('reconnect completion returns to album while first setup shows success', () {
+    expect(
+      automaticConnectionDestination(ConnectionEntryMode.initialSetup),
+      isNull,
+    );
+    expect(
+      automaticConnectionDestination(ConnectionEntryMode.addOrSwitch),
+      0,
+    );
+  });
+
   test('连接发现需要配对后，提交配对码进入已连接状态', () async {
     final repository = _PairingConnectionRepository();
     final events = EventClient();

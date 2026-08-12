@@ -1,5 +1,6 @@
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/features/settings/presentation/bird_settings_controller.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/device_details_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/device_management_page.dart';
@@ -55,8 +56,11 @@ void main() {
     expect(find.text('BirdAI 3.0.2'), findsOneWidget);
     await tester.tap(find.byKey(const Key('device-reconnect')));
     await tester.pumpAndSettle();
-    expect(route?.name, BirdRoutes.settingsDeviceManagement);
-    expect(route?.arguments, isNull);
+    expect(route?.name, BirdRoutes.connection);
+    expect(
+      (route?.arguments as ConnectionArgs).entryMode,
+      ConnectionEntryMode.addOrSwitch,
+    );
   });
 
   testWidgets('device details expands technical details', (tester) async {

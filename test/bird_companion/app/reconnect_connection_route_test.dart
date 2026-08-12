@@ -1,9 +1,10 @@
 import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('reconnect entry opens the v1 device management page', (tester) async {
+  testWidgets('reconnect entry opens the real connection flow', (tester) async {
     RouteSettings? received;
 
     await tester.pumpWidget(
@@ -29,7 +30,11 @@ void main() {
     await tester.tap(find.text('reconnect'));
     await tester.pumpAndSettle();
 
-    expect(received?.name, BirdRoutes.settingsDeviceManagement);
-    expect(received?.arguments, isNull);
+    expect(received?.name, BirdRoutes.connection);
+    expect(received?.arguments, isA<ConnectionArgs>());
+    expect(
+      (received?.arguments as ConnectionArgs).entryMode,
+      ConnectionEntryMode.addOrSwitch,
+    );
   });
 }

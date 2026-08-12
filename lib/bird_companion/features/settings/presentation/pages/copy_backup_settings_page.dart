@@ -49,7 +49,7 @@ class CopyBackupSettingsPage extends StatelessWidget {
                 BirdSettingsRow(
                   title: 'XMP / 后期标记策略',
                   subtitle: '保存审阅结果的 XMP 与标记',
-                  titleFontSize: 15,
+                  titleFontSize: 16,
                   trailing: BirdSettingsDropdownFrame(
                     width: 174,
                     child: DropdownButtonHideUnderline(
@@ -59,15 +59,15 @@ class CopyBackupSettingsPage extends StatelessWidget {
                         items: const [
                           DropdownMenuItem(
                             value: '生成同名 XMP（推荐）',
-                            child: Text('生成同名 XMP（推荐）', style: TextStyle(fontSize: 13)),
+                            child: Text('生成同名 XMP（推荐）', style: TextStyle(fontSize: 14)),
                           ),
                           DropdownMenuItem(
                             value: '写入照片元数据',
-                            child: Text('写入照片元数据', style: TextStyle(fontSize: 13)),
+                            child: Text('写入照片元数据', style: TextStyle(fontSize: 14)),
                           ),
                           DropdownMenuItem(
                             value: '不导出标记',
-                            child: Text('不导出标记', style: TextStyle(fontSize: 13)),
+                            child: Text('不导出标记', style: TextStyle(fontSize: 14)),
                           ),
                         ],
                         onChanged: (value) {
@@ -81,18 +81,21 @@ class CopyBackupSettingsPage extends StatelessWidget {
                 BirdSettingsRow(
                   title: '复制完成后校验文件完整性',
                   subtitle: '校验复制的文件是否完整可读',
+                  titleFontSize: 16,
                   trailing: Switch(value: controller.verifyCopies, onChanged: controller.setVerifyCopies),
                   minHeight: 60,
                 ),
                 BirdSettingsRow(
                   title: '电量不足时提醒',
                   subtitle: '复制或备份时电量过低提醒',
+                  titleFontSize: 16,
                   trailing: Switch(value: controller.lowBatteryReminder, onChanged: controller.setLowBatteryReminder),
                   minHeight: 60,
                 ),
                 BirdSettingsRow(
                   title: '复制完成自动打开任务报告',
                   subtitle: '查看此次复制任务的详细报告',
+                  titleFontSize: 16,
                   trailing: Switch(value: controller.autoOpenReport, onChanged: controller.setAutoOpenReport),
                   minHeight: 60,
                 ),
@@ -100,6 +103,7 @@ class CopyBackupSettingsPage extends StatelessWidget {
                   key: const Key('copy-naming-policy'),
                   title: '命名与目录规则',
                   subtitle: '当前由盒子按原文件名和项目目录管理',
+                  titleFontSize: 16,
                   showDivider: false,
                   trailing: const Icon(
                     Icons.lock_outline_rounded,
@@ -155,7 +159,7 @@ class CopyBackupSettingsPage extends StatelessWidget {
             key: const Key('copy-save'),
             label: '保存备份设置',
             onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('设置已保存，并会用于下一次真实复制任务')),
+              const SnackBar(content: Text('备份设置已保存')),
             ),
           ),
         ],
