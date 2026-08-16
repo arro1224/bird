@@ -1,0 +1,16 @@
+{
+  "event_id": "evt-asset-0001",
+  "event_type": "asset_ready",
+  "timestamp": "2026-08-16T10:30:00+08:00",
+  "payload": {
+    "job_id": "job-xxx",
+    "project_id": "project-xxx",
+    "file_id": "file-xxx",
+    "kind": "thumbnail",
+    "status": "ready",
+    "etag": "\"sha256-opaque-value\"",
+    "width": 512,
+    "height": 341,
+    "generation_mode": "embedded_thumbnail"
+  }
+}

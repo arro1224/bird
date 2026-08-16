@@ -1,5 +1,6 @@
 import 'package:aves/bird_companion/core/models/json_value.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
+import 'package:aves/bird_companion/core/media/media_asset_models.dart';
 import 'package:equatable/equatable.dart';
 
 enum AnalysisState { queued, processing, completed, lowConfidence, skipped, failed, unknown }
@@ -45,18 +46,33 @@ extension ClarityStateWireValue on ClarityState {
 }
 
 class PreviewRef extends Equatable {
-  const PreviewRef({this.thumbnailUri, this.previewUri, this.width, this.height});
+  const PreviewRef({
+    this.thumbnailUri,
+    this.previewUri,
+    this.width,
+    this.height,
+    this.thumbnailStatus = MediaAssetStatus.legacy,
+    this.previewStatus = MediaAssetStatus.legacy,
+  });
 
   final Uri? thumbnailUri;
   final Uri? previewUri;
   final int? width;
   final int? height;
+  final MediaAssetStatus thumbnailStatus;
+  final MediaAssetStatus previewStatus;
 
   factory PreviewRef.fromJson(Map<String, dynamic> json) => PreviewRef(
     thumbnailUri: Uri.tryParse(json.stringOrNull('thumb_ref') ?? ''),
     previewUri: Uri.tryParse(json.stringOrNull('preview_ref') ?? ''),
     width: json.intOrNull('width'),
     height: json.intOrNull('height'),
+    thumbnailStatus: MediaAssetStatusWireValue.fromWire(
+      json.stringOrNull('thumbnail_status'),
+    ),
+    previewStatus: MediaAssetStatusWireValue.fromWire(
+      json.stringOrNull('preview_status'),
+    ),
   );
 
   Map<String, dynamic> toJson() => {
@@ -64,10 +80,19 @@ class PreviewRef extends Equatable {
     if (previewUri != null) 'preview_ref': previewUri.toString(),
     if (width != null) 'width': width,
     if (height != null) 'height': height,
+    if (thumbnailStatus.wireValue case final String value) 'thumbnail_status': value,
+    if (previewStatus.wireValue case final String value) 'preview_status': value,
   };
 
   @override
-  List<Object?> get props => [thumbnailUri, previewUri, width, height];
+  List<Object?> get props => [
+    thumbnailUri,
+    previewUri,
+    width,
+    height,
+    thumbnailStatus,
+    previewStatus,
+  ];
 }
 
 class SubjectBox extends Equatable {

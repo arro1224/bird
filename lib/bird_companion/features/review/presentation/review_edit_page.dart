@@ -3,6 +3,10 @@ import 'dart:async';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
+import 'package:aves/bird_companion/core/media/media_asset_coordinator.dart';
+import 'package:aves/bird_companion/core/media/media_asset_models.dart';
+import 'package:aves/bird_companion/core/media/media_asset_service.dart';
+import 'package:aves/bird_companion/core/media/progressive_photo_image.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/presentation/user_facing_text.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
@@ -31,6 +35,11 @@ class ReviewEditPage extends StatefulWidget {
     required this.tags,
     this.initialCandidates = const [],
     this.previewUri,
+    this.photo,
+    this.mediaAssetLoader,
+    this.mediaAssetCoordinator,
+    this.deviceNamespace,
+    this.allowNetworkFallback = true,
   });
 
   final KeepState keepState;
@@ -39,6 +48,11 @@ class ReviewEditPage extends StatefulWidget {
   final String tags;
   final List<SpeciesCandidate> initialCandidates;
   final Uri? previewUri;
+  final PhotoSummary? photo;
+  final MediaAssetLoader? mediaAssetLoader;
+  final MediaAssetCoordinator? mediaAssetCoordinator;
+  final String? deviceNamespace;
+  final bool allowNetworkFallback;
 
   @override
   State<ReviewEditPage> createState() => _ReviewEditPageState();
@@ -94,7 +108,17 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            if (widget.previewUri != null) _CurrentResultCard(uri: widget.previewUri!, species: _species.text, candidate: _selectedCandidate),
+            if (widget.photo?.preview.previewUri != null || widget.previewUri != null)
+              _CurrentResultCard(
+                uri: widget.previewUri ?? widget.photo!.preview.previewUri!,
+                photo: widget.photo,
+                mediaAssetLoader: widget.mediaAssetLoader,
+                mediaAssetCoordinator: widget.mediaAssetCoordinator,
+                deviceNamespace: widget.deviceNamespace,
+                allowNetworkFallback: widget.allowNetworkFallback,
+                species: _species.text,
+                candidate: _selectedCandidate,
+              ),
             const SizedBox(height: AppSpacing.lg),
             Text('可能的鸟种', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
             const SizedBox(height: AppSpacing.sm),
@@ -243,10 +267,24 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
 }
 
 class _CurrentResultCard extends StatelessWidget {
-  const _CurrentResultCard({required this.uri, required this.species, this.candidate});
+  const _CurrentResultCard({
+    required this.uri,
+    required this.species,
+    this.photo,
+    this.mediaAssetLoader,
+    this.mediaAssetCoordinator,
+    this.deviceNamespace,
+    this.allowNetworkFallback = true,
+    this.candidate,
+  });
 
   final Uri uri;
   final String species;
+  final PhotoSummary? photo;
+  final MediaAssetLoader? mediaAssetLoader;
+  final MediaAssetCoordinator? mediaAssetCoordinator;
+  final String? deviceNamespace;
+  final bool allowNetworkFallback;
   final SpeciesCandidate? candidate;
 
   @override
@@ -260,20 +298,32 @@ class _CurrentResultCard extends StatelessWidget {
             child: SizedBox(
               width: 112,
               height: 112,
-              child: CachedNetworkImage(
-                imageUrl: uri.toString(),
-                cacheKey: mediaCacheIdentity(
-                  uri: uri,
-                  mediaId: uri.path,
-                  variant: 'review-edit-preview',
-                ),
-                fit: BoxFit.cover,
-                placeholder: (_, _) => const ColoredBox(
-                  color: AppColors.brandLight,
-                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                ),
-                errorWidget: (_, _, _) => const ColoredBox(color: AppColors.brandLight, child: Icon(Icons.photo_outlined)),
-              ),
+              child: photo == null
+                  ? CachedNetworkImage(
+                      imageUrl: uri.toString(),
+                      cacheKey: mediaCacheIdentity(
+                        uri: uri,
+                        mediaId: uri.path,
+                        variant: 'review-edit-preview',
+                      ),
+                      fit: BoxFit.cover,
+                      placeholder: (_, _) => const _EditPhotoPlaceholder(),
+                      errorWidget: (_, _, _) => const _EditPhotoPlaceholder(),
+                    )
+                  : ProgressivePhotoImage(
+                      photo: photo!,
+                      kind: MediaAssetKind.preview,
+                      loader: mediaAssetLoader,
+                      coordinator: mediaAssetCoordinator,
+                      deviceNamespace: deviceNamespace,
+                      allowNetworkFallback: allowNetworkFallback,
+                      fallbackToThumbnail: true,
+                      fit: BoxFit.cover,
+                      cacheWidth: (112 * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(112, 512),
+                      cacheHeight: (112 * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(112, 512),
+                      legacyCacheVariant: 'review-edit-preview',
+                      placeholderBuilder: (_) => const _EditPhotoPlaceholder(),
+                    ),
             ),
           ),
           const SizedBox(width: AppSpacing.md),
@@ -294,6 +344,16 @@ class _CurrentResultCard extends StatelessWidget {
         ],
       ),
     ),
+  );
+}
+
+class _EditPhotoPlaceholder extends StatelessWidget {
+  const _EditPhotoPlaceholder();
+
+  @override
+  Widget build(BuildContext context) => const ColoredBox(
+    color: AppColors.brandLight,
+    child: Center(child: Icon(Icons.photo_outlined)),
   );
 }
 

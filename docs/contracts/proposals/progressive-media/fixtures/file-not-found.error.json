@@ -1,0 +1,8 @@
+{
+  "error_code": "file_not_found",
+  "error_message": "文件不存在",
+  "retryable": false,
+  "details": {
+    "file_id": "file-xxx"
+  }
+}

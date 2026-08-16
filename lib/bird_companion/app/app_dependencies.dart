@@ -9,6 +9,10 @@ import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/storage/cache_metrics_service.dart';
 import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/files/log_download_service.dart';
+import 'package:aves/bird_companion/core/media/media_asset_cache.dart';
+import 'package:aves/bird_companion/core/media/media_asset_coordinator.dart';
+import 'package:aves/bird_companion/core/media/media_asset_http_client.dart';
+import 'package:aves/bird_companion/core/media/media_asset_service.dart';
 import 'package:aves/bird_companion/core/sync/conflict_resolver.dart';
 import 'package:aves/bird_companion/core/sync/bird_sync_service.dart';
 import 'package:aves/bird_companion/core/sync/sync_coordinator.dart';
@@ -77,6 +81,8 @@ class BirdCompanionDependencies {
     required this.cacheMetricsService,
     required this.settingsStore,
     required this.sessionCoordinator,
+    required this.mediaAssetCoordinator,
+    required this.mediaAssetService,
   });
 
   final ApiClient apiClient;
@@ -103,6 +109,8 @@ class BirdCompanionDependencies {
   final CacheMetricsService cacheMetricsService;
   final SettingsStore settingsStore;
   final SessionCoordinator sessionCoordinator;
+  final MediaAssetCoordinator mediaAssetCoordinator;
+  final MediaAssetService mediaAssetService;
 
   static Future<BirdCompanionDependencies> create() async {
     final cache = await LocalCache.open();
@@ -153,6 +161,17 @@ class BirdCompanionDependencies {
         await birdSyncService.synchronize();
       },
     );
+    final mediaAssetCache = MediaAssetCache();
+    final mediaAssetCoordinator = MediaAssetCoordinator(
+      eventClient: eventClient,
+      activeDeviceId: activeDeviceId,
+      cacheInvalidator: mediaAssetCache,
+    );
+    final mediaAssetService = MediaAssetService(
+      httpClient: MediaAssetHttpClient(),
+      cache: mediaAssetCache,
+      coordinator: mediaAssetCoordinator,
+    );
     reviewRepository = ReviewRepositoryImpl(
       ReviewApi(apiClient),
       connectivityMonitor,
@@ -193,6 +212,8 @@ class BirdCompanionDependencies {
       cacheMetricsService: CacheMetricsService(),
       settingsStore: BirdSettingsStore(cache),
       sessionCoordinator: sessionCoordinator,
+      mediaAssetCoordinator: mediaAssetCoordinator,
+      mediaAssetService: mediaAssetService,
     );
     dependencies.birdSyncService.start();
     const testBaseUrl = String.fromEnvironment('BIRD_TEST_BASE_URL');
@@ -215,6 +236,8 @@ class BirdCompanionDependencies {
   }
 
   void dispose() {
+    unawaited(mediaAssetCoordinator.dispose());
+    mediaAssetService.dispose();
     unawaited(eventClient.dispose());
     unawaited(sessionCoordinator.dispose());
     unawaited(apiClient.dispose());

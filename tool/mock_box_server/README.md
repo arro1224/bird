@@ -29,10 +29,15 @@ dart run tool/mock_box_server/server.dart
 --port=8787
 --quiet
 --auth
+--progressive-media
+--no-asset-events
 --state-file=.tmp/mock-box-state.json
 ```
 
 `--auth` 开启 B3 全通道鉴权；仅用于本地联调的配对码为 `2468`。
+`--progressive-media` 开启 P1 候选协议的照片状态、资源错误、ETag/304 和
+`asset_ready`；默认关闭，因此原有 v1 回归响应保持不变。`--no-asset-events`
+用于模拟 WebSocket 不推送资源就绪事件。
 服务日志只记录请求方法和路径，不记录配对码、Bearer Token 或签名 URL 查询串。
 
 启动后可访问：
@@ -72,6 +77,43 @@ flutter run --dart-define=BIRD_TEST_BASE_URL=http://10.0.2.2:8787
 - `POST /api/v1/projects/{batchId}/resume`
 - `GET /api/v1/species`
 - `GET /mock/media/{asset}.png`
+
+P1 渐进图片模式额外提供：
+
+- `GET /api/v1/files/{fileId}/thumbnail`
+- `GET /api/v1/files/{fileId}/preview`
+- `POST /mock/control/assets`
+- `POST /mock/control/events`
+
+启动示例：
+
+```powershell
+dart run tool/mock_box_server/server.dart --quick --progressive-media
+```
+
+切换单个资源会按需发送 `asset_ready`：
+
+```powershell
+Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:8787/mock/control/assets `
+  -ContentType application/json `
+  -Body '{"file_id":"photo-0003","kind":"thumbnail","status":"ready"}'
+```
+
+P4 渐进媒体发布门禁可直接针对已启动的可控 K7 执行：
+
+```powershell
+dart run tool/acceptance/progressive_media_p4_acceptance.dart `
+  http://127.0.0.1:8787
+```
+
+该门禁验证 pending 404、Retry-After、ETag/304、thumbnail/preview 乱序事件、
+WebSocket 断线以及无事件时的 HTTP 恢复。它只临时修改两张
+`pending/not_requested` 照片，并在退出前恢复原状态和事件开关；恢复失败会使命令
+返回失败，不能忽略。
+
+将 `/mock/control/events` 的 `enabled` 设为 `false` 会断开现有事件连接，便于验证
+HTTP 有限重试兜底；重新设为 `true` 后 App 可按正常重连策略恢复。
 
 任务、存储卡和复制验收接口：
 

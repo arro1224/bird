@@ -1,0 +1,10 @@
+{
+  "error_code": "asset_failed",
+  "error_message": "图片生成失败",
+  "retryable": false,
+  "details": {
+    "file_id": "file-xxx",
+    "kind": "thumbnail",
+    "status": "failed"
+  }
+}

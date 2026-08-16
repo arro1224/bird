@@ -1,0 +1,12 @@
+{
+  "file_id": "file-xxx",
+  "filename": "DSC_0001.JPG",
+  "format": "JPEG",
+  "thumb_ref": "http://192.168.4.1:8080/api/v1/files/file-xxx/thumbnail",
+  "preview_ref": "http://192.168.4.1:8080/api/v1/files/file-xxx/preview",
+  "thumbnail_status": "pending",
+  "preview_status": "not_requested",
+  "analysis_state": "processing",
+  "is_recommended": false,
+  "user_tags": []
+}

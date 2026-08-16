@@ -10,6 +10,7 @@ import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/batch_models.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/models/tag_input.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
@@ -544,23 +545,30 @@ class _SelectablePhotoTile extends StatelessWidget {
   final bool showRatingOverlay;
 
   @override
-  Widget build(BuildContext context) => BlocSelector<SelectionCubit, SelectionState, ({bool selected, bool failed})>(
-    selector: (state) => (
-      selected: state.ids.contains(photo.id),
-      failed: state.failed.containsKey(photo.id),
-    ),
-    builder: (_, selection) => PhotoTile(
-      key: ValueKey(photo.id),
-      photo: photo,
-      compact: compact,
-      showRatingOverlay: showRatingOverlay,
-      selected: selection.selected,
-      operationFailed: selection.failed,
-      deviceNamespace: BirdCompanionScope.of(context).deviceSessionCubit.state.device?.id,
-      onTap: onTap,
-      onLongPress: onLongPress,
-    ),
-  );
+  Widget build(BuildContext context) {
+    final dependencies = BirdCompanionScope.of(context);
+    final session = dependencies.deviceSessionCubit.state;
+    return BlocSelector<SelectionCubit, SelectionState, ({bool selected, bool failed})>(
+      selector: (state) => (
+        selected: state.ids.contains(photo.id),
+        failed: state.failed.containsKey(photo.id),
+      ),
+      builder: (_, selection) => PhotoTile(
+        key: ValueKey(photo.id),
+        photo: photo,
+        compact: compact,
+        showRatingOverlay: showRatingOverlay,
+        selected: selection.selected,
+        operationFailed: selection.failed,
+        deviceNamespace: session.device?.id,
+        mediaAssetLoader: dependencies.mediaAssetService,
+        mediaAssetCoordinator: dependencies.mediaAssetCoordinator,
+        allowNetworkFallback: session.isConnected,
+        onTap: onTap,
+        onLongPress: onLongPress,
+      ),
+    );
+  }
 }
 
 class _SelectionActionOverlay extends StatelessWidget {
@@ -1238,7 +1246,7 @@ class _QuickFilters extends StatelessWidget {
       ('全部', null, null, null, null),
       ('待确认', 'pending', offline ? null : pendingCount, offline ? null : AppColors.pending, offline ? null : Icons.circle),
       ('已保留', 'keep', offline ? null : keepCount, offline ? null : AppColors.brand, offline ? null : Icons.circle),
-      ('已弃用', 'discard', null, null, null),
+      ('已弃选', 'discard', null, null, null),
       if (!offline) ('精选', 'featured', null, AppColors.amber, Icons.star_rounded),
     ];
     final selected = query.recommendedOnly ? '__ai__' : query.keepState;
@@ -1412,9 +1420,10 @@ class _FilterScanProgress extends StatelessWidget {
 
 Future<void> _batchAction(BuildContext context, String batchId, List<String> ids, String action) async {
   final selection = context.read<SelectionCubit>();
+  final gallery = context.read<GalleryCubit>();
   if (selection.state.submitting) return;
   final previousById = {
-    for (final photo in context.read<GalleryCubit>().state.items.where((photo) => ids.contains(photo.id))) photo.id: photo.keepState ?? 'pending',
+    for (final photo in gallery.state.items.where((photo) => ids.contains(photo.id))) photo.id: photo.keepState ?? 'pending',
   };
   selection.begin();
   final outcome = await _batchOperationByPhotoVersion(
@@ -1424,6 +1433,10 @@ Future<void> _batchAction(BuildContext context, String batchId, List<String> ids
     action,
   );
   selection.complete(succeededIds: outcome.succeededIds, failed: outcome.failed);
+  final keepState = _keepStateForOperation(action);
+  if (!gallery.isClosed && keepState != null) {
+    gallery.applyKeepState(outcome.succeededIds, keepState);
+  }
   if (!outcome.queued) {
     final grouped = <String, List<String>>{};
     for (final id in outcome.succeededIds) {
@@ -1433,7 +1446,7 @@ Future<void> _batchAction(BuildContext context, String batchId, List<String> ids
     selection.setUndoActions([for (final entry in grouped.entries) BatchUndoAction(operation: entry.key, ids: entry.value)]);
   }
   if (!context.mounted) return;
-  await context.read<GalleryCubit>().refresh();
+  await gallery.refresh();
   if (outcome.queued) {
     BirdFeedback.queued(context, '修改已保存在手机上，重新连接后会自动更新');
   } else if (outcome.succeededIds.isEmpty) {
@@ -1463,14 +1476,14 @@ Future<void> _requestBatchAction(
       context: context,
       builder: (dialogContext) => AlertDialog(
         icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
-        title: Text('确认弃用 ${ids.length} 张照片？'),
-        content: const Text('照片不会立即从存储卡删除，但会被标记为弃用，并影响后续复制和导出范围。'),
+        title: Text('确认弃选 ${ids.length} 张照片？'),
+        content: const Text('照片不会立即从存储卡删除，但会被标记为弃选，并影响后续复制和导出范围。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            child: const Text('确认弃用'),
+            child: const Text('确认弃选'),
           ),
         ],
       ),
@@ -1543,6 +1556,7 @@ Future<void> _showTagDialog(BuildContext context, String batchId, List<String> i
 Future<void> _undoBatch(BuildContext context, String batchId) async {
   if (!context.mounted) return;
   final selection = context.read<SelectionCubit>();
+  final gallery = context.read<GalleryCubit>();
   final actions = selection.takeUndoActions();
   if (actions.isEmpty) return;
   selection.begin(preserveUndo: true);
@@ -1558,10 +1572,14 @@ Future<void> _undoBatch(BuildContext context, String batchId) async {
     );
     succeeded.addAll(outcome.succeededIds);
     failed.addAll(outcome.failed);
+    final keepState = _keepStateForOperation(action.operation);
+    if (!gallery.isClosed && keepState != null) {
+      gallery.applyKeepState(outcome.succeededIds, keepState);
+    }
   }
   selection.complete(succeededIds: succeeded, failed: failed);
   if (!context.mounted) return;
-  await context.read<GalleryCubit>().refresh();
+  await gallery.refresh();
   if (failed.isEmpty) {
     BirdFeedback.success(context, '已撤销最近一次批量操作');
   } else {
@@ -1571,6 +1589,14 @@ Future<void> _undoBatch(BuildContext context, String batchId) async {
     );
   }
 }
+
+KeepState? _keepStateForOperation(String operation) => switch (operation) {
+  'pending' => KeepState.pending,
+  'keep' => KeepState.keep,
+  'discard' => KeepState.discard,
+  'featured' => KeepState.featured,
+  _ => null,
+};
 
 Future<BatchOperationOutcome> _batchOperationByPhotoVersion(
   BuildContext context,

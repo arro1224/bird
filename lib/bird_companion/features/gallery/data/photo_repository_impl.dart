@@ -179,6 +179,12 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
           value: value,
           idempotencyKey: operationId,
         );
+        await _updateCachedPhotos(
+          id,
+          outcome.succeededIds,
+          action,
+          value,
+        );
         await invalidateLocalQueries(id);
         return outcome;
       }

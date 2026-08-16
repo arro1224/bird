@@ -441,6 +441,8 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
         previewUri: preview.thumbnailUri,
         width: preview.width,
         height: preview.height,
+        thumbnailStatus: preview.thumbnailStatus,
+        previewStatus: preview.thumbnailStatus,
       ),
       analysisState: summary.analysisState,
       recognition: summary.recognition,
@@ -452,6 +454,7 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
       isRecommended: summary.isRecommended,
       userTags: summary.userTags,
       capturedAt: summary.capturedAt,
+      version: summary.version,
     );
   }
 }

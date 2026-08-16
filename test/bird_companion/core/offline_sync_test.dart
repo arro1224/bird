@@ -190,6 +190,46 @@ void main() {
     expect(store.read('invalid-batch-review')?.status, PendingOperationStatus.failed);
   });
 
+  test('all four retained batch states replay with their original wire operation', () async {
+    final store = PendingOperationStore.memory();
+    const operations = ['pending', 'keep', 'discard', 'featured'];
+    for (final operation in operations) {
+      await store.save(
+        PendingOperation(
+          id: 'batch-$operation',
+          type: PendingOperationType.batchReview,
+          payload: {
+            'file_ids': ['photo-$operation'],
+            'operation': operation,
+            'value': null,
+            'version': 1,
+          },
+          createdAt: DateTime.utc(2026, 8, 16),
+          version: 1,
+          deviceId: 'box-a',
+          projectId: 'project-7',
+        ),
+      );
+    }
+    final client = _RecordingApiClient();
+    final service = BirdSyncService(
+      ConnectivityMonitor(),
+      SyncCoordinator(store),
+      client,
+      null,
+      () => 'box-a',
+    );
+
+    final result = await service.synchronize();
+
+    expect(result.syncedCount, 4);
+    expect(
+      client.payloads.map((payload) => (payload as Map)['operation']),
+      operations,
+    );
+    expect(store.readAll(), isEmpty);
+  });
+
   test('B6 coalesces concurrent reconnect synchronization requests', () async {
     final store = PendingOperationStore.memory();
     await store.save(_operation('coalesced-1', 'photo-1'));

@@ -125,7 +125,7 @@ class _HistoryItem extends StatelessWidget {
     final action = switch (lower) {
       String text when text.contains('featured') => '设为精选',
       String text when text.contains('pending') => '标记为待确认',
-      String text when text.contains('discard') => '标记为弃用',
+      String text when text.contains('discard') => '标记为弃选',
       String text when text.contains('keep') => '标记为保留',
       _ => null,
     };
@@ -133,7 +133,7 @@ class _HistoryItem extends StatelessWidget {
     return original
         .replaceAll(RegExp(r'\bfeatured\b', caseSensitive: false), '精选')
         .replaceAll(RegExp(r'\bpending\b', caseSensitive: false), '待确认')
-        .replaceAll(RegExp(r'\bdiscard\b', caseSensitive: false), '弃用')
+        .replaceAll(RegExp(r'\bdiscard\b', caseSensitive: false), '弃选')
         .replaceAll(RegExp(r'\bkeep\b', caseSensitive: false), '保留');
   }
 }

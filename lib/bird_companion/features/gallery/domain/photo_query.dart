@@ -135,7 +135,7 @@ class PhotoQuery {
 String _keepStateLabel(String value) => switch (value.toLowerCase()) {
   'keep' => '已保留',
   'pending' => '待确认',
-  'discard' => '已弃用',
+  'discard' => '已弃选',
   'featured' => '精选',
   _ => '其他',
 };

@@ -6,6 +6,8 @@ import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
+import 'package:aves/bird_companion/core/media/media_asset_models.dart';
+import 'package:aves/bird_companion/core/media/progressive_photo_image.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/widgets/bird_navigation.dart';
@@ -14,12 +16,11 @@ import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/review/presentation/group_review_cubit.dart';
+import 'package:aves/bird_companion/features/review/presentation/review_media_context.dart';
 import 'package:aves/bird_companion/features/review/data/review_checkpoint_store.dart';
 import 'package:aves/bird_companion/features/review/domain/review_checkpoint.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/group_review_comparison_action.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/group_review_scope_selector.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:aves/bird_companion/core/files/media_cache_identity.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -48,6 +49,7 @@ class GroupReviewPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dependencies = BirdCompanionScope.of(context);
+    final media = resolveReviewMediaContext(dependencies);
     return BlocProvider(
       create: (_) => GroupReviewCubit(
         dependencies.reviewRepository,
@@ -58,8 +60,9 @@ class GroupReviewPage extends StatelessWidget {
         sceneName: sceneName,
         reviewContext: _reviewContext,
         checkpointStore: dependencies.reviewCheckpointStore,
-        deviceId: dependencies.deviceSessionCubit.state.device?.id,
+        deviceId: media.deviceNamespace,
         thumbnailSize: dependencies.settingsStore.read().thumbnailSize,
+        media: media,
       ),
     );
   }
@@ -71,6 +74,7 @@ class _GroupReviewView extends StatefulWidget {
     required this.reviewContext,
     required this.checkpointStore,
     required this.thumbnailSize,
+    required this.media,
     this.deviceId,
   });
 
@@ -79,6 +83,7 @@ class _GroupReviewView extends StatefulWidget {
   final ReviewCheckpointStore checkpointStore;
   final String? deviceId;
   final String thumbnailSize;
+  final ReviewMediaContext media;
 
   @override
   State<_GroupReviewView> createState() => _GroupReviewViewState();
@@ -139,6 +144,7 @@ class _GroupReviewViewState extends State<_GroupReviewView> {
             index: index,
             total: state.groups.length,
             reviewContext: widget.reviewContext,
+            media: widget.media,
             selectedPhotoIndex: _selectedPhotoIndex,
             thumbnailSize: widget.thumbnailSize,
             comparisonGroups: state.groups
@@ -256,6 +262,7 @@ class _GroupContent extends StatelessWidget {
     required this.index,
     required this.total,
     required this.reviewContext,
+    required this.media,
     required this.selectedPhotoIndex,
     required this.thumbnailSize,
     required this.comparisonGroups,
@@ -271,6 +278,7 @@ class _GroupContent extends StatelessWidget {
   final int index;
   final int total;
   final ReviewContext reviewContext;
+  final ReviewMediaContext media;
   final int selectedPhotoIndex;
   final String thumbnailSize;
   final List<ReviewContext> comparisonGroups;
@@ -344,6 +352,7 @@ class _GroupContent extends StatelessWidget {
                         },
                   child: _HeroPhoto(
                     photo: representative,
+                    media: media,
                     recommended: representative?.isRecommended == true || group.rankOrder.isNotEmpty,
                     score: score,
                     reasons: reasons,
@@ -362,6 +371,7 @@ class _GroupContent extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (_, photoIndex) => _Thumbnail(
               photo: photos[photoIndex],
+              media: media,
               rank: photoIndex + 1,
               selected: photoIndex == selectedIndex,
               extent: thumbnailExtent,
@@ -379,7 +389,7 @@ class _GroupContent extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: _MarkButton(label: '弃用', icon: Icons.delete_outline, color: AppColors.danger, filled: activeKeepState == KeepState.discard, onTap: busy ? null : () => _mark(context, representativeId, KeepState.discard)),
+              child: _MarkButton(label: '弃选', icon: Icons.delete_outline, color: AppColors.danger, filled: activeKeepState == KeepState.discard, onTap: busy ? null : () => _mark(context, representativeId, KeepState.discard)),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -472,13 +482,20 @@ class _GroupContent extends StatelessWidget {
 String _keepStateActionLabel(KeepState state) => switch (state) {
   KeepState.pending => '待确认',
   KeepState.keep => '保留',
-  KeepState.discard => '弃用',
+  KeepState.discard => '弃选',
   KeepState.featured => '精选',
 };
 
 class _HeroPhoto extends StatelessWidget {
-  const _HeroPhoto({this.photo, this.recommended = false, this.score, this.reasons = const []});
+  const _HeroPhoto({
+    required this.media,
+    this.photo,
+    this.recommended = false,
+    this.score,
+    this.reasons = const [],
+  });
 
+  final ReviewMediaContext media;
   final PhotoSummary? photo;
   final bool recommended;
   final double? score;
@@ -486,7 +503,6 @@ class _HeroPhoto extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = photo?.preview.previewUri?.toString();
     return AspectRatio(
       aspectRatio: 1.25,
       child: ClipRRect(
@@ -494,17 +510,27 @@ class _HeroPhoto extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (url?.isNotEmpty == true)
-              CachedNetworkImage(
-                imageUrl: url!,
-                cacheKey: mediaCacheIdentity(
-                  uri: photo!.preview.previewUri!,
-                  mediaId: photo!.id,
-                  variant: 'group-hero',
-                ),
+            if (photo != null)
+              ProgressivePhotoImage(
+                photo: photo!,
+                kind: MediaAssetKind.preview,
+                loader: media.loader,
+                coordinator: media.coordinator,
+                deviceNamespace: media.deviceNamespace,
+                allowNetworkFallback: media.allowNetworkFallback,
+                fallbackToThumbnail: true,
                 fit: BoxFit.cover,
-                placeholder: (_, _) => const _PhotoPlaceholder(),
-                errorWidget: (_, _, _) => const _PhotoPlaceholder(),
+                cacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(320, 1440),
+                legacyCacheVariant: 'group-hero',
+                missingBuilder: (_) => const ColoredBox(
+                  color: AppColors.brandLight,
+                  child: Icon(
+                    Icons.photo_outlined,
+                    size: 64,
+                    color: AppColors.brand,
+                  ),
+                ),
+                placeholderBuilder: (_) => const _PhotoPlaceholder(),
               )
             else
               const ColoredBox(
@@ -580,6 +606,7 @@ class _AiBadge extends StatelessWidget {
 class _Thumbnail extends StatelessWidget {
   const _Thumbnail({
     required this.photo,
+    required this.media,
     required this.rank,
     required this.selected,
     required this.extent,
@@ -587,6 +614,7 @@ class _Thumbnail extends StatelessWidget {
   });
 
   final PhotoSummary photo;
+  final ReviewMediaContext media;
   final int rank;
   final bool selected;
   final double extent;
@@ -594,7 +622,6 @@ class _Thumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = photo.preview.thumbnailUri?.toString();
     return BirdPressable(
       borderRadius: BorderRadius.circular(10),
       onTap: onTap,
@@ -610,20 +637,23 @@ class _Thumbnail extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (url?.isNotEmpty == true)
-                CachedNetworkImage(
-                  imageUrl: url!,
-                  cacheKey: mediaCacheIdentity(
-                    uri: photo.preview.thumbnailUri!,
-                    mediaId: photo.id,
-                    variant: 'group-thumbnail',
-                  ),
-                  fit: BoxFit.cover,
-                  placeholder: (_, _) => const _PhotoPlaceholder(compact: true),
-                  errorWidget: (_, _, _) => const _PhotoPlaceholder(compact: true),
-                )
-              else
-                const ColoredBox(color: AppColors.mist, child: Icon(Icons.photo_outlined)),
+              ProgressivePhotoImage(
+                photo: photo,
+                kind: MediaAssetKind.thumbnail,
+                loader: media.loader,
+                coordinator: media.coordinator,
+                deviceNamespace: media.deviceNamespace,
+                allowNetworkFallback: media.allowNetworkFallback,
+                fit: BoxFit.cover,
+                cacheWidth: (extent * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(76, 512),
+                cacheHeight: (extent * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(76, 512),
+                legacyCacheVariant: 'group-thumbnail',
+                missingBuilder: (_) => const ColoredBox(
+                  color: AppColors.mist,
+                  child: Icon(Icons.photo_outlined),
+                ),
+                placeholderBuilder: (_) => const _PhotoPlaceholder(compact: true),
+              ),
               Positioned(
                 left: 4,
                 top: 4,

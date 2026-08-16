@@ -45,3 +45,11 @@ dart run tool/contracts/verify_contracts.dart --strict-baseline
 
 在这些外部输入补齐前，契约文件可以进入评审，但 B0 不得标记为完成，B3 之后
 不得声称真实联调通过。
+
+## 待评审提案
+
+- `proposals/API-PROPOSAL-20260816-01-PROGRESSIVE-MEDIA.md`：盒子后端
+  `0.6.2` 渐进图片资源状态、HTTP 错误、ETag 与 `asset_ready` 事件。
+
+提案文件不是已生效契约。提案获批并分配正式契约版本前，运行时代码、mock、
+fixtures 和本目录冻结的 v1 文件仍以 `birdbox-v1@1.0.0` 为准。

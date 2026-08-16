@@ -81,7 +81,7 @@ class _FilterSheetState extends State<FilterSheet> {
                       _FilterSection(
                         icon: Icons.layers_outlined,
                         title: '保留状态',
-                        child: _ChoiceWrap<String?>(value: _keep, options: const [(null, '全部'), ('keep', '保留'), ('pending', '待确认'), ('discard', '弃用'), ('featured', '精选')], onChanged: (value) => setState(() => _keep = value)),
+                        child: _ChoiceWrap<String?>(value: _keep, options: const [(null, '全部'), ('keep', '保留'), ('pending', '待确认'), ('discard', '弃选'), ('featured', '精选')], onChanged: (value) => setState(() => _keep = value)),
                       ),
                       _FilterSection(
                         icon: Icons.image_outlined,

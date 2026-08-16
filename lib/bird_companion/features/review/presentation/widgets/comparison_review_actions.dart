@@ -29,7 +29,7 @@ class ComparisonReviewActions extends StatelessWidget {
         children: [
           Expanded(
             child: _ComparisonActionButton(
-              label: '弃用当前',
+              label: '弃选当前',
               icon: Icons.delete_outline_rounded,
               color: AppColors.danger,
               selected: selectedState == KeepState.discard,

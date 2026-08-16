@@ -15,6 +15,7 @@ import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/features/review/domain/review_checkpoint.dart';
 import 'package:aves/bird_companion/features/review/presentation/photo_detail_cubit.dart';
+import 'package:aves/bird_companion/features/review/presentation/review_media_context.dart';
 import 'package:aves/bird_companion/features/review/presentation/review_edit_page.dart';
 import 'package:aves/bird_companion/features/review/presentation/version_history_page.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/conflict_dialog.dart';
@@ -49,6 +50,7 @@ class PhotoDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final dependencies = BirdCompanionScope.of(context);
     final preferences = dependencies.settingsStore.read();
+    final media = resolveReviewMediaContext(dependencies);
     return BlocProvider(
       create: (_) => PhotoDetailCubit(
         dependencies.reviewRepository,
@@ -66,6 +68,7 @@ class PhotoDetailPage extends StatelessWidget {
         reviewContext: reviewContext,
         initialShowSubjects: preferences.showSubjectBox,
         autoAdvance: preferences.autoAdvance,
+        media: media,
       ),
     );
   }
@@ -80,6 +83,7 @@ class _View extends StatefulWidget {
     required this.hasMoreSequence,
     required this.initialShowSubjects,
     required this.autoAdvance,
+    required this.media,
     this.loadMoreSequence,
     this.reviewContext,
   });
@@ -90,6 +94,7 @@ class _View extends StatefulWidget {
   final bool hasMoreSequence;
   final bool initialShowSubjects;
   final bool autoAdvance;
+  final ReviewMediaContext media;
   final PhotoSequenceLoader? loadMoreSequence;
   final ReviewContext? reviewContext;
 
@@ -255,6 +260,10 @@ class _ViewState extends State<_View> {
                 onPrevious: _previousId == null ? null : () => _goPrevious(context),
                 onNext: _nextId == null && !_hasMoreSequence ? null : () => _goNext(context),
                 navigationEnabled: !state.loading && !state.saving && !_loadingMoreSequence,
+                mediaAssetLoader: widget.media.loader,
+                mediaAssetCoordinator: widget.media.coordinator,
+                deviceNamespace: widget.media.deviceNamespace,
+                allowNetworkFallback: widget.media.allowNetworkFallback,
               ),
               const SizedBox(height: 12),
               _RecognitionSummary(
@@ -488,6 +497,11 @@ class _ViewState extends State<_View> {
           tags: _tags.text,
           initialCandidates: detail.photo.summary.recognition?.candidates ?? const [],
           previewUri: detail.photo.summary.preview.previewUri,
+          photo: detail.photo.summary,
+          mediaAssetLoader: widget.media.loader,
+          mediaAssetCoordinator: widget.media.coordinator,
+          deviceNamespace: widget.media.deviceNamespace,
+          allowNetworkFallback: widget.media.allowNetworkFallback,
         ),
       ),
     );
@@ -605,7 +619,7 @@ class _QuickActions extends StatelessWidget {
               style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6)),
               onPressed: saving ? null : onDiscard,
               icon: const Icon(Icons.delete_outline_rounded, size: 20),
-              label: const Text('弃用', style: TextStyle(fontSize: 12)),
+              label: const Text('弃选', style: TextStyle(fontSize: 12)),
             ),
           ),
           const SizedBox(width: 8),

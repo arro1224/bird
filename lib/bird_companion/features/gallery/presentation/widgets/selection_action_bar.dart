@@ -68,7 +68,7 @@ class _SelectionActionBarState extends State<SelectionActionBar> {
                     childAspectRatio: 3.4,
                     children: [
                       _Action(icon: Icons.check_rounded, label: '确认保留', subtitle: '保留选中的照片', color: AppColors.keep, selected: _pendingAction == 'keep', onTap: widget.busy ? null : () => _choose('keep')),
-                      _Action(icon: Icons.close_rounded, label: '确认弃用', subtitle: '排除选中的照片', color: AppColors.danger, selected: _pendingAction == 'discard', onTap: widget.busy ? null : () => _choose('discard')),
+                      _Action(icon: Icons.close_rounded, label: '确认弃选', subtitle: '排除选中的照片', color: AppColors.danger, selected: _pendingAction == 'discard', onTap: widget.busy ? null : () => _choose('discard')),
                       _Action(icon: Icons.new_label_outlined, label: '添加标签', subtitle: '批量添加或修改标签', onTap: widget.busy ? null : widget.onAddTags),
                       _MoreAction(
                         busy: widget.busy,
@@ -142,7 +142,7 @@ class _SelectionActionBarState extends State<SelectionActionBar> {
 
   String _label(String value) => switch (value) {
     'keep' => '确认保留',
-    'discard' => '确认弃用',
+    'discard' => '确认弃选',
     'featured' => '设为精选',
     _ => '标记待确认',
   };

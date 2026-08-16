@@ -37,41 +37,50 @@ void main() {
     expect(tester.widget<Text>(find.text('4.8')).style?.fontSize, 16);
   });
 
-  testWidgets('批量弃用后的照片显示红色状态圆点', (tester) async {
-    const photo = PhotoSummary(
-      id: 'discarded-photo',
-      filename: 'discarded-photo.jpg',
-      format: 'JPEG',
-      preview: PreviewRef(),
-      analysisState: AnalysisState.completed,
-      keepState: 'discard',
-      isRecommended: true,
-    );
+  final statusCases = <({String state, IconData icon, Color color})>[
+    (state: 'keep', icon: Icons.circle, color: AppColors.keep),
+    (state: 'pending', icon: Icons.circle, color: AppColors.pending),
+    (state: 'discard', icon: Icons.circle, color: AppColors.danger),
+    (state: 'featured', icon: Icons.star_rounded, color: AppColors.featured),
+  ];
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: 120,
-            height: 160,
-            child: PhotoTile(
-              photo: photo,
-              selected: false,
-              compact: true,
-              onTap: () {},
-              onLongPress: () {},
+  for (final statusCase in statusCases) {
+    testWidgets('批量 ${statusCase.state} 后显示对应图标和颜色', (tester) async {
+      final photo = PhotoSummary(
+        id: '${statusCase.state}-photo',
+        filename: '${statusCase.state}-photo.jpg',
+        format: 'JPEG',
+        preview: const PreviewRef(),
+        analysisState: AnalysisState.lowConfidence,
+        keepState: statusCase.state,
+        isRecommended: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 120,
+              height: 160,
+              child: PhotoTile(
+                photo: photo,
+                selected: false,
+                compact: true,
+                onTap: () {},
+                onLongPress: () {},
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    final status = tester.widget<Icon>(
-      find.byKey(const ValueKey('photo-status-discard')),
-    );
-    expect(status.icon, Icons.circle);
-    expect(status.color, AppColors.danger);
-  });
+      final status = tester.widget<Icon>(
+        find.byKey(ValueKey('photo-status-${statusCase.state}')),
+      );
+      expect(status.icon, statusCase.icon);
+      expect(status.color, statusCase.color);
+    });
+  }
 
   testWidgets('rating and status overlays can be hidden without hiding selection', (tester) async {
     const photo = PhotoSummary(

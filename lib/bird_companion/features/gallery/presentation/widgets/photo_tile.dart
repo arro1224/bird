@@ -1,6 +1,11 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
-import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/files/media_cache_identity.dart';
+import 'package:aves/bird_companion/core/media/media_asset_coordinator.dart';
+import 'package:aves/bird_companion/core/media/media_asset_models.dart';
+import 'package:aves/bird_companion/core/media/media_asset_service.dart';
+import 'package:aves/bird_companion/core/media/progressive_media_image.dart';
+import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/analysis_placeholder.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +21,9 @@ class PhotoTile extends StatelessWidget {
     this.operationFailed = false,
     this.deviceNamespace,
     this.showRatingOverlay = true,
+    this.mediaAssetLoader,
+    this.mediaAssetCoordinator,
+    this.allowNetworkFallback = true,
   });
 
   final PhotoSummary photo;
@@ -26,15 +34,27 @@ class PhotoTile extends StatelessWidget {
   final bool operationFailed;
   final String? deviceNamespace;
   final bool showRatingOverlay;
+  final MediaAssetLoader? mediaAssetLoader;
+  final MediaAssetCoordinator? mediaAssetCoordinator;
+  final bool allowNetworkFallback;
 
   @override
   Widget build(BuildContext context) {
     final image = photo.preview.thumbnailUri;
     final score = photo.rating?.totalScore;
-    final state = photo.keepState ?? 'pending';
-    final isDiscarded = state == 'discard';
-    final isFeatured = !isDiscarded && (state == 'featured' || photo.isRecommended);
-    final needsReview = state == 'pending' || photo.analysisState == AnalysisState.lowConfidence || photo.recognition?.isLowConfidence == true;
+    final keepState = KeepStateWireValue.fromWire(photo.keepState);
+    final state = keepState.wireValue;
+    final statusIcon = switch (keepState) {
+      KeepState.featured => Icons.star_rounded,
+      _ => Icons.circle,
+    };
+    final statusColor = switch (keepState) {
+      KeepState.pending => AppColors.pending,
+      KeepState.keep => AppColors.keep,
+      KeepState.discard => AppColors.danger,
+      KeepState.featured => AppColors.featured,
+    };
+    final needsReview = keepState == KeepState.pending || photo.analysisState == AnalysisState.lowConfidence || photo.recognition?.isLowConfidence == true;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -53,30 +73,74 @@ class PhotoTile extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   if (image != null && image.toString().isNotEmpty)
-                    CachedNetworkImage(
-                      imageUrl: image.toString(),
-                      fit: BoxFit.cover,
-                      cacheKey: mediaCacheIdentity(
-                        uri: image,
-                        mediaId: photo.id,
-                        variant: 'thumbnail',
-                        deviceNamespace: deviceNamespace,
-                      ),
-                      memCacheWidth: cacheWidth,
-                      memCacheHeight: cacheHeight,
-                      maxWidthDiskCache: cacheWidth * 2,
-                      maxHeightDiskCache: cacheHeight * 2,
-                      placeholder: (_, _) => AnalysisPlaceholder(state: photo.analysisState),
-                      errorWidget: (_, _, _) => AnalysisPlaceholder(state: photo.analysisState),
-                    )
+                    if (mediaAssetLoader != null && mediaAssetCoordinator != null)
+                      ProgressiveMediaImage(
+                        descriptor: MediaAssetDescriptor(
+                          key: MediaAssetKey(
+                            deviceId: _deviceIdFor(image),
+                            fileId: photo.id,
+                            kind: MediaAssetKind.thumbnail,
+                          ),
+                          uri: image,
+                          status: photo.preview.thumbnailStatus,
+                        ),
+                        loader: mediaAssetLoader!,
+                        coordinator: mediaAssetCoordinator!,
+                        fit: BoxFit.cover,
+                        cacheWidth: cacheWidth,
+                        cacheHeight: cacheHeight,
+                        allowNetworkFallback: allowNetworkFallback,
+                        placeholderBuilder: (_) => KeyedSubtree(
+                          key: ValueKey('media-asset-pending-${photo.id}'),
+                          child: AnalysisPlaceholder(
+                            state: photo.analysisState,
+                          ),
+                        ),
+                        failureBuilder: (_, error, retry) => _ThumbnailFailure(
+                          key: ValueKey(
+                            'media-asset-failed-${photo.id}',
+                          ),
+                          error: error,
+                          compact: compact,
+                          onRetry: retry,
+                          photoId: photo.id,
+                        ),
+                      )
+                    else
+                      CachedNetworkImage(
+                        imageUrl: image.toString(),
+                        fit: BoxFit.cover,
+                        cacheKey: mediaCacheIdentity(
+                          uri: image,
+                          mediaId: photo.id,
+                          variant: 'thumbnail',
+                          deviceNamespace: deviceNamespace,
+                        ),
+                        memCacheWidth: cacheWidth,
+                        memCacheHeight: cacheHeight,
+                        maxWidthDiskCache: cacheWidth * 2,
+                        maxHeightDiskCache: cacheHeight * 2,
+                        placeholder: (_, _) => AnalysisPlaceholder(
+                          state: photo.analysisState,
+                        ),
+                        errorWidget: (_, _, _) => AnalysisPlaceholder(
+                          state: photo.analysisState,
+                        ),
+                      )
                   else
                     AnalysisPlaceholder(state: photo.analysisState),
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, Colors.transparent, Color(0xAA182016)],
+                  const IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.transparent,
+                            Color(0xAA182016),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -105,15 +169,9 @@ class PhotoTile extends StatelessWidget {
                             )
                           : Icon(
                               key: ValueKey('photo-status-$state'),
-                              isFeatured ? Icons.star_rounded : Icons.circle,
-                              size: isFeatured ? 23 : 15,
-                              color: isFeatured
-                                  ? AppColors.amber
-                                  : isDiscarded
-                                  ? AppColors.danger
-                                  : needsReview
-                                  ? AppColors.amber
-                                  : const Color(0xFFA9D56C),
+                              statusIcon,
+                              size: keepState == KeepState.featured ? 23 : 15,
+                              color: statusColor,
                               shadows: const [Shadow(color: Colors.black38, blurRadius: 4)],
                             ),
                     ),
@@ -156,6 +214,78 @@ class PhotoTile extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  String _deviceIdFor(Uri image) {
+    final explicit = deviceNamespace?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    return image.authority.isEmpty ? 'unbound' : image.authority;
+  }
+}
+
+class _ThumbnailFailure extends StatelessWidget {
+  const _ThumbnailFailure({
+    super.key,
+    required this.error,
+    required this.compact,
+    required this.onRetry,
+    required this.photoId,
+  });
+
+  final Object error;
+  final bool compact;
+  final VoidCallback onRetry;
+  final String photoId;
+
+  @override
+  Widget build(BuildContext context) {
+    final failure = error is MediaAssetFailure ? error as MediaAssetFailure : null;
+    final generatedFailed = failure?.kind == MediaAssetFailureKind.assetFailed;
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Center(
+        child: Padding(
+          padding: EdgeInsets.all(compact ? 4 : 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.broken_image_outlined,
+                size: compact ? 20 : 26,
+                color: AppColors.inkMuted,
+              ),
+              SizedBox(height: compact ? 1 : 4),
+              Text(
+                generatedFailed ? '缩略图生成失败' : '缩略图暂不可用',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.inkMuted,
+                  fontSize: compact ? 9 : 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              SizedBox(
+                height: compact ? 24 : 30,
+                child: TextButton(
+                  key: ValueKey('media-asset-retry-$photoId'),
+                  onPressed: onRetry,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    '重试',
+                    style: TextStyle(fontSize: compact ? 10 : 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

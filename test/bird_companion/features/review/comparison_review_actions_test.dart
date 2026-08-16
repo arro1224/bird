@@ -32,12 +32,12 @@ void main() {
     );
 
     expect(find.byType(OutlinedButton), findsNWidgets(4));
-    expect(find.text('弃用当前'), findsOneWidget);
+    expect(find.text('弃选当前'), findsOneWidget);
     expect(find.text('保留当前'), findsOneWidget);
     expect(find.text('设为精选'), findsOneWidget);
     expect(find.text('保留全部 2 张'), findsOneWidget);
 
-    await tester.tap(find.text('弃用当前'));
+    await tester.tap(find.text('弃选当前'));
     await tester.tap(find.text('保留当前'));
     await tester.tap(find.text('设为精选'));
     await tester.tap(find.text('保留全部 2 张'));
@@ -71,6 +71,6 @@ void main() {
 
     expect(find.text('设为精选（已选）'), findsOneWidget);
     expect(find.text('保留当前（已选）'), findsNothing);
-    expect(find.text('弃用当前（已选）'), findsNothing);
+    expect(find.text('弃选当前（已选）'), findsNothing);
   });
 }

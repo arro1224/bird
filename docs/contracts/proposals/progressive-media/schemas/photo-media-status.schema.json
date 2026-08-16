@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://birdbox.local/contracts/proposals/progressive-media/photo-media-status.schema.json",
+  "title": "ProgressiveMediaPhotoExtension",
+  "type": "object",
+  "required": [
+    "file_id",
+    "thumb_ref",
+    "preview_ref"
+  ],
+  "properties": {
+    "file_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "thumb_ref": {
+      "type": "string",
+      "format": "uri"
+    },
+    "preview_ref": {
+      "type": "string",
+      "format": "uri"
+    },
+    "thumbnail_status": {
+      "$ref": "#/$defs/MediaAssetStatus"
+    },
+    "preview_status": {
+      "$ref": "#/$defs/MediaAssetStatus"
+    }
+  },
+  "$defs": {
+    "MediaAssetStatus": {
+      "type": "string",
+      "enum": [
+        "not_requested",
+        "pending",
+        "ready",
+        "failed"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

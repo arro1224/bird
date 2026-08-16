@@ -14,15 +14,22 @@ typedef EventChannelConnector =
     );
 
 class DeviceEvent {
-  const DeviceEvent({required this.type, required this.payload, required this.timestamp});
+  const DeviceEvent({
+    required this.type,
+    required this.payload,
+    required this.timestamp,
+    this.eventId,
+  });
   final String type;
   final Map<String, dynamic> payload;
   final DateTime timestamp;
+  final String? eventId;
 
   factory DeviceEvent.fromJson(Map<String, dynamic> json) => DeviceEvent(
     type: json['event_type']?.toString() ?? 'unknown',
     payload: json['payload'] is Map ? Map<String, dynamic>.from(json['payload'] as Map) : json,
     timestamp: DateTime.tryParse(json['timestamp']?.toString() ?? '') ?? DateTime.now(),
+    eventId: json['event_id']?.toString(),
   );
 }
 

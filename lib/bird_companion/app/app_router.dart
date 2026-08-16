@@ -28,7 +28,10 @@ import 'package:flutter/material.dart';
 
 abstract final class BirdRoutes {
   static const connection = '/connection';
-  static const shell = '/';
+  // Keep the shell separate from Navigator.defaultRouteName (`/`). MaterialApp
+  // reserves `/` for its `home`, which may be the initial connection page.
+  // Reusing it here would reopen `home` after a successful first connection.
+  static const shell = '/shell';
   static const gallery = '/gallery';
   static const scenes = '/scenes';
   static const groupReview = '/group-review';

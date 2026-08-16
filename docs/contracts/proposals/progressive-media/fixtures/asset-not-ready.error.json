@@ -1,0 +1,10 @@
+{
+  "error_code": "asset_not_ready",
+  "error_message": "图片仍在生成，请稍后重试",
+  "retryable": true,
+  "details": {
+    "file_id": "file-xxx",
+    "kind": "thumbnail",
+    "status": "pending"
+  }
+}

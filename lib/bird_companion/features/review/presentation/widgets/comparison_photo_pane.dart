@@ -1,10 +1,12 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
+import 'package:aves/bird_companion/core/media/media_asset_coordinator.dart';
+import 'package:aves/bird_companion/core/media/media_asset_models.dart';
+import 'package:aves/bird_companion/core/media/media_asset_service.dart';
+import 'package:aves/bird_companion/core/media/progressive_photo_image.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
-import 'package:aves/bird_companion/core/files/media_cache_identity.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 class ComparisonPhotoPane extends StatelessWidget {
@@ -17,6 +19,10 @@ class ComparisonPhotoPane extends StatelessWidget {
     this.onTap,
     this.onMark,
     this.transformationController,
+    this.mediaAssetLoader,
+    this.mediaAssetCoordinator,
+    this.deviceNamespace,
+    this.allowNetworkFallback = true,
   });
 
   final ReviewDetail detail;
@@ -26,11 +32,14 @@ class ComparisonPhotoPane extends StatelessWidget {
   final VoidCallback? onTap;
   final ValueChanged<KeepState>? onMark;
   final TransformationController? transformationController;
+  final MediaAssetLoader? mediaAssetLoader;
+  final MediaAssetCoordinator? mediaAssetCoordinator;
+  final String? deviceNamespace;
+  final bool allowNetworkFallback;
 
   @override
   Widget build(BuildContext context) {
     final photo = detail.photo.summary;
-    final url = photo.preview.previewUri?.toString();
     final reasons = photo.rating?.reasonTags ?? const <String>[];
     final currentScore = detail.decision?.userScore ?? photo.rating?.totalScore;
     return BirdPressable(
@@ -53,22 +62,29 @@ class ComparisonPhotoPane extends StatelessWidget {
                     transformationController: transformationController,
                     minScale: 1,
                     maxScale: 5,
-                    child: url?.isNotEmpty == true
-                        ? CachedNetworkImage(
-                            imageUrl: url!,
-                            cacheKey: mediaCacheIdentity(
-                              uri: photo.preview.previewUri!,
-                              mediaId: photo.id,
-                              variant: 'preview',
-                            ),
-                            fit: BoxFit.cover,
-                            placeholder: (_, _) => const ColoredBox(
-                              color: AppColors.brandLight,
-                              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                            ),
-                            errorWidget: (_, _, _) => const ColoredBox(color: AppColors.mist, child: Icon(Icons.broken_image_outlined)),
-                          )
-                        : const ColoredBox(color: AppColors.mist, child: Icon(Icons.photo_outlined, size: 44)),
+                    child: ProgressivePhotoImage(
+                      photo: photo,
+                      kind: MediaAssetKind.preview,
+                      loader: mediaAssetLoader,
+                      coordinator: mediaAssetCoordinator,
+                      deviceNamespace: deviceNamespace,
+                      allowNetworkFallback: allowNetworkFallback,
+                      fallbackToThumbnail: true,
+                      fit: BoxFit.cover,
+                      legacyCacheVariant: 'comparison-preview',
+                      missingBuilder: (_) => const ColoredBox(
+                        color: AppColors.mist,
+                        child: Center(
+                          child: Icon(Icons.photo_outlined, size: 44),
+                        ),
+                      ),
+                      placeholderBuilder: (_) => const ColoredBox(
+                        color: AppColors.brandLight,
+                        child: Center(
+                          child: Icon(Icons.photo_outlined, size: 44),
+                        ),
+                      ),
+                    ),
                   ),
                   Positioned(
                     left: 12,

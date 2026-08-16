@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('shell route does not collide with the MaterialApp home route', () {
+    expect(BirdRoutes.shell, isNot(Navigator.defaultRouteName));
+  });
+
   testWidgets('reconnect entry opens the real connection flow', (tester) async {
     RouteSettings? received;
 

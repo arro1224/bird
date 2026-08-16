@@ -1,7 +1,9 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/core/media/media_asset_coordinator.dart';
+import 'package:aves/bird_companion/core/media/media_asset_models.dart';
+import 'package:aves/bird_companion/core/media/media_asset_service.dart';
+import 'package:aves/bird_companion/core/media/progressive_photo_image.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
-import 'package:aves/bird_companion/core/files/media_cache_identity.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 class SubjectOverlayView extends StatelessWidget {
@@ -12,6 +14,10 @@ class SubjectOverlayView extends StatelessWidget {
     this.onPrevious,
     this.onNext,
     this.navigationEnabled = true,
+    this.mediaAssetLoader,
+    this.mediaAssetCoordinator,
+    this.deviceNamespace,
+    this.allowNetworkFallback = true,
   });
 
   final PhotoDetail photo;
@@ -19,6 +25,10 @@ class SubjectOverlayView extends StatelessWidget {
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
   final bool navigationEnabled;
+  final MediaAssetLoader? mediaAssetLoader;
+  final MediaAssetCoordinator? mediaAssetCoordinator;
+  final String? deviceNamespace;
+  final bool allowNetworkFallback;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -37,25 +47,28 @@ class SubjectOverlayView extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (photo.summary.preview.previewUri?.toString().isNotEmpty == true)
-                CachedNetworkImage(
-                  imageUrl: photo.summary.preview.previewUri.toString(),
-                  cacheKey: mediaCacheIdentity(
-                    uri: photo.summary.preview.previewUri!,
-                    mediaId: photo.summary.id,
-                    variant: 'preview',
+              ProgressivePhotoImage(
+                photo: photo.summary,
+                kind: MediaAssetKind.preview,
+                loader: mediaAssetLoader,
+                coordinator: mediaAssetCoordinator,
+                deviceNamespace: deviceNamespace,
+                allowNetworkFallback: allowNetworkFallback,
+                fallbackToThumbnail: true,
+                fit: BoxFit.cover,
+                cacheWidth: (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(320, 1440),
+                cacheHeight: (height * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(240, 1080),
+                legacyCacheVariant: 'preview',
+                missingBuilder: (_) => const ColoredBox(
+                  color: Color(0xff24352d),
+                ),
+                placeholderBuilder: (_) => const ColoredBox(
+                  color: Color(0xffdfe7d8),
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                  fit: BoxFit.cover,
-                  memCacheWidth: (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(320, 1440),
-                  memCacheHeight: (height * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(240, 1080),
-                  placeholder: (_, _) => const ColoredBox(
-                    color: Color(0xffdfe7d8),
-                    child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                  ),
-                  errorWidget: (_, _, _) => const ColoredBox(color: Color(0xff24352d)),
-                )
-              else
-                const ColoredBox(color: Color(0xff24352d)),
+                ),
+              ),
               for (var subjectIndex = 0; subjectIndex < subjects.length; subjectIndex++)
                 Positioned(
                   left: subjects[subjectIndex].x * constraints.maxWidth,

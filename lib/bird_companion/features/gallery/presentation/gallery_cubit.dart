@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
@@ -262,6 +263,41 @@ class GalleryCubit extends Cubit<GalleryState> {
     if (!state.filtering) return;
     _cancelActiveQuery(invalidateGeneration: true);
     emit(state.copyWith(loading: false, filtering: false));
+  }
+
+  /// Applies only confirmed batch-operation successes to the visible gallery.
+  ///
+  /// The following refresh remains authoritative, but retaining this local
+  /// view prevents a refresh failure from reverting a successful decision on
+  /// screen. Photos that no longer match an active keep-state filter are
+  /// removed immediately.
+  void applyKeepState(Iterable<String> succeededIds, KeepState keepState) {
+    if (isClosed) return;
+    final ids = succeededIds.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
+    if (ids.isEmpty) return;
+
+    final wireValue = keepState.wireValue;
+    var changed = false;
+    final patched = state.items.map((photo) {
+      if (!ids.contains(photo.id)) return photo;
+      changed = true;
+      return photo.copyWith(keepState: wireValue);
+    }).toList(growable: false);
+    if (!changed) return;
+
+    final activeKeepState = state.query.keepState;
+    final visible = activeKeepState == null
+        ? patched
+        : patched
+              .where(
+                (photo) => KeepStateWireValue.fromWire(photo.keepState).wireValue == activeKeepState,
+              )
+              .toList(growable: false);
+    final removedCount = patched.length - visible.length;
+    final matchedCount = removedCount == 0
+        ? state.matchedCount
+        : (state.matchedCount - removedCount).clamp(0, state.matchedCount).toInt();
+    emit(state.copyWith(items: visible, matchedCount: matchedCount));
   }
 
   void _onQueryProgress(int generation, PhotoQueryProgress progress) {

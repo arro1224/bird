@@ -11,6 +11,8 @@ Future<void> main(List<String> arguments) async {
     assetDirectory: assets,
     logRequests: !options.quiet,
     requireAuthentication: options.requireAuthentication,
+    progressiveMedia: options.progressiveMedia,
+    emitAssetReadyEvents: options.emitAssetReadyEvents,
     stateFile: options.stateFile,
   );
   final uri = await server.start(
@@ -23,6 +25,8 @@ Future<void> main(List<String> arguments) async {
   stdout.writeln('Android emulator URL: http://10.0.2.2:${uri.port}');
   stdout.writeln('Photos: ${options.photoCount}');
   stdout.writeln('Authentication: ${options.requireAuthentication ? 'required' : 'disabled'}');
+  stdout.writeln('Progressive media: ${options.progressiveMedia ? 'enabled' : 'disabled'}');
+  stdout.writeln('Asset-ready events: ${options.emitAssetReadyEvents ? 'enabled' : 'disabled'}');
   stdout.writeln(
     'Persistent state: ${options.stateFile?.path ?? 'disabled'}',
   );
@@ -43,6 +47,8 @@ class _Options {
     required this.photoCount,
     required this.quiet,
     required this.requireAuthentication,
+    required this.progressiveMedia,
+    required this.emitAssetReadyEvents,
     required this.stateFile,
   });
 
@@ -51,6 +57,8 @@ class _Options {
   final int photoCount;
   final bool quiet;
   final bool requireAuthentication;
+  final bool progressiveMedia;
+  final bool emitAssetReadyEvents;
   final File? stateFile;
 
   factory _Options.parse(List<String> arguments) {
@@ -59,6 +67,8 @@ class _Options {
     var photoCount = 1200;
     var quiet = false;
     var requireAuthentication = false;
+    var progressiveMedia = false;
+    var emitAssetReadyEvents = true;
     File? stateFile;
     for (final argument in arguments) {
       if (argument == '--quick') {
@@ -67,6 +77,10 @@ class _Options {
         quiet = true;
       } else if (argument == '--auth') {
         requireAuthentication = true;
+      } else if (argument == '--progressive-media') {
+        progressiveMedia = true;
+      } else if (argument == '--no-asset-events') {
+        emitAssetReadyEvents = false;
       } else if (argument.startsWith('--host=')) {
         host = argument.substring('--host='.length);
       } else if (argument.startsWith('--port=')) {
@@ -82,7 +96,8 @@ class _Options {
       } else if (argument == '--help' || argument == '-h') {
         stdout.writeln(
           'Usage: dart run tool/mock_box_server/server.dart '
-          '[--quick] [--auth] [--photos=1200] [--host=0.0.0.0] '
+          '[--quick] [--auth] [--progressive-media] [--no-asset-events] '
+          '[--photos=1200] [--host=0.0.0.0] '
           '[--port=8787] [--quiet] [--state-file=path]',
         );
         exit(0);
@@ -96,6 +111,8 @@ class _Options {
       photoCount: photoCount,
       quiet: quiet,
       requireAuthentication: requireAuthentication,
+      progressiveMedia: progressiveMedia,
+      emitAssetReadyEvents: emitAssetReadyEvents,
       stateFile: stateFile,
     );
   }

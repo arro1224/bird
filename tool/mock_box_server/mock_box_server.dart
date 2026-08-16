@@ -13,15 +13,22 @@ class MockBoxServer {
     this.pairingCode = '2468',
     this.tokenLifetime = const Duration(minutes: 10),
     this.signedUrlLifetime = const Duration(minutes: 2),
+    this.progressiveMedia = false,
+    this.emitAssetReadyEvents = true,
     this.stateFile,
     DateTime Function()? clock,
   }) : assetDirectory = assetDirectory ?? Directory('tool/mock_box_server/assets') {
     _clock = clock ?? DateTime.now;
+    _assetEventsEnabled = emitAssetReadyEvents;
     if (photoCount <= 0) {
       throw ArgumentError.value(photoCount, 'photoCount', '必须大于 0');
     }
     _photos = List.generate(photoCount, _buildPhoto, growable: false);
     _photosById = {for (final photo in _photos) photo['file_id'] as String: photo};
+    _photoAssetNames = {
+      for (final photo in _photos) photo['file_id'] as String: Uri.parse(photo['thumb_ref'] as String).pathSegments.last,
+    };
+    if (progressiveMedia) _initializeProgressiveMedia();
     _scenes = _buildScenes();
     _groups = _buildGroups();
     _restoreState();
@@ -35,11 +42,14 @@ class MockBoxServer {
   final String pairingCode;
   final Duration tokenLifetime;
   final Duration signedUrlLifetime;
+  final bool progressiveMedia;
+  final bool emitAssetReadyEvents;
   final File? stateFile;
   late final DateTime Function() _clock;
 
   late final List<Map<String, dynamic>> _photos;
   late final Map<String, Map<String, dynamic>> _photosById;
+  late final Map<String, String> _photoAssetNames;
   late final List<Map<String, dynamic>> _scenes;
   late final List<Map<String, dynamic>> _groups;
   final Map<String, Map<String, dynamic>> _decisions = {};
@@ -50,6 +60,7 @@ class MockBoxServer {
   final Map<String, Completer<_CachedHttpResponse>> _idempotentInFlight = {};
   final Map<HttpRequest, String> _idempotencyByRequest = {};
   final Set<WebSocket> _eventSockets = {};
+  final Map<String, int> _assetRevisions = {};
   Future<void> _stateWrite = Future<void>.value();
   String? _currentCreatedProjectId;
   bool _currentProjectAvailable = true;
@@ -60,6 +71,8 @@ class MockBoxServer {
   String? lastPairAuthorizationHeader;
   String? lastSignedAssetAuthorizationHeader;
   int jobListRequestCount = 0;
+  int _eventSequence = 0;
+  late bool _assetEventsEnabled;
 
   HttpServer? _server;
 
@@ -77,6 +90,49 @@ class MockBoxServer {
 
   void setCurrentProjectAvailable(bool value) {
     _currentProjectAvailable = value;
+  }
+
+  Future<void> setMediaAssetStatus(
+    String fileId,
+    String kind,
+    String status, {
+    bool emitEvent = true,
+  }) async {
+    if (!progressiveMedia) {
+      throw StateError('Progressive media is not enabled.');
+    }
+    if (!const {'thumbnail', 'preview'}.contains(kind)) {
+      throw ArgumentError.value(kind, 'kind', 'Unknown media kind.');
+    }
+    if (!const {
+      'not_requested',
+      'pending',
+      'ready',
+      'failed',
+    }.contains(status)) {
+      throw ArgumentError.value(status, 'status', 'Unknown media status.');
+    }
+    final photo = _photosById[fileId];
+    if (photo == null) {
+      throw ArgumentError.value(fileId, 'fileId', 'Unknown photo.');
+    }
+    photo[_statusField(kind)] = status;
+    if (status == 'ready') {
+      final key = _assetKey(fileId, kind);
+      _assetRevisions[key] = (_assetRevisions[key] ?? 0) + 1;
+      if (emitEvent && _assetEventsEnabled) {
+        await _emitAssetReady(fileId, kind);
+      }
+    }
+  }
+
+  Future<void> setAssetEventsEnabled(bool enabled) async {
+    _assetEventsEnabled = enabled;
+    if (enabled) return;
+    for (final socket in List<WebSocket>.of(_eventSockets)) {
+      await socket.close();
+    }
+    _eventSockets.clear();
   }
 
   List<Map<String, dynamic>> get jobs => _jobs.values.map(Map<String, dynamic>.of).toList();
@@ -181,7 +237,11 @@ class MockBoxServer {
     final path = request.uri.path;
 
     if (method == 'GET' && path == '/healthz') {
-      await _json(request, HttpStatus.ok, {'status': 'ok', 'photos': photoCount});
+      await _json(request, HttpStatus.ok, {
+        'status': 'ok',
+        'photos': photoCount,
+        'progressive_media': progressiveMedia,
+      });
       return;
     }
     if (method == 'GET' && path == '/api/v1/device/status') {
@@ -193,8 +253,42 @@ class MockBoxServer {
       await _pair(request);
       return;
     }
+    if (method == 'POST' && path == '/mock/control/assets' && progressiveMedia) {
+      await _controlMediaAsset(request);
+      return;
+    }
+    if (method == 'POST' && path == '/mock/control/events' && progressiveMedia) {
+      final body = await _requestJson(request);
+      final enabled = body['enabled'];
+      if (enabled is! bool) {
+        await _json(
+          request,
+          HttpStatus.unprocessableEntity,
+          {
+            'error_code': 'mock_control_invalid',
+            'error_message': 'enabled must be a boolean.',
+          },
+          envelope: false,
+        );
+        return;
+      }
+      await setAssetEventsEnabled(enabled);
+      await _json(request, HttpStatus.ok, {'enabled': enabled});
+      return;
+    }
     if (method == 'GET' && path.startsWith('/mock/media/')) {
       await _serveMedia(request);
+      return;
+    }
+    final progressiveAsset = RegExp(
+      r'^/api/v1/files/([^/]+)/(thumbnail|preview)$',
+    ).firstMatch(path);
+    if (method == 'GET' && progressiveAsset != null && progressiveMedia) {
+      await _serveProgressiveMedia(
+        request,
+        progressiveAsset.group(1)!,
+        progressiveAsset.group(2)!,
+      );
       return;
     }
     if (method == 'GET' && path.startsWith('/mock/logs/')) {
@@ -784,7 +878,7 @@ class MockBoxServer {
     'temperature_celsius': 42.5,
     'storage_total': 512 * 1024 * 1024 * 1024,
     'storage_free': 338 * 1024 * 1024 * 1024,
-    'software_version': 'mock-box-1.0.0',
+    'software_version': progressiveMedia ? 'mock-box-0.6.2' : 'mock-box-1.0.0',
     'model_version': 'bird-demo-1.0',
     'updated_at': DateTime.now().toUtc().toIso8601String(),
   };
@@ -1218,6 +1312,188 @@ class MockBoxServer {
     await request.response.close();
   }
 
+  Future<void> _serveProgressiveMedia(
+    HttpRequest request,
+    String fileId,
+    String kind,
+  ) async {
+    lastSignedAssetAuthorizationHeader = request.headers.value(
+      HttpHeaders.authorizationHeader,
+    );
+    if (!await _validateSignedRequest(request)) return;
+    final photo = _photosById[fileId];
+    final assetName = _photoAssetNames[fileId];
+    if (photo == null || assetName == null) {
+      await _json(
+        request,
+        HttpStatus.notFound,
+        {
+          'error_code': 'file_not_found',
+          'error_message': 'Unknown file: $fileId',
+          'retryable': false,
+          'details': {'file_id': fileId},
+        },
+        envelope: false,
+      );
+      return;
+    }
+    final status = photo[_statusField(kind)]?.toString() ?? 'pending';
+    if (status == 'not_requested' || status == 'pending') {
+      request.response.headers.set(HttpHeaders.retryAfterHeader, '1');
+      await _json(
+        request,
+        HttpStatus.notFound,
+        {
+          'error_code': 'asset_not_ready',
+          'error_message': '图片仍在生成，请稍后重试',
+          'retryable': true,
+          'details': {
+            'file_id': fileId,
+            'kind': kind,
+            'status': status,
+          },
+        },
+        envelope: false,
+      );
+      return;
+    }
+    if (status == 'failed') {
+      await _json(
+        request,
+        HttpStatus.conflict,
+        {
+          'error_code': 'asset_failed',
+          'error_message': '图片生成失败',
+          'retryable': false,
+          'details': {
+            'file_id': fileId,
+            'kind': kind,
+            'status': status,
+          },
+        },
+        envelope: false,
+      );
+      return;
+    }
+    final etag = _etag(fileId, kind);
+    request.response.headers.set(HttpHeaders.etagHeader, etag);
+    request.response.headers.set(
+      HttpHeaders.cacheControlHeader,
+      'public, max-age=60',
+    );
+    if (request.headers.value(HttpHeaders.ifNoneMatchHeader) == etag) {
+      request.response.statusCode = HttpStatus.notModified;
+      await request.response.close();
+      return;
+    }
+    final file = File(
+      '${assetDirectory.path}${Platform.pathSeparator}$assetName',
+    );
+    if (!await file.exists()) {
+      await _json(
+        request,
+        HttpStatus.notFound,
+        {
+          'error_code': 'file_not_found',
+          'error_message': 'Mock media bytes are missing.',
+          'retryable': false,
+          'details': {'file_id': fileId},
+        },
+        envelope: false,
+      );
+      return;
+    }
+    request.response.statusCode = HttpStatus.ok;
+    request.response.headers.contentType = ContentType('image', 'png');
+    request.response.contentLength = await file.length();
+    await request.response.addStream(file.openRead());
+    await request.response.close();
+  }
+
+  Future<void> _controlMediaAsset(HttpRequest request) async {
+    final body = await _requestJson(request);
+    final fileId = body['file_id']?.toString() ?? '';
+    final kind = body['kind']?.toString() ?? '';
+    final status = body['status']?.toString() ?? '';
+    final emitEvent = body['emit_event'] != false;
+    try {
+      await setMediaAssetStatus(
+        fileId,
+        kind,
+        status,
+        emitEvent: emitEvent,
+      );
+    } on ArgumentError catch (error) {
+      await _json(
+        request,
+        HttpStatus.unprocessableEntity,
+        {
+          'error_code': 'mock_control_invalid',
+          'error_message': error.message?.toString() ?? 'Invalid control.',
+        },
+        envelope: false,
+      );
+      return;
+    }
+    await _json(request, HttpStatus.ok, {
+      'file_id': fileId,
+      'kind': kind,
+      'status': status,
+      if (status == 'ready') 'etag': _etag(fileId, kind),
+    });
+  }
+
+  void _initializeProgressiveMedia() {
+    for (var index = 0; index < _photos.length; index++) {
+      final photo = _photos[index];
+      final fileId = photo['file_id'] as String;
+      photo
+        ..['thumb_ref'] = '/api/v1/files/$fileId/thumbnail'
+        ..['preview_ref'] = '/api/v1/files/$fileId/preview'
+        ..['thumbnail_status'] = switch (index % 8) {
+          0 => 'ready',
+          1 => 'failed',
+          _ => 'pending',
+        }
+        ..['preview_status'] = index % 8 == 0 ? 'ready' : 'not_requested';
+      _assetRevisions[_assetKey(fileId, 'thumbnail')] = 1;
+      _assetRevisions[_assetKey(fileId, 'preview')] = 1;
+    }
+  }
+
+  String _statusField(String kind) => kind == 'thumbnail' ? 'thumbnail_status' : 'preview_status';
+
+  String _assetKey(String fileId, String kind) => '$fileId:$kind';
+
+  String _etag(String fileId, String kind) => '"mock-$fileId-$kind-v${_assetRevisions[_assetKey(fileId, kind)] ?? 1}"';
+
+  Future<void> _emitAssetReady(String fileId, String kind) async {
+    final photo = _photosById[fileId]!;
+    final message = jsonEncode({
+      'event_id': 'evt-asset-${(++_eventSequence).toString().padLeft(6, '0')}',
+      'event_type': 'asset_ready',
+      'timestamp': _clock().toUtc().toIso8601String(),
+      'payload': {
+        'job_id': 'job-analysis-mock',
+        'project_id': 'mock-batch-current',
+        'file_id': fileId,
+        'kind': kind,
+        'status': 'ready',
+        'etag': _etag(fileId, kind),
+        'width': photo['width'],
+        'height': photo['height'],
+        'generation_mode': kind == 'thumbnail' ? 'embedded_thumbnail' : 'rendered_preview',
+      },
+    });
+    for (final socket in List<WebSocket>.of(_eventSockets)) {
+      try {
+        socket.add(message);
+      } catch (_) {
+        _eventSockets.remove(socket);
+      }
+    }
+  }
+
   Future<void> _serveLog(HttpRequest request) async {
     lastSignedAssetAuthorizationHeader = request.headers.value(
       HttpHeaders.authorizationHeader,
@@ -1576,7 +1852,15 @@ class MockBoxServer {
   void _cors(HttpResponse response) {
     response.headers.set(HttpHeaders.accessControlAllowOriginHeader, '*');
     response.headers.set(HttpHeaders.accessControlAllowMethodsHeader, 'GET, POST, OPTIONS');
-    response.headers.set(HttpHeaders.accessControlAllowHeadersHeader, 'Content-Type, Authorization, X-Api-Version, X-Idempotency-Key');
+    response.headers.set(
+      HttpHeaders.accessControlAllowHeadersHeader,
+      'Content-Type, Authorization, X-Api-Version, X-Idempotency-Key, '
+      'If-None-Match',
+    );
+    response.headers.set(
+      HttpHeaders.accessControlExposeHeadersHeader,
+      'ETag, Retry-After',
+    );
   }
 }
 
