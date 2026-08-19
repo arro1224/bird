@@ -72,13 +72,13 @@ class _CurrentWorkRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ConstrainedBox(
-    constraints: const BoxConstraints(minHeight: 54),
+    constraints: const BoxConstraints(minHeight: 60),
     child: InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.sm,
-          vertical: AppSpacing.xxs,
+          vertical: AppSpacing.xs,
         ),
         child: Row(
           children: [
@@ -100,7 +100,7 @@ class _CurrentWorkRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: AppColors.forestDeep,
-                      fontSize: 14,
+                      fontSize: 16,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -110,7 +110,8 @@ class _CurrentWorkRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: AppColors.mutedInk,
-                      fontSize: 12.5,
+                      fontSize: 14,
+                      height: 1.25,
                     ),
                   ),
                 ],
@@ -124,10 +125,17 @@ class _CurrentWorkRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppSpacing.radiusSmall),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.xxs),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xs,
+                    vertical: AppSpacing.xxs,
+                  ),
                   child: Text(
                     badge!,
-                    style: const TextStyle(color: AppColors.forestDeep, fontSize: 11, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                      color: AppColors.forestDeep,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),

@@ -33,7 +33,9 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final dependencies = context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>()?.dependencies;
+    final dependencies = context
+        .dependOnInheritedWidgetOfExactType<BirdCompanionScope>()
+        ?.dependencies;
     if (identical(_dependencies, dependencies)) return;
     _dependencies = dependencies;
     if (dependencies != null) unawaited(_recheck());
@@ -42,15 +44,24 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
   @override
   Widget build(BuildContext context) {
     final production = _dependencies != null;
-    final connected = !production || (_dependencies!.deviceSessionCubit.state.isConnected && _status != null && _error == null);
-    final errorMessage = _error == null ? null : UserMessageMapper.fromError(_error!);
+    final connected =
+        !production ||
+        (_dependencies!.deviceSessionCubit.state.isConnected &&
+            _status != null &&
+            _error == null);
+    final errorMessage = _error == null
+        ? null
+        : UserMessageMapper.fromError(_error!);
     return BirdSettingsScaffold(
       title: '网络诊断',
       actions: [
         IconButton(
           tooltip: '帮助',
           onPressed: _openHelpCenter,
-          icon: const Icon(Icons.help_outline_rounded, color: AppColors.forestPrimary),
+          icon: const Icon(
+            Icons.help_outline_rounded,
+            color: AppColors.forestPrimary,
+          ),
         ),
         const SizedBox(width: AppSpacing.sm),
       ],
@@ -74,7 +85,8 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
               ),
               _StatusPill(
                 Icons.wifi_rounded,
-                _status?.connection.networkMode.label ?? (production ? '网络未知' : 'Wi-Fi 5GHz'),
+                _status?.connection.networkMode.label ??
+                    (production ? '网络未知' : 'Wi-Fi 5GHz'),
                 passed: connected,
               ),
               _StatusPill(
@@ -93,9 +105,13 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
                   children: [
                     CircleAvatar(
                       radius: 27,
-                      backgroundColor: connected ? AppColors.success : AppColors.warning,
+                      backgroundColor: connected
+                          ? AppColors.success
+                          : AppColors.warning,
                       child: Icon(
-                        connected ? Icons.check_rounded : Icons.priority_high_rounded,
+                        connected
+                            ? Icons.check_rounded
+                            : Icons.priority_high_rounded,
                         color: Colors.white,
                         size: 34,
                       ),
@@ -111,11 +127,15 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
                                 : connected
                                 ? '网络连接正常'
                                 : '网络连接需要处理',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: AppSpacing.xxs),
                           Text(
-                            errorMessage?.message ?? (connected ? '盒子状态接口响应正常，可继续传输照片' : '请重新连接盒子后再次检测'),
+                            errorMessage?.message ??
+                                (connected
+                                    ? '盒子状态接口响应正常，可继续传输照片'
+                                    : '请重新连接盒子后再次检测'),
                             style: const TextStyle(color: AppColors.mutedInk),
                           ),
                         ],
@@ -127,7 +147,8 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
                 _MetricRow(
                   Icons.public_rounded,
                   '当前 IP',
-                  _status?.connection.baseUri.host ?? (production ? '未连接' : '192.168.4.1'),
+                  _status?.connection.baseUri.host ??
+                      (production ? '未连接' : '192.168.4.1'),
                 ),
                 _MetricRow(
                   Icons.wifi_rounded,
@@ -142,7 +163,9 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
                 _MetricRow(
                   Icons.schedule_rounded,
                   '响应时间',
-                  _latencyMilliseconds == null ? (production ? '未检测' : '18 ms') : '$_latencyMilliseconds ms',
+                  _latencyMilliseconds == null
+                      ? (production ? '未检测' : '18 ms')
+                      : '$_latencyMilliseconds ms',
                   showDivider: false,
                 ),
               ],
@@ -157,14 +180,27 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
                   key: const Key('network-recheck'),
                   title: '重新检测网络',
                   subtitle: '再次检测当前网络状态',
-                  leading: const BirdSettingsAssetIcon(BirdSettingsAssetCatalog.reconnect, label: '重新检测网络', size: 28),
-                  trailing: _checking ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2.5)) : const BirdChevron(),
+                  leading: const BirdSettingsAssetIcon(
+                    BirdSettingsAssetCatalog.reconnect,
+                    label: '重新检测网络',
+                    size: 28,
+                  ),
+                  trailing: _checking
+                      ? const SizedBox.square(
+                          dimension: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        )
+                      : const BirdChevron(),
                   onTap: _checking ? null : _recheck,
                 ),
                 BirdSettingsRow(
                   title: '切换网络',
                   subtitle: '切换至其他可用网络',
-                  leading: const BirdSettingsAssetIcon(BirdSettingsAssetCatalog.wifi, label: '切换网络', size: 28),
+                  leading: const BirdSettingsAssetIcon(
+                    BirdSettingsAssetCatalog.wifi,
+                    label: '切换网络',
+                    size: 28,
+                  ),
                   trailing: const BirdChevron(),
                   onTap: _openDeviceManagement,
                 ),
@@ -172,7 +208,10 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
                   key: const Key('network-hotspot-details'),
                   title: '查看热点信息',
                   subtitle: '查看当前热点详细信息',
-                  leading: const Icon(Icons.info_outline_rounded, color: AppColors.forestPrimary),
+                  leading: const Icon(
+                    Icons.info_outline_rounded,
+                    color: AppColors.forestPrimary,
+                  ),
                   trailing: const BirdChevron(),
                   onTap: _showHotspotDetails,
                 ),
@@ -180,7 +219,10 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
                   title: '导出诊断结果',
                   subtitle: '保存或分享网络诊断结果',
                   showDivider: false,
-                  leading: const Icon(Icons.download_outlined, color: AppColors.forestPrimary),
+                  leading: const Icon(
+                    Icons.download_outlined,
+                    color: AppColors.forestPrimary,
+                  ),
                   trailing: const BirdChevron(),
                   onTap: _openSystemLogs,
                 ),
@@ -192,7 +234,10 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('连接链路检查', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const Text(
+                  '连接链路检查',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: AppSpacing.xs),
                 _CheckRow(
                   Icons.devices_rounded,
@@ -209,8 +254,12 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
                 _CheckRow(
                   Icons.sync_rounded,
                   '实时状态更新',
-                  _dependencies?.eventClient.currentState.name ?? (production ? '未连接' : 'connected'),
-                  passed: !production || _dependencies!.eventClient.currentState.name == 'connected',
+                  _dependencies?.eventClient.currentState.name ??
+                      (production ? '未连接' : 'connected'),
+                  passed:
+                      !production ||
+                      _dependencies!.eventClient.currentState.name ==
+                          'connected',
                   showDivider: false,
                 ),
               ],
@@ -221,7 +270,10 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
             key: Key('network-transfer-note'),
             child: Row(
               children: [
-                Icon(Icons.info_outline_rounded, color: AppColors.forestPrimary),
+                Icon(
+                  Icons.info_outline_rounded,
+                  color: AppColors.forestPrimary,
+                ),
                 SizedBox(width: AppSpacing.sm),
                 Expanded(child: Text('照片仍通过 Wi-Fi 传输，蓝牙仅用于发现与配网')),
               ],
@@ -242,7 +294,9 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
     }
     final stopwatch = Stopwatch()..start();
     try {
-      final status = await dependencies.deviceRepository.fetchStatus().timeout(const Duration(seconds: 4));
+      final status = await dependencies.deviceRepository.fetchStatus().timeout(
+        const Duration(seconds: 4),
+      );
       stopwatch.stop();
       if (!mounted) return;
       setState(() {
@@ -317,20 +371,32 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-    decoration: BoxDecoration(color: AppColors.settingsSurface, borderRadius: BorderRadius.circular(99)),
+    decoration: BoxDecoration(
+      color: AppColors.settingsSurface,
+      borderRadius: BorderRadius.circular(99),
+    ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: passed ? AppColors.forestPrimary : AppColors.warning, size: 18),
+        Icon(
+          icon,
+          color: passed ? AppColors.forestPrimary : AppColors.warning,
+          size: 18,
+        ),
         const SizedBox(width: 6),
-        Text(label, style: const TextStyle(fontSize: 13)),
+        Text(label, style: const TextStyle(fontSize: 15)),
       ],
     ),
   );
 }
 
 class _MetricRow extends StatelessWidget {
-  const _MetricRow(this.icon, this.label, this.value, {this.showDivider = true});
+  const _MetricRow(
+    this.icon,
+    this.label,
+    this.value, {
+    this.showDivider = true,
+  });
   final IconData icon;
   final String label;
   final String value;
@@ -339,13 +405,25 @@ class _MetricRow extends StatelessWidget {
   Widget build(BuildContext context) => BirdSettingsRow(
     title: label,
     leading: Icon(icon, color: AppColors.forestPrimary),
-    trailing: Text(value, style: TextStyle(color: value == '良好' ? AppColors.success : AppColors.mutedInk)),
+    trailing: Text(
+      value,
+      style: TextStyle(
+        color: value == '良好' ? AppColors.success : AppColors.mutedInk,
+        fontSize: 15,
+      ),
+    ),
     showDivider: showDivider,
   );
 }
 
 class _CheckRow extends StatelessWidget {
-  const _CheckRow(this.icon, this.title, this.subtitle, {required this.passed, this.showDivider = true});
+  const _CheckRow(
+    this.icon,
+    this.title,
+    this.subtitle, {
+    required this.passed,
+    this.showDivider = true,
+  });
   final IconData icon;
   final String title;
   final String subtitle;

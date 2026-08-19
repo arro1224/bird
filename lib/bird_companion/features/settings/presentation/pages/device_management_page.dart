@@ -14,14 +14,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class DeviceManagementPage extends StatelessWidget {
-  const DeviceManagementPage({super.key, required this.controller, this.onOpenDetails});
+  const DeviceManagementPage({
+    super.key,
+    required this.controller,
+    this.onOpenDetails,
+  });
 
   final BirdSettingsController controller;
   final VoidCallback? onOpenDetails;
 
   @override
   Widget build(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>();
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<BirdCompanionScope>();
     ConnectionRepository? connectionRepository;
     try {
       connectionRepository = scope?.dependencies.connectionRepository;
@@ -34,9 +39,7 @@ class DeviceManagementPage extends StatelessWidget {
           connectionRepository!,
           scope.dependencies.deviceSessionCubit,
         )..initialize(),
-        child: _ProductionDeviceManagementView(
-          onOpenDetails: onOpenDetails,
-        ),
+        child: _ProductionDeviceManagementView(onOpenDetails: onOpenDetails),
       );
     }
     return _legacyView(context);
@@ -90,7 +93,11 @@ class DeviceManagementPage extends StatelessWidget {
           const Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.info_outline_rounded, color: AppColors.forestPrimary, size: 22),
+              Icon(
+                Icons.info_outline_rounded,
+                color: AppColors.forestPrimary,
+                size: 22,
+              ),
               SizedBox(width: AppSpacing.xs),
               Flexible(
                 child: Text(
@@ -103,7 +110,10 @@ class DeviceManagementPage extends StatelessWidget {
           if (controller.searchingDevices) ...[
             const SizedBox(height: AppSpacing.sm),
             const Center(
-              child: Text('正在重新搜索附近设备…', style: TextStyle(color: AppColors.mutedInk)),
+              child: Text(
+                '正在重新搜索附近设备…',
+                style: TextStyle(color: AppColors.mutedInk),
+              ),
             ),
           ],
         ],
@@ -113,9 +123,9 @@ class DeviceManagementPage extends StatelessWidget {
 
   void _select(BuildContext context, String id) {
     controller.setDevice(id);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已选择设备，等待真实连接服务接入')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已选择设备，等待真实连接服务接入')));
   }
 }
 
@@ -125,88 +135,94 @@ class _ProductionDeviceManagementView extends StatelessWidget {
   final VoidCallback? onOpenDetails;
 
   @override
-  Widget build(BuildContext context) => BlocBuilder<DeviceManagementCubit, DeviceManagementState>(
-    builder: (context, state) {
-      final dependencies = BirdCompanionScope.of(context);
-      final current = dependencies.deviceSessionCubit.state.device;
-      final seen = <String>{};
-      final candidates = [
-        ...state.available,
-        ...state.recent,
-      ].where((device) => seen.add(device.id)).toList(growable: false);
-      final errorMessage = state.error == null ? null : UserMessageMapper.fromError(state.error!);
-      return BirdSettingsScaffold(
-        title: '更换设备',
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.settingsPageHorizontal,
-            AppSpacing.md,
-            AppSpacing.settingsPageHorizontal,
-            AppSpacing.xl,
-          ),
-          children: [
-            const BirdSettingsSectionLabel('当前连接设备'),
-            if (current == null)
-              const BirdSettingsCard(
-                child: Text('当前没有已连接的拍鸟盒子'),
-              )
-            else
-              _DeviceCard(
-                key: const Key('device-current'),
-                name: current.name,
-                serial: '${current.id}\n${current.baseUri.authority}',
-                selected: true,
-                onTap: onOpenDetails,
+  Widget build(BuildContext context) =>
+      BlocBuilder<DeviceManagementCubit, DeviceManagementState>(
+        builder: (context, state) {
+          final dependencies = BirdCompanionScope.of(context);
+          final current = dependencies.deviceSessionCubit.state.device;
+          final seen = <String>{};
+          final candidates = [
+            ...state.available,
+            ...state.recent,
+          ].where((device) => seen.add(device.id)).toList(growable: false);
+          final errorMessage = state.error == null
+              ? null
+              : UserMessageMapper.fromError(state.error!);
+          return BirdSettingsScaffold(
+            title: '更换设备',
+            body: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.settingsPageHorizontal,
+                AppSpacing.md,
+                AppSpacing.settingsPageHorizontal,
+                AppSpacing.xl,
               ),
-            const SizedBox(height: AppSpacing.xl),
-            const BirdSettingsSectionLabel('发现与历史设备'),
-            if (candidates.isEmpty && !state.searching)
-              const BirdSettingsCard(
-                child: Text('没有发现可连接设备，可确认盒子已开机后重新搜索。'),
-              ),
-            for (final device in candidates) ...[
-              _DeviceCard(
-                key: ValueKey('device-${device.id}'),
-                name: device.name,
-                serial: '${device.id}\n${device.baseUri.authority}',
-                selected: current?.id == device.id,
-                busy: state.connectingDeviceId == device.id,
-                onTap: state.connectingDeviceId == null ? () => _connect(context, device) : null,
-              ),
-              const SizedBox(height: AppSpacing.md),
-            ],
-            BirdSettingsOutlineButton(
-              key: const Key('device-rescan'),
-              label: state.searching ? '取消搜索' : '重新搜索',
-              icon: state.searching ? Icons.close_rounded : Icons.refresh_rounded,
-              onPressed: state.searching ? context.read<DeviceManagementCubit>().cancelSearch : context.read<DeviceManagementCubit>().search,
+              children: [
+                const BirdSettingsSectionLabel('当前连接设备'),
+                if (current == null)
+                  const BirdSettingsCard(child: Text('当前没有已连接的拍鸟盒子'))
+                else
+                  _DeviceCard(
+                    key: const Key('device-current'),
+                    name: current.name,
+                    serial: '${current.id}\n${current.baseUri.authority}',
+                    selected: true,
+                    onTap: onOpenDetails,
+                  ),
+                const SizedBox(height: AppSpacing.xl),
+                const BirdSettingsSectionLabel('发现与历史设备'),
+                if (candidates.isEmpty && !state.searching)
+                  const BirdSettingsCard(
+                    child: Text('没有发现可连接设备，可确认盒子已开机后重新搜索。'),
+                  ),
+                for (final device in candidates) ...[
+                  _DeviceCard(
+                    key: ValueKey('device-${device.id}'),
+                    name: device.name,
+                    serial: '${device.id}\n${device.baseUri.authority}',
+                    selected: current?.id == device.id,
+                    busy: state.connectingDeviceId == device.id,
+                    onTap: state.connectingDeviceId == null
+                        ? () => _connect(context, device)
+                        : null,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                ],
+                BirdSettingsOutlineButton(
+                  key: const Key('device-rescan'),
+                  label: state.searching ? '取消搜索' : '重新搜索',
+                  icon: state.searching
+                      ? Icons.close_rounded
+                      : Icons.refresh_rounded,
+                  onPressed: state.searching
+                      ? context.read<DeviceManagementCubit>().cancelSearch
+                      : context.read<DeviceManagementCubit>().search,
+                ),
+                if (state.searching) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  const LinearProgressIndicator(minHeight: 2),
+                ],
+                if (errorMessage != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    '${errorMessage.title}：${errorMessage.message}',
+                    style: const TextStyle(color: AppColors.danger),
+                  ),
+                ],
+              ],
             ),
-            if (state.searching) ...[
-              const SizedBox(height: AppSpacing.sm),
-              const LinearProgressIndicator(minHeight: 2),
-            ],
-            if (errorMessage != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                '${errorMessage.title}：${errorMessage.message}',
-                style: const TextStyle(color: AppColors.danger),
-              ),
-            ],
-          ],
-        ),
+          );
+        },
       );
-    },
-  );
 
-  Future<void> _connect(
-    BuildContext context,
-    DeviceConnection device,
-  ) async {
-    final connected = await context.read<DeviceManagementCubit>().connect(device);
-    if (!context.mounted || !connected) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已连接 ${device.name}')),
+  Future<void> _connect(BuildContext context, DeviceConnection device) async {
+    final connected = await context.read<DeviceManagementCubit>().connect(
+      device,
     );
+    if (!context.mounted || !connected) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('已连接 ${device.name}')));
   }
 }
 
@@ -234,14 +250,14 @@ class _DeviceCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppSpacing.radiusMedium),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 142),
+        constraints: const BoxConstraints(minHeight: 160),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
           child: Row(
             children: [
               const SizedBox(
                 width: 112,
-                height: 104,
+                height: 112,
                 child: Center(child: BirdSettingsDeviceIcon(size: 82)),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -250,9 +266,21 @@ class _DeviceCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                    Text(
+                      name,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 18,
+                      ),
+                    ),
                     const SizedBox(height: AppSpacing.xs),
-                    Text(serial, style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: AppColors.mutedInk)),
+                    Text(
+                      serial,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: AppColors.mutedInk,
+                        fontSize: 16,
+                      ),
+                    ),
                   ],
                 ),
               ),

@@ -39,8 +39,14 @@ class SettingsShowcasePage extends StatefulWidget {
     this.onOpenCurrentTask,
     this.settingsController,
   }) : assert(
-         (currentBatchTitle == null && currentBatchSummary == null && currentTaskTitle == null && currentTaskSummary == null) ||
-             (currentBatchTitle != null && currentBatchSummary != null && currentTaskTitle != null && currentTaskSummary != null),
+         (currentBatchTitle == null &&
+                 currentBatchSummary == null &&
+                 currentTaskTitle == null &&
+                 currentTaskSummary == null) ||
+             (currentBatchTitle != null &&
+                 currentBatchSummary != null &&
+                 currentTaskTitle != null &&
+                 currentTaskSummary != null),
          'Current batch and task summaries must be injected together.',
        );
 
@@ -61,7 +67,8 @@ class SettingsShowcasePage extends StatefulWidget {
 }
 
 class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
-  late final BirdSettingsController _controller = widget.settingsController ?? BirdSettingsController();
+  late final BirdSettingsController _controller =
+      widget.settingsController ?? BirdSettingsController();
   late final bool _ownsController = widget.settingsController == null;
   int _selectedNavigationIndex = 2;
 
@@ -210,15 +217,28 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
             indicatorColor: Colors.transparent,
             height: 82,
             destinations: const [
-              NavigationDestination(icon: Icon(Icons.photo_library_outlined), selectedIcon: Icon(Icons.photo_library_rounded), label: '相册'),
-              NavigationDestination(icon: Icon(Icons.assignment_outlined), selectedIcon: Icon(Icons.assignment_rounded), label: '任务'),
-              NavigationDestination(icon: Icon(Icons.devices_outlined), selectedIcon: Icon(Icons.devices_rounded), label: '设备'),
+              NavigationDestination(
+                icon: Icon(Icons.photo_library_outlined),
+                selectedIcon: Icon(Icons.photo_library_rounded),
+                label: '相册',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.assignment_outlined),
+                selectedIcon: Icon(Icons.assignment_rounded),
+                label: '任务',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.devices_outlined),
+                selectedIcon: Icon(Icons.devices_rounded),
+                label: '设备',
+              ),
             ],
           ),
   );
 
   Widget _buildDeviceCard(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>();
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<BirdCompanionScope>();
     final dependencies = scope?.dependencies;
     final session = widget.deviceSession ?? dependencies?.deviceSessionCubit;
     final status = widget.deviceStatus;
@@ -251,7 +271,7 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
             '当前工作',
             style: TextStyle(
               color: AppColors.forestDeep,
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -262,7 +282,8 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
           taskTitle: widget.currentTaskTitle ?? '演示任务',
           taskSummary: widget.currentTaskSummary ?? 'AI 分析 · 65%',
           isDemo: isDemo,
-          onOpenBatch: widget.onOpenCurrentBatch ?? () => _showMessage('演示批次详情'),
+          onOpenBatch:
+              widget.onOpenCurrentBatch ?? () => _showMessage('演示批次详情'),
           onOpenTask: widget.onOpenCurrentTask ?? () => _showMessage('演示任务详情'),
         ),
       ],
@@ -292,12 +313,15 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: 2),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xs,
+              vertical: 2,
+            ),
             child: Text(
               title,
               style: const TextStyle(
                 color: AppColors.forestDeep,
-                fontSize: 13,
+                fontSize: 16,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -313,25 +337,22 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     key: item.key,
     onTap: item.onTap,
     child: SizedBox(
-      height: 40,
+      height: 56,
       child: Row(
         children: [
           SizedBox(
-            width: 40,
-            child: Icon(
-              item.icon,
-              size: 20,
-              color: AppColors.forestPrimary,
-            ),
+            width: 44,
+            child: Icon(item.icon, size: 24, color: AppColors.forestPrimary),
           ),
           const SizedBox(width: AppSpacing.xs),
           Expanded(
             child: Text(
               item.title,
               style: const TextStyle(
-                fontSize: 14,
+                fontSize: 16,
                 color: AppColors.ink,
                 fontWeight: FontWeight.w500,
+                height: 1.3,
               ),
             ),
           ),
@@ -354,14 +375,18 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     });
   }
 
-  void _showMessage(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  void _showMessage(String message) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(message)));
 
   Future<void> _open(_SettingsPage page) async {
     final shell = BirdShellNavigation.maybeOf(context);
     shell?.setBottomNavigationVisible(false);
     try {
       await Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(builder: (context) => _buildPage(context, page)),
+        MaterialPageRoute<void>(
+          builder: (context) => _buildPage(context, page),
+        ),
       );
     } finally {
       if (mounted) shell?.setBottomNavigationVisible(true);
@@ -372,7 +397,9 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     _SettingsPage.deviceManagement => DeviceManagementPage(
       controller: _controller,
       onOpenDetails: () => Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(builder: (_) => DeviceDetailsPage(controller: _controller)),
+        MaterialPageRoute<void>(
+          builder: (_) => DeviceDetailsPage(controller: _controller),
+        ),
       ),
     ),
     _SettingsPage.deviceDetails => DeviceDetailsPage(controller: _controller),
@@ -387,7 +414,12 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
 }
 
 class _LiveDeviceCard extends StatelessWidget {
-  const _LiveDeviceCard({this.session, this.status, required this.onReconnect, required this.onOpenDetails});
+  const _LiveDeviceCard({
+    this.session,
+    this.status,
+    required this.onReconnect,
+    required this.onOpenDetails,
+  });
 
   final StateStreamable<DeviceSessionState>? session;
   final StateStreamable<DeviceStatusState>? status;
@@ -445,12 +477,17 @@ class SettingsDeviceCard extends StatelessWidget {
     child: InkWell(
       onTap: _isConnecting ? null : _primaryAction,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(AppSpacing.sm, AppSpacing.xs, AppSpacing.sm, AppSpacing.xs),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.sm,
+          AppSpacing.sm,
+          AppSpacing.sm,
+          AppSpacing.sm,
+        ),
         child: Row(
           children: [
             const SizedBox(
               width: 78,
-              height: 86,
+              height: 96,
               child: Center(child: BirdSettingsDeviceIcon(size: 66)),
             ),
             const SizedBox(width: AppSpacing.xs),
@@ -465,7 +502,7 @@ class SettingsDeviceCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: AppColors.forestDeep,
-                      fontSize: 16,
+                      fontSize: 18,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -482,22 +519,21 @@ class SettingsDeviceCard extends StatelessWidget {
                         overview.statusLabel,
                         style: TextStyle(
                           color: _statusColor(overview.connectionKind),
-                          fontSize: 14,
+                          fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.xxs),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      overview.metricsLabel,
-                      style: const TextStyle(
-                        color: AppColors.mutedInk,
-                        fontSize: 13,
-                      ),
+                  Text(
+                    overview.metricsLabel,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.mutedInk,
+                      fontSize: 15,
+                      height: 1.25,
                     ),
                   ),
                 ],
@@ -510,9 +546,14 @@ class SettingsDeviceCard extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(86, AppSpacing.minimumControl),
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                side: const BorderSide(color: AppColors.forestPrimary, width: 1.5),
+                side: const BorderSide(
+                  color: AppColors.forestPrimary,
+                  width: 1.5,
+                ),
                 foregroundColor: AppColors.forestPrimary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppSpacing.radiusCompact)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusCompact),
+                ),
               ),
               child: _isConnecting
                   ? Semantics(
@@ -520,14 +561,17 @@ class SettingsDeviceCard extends StatelessWidget {
                       child: const ExcludeSemantics(
                         child: SizedBox.square(
                           dimension: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.warning),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: AppColors.warning,
+                          ),
                         ),
                       ),
                     )
                   : Text(
                       _primaryActionLabel,
                       style: const TextStyle(
-                        fontSize: 14,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -550,19 +594,24 @@ class SettingsDeviceCard extends StatelessWidget {
     DeviceOverviewPrimaryAction.details => '设备详情',
   };
 
-  static IconData _statusIcon(DeviceOverviewConnectionKind kind) => switch (kind) {
-    DeviceOverviewConnectionKind.connected => Icons.wifi_rounded,
-    DeviceOverviewConnectionKind.connecting || DeviceOverviewConnectionKind.reconnecting => Icons.sync_rounded,
-    DeviceOverviewConnectionKind.incompatible => Icons.error_outline_rounded,
-    DeviceOverviewConnectionKind.disconnected => Icons.wifi_off_rounded,
-  };
+  static IconData _statusIcon(DeviceOverviewConnectionKind kind) =>
+      switch (kind) {
+        DeviceOverviewConnectionKind.connected => Icons.wifi_rounded,
+        DeviceOverviewConnectionKind.connecting ||
+        DeviceOverviewConnectionKind.reconnecting => Icons.sync_rounded,
+        DeviceOverviewConnectionKind.incompatible =>
+          Icons.error_outline_rounded,
+        DeviceOverviewConnectionKind.disconnected => Icons.wifi_off_rounded,
+      };
 
-  static Color _statusColor(DeviceOverviewConnectionKind kind) => switch (kind) {
-    DeviceOverviewConnectionKind.connected => AppColors.forestPrimary,
-    DeviceOverviewConnectionKind.connecting || DeviceOverviewConnectionKind.reconnecting => AppColors.warning,
-    DeviceOverviewConnectionKind.incompatible => AppColors.danger,
-    DeviceOverviewConnectionKind.disconnected => AppColors.mutedInk,
-  };
+  static Color _statusColor(DeviceOverviewConnectionKind kind) =>
+      switch (kind) {
+        DeviceOverviewConnectionKind.connected => AppColors.forestPrimary,
+        DeviceOverviewConnectionKind.connecting ||
+        DeviceOverviewConnectionKind.reconnecting => AppColors.warning,
+        DeviceOverviewConnectionKind.incompatible => AppColors.danger,
+        DeviceOverviewConnectionKind.disconnected => AppColors.mutedInk,
+      };
 }
 
 class _PageTitle extends StatelessWidget {
@@ -579,7 +628,12 @@ class _PageTitle extends StatelessWidget {
 }
 
 class _HomeItem {
-  const _HomeItem({this.key, required this.title, required this.icon, required this.onTap});
+  const _HomeItem({
+    this.key,
+    required this.title,
+    required this.icon,
+    required this.onTap,
+  });
 
   final Key? key;
   final String title;

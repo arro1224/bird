@@ -26,8 +26,10 @@ void main() {
     final entrySize = tester.getSize(
       find.byKey(const Key('showcase-device-management')),
     );
-    expect(deviceCardSize.height, lessThanOrEqualTo(106));
-    expect(entrySize.height, 40);
+    expect(deviceCardSize.height, lessThanOrEqualTo(130));
+    expect(entrySize.height, 56);
+    expect(_textStyle(tester, '设备与连接').fontSize, 16);
+    expect(_textStyle(tester, '连接设备').fontSize, 16);
   });
 
   testWidgets('device secondary pages share the v1 background and centered top bar', (
@@ -43,6 +45,11 @@ void main() {
     expect(find.text('显示设置'), findsOneWidget);
     expect(find.byKey(const Key('settings-back')), findsOneWidget);
   });
+}
+
+TextStyle _textStyle(WidgetTester tester, String label) {
+  final text = tester.widget<Text>(find.text(label).first);
+  return text.style!;
 }
 
 Future<void> _pumpPhone(WidgetTester tester, Widget home) async {

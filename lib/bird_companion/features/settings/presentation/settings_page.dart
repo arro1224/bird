@@ -20,8 +20,11 @@ class SettingsPage extends StatelessWidget {
     child: Scaffold(
       backgroundColor: AppColors.paper,
       body: BlocConsumer<SettingsCubit, SettingsState>(
-        listenWhen: (before, after) => after.message.isNotEmpty && before.message != after.message,
-        listener: (context, state) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(state.message))),
+        listenWhen: (before, after) =>
+            after.message.isNotEmpty && before.message != after.message,
+        listener: (context, state) => ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(state.message))),
         builder: (context, state) => Stack(
           children: [
             ListView(
@@ -30,7 +33,9 @@ class SettingsPage extends StatelessWidget {
                 Text(
                   '设备设置',
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 const SizedBox(height: 18),
                 BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
@@ -53,7 +58,9 @@ class SettingsPage extends StatelessWidget {
                             title: '设备详情',
                             subtitle: '电量、温度、存储卡和当前任务',
                             enabled: session.device != null,
-                            onTap: () => Navigator.of(context).pushNamed(BirdRoutes.settingsDeviceDetails),
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pushNamed(BirdRoutes.settingsDeviceDetails),
                           ),
                           _SettingsTile(
                             icon: Icons.link_rounded,
@@ -69,8 +76,16 @@ class SettingsPage extends StatelessWidget {
                       CacheManagementCard(
                         imageBytes: state.imageCacheBytes,
                         albumBytes: state.albumCacheBytes,
-                        onClearImages: state.loading ? null : () => context.read<SettingsCubit>().clearImageCache(),
-                        onClearAlbumData: state.loading ? null : () => context.read<SettingsCubit>().clearAlbumCache(),
+                        onClearImages: state.loading
+                            ? null
+                            : () => context
+                                  .read<SettingsCubit>()
+                                  .clearImageCache(),
+                        onClearAlbumData: state.loading
+                            ? null
+                            : () => context
+                                  .read<SettingsCubit>()
+                                  .clearAlbumCache(),
                       ),
                       const SizedBox(height: 18),
                       const _SectionTitle('遇到问题'),
@@ -80,7 +95,9 @@ class SettingsPage extends StatelessWidget {
                             icon: Icons.monitor_heart_outlined,
                             title: '检查连接问题',
                             subtitle: '检查盒子连接和尚未更新的修改',
-                            onTap: () => Navigator.of(context).pushNamed(BirdRoutes.diagnostics),
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pushNamed(BirdRoutes.diagnostics),
                           ),
                           _SettingsTile(
                             icon: Icons.link_off_rounded,
@@ -94,14 +111,23 @@ class SettingsPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 18),
                       const _SectionTitle('关于'),
-                      VersionInfoCard(session: session, appVersion: state.appVersion),
+                      VersionInfoCard(
+                        session: session,
+                        appVersion: state.appVersion,
+                      ),
                       const PrivacyCard(),
                     ],
                   ),
                 ),
               ],
             ),
-            if (state.loading) const Positioned(top: 0, left: 0, right: 0, child: LinearProgressIndicator(minHeight: 2)),
+            if (state.loading)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
           ],
         ),
       ),
@@ -116,14 +142,25 @@ class SettingsPage extends StatelessWidget {
         title: const Text('忘记当前盒子？'),
         content: const Text('将断开连接并删除手机上保存的盒子地址。照片和尚未传回盒子的修改不会被删除。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('忘记')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('忘记'),
+          ),
         ],
       ),
     );
     if (approved != true || !context.mounted) return;
     await context.read<SettingsCubit>().forgetDevice();
-    if (context.mounted) await Navigator.of(context).pushNamedAndRemoveUntil(BirdRoutes.connection, (route) => false);
+    if (context.mounted) {
+      await Navigator.of(context).pushNamedAndRemoveUntil(
+        BirdRoutes.connection,
+        (route) => false,
+      );
+    }
   }
 }
 
@@ -146,8 +183,15 @@ class _DeviceHero extends StatelessWidget {
                   width: 112,
                   height: 82,
                   child: DecoratedBox(
-                    decoration: BoxDecoration(color: AppColors.mist, borderRadius: BorderRadius.all(Radius.circular(16))),
-                    child: Icon(Icons.memory_rounded, size: 54, color: AppColors.brand),
+                    decoration: BoxDecoration(
+                      color: AppColors.mist,
+                      borderRadius: BorderRadius.all(Radius.circular(16)),
+                    ),
+                    child: Icon(
+                      Icons.memory_rounded,
+                      size: 54,
+                      color: AppColors.brand,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -155,13 +199,32 @@ class _DeviceHero extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(device?.name ?? '未连接拍鸟盒子', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
+                      Text(
+                        device?.name ?? '未连接拍鸟盒子',
+                        style: const TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          Icon(Icons.circle, size: 10, color: session.isConnected ? AppColors.success : AppColors.inkMuted),
+                          Icon(
+                            Icons.circle,
+                            size: 10,
+                            color: session.isConnected
+                                ? AppColors.success
+                                : AppColors.inkMuted,
+                          ),
                           const SizedBox(width: 6),
-                          Text(session.isConnected ? '在线' : '等待连接', style: TextStyle(color: session.isConnected ? AppColors.success : AppColors.inkMuted)),
+                          Text(
+                            session.isConnected ? '在线' : '等待连接',
+                            style: TextStyle(
+                              color: session.isConnected
+                                  ? AppColors.success
+                                  : AppColors.inkMuted,
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -171,8 +234,16 @@ class _DeviceHero extends StatelessWidget {
             ),
             const Divider(height: 26),
             _DeviceRow(label: '软件兼容信息', value: device?.apiVersion ?? '盒子未提供'),
-            _DeviceRow(label: '连接方式', value: device?.networkMode.label ?? '未连接'),
-            _DeviceRow(label: '连接地址', value: device?.baseUri.host.isNotEmpty == true ? device!.baseUri.host : '未连接'),
+            _DeviceRow(
+              label: '连接方式',
+              value: device?.networkMode.label ?? '未连接',
+            ),
+            _DeviceRow(
+              label: '连接地址',
+              value: device?.baseUri.host.isNotEmpty == true
+                  ? device!.baseUri.host
+                  : '未连接',
+            ),
           ],
         ),
       ),
@@ -194,7 +265,10 @@ class _DeviceRow extends StatelessWidget {
         Expanded(
           child: Text(label, style: const TextStyle(color: AppColors.inkMuted)),
         ),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
       ],
     ),
   );
@@ -210,7 +284,11 @@ class _SectionTitle extends StatelessWidget {
     padding: const EdgeInsets.only(left: 5, bottom: 7),
     child: Text(
       '• $text',
-      style: const TextStyle(color: AppColors.brand, fontWeight: FontWeight.w800),
+      style: const TextStyle(
+        color: AppColors.brand,
+        fontSize: 18,
+        fontWeight: FontWeight.w800,
+      ),
     ),
   );
 }
@@ -234,7 +312,15 @@ class _SettingsGroup extends StatelessWidget {
 }
 
 class _SettingsTile extends StatelessWidget {
-  const _SettingsTile({required this.icon, required this.title, this.subtitle, this.value, this.onTap, this.enabled = true, this.iconColor = AppColors.brand});
+  const _SettingsTile({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.value,
+    this.onTap,
+    this.enabled = true,
+    this.iconColor = AppColors.brand,
+  });
 
   final IconData icon;
   final String title;
@@ -247,10 +333,18 @@ class _SettingsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListTile(
     enabled: enabled,
+    minVerticalPadding: 10,
     leading: Icon(icon, color: enabled ? iconColor : AppColors.inkMuted),
-    title: Text(title),
-    subtitle: subtitle == null ? null : Text(subtitle!),
-    trailing: value == null ? const Icon(Icons.chevron_right) : Text(value!, style: const TextStyle(color: AppColors.inkMuted)),
+    title: Text(title, style: const TextStyle(fontSize: 17, height: 1.3)),
+    subtitle: subtitle == null
+        ? null
+        : Text(subtitle!, style: const TextStyle(fontSize: 15, height: 1.3)),
+    trailing: value == null
+        ? const Icon(Icons.chevron_right)
+        : Text(
+            value!,
+            style: const TextStyle(color: AppColors.inkMuted, fontSize: 15),
+          ),
     onTap: onTap,
   );
 }
