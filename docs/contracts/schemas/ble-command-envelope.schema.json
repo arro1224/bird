@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "birdbox-network-v1.0-rc4/ble-command-envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "type", "request_id", "client_id", "payload"],
+  "properties": {
+    "protocol_version": {"const": "1.0-rc4"},
+    "type": {"enum": ["open_pairing", "authorize_pairing", "get_network_status", "start_direct_ap", "stop_direct_ap", "scan_wifi", "set_sta_config", "start_dpp_provisioning", "cancel_network_operation"]},
+    "request_id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "client_id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "payload": {"type": "object"}
+  }
+}

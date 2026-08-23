@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "birdbox-network-v1.0-rc4/ble-network-status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "type", "request_id", "device_id", "ok", "payload"],
+  "properties": {
+    "protocol_version": {"const": "1.0-rc4"},
+    "type": {"const": "network_status"},
+    "request_id": {"type": "string", "minLength": 1},
+    "device_id": {"type": "string", "pattern": "^bbx-[0-9a-f]{32}$"},
+    "ok": {"const": true},
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["active_mode", "desired_mode", "operation_state", "operation_id", "busy", "base_uri", "direct_ap", "infrastructure_sta", "last_error", "updated_at"],
+      "properties": {
+        "active_mode": {"enum": ["none", "direct_ap", "infrastructure_sta"]},
+        "desired_mode": {"enum": ["none", "direct_ap", "infrastructure_sta"]},
+        "operation_state": {"enum": ["idle", "starting_ap", "ap_ready", "stopping_ap", "scanning", "scan_complete", "preparing_dpp", "waiting_dpp_configurator", "dpp_authenticating", "dpp_configuration_received", "credentials_received", "disconnecting_current_network", "connecting_sta", "obtaining_ip", "sta_connected", "switching", "recovering", "failed", "cancelled"]},
+        "operation_id": {"type": ["string", "null"]},
+        "busy": {"type": "boolean"},
+        "base_uri": {"type": ["string", "null"], "format": "uri"},
+        "direct_ap": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ssid", "security", "gateway_ipv4", "prefix_length", "client_count"],
+          "properties": {
+            "ssid": {"type": ["string", "null"]},
+            "security": {"type": ["string", "null"], "enum": ["open", "wpa2_personal", "wpa3_personal", "wpa2_wpa3_transition", null]},
+            "gateway_ipv4": {"type": ["string", "null"]},
+            "prefix_length": {"type": ["integer", "null"], "minimum": 0, "maximum": 32},
+            "client_count": {"type": ["integer", "null"], "minimum": 0}
+          }
+        },
+        "infrastructure_sta": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ssid", "bssid", "ipv4", "prefix_length", "gateway_ipv4", "network_kind", "provisioning_method", "saved"],
+          "properties": {
+            "ssid": {"type": ["string", "null"]},
+            "bssid": {"type": ["string", "null"]},
+            "ipv4": {"type": ["string", "null"]},
+            "prefix_length": {"type": ["integer", "null"], "minimum": 0, "maximum": 32},
+            "gateway_ipv4": {"type": ["string", "null"]},
+            "network_kind": {"type": ["string", "null"], "enum": ["router", "this_phone_hotspot", "other_phone_hotspot", "unknown", null]},
+            "provisioning_method": {"type": ["string", "null"], "enum": ["android_dpp", "wifi_qr", "ble_scan_selection", "ble_manual", null]},
+            "saved": {"type": "boolean"}
+          }
+        },
+        "last_error": {"type": ["object", "null"]},
+        "updated_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

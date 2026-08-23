@@ -58,6 +58,31 @@
       "schema": "docs/contracts/schemas/user-decision-patch.schema.json",
       "expected_valid": false,
       "expected_error_contains": "anyOf"
+    },
+    {
+      "file": "fixtures/ble-device-info.rc4.json",
+      "schema": "docs/contracts/schemas/ble-device-info.schema.json",
+      "expected_valid": true
+    },
+    {
+      "file": "fixtures/ble-network-status.rc4.json",
+      "schema": "docs/contracts/schemas/ble-network-status.schema.json",
+      "expected_valid": true
+    },
+    {
+      "file": "fixtures/ble-command-envelope.rc4.json",
+      "schema": "docs/contracts/schemas/ble-command-envelope.schema.json",
+      "expected_valid": true
+    },
+    {
+      "file": "fixtures/health.rc4.json",
+      "schema": "docs/contracts/schemas/health.schema.json",
+      "expected_valid": true
+    },
+    {
+      "file": "fixtures/pairing-token.rc4.json",
+      "schema": "docs/contracts/schemas/pairing-token.schema.json",
+      "expected_valid": true
     }
   ]
 }
