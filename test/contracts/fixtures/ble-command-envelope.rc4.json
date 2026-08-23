@@ -1,0 +1,7 @@
+{
+  "protocol_version": "1.0-rc4",
+  "type": "get_network_status",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "client_id": "a870bcb1-d423-4d66-96f7-f809ce786543",
+  "payload": {}
+}

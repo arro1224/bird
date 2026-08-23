@@ -1,0 +1,7 @@
+{
+  "token_type": "Bearer",
+  "access_token": "REDACTED_TEST_ONLY",
+  "expires_in": 2592000,
+  "device_id": "bbx-82f41c9e7a3d4b68a1501e21e536c649",
+  "client_id": "a870bcb1-d423-4d66-96f7-f809ce786543"
+}

@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+
 import '../../tool/contracts/contract_validator.dart';
 
 void main() {
@@ -111,5 +113,13 @@ void main() {
       result.errors,
       contains('strict baseline: missing owners.protocol.contact'),
     );
+  });
+
+  test('rc4 fixtures are accepted by the App strict models', () {
+    final deviceInfo = Map<String, dynamic>.from(jsonDecode(File('test/contracts/fixtures/ble-device-info.rc4.json').readAsStringSync()) as Map);
+    final networkStatus = Map<String, dynamic>.from(jsonDecode(File('test/contracts/fixtures/ble-network-status.rc4.json').readAsStringSync()) as Map);
+
+    expect(ProvisioningDeviceInfo.fromJson(deviceInfo).protocolVersion, '1.0-rc4');
+    expect(ProvisioningEvent.fromJson(networkStatus).type, ProvisioningEventType.networkStatus);
   });
 }

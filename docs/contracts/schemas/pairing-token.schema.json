@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "birdbox-network-v1.0-rc4/pairing-token",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["token_type", "access_token", "expires_in", "device_id", "client_id"],
+  "properties": {
+    "token_type": {"const": "Bearer"},
+    "access_token": {"type": "string", "minLength": 1},
+    "expires_in": {"const": 2592000},
+    "device_id": {"type": "string", "pattern": "^bbx-[0-9a-f]{32}$"},
+    "client_id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"}
+  }
+}

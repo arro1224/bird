@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "birdbox-network-v1.0-rc4/health",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "device_id", "protocol_version", "api_version", "active_mode", "server_time"],
+  "properties": {
+    "status": {"const": "ok"},
+    "device_id": {"type": "string", "pattern": "^bbx-[0-9a-f]{32}$"},
+    "protocol_version": {"const": "1.0-rc4"},
+    "api_version": {"const": "v1"},
+    "active_mode": {"enum": ["none", "direct_ap", "infrastructure_sta"]},
+    "server_time": {"type": "string", "format": "date-time"}
+  }
+}
