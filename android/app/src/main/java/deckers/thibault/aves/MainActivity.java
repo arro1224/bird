@@ -38,10 +38,12 @@ public final class MainActivity extends FlutterActivity {
     private static final String SECURE_SESSION_CHANNEL = "bird_companion/secure_session";
     private static final String SESSION_PREFERENCES = "bird_companion_secure_sessions";
     private static final String SESSION_KEY_ALIAS = "bird_companion_session_key_v1";
+    private BirdBoxBleChannel birdBoxBleChannel;
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
         super.configureFlutterEngine(flutterEngine);
+        birdBoxBleChannel = new BirdBoxBleChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), DISCOVERY_CHANNEL)
                 .setMethodCallHandler((call, result) -> {
                     if ("discover".equals(call.method)) {
@@ -52,6 +54,22 @@ public final class MainActivity extends FlutterActivity {
                 });
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), SECURE_SESSION_CHANNEL)
                 .setMethodCallHandler(this::handleSecureSession);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        if (birdBoxBleChannel == null || !birdBoxBleChannel.onRequestPermissionsResult(requestCode, grantResults)) {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+    }
+
+    @Override
+    public void cleanUpFlutterEngine(@NonNull FlutterEngine flutterEngine) {
+        if (birdBoxBleChannel != null) {
+            birdBoxBleChannel.dispose();
+            birdBoxBleChannel = null;
+        }
+        super.cleanUpFlutterEngine(flutterEngine);
     }
 
     private void handleSecureSession(MethodCall call, MethodChannel.Result result) {
