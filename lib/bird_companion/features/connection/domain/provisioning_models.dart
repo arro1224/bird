@@ -243,12 +243,15 @@ extension ProvisioningEventTypeWireValue on ProvisioningEventType {
 }
 
 final class BirdBoxAdvertisement {
-  BirdBoxAdvertisement({required this.localName, required Iterable<String> serviceUuids, required this.rssi, this.companyIdentifier, this.manufacturerPayload})
+  BirdBoxAdvertisement({required this.localName, required Iterable<String> serviceUuids, required this.rssi, this.platformDeviceId, this.companyIdentifier, this.manufacturerPayload})
     : serviceUuids = Set.unmodifiable(serviceUuids.map(BleProtocolConstants.normalizeUuid));
 
   final String localName;
   final Set<String> serviceUuids;
   final int rssi;
+
+  /// Opaque Android connection handle. It is transport-only and never a trusted BirdBox identity.
+  final String? platformDeviceId;
   final int? companyIdentifier;
   final List<int>? manufacturerPayload;
 
