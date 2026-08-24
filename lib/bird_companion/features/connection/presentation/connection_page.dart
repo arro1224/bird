@@ -9,6 +9,8 @@ import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_cubit.dart';
+import 'package:aves/bird_companion/features/connection/presentation/pages/connection_method_page.dart';
+import 'package:aves/bird_companion/features/connection/presentation/provisioning_cubit.dart';
 import 'package:aves/bird_companion/features/connection/presentation/qr_connection_scanner_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/qr_connection_uri.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/connection_background.dart';
@@ -20,6 +22,8 @@ import 'package:aves/bird_companion/features/connection/presentation/widgets/dis
 import 'package:aves/bird_companion/features/connection/presentation/widgets/k7_device_artwork.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/manual_address_form.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -27,21 +31,311 @@ class ConnectionPage extends StatelessWidget {
   const ConnectionPage({
     super.key,
     this.entryMode = ConnectionEntryMode.initialSetup,
+    this.provisioningRepository,
+    this.onProvisioningMethodSelected,
   });
 
   final ConnectionEntryMode entryMode;
+  final ProvisioningRepository? provisioningRepository;
+  final ValueChanged<ConnectionMethod>? onProvisioningMethodSelected;
 
   @override
-  Widget build(BuildContext context) => Theme(
-    data: AppTheme.light(),
-    child: BlocProvider(
-      create: (_) => ConnectionCubit(
-        BirdCompanionScope.of(context).connectionRepository,
-        BirdCompanionScope.of(context).deviceSessionCubit,
-        preserveExistingSession: entryMode == ConnectionEntryMode.addOrSwitch,
-      )..load(),
-      child: _ConnectionView(entryMode: entryMode),
+  Widget build(BuildContext context) {
+    final provisioning = provisioningRepository;
+    if (provisioning != null) {
+      return Theme(
+        data: AppTheme.light(),
+        child: BlocProvider(
+          create: (_) => ProvisioningCubit(provisioning)..discover(),
+          child: _BleConnectionView(
+            onMethodSelected: onProvisioningMethodSelected,
+          ),
+        ),
+      );
+    }
+    return Theme(
+      data: AppTheme.light(),
+      child: BlocProvider(
+        create: (_) => ConnectionCubit(
+          BirdCompanionScope.of(context).connectionRepository,
+          BirdCompanionScope.of(context).deviceSessionCubit,
+          preserveExistingSession: entryMode == ConnectionEntryMode.addOrSwitch,
+        )..load(),
+        child: _ConnectionView(entryMode: entryMode),
+      ),
+    );
+  }
+}
+
+class _BleConnectionView extends StatelessWidget {
+  const _BleConnectionView({this.onMethodSelected});
+
+  final ValueChanged<ConnectionMethod>? onMethodSelected;
+
+  @override
+  Widget build(BuildContext context) => BlocBuilder<ProvisioningCubit, ProvisioningState>(
+    builder: (context, state) {
+      final cubit = context.read<ProvisioningCubit>();
+      final error = state.error == null ? null : UserMessageMapper.fromError(state.error!);
+      final title = switch (state.phase) {
+        ProvisioningPhase.trusted => '验证设备',
+        ProvisioningPhase.pairingCode || ProvisioningPhase.authorizing => '设备配对',
+        ProvisioningPhase.methodSelection => '连接方式',
+        ProvisioningPhase.failure => '连接遇到问题',
+        _ => '查找盒子',
+      };
+      final content = switch (state.phase) {
+        ProvisioningPhase.trusted => _TrustedDeviceView(
+          deviceName: state.deviceInfo!.deviceName,
+          onStartPairing: cubit.openPairing,
+        ),
+        ProvisioningPhase.pairingCode => PairingCodeForm(
+          deviceName: state.deviceInfo!.deviceName,
+          codeMode: state.deviceInfo!.pairingCodeMode,
+          codeLength: state.deviceInfo!.pairingCodeLength,
+          displayAvailable: state.deviceInfo!.displayAvailable,
+          onSubmit: cubit.authorizePairing,
+          onCancel: cubit.reset,
+        ),
+        ProvisioningPhase.methodSelection => ConnectionMethodPage(
+          deviceName: state.deviceInfo!.deviceName,
+          onSelected: onMethodSelected ?? (_) {},
+        ),
+        ProvisioningPhase.connecting || ProvisioningPhase.authorizing => const _BleLoadingView(),
+        _ => _BleDiscoveryView(
+          devices: state.devices,
+          searching: state.phase == ProvisioningPhase.discovering,
+          error: error,
+          onDiscover: cubit.discover,
+          onSelectDevice: cubit.selectDevice,
+          onRetry: cubit.retry,
+        ),
+      };
+      return Scaffold(
+        backgroundColor: AppColors.paper,
+        body: ConnectionBackground(
+          child: SafeArea(
+            child: Column(
+              children: [
+                _ConnectionTopBar(
+                  title: title,
+                  onHelp: () => _showBleHelp(context),
+                ),
+                Expanded(child: content),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
+  void _showBleHelp(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (_) => const SafeArea(
+        child: Padding(
+          padding: EdgeInsets.all(AppSpacing.pageHorizontal),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              BirdSectionTitle(text: '连接帮助'),
+              BirdListItem(
+                leading: Icon(Icons.bluetooth_searching_rounded),
+                title: '靠近盒子',
+                subtitle: '请保持手机蓝牙开启，并靠近已开机的盒子。',
+              ),
+              BirdListItem(
+                leading: Icon(Icons.verified_user_outlined),
+                title: '完成设备验证',
+                subtitle: '仅完成设备信息读取后才会继续配网。',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BleDiscoveryView extends StatelessWidget {
+  const _BleDiscoveryView({
+    required this.devices,
+    required this.searching,
+    required this.error,
+    required this.onDiscover,
+    required this.onSelectDevice,
+    required this.onRetry,
+  });
+
+  final List<ProvisioningDevice> devices;
+  final bool searching;
+  final UserMessage? error;
+  final Future<void> Function() onDiscover;
+  final Future<void> Function(ProvisioningDevice) onSelectDevice;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.fromLTRB(
+      AppSpacing.pageHorizontal,
+      AppSpacing.sm,
+      AppSpacing.pageHorizontal,
+      AppSpacing.xxl,
     ),
+    children: [
+      const SizedBox(height: AppSpacing.md),
+      const Icon(
+        Icons.bluetooth_searching_rounded,
+        size: 64,
+        color: AppColors.brand,
+      ),
+      const SizedBox(height: AppSpacing.md),
+      Text(
+        '附近的盒子',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.headlineSmall,
+      ),
+      const SizedBox(height: AppSpacing.xs),
+      Text(
+        searching ? '正在通过蓝牙查找附近已开机的盒子…' : '请选择要验证的盒子。名称和信号仅用于帮助识别。',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+      if (error != null) ...[
+        const SizedBox(height: AppSpacing.sm),
+        ErrorNotice(
+          title: error!.title,
+          message: error!.message,
+          actionLabel: error!.actionLabel ?? '重试',
+          onRetry: onRetry,
+        ),
+      ],
+      const SizedBox(height: AppSpacing.xl),
+      if (devices.isEmpty && !searching)
+        BirdCard(
+          child: Column(
+            children: [
+              const Icon(
+                Icons.bluetooth_disabled_rounded,
+                size: 38,
+                color: AppColors.inkMuted,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text('暂未发现盒子', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: AppSpacing.xs),
+              const Text('请确认盒子已开机且手机蓝牙权限已允许。', textAlign: TextAlign.center),
+              const SizedBox(height: AppSpacing.md),
+              BirdButton(
+                label: '重新搜索',
+                onPressed: onDiscover,
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+            ],
+          ),
+        ),
+      for (final device in devices) ...[
+        BirdCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.memory_rounded, color: AppColors.brand),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      device.advertisement.localName,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                  Text(
+                    '${device.advertisement.rssi} dBm',
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                '发现信号，连接后将验证设备信息。',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: AppColors.inkMuted),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              BirdButton(
+                label: '连接此盒子',
+                onPressed: () => onSelectDevice(device),
+                icon: const Icon(Icons.arrow_forward_rounded),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+      ],
+      if (!searching && devices.isNotEmpty)
+        BirdButton(
+          label: '重新搜索',
+          onPressed: onDiscover,
+          icon: const Icon(Icons.refresh_rounded),
+          variant: BirdButtonVariant.outlined,
+        ),
+      const SizedBox(height: AppSpacing.lg),
+      const _PrivacyNote(),
+    ],
+  );
+}
+
+class _TrustedDeviceView extends StatelessWidget {
+  const _TrustedDeviceView({
+    required this.deviceName,
+    required this.onStartPairing,
+  });
+
+  final String deviceName;
+  final Future<void> Function() onStartPairing;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.all(AppSpacing.pageHorizontal),
+    children: [
+      const SizedBox(height: AppSpacing.xl),
+      const Icon(
+        Icons.verified_user_rounded,
+        size: 72,
+        color: AppColors.success,
+      ),
+      const SizedBox(height: AppSpacing.lg),
+      Text(
+        '设备验证完成',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.headlineSmall,
+      ),
+      const SizedBox(height: AppSpacing.sm),
+      Text(
+        '已读取 $deviceName 的设备信息。现在可以安全开始配对。',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodyLarge,
+      ),
+      const SizedBox(height: AppSpacing.xl),
+      BirdButton(
+        label: '开始配对',
+        onPressed: onStartPairing,
+        icon: const Icon(Icons.lock_open_rounded),
+      ),
+    ],
+  );
+}
+
+class _BleLoadingView extends StatelessWidget {
+  const _BleLoadingView();
+
+  @override
+  Widget build(BuildContext context) => const Center(
+    child: SizedBox.square(dimension: 40, child: CircularProgressIndicator()),
   );
 }
 
@@ -60,7 +354,9 @@ class _ConnectionViewState extends State<_ConnectionView> {
   DeviceConnection? _selectedDevice;
 
   @override
-  Widget build(BuildContext context) => BlocBuilder<ConnectionCubit, DeviceConnectionState>(
+  Widget build(
+    BuildContext context,
+  ) => BlocBuilder<ConnectionCubit, DeviceConnectionState>(
     builder: (context, state) {
       final session = BirdCompanionScope.of(context).deviceSessionCubit.state;
       final searching = state.phase == ConnectionPhase.loading;
@@ -129,7 +425,10 @@ class _ConnectionViewState extends State<_ConnectionView> {
           child: ConnectionSuccessView(
             status: state.status!,
             onOpenGallery: () => _finishConnection(0),
-            onOpenDevice: () => _finishConnection(2, initialRoute: BirdRoutes.settingsDeviceDetails),
+            onOpenDevice: () => _finishConnection(
+              2,
+              initialRoute: BirdRoutes.settingsDeviceDetails,
+            ),
           ),
         );
       }
@@ -140,7 +439,10 @@ class _ConnectionViewState extends State<_ConnectionView> {
           child: SafeArea(
             child: Column(
               children: [
-                _ConnectionTopBar(title: '查找设备', onHelp: () => _showHelp(context)),
+                _ConnectionTopBar(
+                  title: '查找设备',
+                  onHelp: () => _showHelp(context),
+                ),
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(
@@ -169,7 +471,9 @@ class _ConnectionViewState extends State<_ConnectionView> {
                         const BirdSectionTitle(text: '可用设备'),
                         for (final device in available)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                            padding: const EdgeInsets.only(
+                              bottom: AppSpacing.sm,
+                            ),
                             child: DiscoveredDeviceCard(
                               device: device,
                               onConnect: () => _connectDevice(context, device),
@@ -184,19 +488,25 @@ class _ConnectionViewState extends State<_ConnectionView> {
                           onManual: _showManualForm,
                         ),
                       if (recent.isNotEmpty) ...[
-                        SizedBox(height: showEmpty ? AppSpacing.xl : AppSpacing.sm),
+                        SizedBox(
+                          height: showEmpty ? AppSpacing.xl : AppSpacing.sm,
+                        ),
                         BirdSectionTitle(
                           text: '最近连接',
                           trailing: Text(
                             '连接时将重新验证状态',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ),
                         for (final device in recent)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                            padding: const EdgeInsets.only(
+                              bottom: AppSpacing.sm,
+                            ),
                             child: DiscoveredDeviceCard(
                               device: device,
                               isRecent: true,
@@ -254,7 +564,11 @@ class _ConnectionViewState extends State<_ConnectionView> {
       child: SafeArea(
         child: Column(
           children: [
-            _ConnectionTopBar(title: title, onHelp: () => _showHelp(context), showBack: showBack),
+            _ConnectionTopBar(
+              title: title,
+              onHelp: () => _showHelp(context),
+              showBack: showBack,
+            ),
             Expanded(child: child),
           ],
         ),
@@ -262,12 +576,22 @@ class _ConnectionViewState extends State<_ConnectionView> {
     ),
   );
 
-  Future<void> _connectDevice(BuildContext context, DeviceConnection device) async {
+  Future<void> _connectDevice(
+    BuildContext context,
+    DeviceConnection device,
+  ) async {
     setState(() => _selectedDevice = device);
-    await context.read<ConnectionCubit>().connect(device.baseUri, device.networkMode);
+    await context.read<ConnectionCubit>().connect(
+      device.baseUri,
+      device.networkMode,
+    );
   }
 
-  Future<void> _connectUri(BuildContext context, Uri uri, NetworkMode mode) async {
+  Future<void> _connectUri(
+    BuildContext context,
+    Uri uri,
+    NetworkMode mode,
+  ) async {
     setState(
       () => _selectedDevice = DeviceConnection(
         id: uri.toString(),
@@ -301,7 +625,10 @@ class _ConnectionViewState extends State<_ConnectionView> {
     Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
       BirdRoutes.shell,
       (route) => false,
-      arguments: ShellArgs(initialIndex: shellIndex, initialRoute: initialRoute),
+      arguments: ShellArgs(
+        initialIndex: shellIndex,
+        initialRoute: initialRoute,
+      ),
     );
   }
 
@@ -350,7 +677,11 @@ class _ConnectionViewState extends State<_ConnectionView> {
 int? automaticConnectionDestination(ConnectionEntryMode entryMode) => entryMode == ConnectionEntryMode.addOrSwitch ? 0 : null;
 
 class _ConnectionTopBar extends StatelessWidget {
-  const _ConnectionTopBar({required this.title, required this.onHelp, this.showBack = true});
+  const _ConnectionTopBar({
+    required this.title,
+    required this.onHelp,
+    this.showBack = true,
+  });
 
   final String title;
   final VoidCallback onHelp;
@@ -395,9 +726,21 @@ class _ConnectionTopBar extends StatelessWidget {
 }
 
 const _connectionDestinations = <NavigationDestination>[
-  NavigationDestination(icon: Icon(Icons.photo_outlined), selectedIcon: Icon(Icons.photo), label: '相册'),
-  NavigationDestination(icon: Icon(Icons.task_outlined), selectedIcon: Icon(Icons.task), label: '处理进度'),
-  NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
+  NavigationDestination(
+    icon: Icon(Icons.photo_outlined),
+    selectedIcon: Icon(Icons.photo),
+    label: '相册',
+  ),
+  NavigationDestination(
+    icon: Icon(Icons.task_outlined),
+    selectedIcon: Icon(Icons.task),
+    label: '处理进度',
+  ),
+  NavigationDestination(
+    icon: Icon(Icons.person_outline),
+    selectedIcon: Icon(Icons.person),
+    label: '我的',
+  ),
 ];
 
 class _SearchingView extends StatelessWidget {
@@ -417,7 +760,9 @@ class _SearchingView extends StatelessWidget {
                 height: size,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.brandSoft.withValues(alpha: .18)),
+                  border: Border.all(
+                    color: AppColors.brandSoft.withValues(alpha: .18),
+                  ),
                 ),
               ),
             const K7DeviceArtwork(size: 150),
@@ -487,7 +832,10 @@ class _ReconnectBanner extends StatelessWidget {
     backgroundColor: AppColors.amberLight,
     padding: EdgeInsets.zero,
     child: ListTile(
-      leading: const Icon(Icons.error_outline_rounded, color: AppColors.pending),
+      leading: const Icon(
+        Icons.error_outline_rounded,
+        color: AppColors.pending,
+      ),
       title: const Text('设备连接已中断'),
       subtitle: const Text('可以重新连接最近使用的设备'),
       trailing: TextButton(onPressed: onReconnect, child: const Text('重新连接')),
@@ -508,7 +856,9 @@ class _PrivacyNote extends StatelessWidget {
         child: Text(
           '仅连接可信设备，连接过程不会上传照片',
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
         ),
       ),
     ],
