@@ -4,6 +4,11 @@ abstract final class ApiEndpoints {
   /// batch after the contract is accepted.
   static const contractVersion = 'birdbox-v1@1.0.0';
 
+  static const health = '/health';
+  // rc4 provisioning extension. Compose it separately so the immutable
+  // birdbox-v1@1.0.0 endpoint inventory remains exactly frozen.
+  static const apiV1Prefix = '/api/v1';
+  static const pairing = '$apiV1Prefix/pairing';
   static const deviceStatus = '/api/v1/device/status';
   static const devicePair = '/api/v1/device/pair';
   static const taskControl = '/api/v1/jobs/{jobId}/actions';

@@ -4,6 +4,7 @@ import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/core/widgets/empty_state.dart';
 import 'package:aves/bird_companion/features/batches/presentation/batch_list_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_page.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_confirmation_page.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_page.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
@@ -67,20 +68,27 @@ void openReconnectConnection(BuildContext context) {
 }
 
 abstract final class BirdAppRouter {
-  static Route<void> onGenerateRoute(RouteSettings settings) {
+  static Route<void> onGenerateRoute(
+    RouteSettings settings, {
+    ProvisioningRepository? provisioningRepository,
+  }) {
     Widget page;
     switch (settings.name) {
       case BirdRoutes.connection:
         final args = settings.arguments;
         page = ConnectionPage(
           entryMode: args is ConnectionArgs ? args.entryMode : ConnectionEntryMode.initialSetup,
+          provisioningRepository: provisioningRepository,
         );
       case BirdRoutes.shell:
         final args = settings.arguments;
         page = BirdAppShell(
           initialIndex: args is ShellArgs ? args.initialIndex : 0,
           initialRoute: args is ShellArgs ? args.initialRoute : null,
-          onGenerateRoute: onGenerateRoute,
+          onGenerateRoute: (settings) => onGenerateRoute(
+            settings,
+            provisioningRepository: provisioningRepository,
+          ),
         );
       case BirdRoutes.gallery:
         final args = settings.arguments;

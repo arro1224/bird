@@ -36,14 +36,18 @@ import io.flutter.plugin.common.MethodChannel;
 public final class MainActivity extends FlutterActivity {
     private static final String DISCOVERY_CHANNEL = "bird_companion/device_discovery";
     private static final String SECURE_SESSION_CHANNEL = "bird_companion/secure_session";
+    private static final String CLIENT_IDENTITY_CHANNEL = "bird_companion/client_identity";
     private static final String SESSION_PREFERENCES = "bird_companion_secure_sessions";
     private static final String SESSION_KEY_ALIAS = "bird_companion_session_key_v1";
+    private static final String CLIENT_IDENTITY_PREFERENCE = "installation_client_identity";
     private BirdBoxBleChannel birdBoxBleChannel;
+    private BirdBoxWifiChannel birdBoxWifiChannel;
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
         super.configureFlutterEngine(flutterEngine);
         birdBoxBleChannel = new BirdBoxBleChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
+        birdBoxWifiChannel = new BirdBoxWifiChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), DISCOVERY_CHANNEL)
                 .setMethodCallHandler((call, result) -> {
                     if ("discover".equals(call.method)) {
@@ -54,11 +58,15 @@ public final class MainActivity extends FlutterActivity {
                 });
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), SECURE_SESSION_CHANNEL)
                 .setMethodCallHandler(this::handleSecureSession);
+        new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), CLIENT_IDENTITY_CHANNEL)
+                .setMethodCallHandler(this::handleClientIdentity);
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        if (birdBoxBleChannel == null || !birdBoxBleChannel.onRequestPermissionsResult(requestCode, grantResults)) {
+        final boolean handledByBle = birdBoxBleChannel != null && birdBoxBleChannel.onRequestPermissionsResult(requestCode, grantResults);
+        final boolean handledByWifi = birdBoxWifiChannel != null && birdBoxWifiChannel.onRequestPermissionsResult(requestCode, grantResults);
+        if (!handledByBle && !handledByWifi) {
             super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         }
     }
@@ -69,7 +77,54 @@ public final class MainActivity extends FlutterActivity {
             birdBoxBleChannel.dispose();
             birdBoxBleChannel = null;
         }
+        if (birdBoxWifiChannel != null) {
+            birdBoxWifiChannel.dispose();
+            birdBoxWifiChannel = null;
+        }
         super.cleanUpFlutterEngine(flutterEngine);
+    }
+
+    private void handleClientIdentity(MethodCall call, MethodChannel.Result result) {
+        try {
+            final SharedPreferences preferences = getSharedPreferences(
+                    SESSION_PREFERENCES,
+                    Context.MODE_PRIVATE
+            );
+            switch (call.method) {
+                case "read":
+                    final String encrypted = preferences.getString(CLIENT_IDENTITY_PREFERENCE, null);
+                    if (encrypted == null) {
+                        result.success(null);
+                        return;
+                    }
+                    try {
+                        result.success(decryptSession(encrypted));
+                    } catch (Exception corruptIdentity) {
+                        preferences.edit().remove(CLIENT_IDENTITY_PREFERENCE).apply();
+                        result.success(null);
+                    }
+                    return;
+                case "write":
+                    final String clientId = call.argument("clientId");
+                    if (clientId == null || clientId.isEmpty()) {
+                        result.error("invalid_client_id", "A client id is required.", null);
+                        return;
+                    }
+                    preferences.edit()
+                            .putString(CLIENT_IDENTITY_PREFERENCE, encryptSession(clientId))
+                            .apply();
+                    result.success(null);
+                    return;
+                case "delete":
+                    preferences.edit().remove(CLIENT_IDENTITY_PREFERENCE).apply();
+                    result.success(null);
+                    return;
+                default:
+                    result.notImplemented();
+            }
+        } catch (Exception error) {
+            result.error("client_identity_failed", "Client identity operation failed.", null);
+        }
     }
 
     private void handleSecureSession(MethodCall call, MethodChannel.Result result) {

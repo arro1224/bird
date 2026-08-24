@@ -17,15 +17,21 @@ import 'package:aves/bird_companion/core/sync/conflict_resolver.dart';
 import 'package:aves/bird_companion/core/sync/bird_sync_service.dart';
 import 'package:aves/bird_companion/core/sync/sync_coordinator.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
+import 'package:aves/bird_companion/core/session/client_identity_store.dart';
 import 'package:aves/bird_companion/core/session/secure_session_store.dart';
 import 'package:aves/bird_companion/core/session/session_coordinator.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/features/connection/data/connection_api.dart';
 import 'package:aves/bird_companion/features/connection/data/connection_repository_impl.dart';
+import 'package:aves/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart';
 import 'package:aves/bird_companion/features/connection/data/device_discovery_source.dart';
+import 'package:aves/bird_companion/features/connection/data/health_api.dart';
 import 'package:aves/bird_companion/features/connection/data/mdns_device_discovery_source.dart';
 import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
+import 'package:aves/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart';
+import 'package:aves/bird_companion/features/connection/data/provisioning_repository_impl.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:aves/bird_companion/features/device/data/device_repository_impl.dart';
 import 'package:aves/bird_companion/features/device/data/device_status_api.dart';
 import 'package:aves/bird_companion/features/device/domain/device_repository.dart';
@@ -65,6 +71,7 @@ class BirdCompanionDependencies {
     required this.syncCoordinator,
     required this.conflictResolver,
     required this.connectionRepository,
+    required this.provisioningRepository,
     required this.deviceRepository,
     required this.batchRepository,
     required this.photoRepository,
@@ -93,6 +100,7 @@ class BirdCompanionDependencies {
   final SyncCoordinator syncCoordinator;
   final ConflictResolver conflictResolver;
   final ConnectionRepository connectionRepository;
+  final ProvisioningRepository provisioningRepository;
   final DeviceRepository deviceRepository;
   final BatchRepository batchRepository;
   final PhotoRepository photoRepository;
@@ -116,19 +124,30 @@ class BirdCompanionDependencies {
     final cache = await LocalCache.open();
     final apiClient = ApiClient();
     final eventClient = EventClient();
+    final secureSessionStore = AndroidKeystoreSessionStore();
     final sessionCoordinator = SessionCoordinator(
       apiClient,
       eventClient,
-      AndroidKeystoreSessionStore(),
+      secureSessionStore,
     );
+    final pairingApi = PairingApi(apiClient);
     final connectionRepository = ConnectionRepositoryImpl(
       ConnectionApi(
         apiClient,
-        PairingApi(apiClient),
+        pairingApi,
         sessionCoordinator,
       ),
       cache,
       CompositeDeviceDiscoverySource([MdnsDeviceDiscoverySource(), KnownDeviceDiscoverySource(() async => const [])]),
+    );
+    final provisioningRepository = ProvisioningRepositoryImpl(
+      ble: PlatformBirdBoxBleDataSource(),
+      wifi: MethodChannelBirdBoxWifiPlatform(),
+      clientIdentityStore: AndroidKeystoreClientIdentityStore(),
+      credentialStore: secureSessionStore,
+      healthApi: HealthApi(apiClient),
+      pairingApi: pairingApi,
+      sessionCoordinator: sessionCoordinator,
     );
     final connectivityMonitor = ConnectivityMonitor();
     final pendingOperationStore = PendingOperationStore(cache);
@@ -189,6 +208,7 @@ class BirdCompanionDependencies {
       syncCoordinator: SyncCoordinator(pendingOperationStore),
       conflictResolver: const ConflictResolver(),
       connectionRepository: connectionRepository,
+      provisioningRepository: provisioningRepository,
       deviceRepository: DeviceRepositoryImpl(DeviceStatusApi(apiClient), eventClient, apiClient),
       batchRepository: BatchRepositoryImpl(BatchApi(apiClient), cache, activeDeviceNamespace),
       photoRepository: PhotoRepositoryImpl(
@@ -236,6 +256,7 @@ class BirdCompanionDependencies {
   }
 
   void dispose() {
+    unawaited(provisioningRepository.dispose());
     unawaited(mediaAssetCoordinator.dispose());
     mediaAssetService.dispose();
     unawaited(eventClient.dispose());
