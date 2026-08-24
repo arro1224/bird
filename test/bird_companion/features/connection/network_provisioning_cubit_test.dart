@@ -87,6 +87,45 @@ void main() {
         expect(repository.calls.where((call) => call == 'getNetworkStatus'), hasLength(1));
       },
     );
+
+    test('stops a confirmed Direct AP and can return to method choice', () async {
+      final repository = FakeProvisioningRepository(
+        startDirectApResult: const CommandAccepted(
+          operationId: 'op_direct',
+          desiredMode: ProvisioningNetworkMode.directAp,
+        ),
+        stopDirectApResult: const CommandAccepted(
+          operationId: 'op_stop',
+          desiredMode: ProvisioningNetworkMode.none,
+        ),
+        networkStatus: _networkStatus(
+          mode: ProvisioningNetworkMode.directAp,
+          operationState: NetworkOperationState.apReady,
+          operationId: 'op_direct',
+          baseUri: Uri.parse('http://192.168.8.1'),
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      await cubit.startDirectAp(_deviceInfo());
+      repository.emitEvent(
+        _directApReady(
+          deviceId: _deviceInfo().deviceId,
+          operationId: 'op_direct',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      await cubit.stopDirectAp();
+      expect(cubit.state.phase, NetworkProvisioningPhase.stoppingDirectAp);
+      expect(cubit.state.activeOperationId, 'op_stop');
+
+      cubit.backToMethodSelection();
+      expect(cubit.state.phase, NetworkProvisioningPhase.idle);
+      expect(cubit.state.activeOperationId, isNull);
+      expect(cubit.state.baseUri, isNull);
+    });
   });
 
   group('NetworkProvisioningCubit Wi-Fi scan', () {

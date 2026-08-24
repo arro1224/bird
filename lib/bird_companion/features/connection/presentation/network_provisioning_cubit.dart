@@ -31,6 +31,7 @@ final class NetworkProvisioningState {
     this.operationState,
     this.wifiNetworks = const [],
     this.baseUri,
+    this.confirmedMode,
     this.recoveredMode,
     this.error,
     this.canCancel = false,
@@ -43,6 +44,7 @@ final class NetworkProvisioningState {
   final NetworkOperationState? operationState;
   final List<WifiScanNetwork> wifiNetworks;
   final Uri? baseUri;
+  final ProvisioningNetworkMode? confirmedMode;
   final ProvisioningNetworkMode? recoveredMode;
   final Object? error;
   final bool canCancel;
@@ -55,6 +57,7 @@ final class NetworkProvisioningState {
     NetworkOperationState? operationState,
     List<WifiScanNetwork>? wifiNetworks,
     Uri? baseUri,
+    ProvisioningNetworkMode? confirmedMode,
     ProvisioningNetworkMode? recoveredMode,
     Object? error,
     bool? canCancel,
@@ -62,31 +65,26 @@ final class NetworkProvisioningState {
     bool clearOperationState = false,
     bool clearNetworks = false,
     bool clearBaseUri = false,
+    bool clearConfirmedMode = false,
     bool clearRecoveredMode = false,
     bool clearError = false,
   }) => NetworkProvisioningState(
     phase: phase ?? this.phase,
     trustedDeviceId: trustedDeviceId ?? this.trustedDeviceId,
     capabilities: capabilities ?? this.capabilities,
-    activeOperationId: clearOperation
-        ? null
-        : activeOperationId ?? this.activeOperationId,
-    operationState: clearOperationState
-        ? null
-        : operationState ?? this.operationState,
+    activeOperationId: clearOperation ? null : activeOperationId ?? this.activeOperationId,
+    operationState: clearOperationState ? null : operationState ?? this.operationState,
     wifiNetworks: clearNetworks ? const [] : wifiNetworks ?? this.wifiNetworks,
     baseUri: clearBaseUri ? null : baseUri ?? this.baseUri,
-    recoveredMode: clearRecoveredMode
-        ? null
-        : recoveredMode ?? this.recoveredMode,
+    confirmedMode: clearConfirmedMode ? null : confirmedMode ?? this.confirmedMode,
+    recoveredMode: clearRecoveredMode ? null : recoveredMode ?? this.recoveredMode,
     error: clearError ? null : error ?? this.error,
     canCancel: canCancel ?? this.canCancel,
   );
 }
 
 final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
-  NetworkProvisioningCubit(this._repository)
-    : super(const NetworkProvisioningState()) {
+  NetworkProvisioningCubit(this._repository) : super(const NetworkProvisioningState()) {
     _eventSubscription = _repository.events.listen(
       _onEvent,
       onError: _onEventError,
@@ -143,14 +141,50 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     }
   }
 
+  Future<void> stopDirectAp() async {
+    if (state.phase != NetworkProvisioningPhase.success || state.confirmedMode != ProvisioningNetworkMode.directAp) {
+      return;
+    }
+    final generation = ++_generation;
+    emit(
+      state.copyWith(
+        phase: NetworkProvisioningPhase.stoppingDirectAp,
+        operationState: NetworkOperationState.stoppingAp,
+        clearOperation: true,
+        clearBaseUri: true,
+        clearConfirmedMode: true,
+        clearError: true,
+        canCancel: false,
+      ),
+    );
+    try {
+      final accepted = await _repository.stopDirectAp();
+      if (isClosed || generation != _generation) return;
+      emit(state.copyWith(activeOperationId: accepted.operationId));
+    } catch (error) {
+      if (isClosed || generation != _generation) return;
+      emit(
+        state.copyWith(
+          phase: NetworkProvisioningPhase.failure,
+          error: error,
+          canCancel: false,
+        ),
+      );
+    }
+  }
+
+  void backToMethodSelection() {
+    _generation++;
+    _clearScanAccumulator();
+    emit(const NetworkProvisioningState());
+  }
+
   void openWifiProvisioning(ProvisioningDeviceInfo info) {
     _generation++;
     _clearScanAccumulator();
     emit(
       NetworkProvisioningState(
-        phase: info.capabilities.infrastructureSta
-            ? NetworkProvisioningPhase.choosingWifiMethod
-            : NetworkProvisioningPhase.methodUnavailable,
+        phase: info.capabilities.infrastructureSta ? NetworkProvisioningPhase.choosingWifiMethod : NetworkProvisioningPhase.methodUnavailable,
         trustedDeviceId: info.deviceId,
         capabilities: info.capabilities,
       ),
@@ -159,9 +193,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   Future<void> scanWifi() async {
     final capabilities = state.capabilities;
-    if (capabilities == null ||
-        !capabilities.infrastructureSta ||
-        !capabilities.wifiScan) {
+    if (capabilities == null || !capabilities.infrastructureSta || !capabilities.wifiScan) {
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.methodUnavailable,
@@ -220,7 +252,8 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     StaNetworkConfiguration configuration,
   ) async {
     final capabilities = state.capabilities;
-    final supported = capabilities?.infrastructureSta == true &&
+    final supported =
+        capabilities?.infrastructureSta == true &&
         switch (configuration.selectionMethod) {
           WifiSelectionMethod.scanResult => capabilities?.wifiScan == true,
           WifiSelectionMethod.manual => capabilities?.wifiManual == true,
@@ -259,8 +292,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   Future<void> startDppProvisioning() async {
     final capabilities = state.capabilities;
-    if (capabilities?.infrastructureSta != true ||
-        capabilities?.dppUsableByBox != true) {
+    if (capabilities?.infrastructureSta != true || capabilities?.dppUsableByBox != true) {
       emit(state.copyWith(phase: NetworkProvisioningPhase.methodUnavailable));
       return;
     }
@@ -321,8 +353,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   void _onEvent(ProvisioningEvent event) {
     if (isClosed || event.deviceId != state.trustedDeviceId) return;
     final eventOperationId = event.operationId;
-    if (eventOperationId != null &&
-        eventOperationId != state.activeOperationId) {
+    if (eventOperationId != null && eventOperationId != state.activeOperationId) {
       return;
     }
 
@@ -341,8 +372,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       );
       return;
     }
-    if (payload is DppBootstrapReady &&
-        state.phase == NetworkProvisioningPhase.preparingDpp) {
+    if (payload is DppBootstrapReady && state.phase == NetworkProvisioningPhase.preparingDpp) {
       emit(
         state.copyWith(
           operationState: payload.operationState,
@@ -352,9 +382,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       );
       return;
     }
-    if (payload is StaConnected &&
-        (state.phase == NetworkProvisioningPhase.configuringSta ||
-            state.phase == NetworkProvisioningPhase.preparingDpp)) {
+    if (payload is StaConnected && (state.phase == NetworkProvisioningPhase.configuringSta || state.phase == NetworkProvisioningPhase.preparingDpp)) {
       final generation = _generation;
       emit(
         state.copyWith(
@@ -391,8 +419,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       );
       return;
     }
-    if (payload is DirectApReady &&
-        state.phase == NetworkProvisioningPhase.startingDirectAp) {
+    if (payload is DirectApReady && state.phase == NetworkProvisioningPhase.startingDirectAp) {
       final generation = _generation;
       emit(
         state.copyWith(
@@ -407,8 +434,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   void _onWifiScanBatch(WifiScanBatch batch) {
-    if (state.phase != NetworkProvisioningPhase.scanningWifi ||
-        state.activeOperationId == null) {
+    if (state.phase != NetworkProvisioningPhase.scanningWifi || state.activeOperationId == null) {
       return;
     }
     final expectedCount = _expectedScanBatchCount;
@@ -483,11 +509,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     try {
       final status = await _repository.getNetworkStatus();
       if (isClosed || generation != _generation) return;
-      final valid =
-          status.activeMode == expectedMode &&
-          status.operationState == expectedState &&
-          status.operationId == state.activeOperationId &&
-          status.baseUri != null;
+      final valid = status.activeMode == expectedMode && status.operationState == expectedState && status.operationId == state.activeOperationId && status.baseUri != null;
       if (!valid) {
         emit(
           state.copyWith(
@@ -504,6 +526,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
           phase: NetworkProvisioningPhase.success,
           operationState: status.operationState,
           baseUri: status.baseUri,
+          confirmedMode: expectedMode,
           canCancel: false,
           clearError: true,
         ),

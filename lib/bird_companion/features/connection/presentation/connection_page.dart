@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
@@ -10,6 +12,8 @@ import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_cubit.dart';
 import 'package:aves/bird_companion/features/connection/presentation/pages/connection_method_page.dart';
+import 'package:aves/bird_companion/features/connection/presentation/pages/network_provisioning_page.dart';
+import 'package:aves/bird_companion/features/connection/presentation/network_provisioning_cubit.dart';
 import 'package:aves/bird_companion/features/connection/presentation/provisioning_cubit.dart';
 import 'package:aves/bird_companion/features/connection/presentation/qr_connection_scanner_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/qr_connection_uri.dart';
@@ -33,11 +37,13 @@ class ConnectionPage extends StatelessWidget {
     this.entryMode = ConnectionEntryMode.initialSetup,
     this.provisioningRepository,
     this.onProvisioningMethodSelected,
+    this.onProvisioningCompleted,
   });
 
   final ConnectionEntryMode entryMode;
   final ProvisioningRepository? provisioningRepository;
   final ValueChanged<ConnectionMethod>? onProvisioningMethodSelected;
+  final ValueChanged<Uri>? onProvisioningCompleted;
 
   @override
   Widget build(BuildContext context) {
@@ -45,10 +51,18 @@ class ConnectionPage extends StatelessWidget {
     if (provisioning != null) {
       return Theme(
         data: AppTheme.light(),
-        child: BlocProvider(
-          create: (_) => ProvisioningCubit(provisioning)..discover(),
+        child: MultiBlocProvider(
+          providers: [
+            BlocProvider(
+              create: (_) => ProvisioningCubit(provisioning)..discover(),
+            ),
+            BlocProvider(
+              create: (_) => NetworkProvisioningCubit(provisioning),
+            ),
+          ],
           child: _BleConnectionView(
             onMethodSelected: onProvisioningMethodSelected,
+            onProvisioningCompleted: onProvisioningCompleted,
           ),
         ),
       );
@@ -68,67 +82,116 @@ class ConnectionPage extends StatelessWidget {
 }
 
 class _BleConnectionView extends StatelessWidget {
-  const _BleConnectionView({this.onMethodSelected});
+  const _BleConnectionView({
+    this.onMethodSelected,
+    this.onProvisioningCompleted,
+  });
 
   final ValueChanged<ConnectionMethod>? onMethodSelected;
+  final ValueChanged<Uri>? onProvisioningCompleted;
 
   @override
-  Widget build(BuildContext context) => BlocBuilder<ProvisioningCubit, ProvisioningState>(
-    builder: (context, state) {
-      final cubit = context.read<ProvisioningCubit>();
-      final error = state.error == null ? null : UserMessageMapper.fromError(state.error!);
-      final title = switch (state.phase) {
-        ProvisioningPhase.trusted => '验证设备',
-        ProvisioningPhase.pairingCode || ProvisioningPhase.authorizing => '设备配对',
-        ProvisioningPhase.methodSelection => '连接方式',
-        ProvisioningPhase.failure => '连接遇到问题',
-        _ => '查找盒子',
-      };
-      final content = switch (state.phase) {
-        ProvisioningPhase.trusted => _TrustedDeviceView(
-          deviceName: state.deviceInfo!.deviceName,
-          onStartPairing: cubit.openPairing,
-        ),
-        ProvisioningPhase.pairingCode => PairingCodeForm(
-          deviceName: state.deviceInfo!.deviceName,
-          codeMode: state.deviceInfo!.pairingCodeMode,
-          codeLength: state.deviceInfo!.pairingCodeLength,
-          displayAvailable: state.deviceInfo!.displayAvailable,
-          onSubmit: cubit.authorizePairing,
-          onCancel: cubit.reset,
-        ),
-        ProvisioningPhase.methodSelection => ConnectionMethodPage(
-          deviceName: state.deviceInfo!.deviceName,
-          onSelected: onMethodSelected ?? (_) {},
-        ),
-        ProvisioningPhase.connecting || ProvisioningPhase.authorizing => const _BleLoadingView(),
-        _ => _BleDiscoveryView(
-          devices: state.devices,
-          searching: state.phase == ProvisioningPhase.discovering,
-          error: error,
-          onDiscover: cubit.discover,
-          onSelectDevice: cubit.selectDevice,
-          onRetry: cubit.retry,
-        ),
-      };
-      return Scaffold(
-        backgroundColor: AppColors.paper,
-        body: ConnectionBackground(
-          child: SafeArea(
-            child: Column(
-              children: [
-                _ConnectionTopBar(
-                  title: title,
-                  onHelp: () => _showBleHelp(context),
-                ),
-                Expanded(child: content),
-              ],
-            ),
+  Widget build(BuildContext context) => BlocBuilder<NetworkProvisioningCubit, NetworkProvisioningState>(
+    builder: (context, networkState) {
+      if (networkState.phase != NetworkProvisioningPhase.idle) {
+        final networkCubit = context.read<NetworkProvisioningCubit>();
+        return _scaffold(
+          context,
+          title: _networkTitle(networkState.phase),
+          content: NetworkProvisioningPage(
+            onBack: networkCubit.backToMethodSelection,
+            onCompleted: onProvisioningCompleted,
           ),
-        ),
+        );
+      }
+      return BlocBuilder<ProvisioningCubit, ProvisioningState>(
+        builder: (context, state) {
+          final cubit = context.read<ProvisioningCubit>();
+          final error = state.error == null ? null : UserMessageMapper.fromError(state.error!);
+          final title = switch (state.phase) {
+            ProvisioningPhase.trusted => '验证设备',
+            ProvisioningPhase.pairingCode || ProvisioningPhase.authorizing => '设备配对',
+            ProvisioningPhase.methodSelection => '连接方式',
+            ProvisioningPhase.failure => '连接遇到问题',
+            _ => '查找盒子',
+          };
+          final content = switch (state.phase) {
+            ProvisioningPhase.trusted => _TrustedDeviceView(
+              deviceName: state.deviceInfo!.deviceName,
+              onStartPairing: cubit.openPairing,
+            ),
+            ProvisioningPhase.pairingCode => PairingCodeForm(
+              deviceName: state.deviceInfo!.deviceName,
+              codeMode: state.deviceInfo!.pairingCodeMode,
+              codeLength: state.deviceInfo!.pairingCodeLength,
+              displayAvailable: state.deviceInfo!.displayAvailable,
+              onSubmit: cubit.authorizePairing,
+              onCancel: cubit.reset,
+            ),
+            ProvisioningPhase.methodSelection => ConnectionMethodPage(
+              deviceName: state.deviceInfo!.deviceName,
+              capabilities: state.deviceInfo!.capabilities,
+              onSelected: (method) {
+                onMethodSelected?.call(method);
+                final networkCubit = context.read<NetworkProvisioningCubit>();
+                switch (method) {
+                  case ConnectionMethod.directAp:
+                    unawaited(networkCubit.startDirectAp(state.deviceInfo!));
+                    break;
+                  case ConnectionMethod.existingWifi:
+                    networkCubit.openWifiProvisioning(state.deviceInfo!);
+                    break;
+                }
+              },
+            ),
+            ProvisioningPhase.connecting || ProvisioningPhase.authorizing => const _BleLoadingView(),
+            _ => _BleDiscoveryView(
+              devices: state.devices,
+              searching: state.phase == ProvisioningPhase.discovering,
+              error: error,
+              onDiscover: cubit.discover,
+              onSelectDevice: cubit.selectDevice,
+              onRetry: cubit.retry,
+            ),
+          };
+          return _scaffold(context, title: title, content: content);
+        },
       );
     },
   );
+
+  Widget _scaffold(
+    BuildContext context, {
+    required String title,
+    required Widget content,
+  }) => Scaffold(
+    backgroundColor: AppColors.paper,
+    body: ConnectionBackground(
+      child: SafeArea(
+        child: Column(
+          children: [
+            _ConnectionTopBar(
+              title: title,
+              onHelp: () => _showBleHelp(context),
+            ),
+            Expanded(child: content),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  String _networkTitle(NetworkProvisioningPhase phase) => switch (phase) {
+    NetworkProvisioningPhase.choosingWifiMethod ||
+    NetworkProvisioningPhase.scanningWifi ||
+    NetworkProvisioningPhase.choosingWifiNetwork ||
+    NetworkProvisioningPhase.enteringWifiManually ||
+    NetworkProvisioningPhase.configuringSta ||
+    NetworkProvisioningPhase.preparingDpp => 'Wi-Fi 配网',
+    NetworkProvisioningPhase.success => '网络已连接',
+    NetworkProvisioningPhase.failure => '配网遇到问题',
+    _ => '盒子网络设置',
+  };
 
   void _showBleHelp(BuildContext context) {
     showModalBottomSheet<void>(

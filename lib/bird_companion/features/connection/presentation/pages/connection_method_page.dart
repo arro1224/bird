@@ -1,6 +1,7 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/provisioning_method_card.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:flutter/material.dart';
 
 enum ConnectionMethod { directAp, existingWifi }
@@ -12,10 +13,12 @@ class ConnectionMethodPage extends StatelessWidget {
     super.key,
     required this.deviceName,
     required this.onSelected,
+    this.capabilities,
   });
 
   final String deviceName;
   final ValueChanged<ConnectionMethod> onSelected;
+  final DeviceCapabilities? capabilities;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -46,14 +49,16 @@ class ConnectionMethodPage extends StatelessWidget {
         icon: Icons.wifi_tethering_rounded,
         title: '直连盒子',
         description: '让手机加入盒子创建的本地网络，适合户外无路由器场景。',
-        onTap: () => onSelected(ConnectionMethod.directAp),
+        onTap: capabilities?.directAp == false ? null : () => onSelected(ConnectionMethod.directAp),
+        disabledReason: capabilities?.directAp == false ? '此盒子不支持直连模式' : null,
       ),
       const SizedBox(height: AppSpacing.md),
       ProvisioningMethodCard(
         icon: Icons.router_outlined,
         title: '加入现有 Wi-Fi',
         description: '让盒子连接到已知 Wi-Fi，方便同一网络下持续使用。',
-        onTap: () => onSelected(ConnectionMethod.existingWifi),
+        onTap: capabilities?.infrastructureSta == false ? null : () => onSelected(ConnectionMethod.existingWifi),
+        disabledReason: capabilities?.infrastructureSta == false ? '此盒子不支持加入现有 Wi-Fi' : null,
       ),
       const SizedBox(height: AppSpacing.lg),
       Text(
