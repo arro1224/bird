@@ -67,6 +67,9 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
           mode: state.recoveredMode,
           onBack: widget.onBack,
         ),
+        NetworkProvisioningPhase.stopped => _StoppedView(
+          onBack: widget.onBack,
+        ),
         NetworkProvisioningPhase.failure => _FailureView(
           error: state.error,
           onBack: widget.onBack,
@@ -266,6 +269,20 @@ class _RecoveredView extends StatelessWidget {
     icon: Icons.settings_backup_restore_rounded,
     title: '已恢复可用网络',
     message: mode == ProvisioningNetworkMode.directAp ? '盒子已恢复到直连网络，本次目标网络没有连接成功。' : '盒子已恢复到之前可用的网络，本次目标网络没有连接成功。',
+    actionLabel: '返回连接方式',
+    onAction: onBack,
+  );
+}
+
+class _StoppedView extends StatelessWidget {
+  const _StoppedView({required this.onBack});
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) => _MessageView(
+    icon: Icons.wifi_tethering_off_rounded,
+    title: '盒子直连已停止',
+    message: '盒子已退出直连网络，可以重新选择连接方式。',
     actionLabel: '返回连接方式',
     onAction: onBack,
   );

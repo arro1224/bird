@@ -98,6 +98,7 @@ class _BleConnectionView extends StatelessWidget {
         return _scaffold(
           context,
           title: _networkTitle(networkState.phase),
+          onBack: networkCubit.backToMethodSelection,
           content: NetworkProvisioningPage(
             onBack: networkCubit.backToMethodSelection,
             onCompleted: onProvisioningCompleted,
@@ -164,6 +165,7 @@ class _BleConnectionView extends StatelessWidget {
     BuildContext context, {
     required String title,
     required Widget content,
+    VoidCallback? onBack,
   }) => Scaffold(
     backgroundColor: AppColors.paper,
     body: ConnectionBackground(
@@ -173,6 +175,7 @@ class _BleConnectionView extends StatelessWidget {
             _ConnectionTopBar(
               title: title,
               onHelp: () => _showBleHelp(context),
+              onBack: onBack,
             ),
             Expanded(child: content),
           ],
@@ -189,6 +192,7 @@ class _BleConnectionView extends StatelessWidget {
     NetworkProvisioningPhase.configuringSta ||
     NetworkProvisioningPhase.preparingDpp => 'Wi-Fi 配网',
     NetworkProvisioningPhase.success => '网络已连接',
+    NetworkProvisioningPhase.stopped => '直连已停止',
     NetworkProvisioningPhase.failure => '配网遇到问题',
     _ => '盒子网络设置',
   };
@@ -744,15 +748,18 @@ class _ConnectionTopBar extends StatelessWidget {
     required this.title,
     required this.onHelp,
     this.showBack = true,
+    this.onBack,
   });
 
   final String title;
   final VoidCallback onHelp;
   final bool showBack;
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
     final canPop = Navigator.of(context).canPop();
+    final showLeading = onBack != null || (canPop && showBack);
     return SizedBox(
       height: 64,
       child: Padding(
@@ -761,10 +768,10 @@ class _ConnectionTopBar extends StatelessWidget {
           children: [
             SizedBox(
               width: AppSpacing.minimumTouchTarget,
-              child: canPop && showBack
+              child: showLeading
                   ? IconButton(
                       tooltip: '返回',
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: onBack ?? () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.arrow_back_ios_new_rounded),
                     )
                   : null,

@@ -121,10 +121,55 @@ void main() {
       expect(cubit.state.phase, NetworkProvisioningPhase.stoppingDirectAp);
       expect(cubit.state.activeOperationId, 'op_stop');
 
+      repository.emitEvent(
+        const ProvisioningEvent(
+          type: ProvisioningEventType.directApStopped,
+          requestId: 'request-stop',
+          deviceId: 'bbx-0123456789abcdef0123456789abcdef',
+          payload: DirectApStopped(
+            operationId: 'op_stop',
+            activeMode: ProvisioningNetworkMode.none,
+            operationState: NetworkOperationState.idle,
+            restoredSta: false,
+            reason: 'user_requested',
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.phase, NetworkProvisioningPhase.stopped);
+
       cubit.backToMethodSelection();
       expect(cubit.state.phase, NetworkProvisioningPhase.idle);
       expect(cubit.state.activeOperationId, isNull);
       expect(cubit.state.baseUri, isNull);
+    });
+
+    test('maps a matching failed progress event to a safe failure', () async {
+      final repository = FakeProvisioningRepository(
+        startDirectApResult: const CommandAccepted(
+          operationId: 'op_direct',
+          desiredMode: ProvisioningNetworkMode.directAp,
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      await cubit.startDirectAp(_deviceInfo());
+
+      repository.emitEvent(
+        const ProvisioningEvent(
+          type: ProvisioningEventType.networkProgress,
+          requestId: 'request-progress',
+          deviceId: 'bbx-0123456789abcdef0123456789abcdef',
+          payload: NetworkProgress(
+            operationId: 'op_direct',
+            operationState: NetworkOperationState.failed,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.failure);
+      expect(cubit.state.error, isA<NetworkOperationFailedException>());
     });
   });
 

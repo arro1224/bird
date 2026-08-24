@@ -78,6 +78,10 @@ void main() {
 
     expect(repository.calls, contains('startDirectAp'));
     expect(find.text('正在启动盒子直连'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('返回'));
+    await tester.pump();
+    expect(networkCubit.state.phase, NetworkProvisioningPhase.idle);
   });
 }
 

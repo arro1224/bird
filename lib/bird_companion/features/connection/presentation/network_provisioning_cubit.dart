@@ -17,6 +17,7 @@ enum NetworkProvisioningPhase {
   preparingDpp,
   confirmingNetwork,
   success,
+  stopped,
   recovered,
   cancelled,
   failure,
@@ -363,10 +364,34 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       return;
     }
     if (payload is NetworkProgress) {
+      if (payload.operationState == NetworkOperationState.failed) {
+        emit(
+          state.copyWith(
+            phase: NetworkProvisioningPhase.failure,
+            operationState: payload.operationState,
+            error: const NetworkOperationFailedException(),
+            canCancel: false,
+          ),
+        );
+        return;
+      }
       emit(
         state.copyWith(
           operationState: payload.operationState,
           canCancel: payload.operationState.cancellable,
+          clearError: true,
+        ),
+      );
+      return;
+    }
+    if (payload is DirectApStopped && state.phase == NetworkProvisioningPhase.stoppingDirectAp) {
+      emit(
+        state.copyWith(
+          phase: NetworkProvisioningPhase.stopped,
+          operationState: payload.operationState,
+          clearBaseUri: true,
+          clearConfirmedMode: true,
+          canCancel: false,
           clearError: true,
         ),
       );
@@ -568,4 +593,11 @@ final class NetworkStatusConfirmationException implements Exception {
 
   @override
   String toString() => 'NetworkStatusConfirmationException';
+}
+
+final class NetworkOperationFailedException implements Exception {
+  const NetworkOperationFailedException();
+
+  @override
+  String toString() => 'NetworkOperationFailedException';
 }
