@@ -1,16 +1,23 @@
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:flutter/material.dart';
 
 class PairingCodeForm extends StatefulWidget {
   const PairingCodeForm({
     super.key,
     required this.deviceName,
+    this.codeMode = PairingCodeMode.sessionRandom,
+    this.codeLength = 4,
+    this.displayAvailable = true,
     required this.onSubmit,
     required this.onCancel,
   });
 
   final String deviceName;
+  final PairingCodeMode codeMode;
+  final int codeLength;
+  final bool displayAvailable;
   final ValueChanged<String> onSubmit;
   final VoidCallback onCancel;
 
@@ -41,7 +48,7 @@ class _PairingCodeFormState extends State<PairingCodeForm> {
       ),
       const SizedBox(height: AppSpacing.sm),
       Text(
-        '请输入盒子屏幕上显示的配对码。配对成功后，访问凭据只会加密保存在本机。',
+        _instruction,
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.bodyLarge,
       ),
@@ -53,10 +60,10 @@ class _PairingCodeFormState extends State<PairingCodeForm> {
         enableSuggestions: false,
         keyboardType: TextInputType.visiblePassword,
         textInputAction: TextInputAction.done,
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           labelText: '配对码',
-          hintText: '至少 4 位',
-          prefixIcon: Icon(Icons.password_rounded),
+          hintText: '${widget.codeLength} 位配对码',
+          prefixIcon: const Icon(Icons.password_rounded),
         ),
         onSubmitted: _submit,
       ),
@@ -73,12 +80,19 @@ class _PairingCodeFormState extends State<PairingCodeForm> {
 
   void _submit(String value) {
     final code = value.trim();
-    if (code.length < 4) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入至少 4 位配对码。')),
-      );
+    if (code.length != widget.codeLength) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('请输入 ${widget.codeLength} 位配对码。')));
       return;
     }
     widget.onSubmit(code);
+  }
+
+  String get _instruction {
+    if (widget.displayAvailable) {
+      return '请输入盒子屏幕上显示的 ${widget.codeLength} 位配对码。';
+    }
+    return widget.codeMode == PairingCodeMode.fixedDev ? '请查看盒子提示后输入 ${widget.codeLength} 位配对码。' : '请确认盒子已显示配对码后输入 ${widget.codeLength} 位配对码。';
   }
 }
