@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/presentation/network_provisioning_cubit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -171,6 +172,41 @@ void main() {
       expect(cubit.state.phase, NetworkProvisioningPhase.failure);
       expect(cubit.state.error, isA<NetworkOperationFailedException>());
     });
+
+    test('reports recovery without claiming the requested mode succeeded', () async {
+      final repository = FakeProvisioningRepository(
+        startDirectApResult: const CommandAccepted(
+          operationId: 'op_direct',
+          desiredMode: ProvisioningNetworkMode.directAp,
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      await cubit.startDirectAp(_deviceInfo());
+
+      repository.emitEvent(
+        const ProvisioningEvent(
+          type: ProvisioningEventType.networkRecovered,
+          requestId: 'request-recovery',
+          deviceId: 'bbx-0123456789abcdef0123456789abcdef',
+          payload: NetworkRecovered(
+            operationId: 'op_direct',
+            activeMode: ProvisioningNetworkMode.infrastructureSta,
+            operationState: NetworkOperationState.idle,
+            recoveredMode: ProvisioningNetworkMode.infrastructureSta,
+            recoveryReason: 'previous_sta_connect_failed',
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.recovered);
+      expect(
+        cubit.state.recoveredMode,
+        ProvisioningNetworkMode.infrastructureSta,
+      );
+      expect(cubit.state.confirmedMode, isNull);
+    });
   });
 
   group('NetworkProvisioningCubit Wi-Fi scan', () {
@@ -290,6 +326,26 @@ void main() {
         ['Studio', 'Field', 'Legacy'],
       );
     });
+
+    test('surfaces a Wi-Fi scan command failure safely', () async {
+      final repository = FakeProvisioningRepository(
+        scanWifiError: const ProvisioningException(
+          code: ProvisioningErrorCode.wifiScanFailed,
+          retryable: true,
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+
+      await cubit.scanWifi();
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.failure);
+      expect(
+        (cubit.state.error as ProvisioningException).code,
+        ProvisioningErrorCode.wifiScanFailed,
+      );
+    });
   });
 
   group('NetworkProvisioningCubit STA and DPP', () {
@@ -321,6 +377,38 @@ void main() {
       expect(cubit.state.activeOperationId, 'op_sta');
       expect(repository.lastStaObservation?.selectionMethod, WifiSelectionMethod.manual);
       expect(repository.lastStaObservation?.passwordProvided, isTrue);
+    });
+
+    test('submits a scanned network as BLE scan selection', () async {
+      final repository = FakeProvisioningRepository(
+        setStaConfigResult: const CommandAccepted(
+          operationId: 'op_sta',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.bleScanSelection,
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+
+      await cubit.submitStaConfiguration(
+        StaNetworkConfiguration(
+          provisioningMethod: ProvisioningMethod.bleScanSelection,
+          selectionMethod: WifiSelectionMethod.scanResult,
+          ssid: 'Studio',
+          bssid: 'AA:00:00:00:00:01',
+          security: WifiSecurity.open,
+          hidden: false,
+          networkKind: StaNetworkKind.router,
+        ),
+      );
+
+      expect(
+        repository.lastStaObservation?.selectionMethod,
+        WifiSelectionMethod.scanResult,
+      );
+      expect(repository.lastStaObservation?.hasBssid, isTrue);
+      expect(repository.lastStaObservation?.passwordProvided, isFalse);
     });
 
     test('confirms matching STA completion before success', () async {
@@ -402,6 +490,29 @@ void main() {
         contains('cancelNetworkOperation:op_dpp'),
       );
       expect(cubit.state.activeOperationId, 'op_cancel');
+
+      repository.emitEvent(
+        const ProvisioningEvent(
+          type: ProvisioningEventType.cancelled,
+          requestId: 'request-cancel',
+          deviceId: 'bbx-0123456789abcdef0123456789abcdef',
+          payload: CancelledOperation(operationId: 'op_cancel'),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.phase, NetworkProvisioningPhase.cancelled);
+    });
+
+    test('does not start DPP when the box capability is unavailable', () async {
+      final repository = FakeProvisioningRepository();
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo(dppSupported: false));
+
+      await cubit.startDppProvisioning();
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.methodUnavailable);
+      expect(repository.calls, isNot(contains('startDppProvisioning')));
     });
   });
 }
@@ -447,6 +558,7 @@ ProvisioningNetworkStatus _networkStatus({
 ProvisioningDeviceInfo _deviceInfo({
   bool directAp = true,
   bool wifiScan = true,
+  bool dppSupported = true,
 }) => ProvisioningDeviceInfo(
   protocolVersion: '1.0-rc4',
   minAppProtocolVersion: '1.0-rc4',
@@ -463,8 +575,8 @@ ProvisioningDeviceInfo _deviceInfo({
     infrastructureSta: true,
     wifiScan: wifiScan,
     wifiManual: true,
-    dppEnrolleeSupported: true,
-    dppSupportedAkm: const {'psk'},
+    dppEnrolleeSupported: dppSupported,
+    dppSupportedAkm: dppSupported ? const {'psk'} : const {},
     modeSwitch: true,
     networkRecovery: true,
     bleFragmentationV1: true,
