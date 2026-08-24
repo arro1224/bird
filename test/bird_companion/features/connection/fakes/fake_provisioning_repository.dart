@@ -3,6 +3,24 @@ import 'dart:async';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 
+final class FakeStaConfigObservation {
+  const FakeStaConfigObservation({
+    required this.provisioningMethod,
+    required this.selectionMethod,
+    required this.hidden,
+    required this.networkKind,
+    required this.hasBssid,
+    required this.passwordProvided,
+  });
+
+  final ProvisioningMethod provisioningMethod;
+  final WifiSelectionMethod selectionMethod;
+  final bool hidden;
+  final StaNetworkKind networkKind;
+  final bool hasBssid;
+  final bool passwordProvided;
+}
+
 final class FakeProvisioningRepository implements ProvisioningRepository {
   FakeProvisioningRepository({
     Iterable<ProvisioningDevice> devices = const [],
@@ -12,6 +30,20 @@ final class FakeProvisioningRepository implements ProvisioningRepository {
     this.connectError,
     this.openPairingError,
     this.authorizeError,
+    this.networkStatus,
+    this.startDirectApResult,
+    this.stopDirectApResult,
+    this.scanWifiResult,
+    this.setStaConfigResult,
+    this.startDppResult,
+    this.cancelResult,
+    this.networkStatusError,
+    this.startDirectApError,
+    this.stopDirectApError,
+    this.scanWifiError,
+    this.setStaConfigError,
+    this.startDppError,
+    this.cancelError,
   }) : _devices = List.of(devices);
 
   final List<ProvisioningDevice> _devices;
@@ -21,8 +53,23 @@ final class FakeProvisioningRepository implements ProvisioningRepository {
   final Object? connectError;
   final Object? openPairingError;
   final Object? authorizeError;
+  ProvisioningNetworkStatus? networkStatus;
+  final CommandAccepted? startDirectApResult;
+  final CommandAccepted? stopDirectApResult;
+  final CommandAccepted? scanWifiResult;
+  final CommandAccepted? setStaConfigResult;
+  final CommandAccepted? startDppResult;
+  final CommandAccepted? cancelResult;
+  final Object? networkStatusError;
+  final Object? startDirectApError;
+  final Object? stopDirectApError;
+  final Object? scanWifiError;
+  final Object? setStaConfigError;
+  final Object? startDppError;
+  final Object? cancelError;
   final StreamController<ProvisioningEvent> _events = StreamController.broadcast();
   final List<String> calls = [];
+  FakeStaConfigObservation? lastStaObservation;
 
   @override
   Stream<ProvisioningDevice> discoverDevices({Duration? timeout}) {
@@ -56,7 +103,7 @@ final class FakeProvisioningRepository implements ProvisioningRepository {
 
   @override
   Future<PairingAuthorization> authorizePairing(String pairingCode) async {
-    calls.add('authorize:$pairingCode');
+    calls.add('authorizePairing');
     if (authorizeError != null) throw authorizeError!;
     return PairingAuthorization.fromJson(const {
       'pairing_session_id': 'pairing-session-test',
@@ -65,25 +112,65 @@ final class FakeProvisioningRepository implements ProvisioningRepository {
   }
 
   @override
-  Future<ProvisioningNetworkStatus> getNetworkStatus() => throw UnimplementedError();
+  Future<ProvisioningNetworkStatus> getNetworkStatus() async {
+    calls.add('getNetworkStatus');
+    if (networkStatusError != null) throw networkStatusError!;
+    return networkStatus ?? (throw StateError('networkStatus must be configured'));
+  }
 
   @override
-  Future<CommandAccepted> startDirectAp() => throw UnimplementedError();
+  Future<CommandAccepted> startDirectAp() async {
+    calls.add('startDirectAp');
+    if (startDirectApError != null) throw startDirectApError!;
+    return startDirectApResult ?? (throw StateError('startDirectApResult must be configured'));
+  }
 
   @override
-  Future<CommandAccepted> stopDirectAp() => throw UnimplementedError();
+  Future<CommandAccepted> stopDirectAp() async {
+    calls.add('stopDirectAp');
+    if (stopDirectApError != null) throw stopDirectApError!;
+    return stopDirectApResult ?? (throw StateError('stopDirectApResult must be configured'));
+  }
 
   @override
-  Future<CommandAccepted> scanWifi() => throw UnimplementedError();
+  Future<CommandAccepted> scanWifi() async {
+    calls.add('scanWifi');
+    if (scanWifiError != null) throw scanWifiError!;
+    return scanWifiResult ?? (throw StateError('scanWifiResult must be configured'));
+  }
 
   @override
-  Future<CommandAccepted> setStaConfig(StaNetworkConfiguration configuration) => throw UnimplementedError();
+  Future<CommandAccepted> setStaConfig(StaNetworkConfiguration configuration) async {
+    calls.add('setStaConfig');
+    lastStaObservation = FakeStaConfigObservation(
+      provisioningMethod: configuration.provisioningMethod,
+      selectionMethod: configuration.selectionMethod,
+      hidden: configuration.hidden,
+      networkKind: configuration.networkKind,
+      hasBssid: configuration.bssid != null,
+      passwordProvided: configuration.password != null,
+    );
+    if (setStaConfigError != null) throw setStaConfigError!;
+    return setStaConfigResult ?? (throw StateError('setStaConfigResult must be configured'));
+  }
 
   @override
-  Future<CommandAccepted> startDppProvisioning() => throw UnimplementedError();
+  Future<CommandAccepted> startDppProvisioning() async {
+    calls.add('startDppProvisioning');
+    if (startDppError != null) throw startDppError!;
+    return startDppResult ?? (throw StateError('startDppResult must be configured'));
+  }
 
   @override
-  Future<CommandAccepted> cancelNetworkOperation(String operationId) => throw UnimplementedError();
+  Future<CommandAccepted> cancelNetworkOperation(String operationId) async {
+    calls.add('cancelNetworkOperation:$operationId');
+    if (cancelError != null) throw cancelError!;
+    return cancelResult ?? (throw StateError('cancelResult must be configured'));
+  }
+
+  void emitEvent(ProvisioningEvent event) => _events.add(event);
+
+  void emitError(Object error) => _events.addError(error);
 
   @override
   Future<void> dispose() => _events.close();
