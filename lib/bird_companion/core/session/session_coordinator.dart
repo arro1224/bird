@@ -93,6 +93,7 @@ class SessionCoordinator {
             accessToken: stored.accessToken,
             expiresAt: stored.expiresAt,
             apiVersion: stored.apiVersion,
+            clientId: stored.clientId,
           );
     await activate(credential, persist: credential != stored);
     return true;

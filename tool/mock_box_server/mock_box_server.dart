@@ -11,6 +11,7 @@ class MockBoxServer {
     this.requireAuthentication = false,
     this.deviceId = 'mock-k7-001',
     this.pairingCode = '2468',
+    this.pairingSessionId = 'ps_mock_pairing_session',
     this.tokenLifetime = const Duration(minutes: 10),
     this.signedUrlLifetime = const Duration(minutes: 2),
     this.progressiveMedia = false,
@@ -40,6 +41,7 @@ class MockBoxServer {
   final bool requireAuthentication;
   final String deviceId;
   final String pairingCode;
+  final String pairingSessionId;
   final Duration tokenLifetime;
   final Duration signedUrlLifetime;
   final bool progressiveMedia;
@@ -69,10 +71,13 @@ class MockBoxServer {
   String? _activeToken;
   DateTime? _tokenExpiresAt;
   String? lastPairAuthorizationHeader;
+  String? lastRc4PairingClientId;
+  bool lastRc4PairingIncludedCode = false;
   String? lastSignedAssetAuthorizationHeader;
   int jobListRequestCount = 0;
   int _eventSequence = 0;
   late bool _assetEventsEnabled;
+  bool _pairingSessionConsumed = false;
 
   HttpServer? _server;
 
@@ -236,6 +241,22 @@ class MockBoxServer {
     final method = request.method;
     final path = request.uri.path;
 
+    if (method == 'GET' && path == '/health') {
+      await _json(
+        request,
+        HttpStatus.ok,
+        {
+          'status': 'ok',
+          'device_id': deviceId,
+          'protocol_version': '1.0-rc4',
+          'api_version': 'v1',
+          'active_mode': 'direct_ap',
+          'server_time': _clock().toUtc().toIso8601String(),
+        },
+        envelope: false,
+      );
+      return;
+    }
     if (method == 'GET' && path == '/healthz') {
       await _json(request, HttpStatus.ok, {
         'status': 'ok',
@@ -251,6 +272,11 @@ class MockBoxServer {
     if (method == 'POST' && path == '/api/v1/device/pair') {
       if (await _replayOrRegisterIdempotent(request)) return;
       await _pair(request);
+      return;
+    }
+    if (method == 'POST' && path == '/api/v1/pairing') {
+      if (await _replayOrRegisterIdempotent(request)) return;
+      await _exchangePairingSession(request);
       return;
     }
     if (method == 'POST' && path == '/mock/control/assets' && progressiveMedia) {
@@ -1144,6 +1170,99 @@ class MockBoxServer {
     });
   }
 
+  Future<void> _exchangePairingSession(HttpRequest request) async {
+    final body = await _requestJson(request);
+    lastRc4PairingIncludedCode = body.containsKey('pairing_code');
+    lastRc4PairingClientId = body['client_id']?.toString();
+    const expected = {
+      'device_id',
+      'client_id',
+      'client_name',
+      'pairing_session_id',
+    };
+    if (!body.keys.toSet().containsAll(expected) || !expected.containsAll(body.keys.toSet())) {
+      await _json(
+        request,
+        HttpStatus.unprocessableEntity,
+        {
+          'code': 'INVALID_REQUEST',
+          'message': 'The rc4 pairing request shape is invalid.',
+          'retryable': false,
+          'retry_after_ms': 0,
+        },
+        envelope: false,
+      );
+      return;
+    }
+    if (body['device_id'] != deviceId || body['pairing_session_id'] != pairingSessionId) {
+      await _json(
+        request,
+        HttpStatus.forbidden,
+        {
+          'code': 'PAIRING_SESSION_INVALID',
+          'message': 'The pairing session is invalid.',
+          'retryable': false,
+          'retry_after_ms': 0,
+        },
+        envelope: false,
+      );
+      return;
+    }
+    if (_pairingSessionConsumed) {
+      await _json(
+        request,
+        HttpStatus.conflict,
+        {
+          'code': 'PAIRING_SESSION_USED',
+          'message': 'The pairing session was already consumed.',
+          'retryable': false,
+          'retry_after_ms': 0,
+        },
+        envelope: false,
+      );
+      return;
+    }
+    final clientId = body['client_id'];
+    if (clientId is! String ||
+        !RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+          caseSensitive: false,
+        ).hasMatch(clientId)) {
+      await _json(
+        request,
+        HttpStatus.unprocessableEntity,
+        {
+          'code': 'INVALID_REQUEST',
+          'message': 'client_id must be a UUID v4.',
+          'retryable': false,
+          'retry_after_ms': 0,
+        },
+        envelope: false,
+      );
+      return;
+    }
+    _pairingSessionConsumed = true;
+    const expiresIn = 2592000;
+    final expiresAt = _clock().toUtc().add(
+      const Duration(seconds: expiresIn),
+    );
+    final token = 'mock-rc4-access-${expiresAt.microsecondsSinceEpoch}';
+    _activeToken = token;
+    _tokenExpiresAt = expiresAt;
+    await _json(
+      request,
+      HttpStatus.created,
+      {
+        'token_type': 'Bearer',
+        'access_token': token,
+        'expires_in': expiresIn,
+        'device_id': deviceId,
+        'client_id': clientId,
+      },
+      envelope: false,
+    );
+  }
+
   Future<void> _pair(HttpRequest request) async {
     lastPairAuthorizationHeader = request.headers.value(
       HttpHeaders.authorizationHeader,
@@ -1835,7 +1954,7 @@ class MockBoxServer {
       },
       'idempotent_responses': {
         for (final entry in _idempotentResponses.entries)
-          if (!entry.key.contains('/api/v1/device/pair'))
+          if (!entry.key.contains('/api/v1/device/pair') && !entry.key.contains('/api/v1/pairing'))
             entry.key: {
               'status_code': entry.value.statusCode,
               'body': entry.value.body,

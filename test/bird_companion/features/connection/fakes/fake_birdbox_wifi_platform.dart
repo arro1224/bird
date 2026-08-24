@@ -1,10 +1,14 @@
 import 'package:aves/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart';
 
 final class FakeBirdBoxWifiPlatform implements BirdBoxWifiPlatform {
+  bool permissionGranted = true;
   final List<WifiJoinResult> _joinResults = [];
   final List<String> requestedSsids = [];
   int releaseCount = 0;
   BirdBoxWifiNetwork? _boundNetwork;
+
+  @override
+  Future<bool> ensurePermissions() async => permissionGranted;
 
   void queueJoinResult(WifiJoinResult result) => _joinResults.add(result);
 
@@ -28,4 +32,7 @@ final class FakeBirdBoxWifiPlatform implements BirdBoxWifiPlatform {
 
   @override
   BirdBoxWifiNetwork? get boundNetwork => _boundNetwork;
+
+  @override
+  Future<void> dispose() => releaseNetwork();
 }

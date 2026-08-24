@@ -6,6 +6,7 @@ import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_page.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:flutter/material.dart';
 
 class BirdCompanionApp extends StatelessWidget {
@@ -25,8 +26,14 @@ class BirdCompanionApp extends StatelessWidget {
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
         themeMode: ThemeMode.system,
-        home: birdStartupHome(dependencies.deviceSessionCubit.state),
-        onGenerateRoute: BirdAppRouter.onGenerateRoute,
+        home: birdStartupHome(
+          dependencies.deviceSessionCubit.state,
+          provisioningRepository: dependencies.provisioningRepository,
+        ),
+        onGenerateRoute: (settings) => BirdAppRouter.onGenerateRoute(
+          settings,
+          provisioningRepository: dependencies.provisioningRepository,
+        ),
       ),
     );
   }
@@ -38,12 +45,21 @@ class BirdCompanionApp extends StatelessWidget {
 /// A retained device means the user has completed setup before. It remains in
 /// the session when reconnecting fails, so cached photos stay available while
 /// the box is offline. Only users without device history enter initial setup.
-Widget birdStartupHome(DeviceSessionState session) {
+Widget birdStartupHome(
+  DeviceSessionState session, {
+  ProvisioningRepository? provisioningRepository,
+}) {
   if (session.device == null) {
-    return const ConnectionPage(entryMode: ConnectionEntryMode.initialSetup);
+    return ConnectionPage(
+      entryMode: ConnectionEntryMode.initialSetup,
+      provisioningRepository: provisioningRepository,
+    );
   }
-  return const BirdAppShell(
+  return BirdAppShell(
     initialIndex: 0,
-    onGenerateRoute: BirdAppRouter.onGenerateRoute,
+    onGenerateRoute: (settings) => BirdAppRouter.onGenerateRoute(
+      settings,
+      provisioningRepository: provisioningRepository,
+    ),
   );
 }
