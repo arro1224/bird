@@ -80,7 +80,11 @@ void main() {
         await cubit.authorizePairing('246810');
 
         expect(cubit.state.phase, ProvisioningPhase.methodSelection);
-        expect(repository.calls, contains('authorize:246810'));
+        expect(repository.calls, contains('authorizePairing'));
+        expect(
+          repository.calls.any((call) => call.contains(RegExp(r'\d{6}'))),
+          isFalse,
+        );
         expect(repository.calls, isNot(contains('startDirectAp')));
       },
     );
