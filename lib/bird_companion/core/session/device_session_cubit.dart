@@ -41,6 +41,17 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
         );
       }
     });
+    _addressSubscription = sessionCoordinator?.addressChanges.listen((change) {
+      final device = state.device;
+      if (isClosed || device == null || device.id != change.deviceId) return;
+      emit(
+        state.copyWith(
+          device: device.copyWith(baseUri: change.baseUri),
+          lastUpdatedAt: DateTime.now(),
+        ),
+      );
+      _refreshCoordinator.requestRefresh();
+    });
   }
 
   final ConnectionRepository _repository;
@@ -52,6 +63,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   late final StreamSubscription<bool> _networkSubscription;
   late final StreamSubscription<EventConnectionState> _eventSubscription;
   StreamSubscription<SessionAuthenticationFailure>? _authenticationSubscription;
+  StreamSubscription<SessionAddressChange>? _addressSubscription;
 
   void connecting() {
     if (!isClosed) emit(state.copyWith(phase: DeviceSessionPhase.connecting, clearMessage: true));
@@ -140,6 +152,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     await _networkSubscription.cancel();
     await _eventSubscription.cancel();
     await _authenticationSubscription?.cancel();
+    await _addressSubscription?.cancel();
     return super.close();
   }
 }

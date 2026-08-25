@@ -26,6 +26,12 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
     required HealthApi healthApi,
     required PairingApi pairingApi,
     SessionCoordinator? sessionCoordinator,
+    Future<void> Function(
+      String deviceId,
+      Uri baseUri,
+      ProvisioningNetworkMode mode,
+    )?
+    rememberDynamicAddress,
     RequestIdFactory? requestIds,
     DateTime Function()? clock,
   }) => ProvisioningRepositoryImpl._(
@@ -37,6 +43,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
     healthApi,
     pairingApi,
     sessionCoordinator,
+    rememberDynamicAddress,
     requestIds ?? SecureRequestIdFactory(),
     clock ?? DateTime.now,
   );
@@ -50,6 +57,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
     this._healthApi,
     this._pairingApi,
     this._sessionCoordinator,
+    this._rememberDynamicAddress,
     this._requestIds,
     this._clock,
   ) {
@@ -68,6 +76,12 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
   final HealthApi _healthApi;
   final PairingApi _pairingApi;
   final SessionCoordinator? _sessionCoordinator;
+  final Future<void> Function(
+    String deviceId,
+    Uri baseUri,
+    ProvisioningNetworkMode mode,
+  )?
+  _rememberDynamicAddress;
   final RequestIdFactory _requestIds;
   final DateTime Function() _clock;
 
@@ -90,6 +104,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
   String? _activeScanRequestId;
   int _scanSequence = 0;
   bool _disposed = false;
+  String? _lastTrustedDeviceId;
 
   /// Final de-duplicated scan snapshots for B-owned selection pages.
   Stream<List<WifiScanNetwork>> get wifiScanResults => _wifiScanResults.stream;
@@ -131,6 +146,10 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
           await _credentialStore.delete(info.deviceId);
         }
       }
+      final reconnecting = _lastTrustedDeviceId == info.deviceId;
+      _lastTrustedDeviceId = info.deviceId;
+      final status = reconnecting ? await _networkStatusAfterReconnect() : await _ble.readNetworkStatus();
+      _resumeOperation(status);
       return info;
     } catch (_) {
       await _ble.disconnect();
@@ -196,14 +215,45 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
         'get_network_status must return network_status',
       );
     }
-    return event.payload as ProvisioningNetworkStatus;
+    final status = event.payload as ProvisioningNetworkStatus;
+    _resumeOperation(status);
+    return status;
+  }
+
+  Future<ProvisioningNetworkStatus> _networkStatusAfterReconnect() async {
+    try {
+      return await getNetworkStatus();
+    } on StateError {
+      // A characteristic read is the safe compatibility fallback when an
+      // older box cannot answer the explicit recovery command yet.
+      return _ble.readNetworkStatus();
+    } on ProvisioningException catch (error) {
+      // Never mask a permanent protocol, identity, or authorization failure.
+      if (!error.retryable) rethrow;
+      return _ble.readNetworkStatus();
+    }
+  }
+
+  void _resumeOperation(ProvisioningNetworkStatus status) {
+    final operationId = status.operationId;
+    if (operationId == null || !status.busy) return;
+    _operations[operationId] = switch (status.operationState) {
+      NetworkOperationState.stoppingAp => BleCommandType.stopDirectAp,
+      NetworkOperationState.scanning || NetworkOperationState.scanComplete => BleCommandType.scanWifi,
+      NetworkOperationState.preparingDpp || NetworkOperationState.waitingDppConfigurator || NetworkOperationState.dppAuthenticating || NetworkOperationState.dppConfigurationReceived => BleCommandType.startDppProvisioning,
+      _ when status.desiredMode == ProvisioningNetworkMode.directAp => BleCommandType.startDirectAp,
+      _ => BleCommandType.setStaConfig,
+    };
   }
 
   @override
   Future<CommandAccepted> startDirectAp() => _startOperation(BleCommandType.startDirectAp);
 
   @override
-  Future<CommandAccepted> stopDirectAp() => _startOperation(BleCommandType.stopDirectAp);
+  Future<CommandAccepted> stopDirectAp() => _startOperation(
+    BleCommandType.stopDirectAp,
+    payload: const {'restore_previous_sta': true},
+  );
 
   @override
   Future<CommandAccepted> scanWifi() async {
@@ -359,8 +409,12 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
       return event;
     }
 
+    if (event.payload case final ProvisioningNetworkStatus status) {
+      _resumeOperation(status);
+    }
+
     final operationId = event.operationId;
-    if (operationId != null && event.terminal && !_operations.containsKey(operationId)) {
+    if (operationId != null && event.type != ProvisioningEventType.networkStatus && !_operations.containsKey(operationId)) {
       return null;
     }
 
@@ -369,7 +423,10 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
         await _joinAndValidateDirectAp(ready);
       case StaConnected connected:
         await _wifi.releaseNetwork();
-        await _validateAndExchange(connected.baseUri);
+        await _validateAndExchange(
+          connected.baseUri,
+          ProvisioningNetworkMode.infrastructureSta,
+        );
       case DppBootstrapReady ready:
         if (_operations[ready.operationId] != BleCommandType.startDppProvisioning) {
           return null;
@@ -385,6 +442,8 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
                 ),
           );
         }
+      case NetworkRecovered recovered:
+        await _applyRecovery(recovered);
       case DirectApStopped _:
         await _wifi.releaseNetwork();
       default:
@@ -441,21 +500,109 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
     final network = result.network!;
     await _wifi.bindProcessToNetwork(network);
     try {
-      await _validateAndExchange(ready.baseUri);
+      await _validateAndExchange(
+        ready.baseUri,
+        ProvisioningNetworkMode.directAp,
+      );
     } catch (_) {
       await _wifi.releaseNetwork();
       rethrow;
     }
   }
 
-  Future<void> _validateAndExchange(Uri baseUri) async {
+  Future<void> _applyRecovery(NetworkRecovered recovered) async {
+    switch (recovered.recoveredMode) {
+      case ProvisioningNetworkMode.directAp:
+        final ssid = recovered.ssid;
+        final passphrase = recovered.passphrase;
+        final baseUri = recovered.baseUri;
+        if (ssid == null || passphrase == null || baseUri == null) {
+          throw const ProvisioningProtocolException(
+            'network_recovered',
+            'direct_ap recovery requires ssid, passphrase and base_uri',
+          );
+        }
+        await _joinAndValidateDirectApRecovery(
+          ssid: ssid,
+          passphrase: passphrase,
+          baseUri: baseUri,
+        );
+        return;
+      case ProvisioningNetworkMode.infrastructureSta:
+        final baseUri = recovered.baseUri;
+        if (baseUri == null) {
+          throw const ProvisioningProtocolException(
+            'network_recovered.base_uri',
+            'is required for infrastructure_sta recovery',
+          );
+        }
+        await _wifi.releaseNetwork();
+        await _validateAndExchange(
+          baseUri,
+          ProvisioningNetworkMode.infrastructureSta,
+        );
+        return;
+      case ProvisioningNetworkMode.none:
+        await _wifi.releaseNetwork();
+        return;
+    }
+  }
+
+  Future<void> _joinAndValidateDirectApRecovery({
+    required String ssid,
+    required String passphrase,
+    required Uri baseUri,
+  }) async {
+    if (!await _wifi.ensurePermissions()) {
+      throw const ProvisioningException(
+        code: ProvisioningErrorCode.localNetworkPermissionDenied,
+        retryable: false,
+      );
+    }
+    final result = await _wifi.joinDirectAp(
+      ssid: ssid,
+      passphrase: passphrase,
+    );
+    if (!result.joined) throw _wifiJoinError(result.outcome);
+    await _wifi.bindProcessToNetwork(result.network!);
+    try {
+      await _validateAndExchange(
+        baseUri,
+        ProvisioningNetworkMode.directAp,
+      );
+    } catch (_) {
+      await _wifi.releaseNetwork();
+      rethrow;
+    }
+  }
+
+  Future<void> _validateAndExchange(
+    Uri baseUri,
+    ProvisioningNetworkMode mode,
+  ) async {
     final info = _requireDeviceInfo();
     await _healthApi.waitForDevice(
       baseUri,
       expectedDeviceId: info.deviceId,
     );
+    await _rememberDynamicAddress?.call(info.deviceId, baseUri, mode);
     final session = _pairingSession;
-    if (session == null) return;
+    if (session == null) {
+      final credential = _credential;
+      if (credential == null || !credential.isUsableAt(_clock())) return;
+      final relocated = SessionCredential(
+        deviceId: credential.deviceId,
+        baseUri: baseUri,
+        accessToken: credential.accessToken,
+        expiresAt: credential.expiresAt,
+        apiVersion: credential.apiVersion,
+        clientId: credential.clientId,
+      );
+      await _credentialStore.write(relocated);
+      _credential = relocated;
+      await _sessionCoordinator?.activate(relocated, persist: false);
+      return;
+    }
     if (!session.expiresAt.isAfter(_clock().toUtc())) {
       _pairingSession = null;
       throw const ProvisioningException(

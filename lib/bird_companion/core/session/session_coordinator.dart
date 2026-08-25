@@ -11,6 +11,16 @@ class SessionAuthenticationFailure {
   final int statusCode;
 }
 
+class SessionAddressChange {
+  const SessionAddressChange({
+    required this.deviceId,
+    required this.baseUri,
+  });
+
+  final String deviceId;
+  final Uri baseUri;
+}
+
 /// Owns the one active device identity shared by REST and WebSocket.
 class SessionCoordinator {
   SessionCoordinator(
@@ -34,6 +44,9 @@ class SessionCoordinator {
   final DateTime Function() _clock;
   final Duration clockSkew;
   final _authenticationFailures = StreamController<SessionAuthenticationFailure>.broadcast();
+  final _addressChanges = StreamController<SessionAddressChange>.broadcast(
+    sync: true,
+  );
 
   late final StreamSubscription<int> _apiFailureSubscription;
   late final StreamSubscription<int> _eventFailureSubscription;
@@ -41,7 +54,9 @@ class SessionCoordinator {
   bool _invalidating = false;
 
   Stream<SessionAuthenticationFailure> get authenticationFailures => _authenticationFailures.stream;
+  Stream<SessionAddressChange> get addressChanges => _addressChanges.stream;
   String? get activeDeviceId => _activeCredential?.deviceId;
+  Uri? get activeBaseUri => _activeCredential?.baseUri;
 
   Future<void> activate(
     SessionCredential credential, {
@@ -73,6 +88,14 @@ class SessionCoordinator {
       accessToken: credential.accessToken,
       apiVersion: credential.apiVersion,
     );
+    if (!_addressChanges.isClosed) {
+      _addressChanges.add(
+        SessionAddressChange(
+          deviceId: credential.deviceId,
+          baseUri: credential.baseUri,
+        ),
+      );
+    }
   }
 
   Future<bool> restore({
@@ -131,5 +154,6 @@ class SessionCoordinator {
     await _apiFailureSubscription.cancel();
     await _eventFailureSubscription.cancel();
     await _authenticationFailures.close();
+    await _addressChanges.close();
   }
 }
