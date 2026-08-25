@@ -1,6 +1,7 @@
 package deckers.thibault.aves;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
@@ -42,12 +43,14 @@ public final class MainActivity extends FlutterActivity {
     private static final String CLIENT_IDENTITY_PREFERENCE = "installation_client_identity";
     private BirdBoxBleChannel birdBoxBleChannel;
     private BirdBoxWifiChannel birdBoxWifiChannel;
+    private BirdBoxDppChannel birdBoxDppChannel;
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
         super.configureFlutterEngine(flutterEngine);
         birdBoxBleChannel = new BirdBoxBleChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
         birdBoxWifiChannel = new BirdBoxWifiChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
+        birdBoxDppChannel = new BirdBoxDppChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), DISCOVERY_CHANNEL)
                 .setMethodCallHandler((call, result) -> {
                     if ("discover".equals(call.method)) {
@@ -60,6 +63,15 @@ public final class MainActivity extends FlutterActivity {
                 .setMethodCallHandler(this::handleSecureSession);
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), CLIENT_IDENTITY_CHANNEL)
                 .setMethodCallHandler(this::handleClientIdentity);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        final boolean handledByDpp = birdBoxDppChannel != null
+                && birdBoxDppChannel.onActivityResult(requestCode, resultCode);
+        if (!handledByDpp) {
+            super.onActivityResult(requestCode, resultCode, data);
+        }
     }
 
     @Override
@@ -80,6 +92,10 @@ public final class MainActivity extends FlutterActivity {
         if (birdBoxWifiChannel != null) {
             birdBoxWifiChannel.dispose();
             birdBoxWifiChannel = null;
+        }
+        if (birdBoxDppChannel != null) {
+            birdBoxDppChannel.dispose();
+            birdBoxDppChannel = null;
         }
         super.cleanUpFlutterEngine(flutterEngine);
     }

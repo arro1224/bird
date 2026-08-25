@@ -7,6 +7,7 @@ import 'package:aves/bird_companion/core/session/session_credential.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/birdbox_ble_data_source.dart';
 import 'package:aves/bird_companion/features/connection/data/health_api.dart';
 import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
+import 'package:aves/bird_companion/features/connection/data/platform/birdbox_dpp_platform.dart';
 import 'package:aves/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
@@ -19,6 +20,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
   factory ProvisioningRepositoryImpl({
     required BirdBoxBleDataSource ble,
     required BirdBoxWifiPlatform wifi,
+    required BirdBoxDppPlatform dpp,
     required ClientIdentityStore clientIdentityStore,
     required SecureSessionStore credentialStore,
     required HealthApi healthApi,
@@ -29,6 +31,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
   }) => ProvisioningRepositoryImpl._(
     ble,
     wifi,
+    dpp,
     clientIdentityStore,
     credentialStore,
     healthApi,
@@ -41,6 +44,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
   ProvisioningRepositoryImpl._(
     this._ble,
     this._wifi,
+    this._dpp,
     this._clientIdentityStore,
     this._credentialStore,
     this._healthApi,
@@ -58,6 +62,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
 
   final BirdBoxBleDataSource _ble;
   final BirdBoxWifiPlatform _wifi;
+  final BirdBoxDppPlatform _dpp;
   final ClientIdentityStore _clientIdentityStore;
   final SecureSessionStore _credentialStore;
   final HealthApi _healthApi;
@@ -72,6 +77,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
   final Map<String, BleCommandType> _requestTypes = {};
   final Map<String, BleCommandType> _operations = {};
   final Map<int, WifiScanBatch> _scanBatches = {};
+  final Set<String> _activeDppLaunches = {};
 
   late final StreamSubscription<ProvisioningEvent> _bleEventSubscription;
   late final StreamSubscription<void> _disconnectSubscription;
@@ -218,7 +224,17 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
   );
 
   @override
-  Future<CommandAccepted> startDppProvisioning() => _startOperation(BleCommandType.startDppProvisioning);
+  Future<CommandAccepted> startDppProvisioning() async {
+    final info = _requireDeviceInfo();
+    if (!info.capabilities.dppUsableByBox) {
+      throw const ProvisioningException(
+        code: ProvisioningErrorCode.capabilityUnsupported,
+        retryable: false,
+      );
+    }
+    _requireDppCapability(await _dpp.checkCapability());
+    return _startOperation(BleCommandType.startDppProvisioning);
+  }
 
   @override
   Future<CommandAccepted> cancelNetworkOperation(String operationId) => _startOperation(
@@ -354,6 +370,21 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
       case StaConnected connected:
         await _wifi.releaseNetwork();
         await _validateAndExchange(connected.baseUri);
+      case DppBootstrapReady ready:
+        if (_operations[ready.operationId] != BleCommandType.startDppProvisioning) {
+          return null;
+        }
+        if (_activeDppLaunches.add(ready.operationId)) {
+          unawaited(
+            _launchDppSystemFlow(ready)
+                .catchError((Object error, StackTrace stackTrace) {
+                  if (!_disposed) _events.addError(error, stackTrace);
+                })
+                .whenComplete(
+                  () => _activeDppLaunches.remove(ready.operationId),
+                ),
+          );
+        }
       case DirectApStopped _:
         await _wifi.releaseNetwork();
       default:
@@ -447,6 +478,66 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
     await _sessionCoordinator?.activate(credential, persist: false);
   }
 
+  Future<void> _launchDppSystemFlow(DppBootstrapReady ready) async {
+    try {
+      _requireDppCapability(await _dpp.checkCapability());
+      final result = await _dpp.launchEasyConnect(ready.dppUri);
+      if (result.systemAccepted) return;
+      await _cancelDppOperationBestEffort(ready.operationId);
+      throw _dppLaunchError(result.outcome, result.systemResultCode);
+    } finally {
+      await _clearDppTransientUri();
+    }
+  }
+
+  void _requireDppCapability(DppCapability capability) {
+    if (!capability.apiLevelSupported || !capability.easyConnectSupported) {
+      throw const ProvisioningException(
+        code: ProvisioningErrorCode.phoneDppNotSupported,
+        retryable: false,
+      );
+    }
+    if (!capability.activityAvailable) {
+      throw const ProvisioningException(
+        code: ProvisioningErrorCode.systemDppActivityUnavailable,
+        retryable: false,
+      );
+    }
+  }
+
+  Future<void> _cancelDppOperationBestEffort(String operationId) async {
+    try {
+      await cancelNetworkOperation(operationId);
+    } catch (_) {
+      // Preserve the local Easy Connect failure. The box will also expire its
+      // short-lived bootstrap state, so cancellation failure is non-fatal here.
+    }
+  }
+
+  ProvisioningException _dppLaunchError(
+    DppLaunchOutcome outcome,
+    String? systemResultCode,
+  ) => ProvisioningException(
+    code: switch (outcome) {
+      DppLaunchOutcome.userCancelled => ProvisioningErrorCode.userCancelledDppDialog,
+      DppLaunchOutcome.activityUnavailable => ProvisioningErrorCode.systemDppActivityUnavailable,
+      DppLaunchOutcome.invalidUri => ProvisioningErrorCode.systemDppInvalidUri,
+      DppLaunchOutcome.timedOut => ProvisioningErrorCode.dppTimeout,
+      _ => ProvisioningErrorCode.systemDppFailed,
+    },
+    retryable: outcome == DppLaunchOutcome.failed,
+    diagnosticMessage: systemResultCode == null ? null : 'Android Easy Connect result: $systemResultCode',
+  );
+
+  Future<void> _clearDppTransientUri() async {
+    try {
+      await _dpp.clearTransientUri();
+    } catch (_) {
+      // Secret cleanup is best effort across Flutter engine teardown. The
+      // native channel also clears its reference on result and disposal.
+    }
+  }
+
   ProvisioningException _wifiJoinError(WifiJoinOutcome outcome) => ProvisioningException(
     code: switch (outcome) {
       WifiJoinOutcome.userCancelled => ProvisioningErrorCode.userCancelledWifiDialog,
@@ -478,6 +569,8 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
     _expectedScanBatchCount = null;
     _scanSawComplete = false;
     _activeScanRequestId = null;
+    _activeDppLaunches.clear();
+    unawaited(_clearDppTransientUri());
     _deviceInfo = null;
     _clientId = null;
     _credential = null;
@@ -495,6 +588,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
     await _bleEventSubscription.cancel();
     await _disconnectSubscription.cancel();
     await _wifi.dispose();
+    await _clearDppTransientUri();
     await _ble.dispose();
     await _events.close();
     await _disconnects.close();

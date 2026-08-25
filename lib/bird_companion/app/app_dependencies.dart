@@ -28,6 +28,7 @@ import 'package:aves/bird_companion/features/connection/data/device_discovery_so
 import 'package:aves/bird_companion/features/connection/data/health_api.dart';
 import 'package:aves/bird_companion/features/connection/data/mdns_device_discovery_source.dart';
 import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
+import 'package:aves/bird_companion/features/connection/data/platform/birdbox_dpp_platform.dart';
 import 'package:aves/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart';
 import 'package:aves/bird_companion/features/connection/data/provisioning_repository_impl.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
@@ -143,6 +144,7 @@ class BirdCompanionDependencies {
     final provisioningRepository = ProvisioningRepositoryImpl(
       ble: PlatformBirdBoxBleDataSource(),
       wifi: MethodChannelBirdBoxWifiPlatform(),
+      dpp: MethodChannelBirdBoxDppPlatform(),
       clientIdentityStore: AndroidKeystoreClientIdentityStore(),
       credentialStore: secureSessionStore,
       healthApi: HealthApi(apiClient),

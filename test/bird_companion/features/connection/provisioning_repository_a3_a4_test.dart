@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../../../tool/mock_box_server/mock_box_server.dart';
 import 'fakes/fake_birdbox_ble_data_source.dart';
+import 'fakes/fake_birdbox_dpp_platform.dart';
 import 'fakes/fake_birdbox_wifi_platform.dart';
 
 const _deviceId = 'bbx-82f41c9e7a3d4b68a1501e21e536c649';
@@ -336,6 +337,7 @@ final class _Harness {
     final repository = ProvisioningRepositoryImpl(
       ble: ble,
       wifi: wifi,
+      dpp: FakeBirdBoxDppPlatform(),
       clientIdentityStore: MemoryClientIdentityStore(
         initialValue: _clientId,
       ),
