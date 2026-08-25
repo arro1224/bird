@@ -5,6 +5,7 @@ import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/widgets/error_notice.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/presentation/network_provisioning_cubit.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/provisioning_method_card.dart';
@@ -73,6 +74,14 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
         NetworkProvisioningPhase.failure => _FailureView(
           error: state.error,
           onBack: widget.onBack,
+          onRetry: _canRetryDpp(state) ? () => unawaited(cubit.startDppProvisioning()) : null,
+        ),
+        NetworkProvisioningPhase.dppUnavailable => _MessageView(
+          icon: Icons.phonelink_erase_rounded,
+          title: '手机暂不支持 DPP 配网',
+          message: '请选择搜索 Wi-Fi 或手动输入继续连接。',
+          actionLabel: '选择其他方式',
+          onAction: cubit.returnToWifiMethodSelection,
         ),
         NetworkProvisioningPhase.methodUnavailable => _UnavailableView(
           onBack: widget.onBack,
@@ -289,9 +298,10 @@ class _StoppedView extends StatelessWidget {
 }
 
 class _FailureView extends StatelessWidget {
-  const _FailureView({required this.error, required this.onBack});
+  const _FailureView({required this.error, required this.onBack, this.onRetry});
   final Object? error;
   final VoidCallback onBack;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -300,6 +310,10 @@ class _FailureView extends StatelessWidget {
       padding: const EdgeInsets.all(AppSpacing.pageHorizontal),
       children: [
         ErrorNotice(title: message.title, message: message.message),
+        if (onRetry != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          BirdButton(label: '重新尝试 DPP', onPressed: onRetry),
+        ],
         const SizedBox(height: AppSpacing.md),
         BirdButton(
           label: '返回连接方式',
@@ -396,4 +410,12 @@ String _securityLabel(WifiSecurity security) => switch (security) {
   WifiSecurity.wpa2Personal => 'WPA2',
   WifiSecurity.wpa3Personal => 'WPA3',
   WifiSecurity.wpa2Wpa3Transition => 'WPA2/WPA3',
+};
+
+bool _canRetryDpp(NetworkProvisioningState state) => switch (state.error) {
+  ProvisioningException(
+    code: ProvisioningErrorCode.systemDppFailed || ProvisioningErrorCode.dppTimeout,
+  ) =>
+    true,
+  _ => false,
 };

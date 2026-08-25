@@ -251,6 +251,24 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     );
   }
 
+  void returnToWifiMethodSelection() {
+    _generation++;
+    _clearScanAccumulator();
+    emit(
+      state.copyWith(
+        phase: NetworkProvisioningPhase.choosingWifiMethod,
+        clearOperation: true,
+        clearOperationState: true,
+        clearNetworks: true,
+        clearBaseUri: true,
+        clearConfirmedMode: true,
+        clearRecoveredMode: true,
+        clearError: true,
+        canCancel: false,
+      ),
+    );
+  }
+
   Future<void> submitStaConfiguration(
     StaNetworkConfiguration configuration,
   ) async {

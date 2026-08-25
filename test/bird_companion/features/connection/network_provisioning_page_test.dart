@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/presentation/pages/connection_method_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/pages/network_provisioning_page.dart';
@@ -134,7 +135,124 @@ void main() {
     expect(find.text('Studio'), findsOneWidget);
     expect(find.text('-42 dBm'), findsOneWidget);
   });
+
+  testWidgets('DPP unavailable returns to the safe method choice', (
+    tester,
+  ) async {
+    final repository = FakeProvisioningRepository(
+      startDppError: const ProvisioningException(
+        code: ProvisioningErrorCode.systemDppActivityUnavailable,
+        retryable: false,
+        diagnosticMessage: 'DPP:K:PRIVATE;;',
+      ),
+    );
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(_pageHarness(cubit));
+
+    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pump();
+
+    expect(find.text('手机暂不支持 DPP 配网'), findsOneWidget);
+    expect(find.text('请选择搜索 Wi-Fi 或手动输入继续连接。'), findsOneWidget);
+    expect(find.textContaining('DPP:K:'), findsNothing);
+
+    await tester.tap(find.text('选择其他方式'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('选择 Wi-Fi 配网方式'), findsOneWidget);
+  });
+
+  testWidgets('retryable DPP failure exposes one safe retry action', (
+    tester,
+  ) async {
+    final repository = FakeProvisioningRepository(
+      startDppError: const ProvisioningException(
+        code: ProvisioningErrorCode.systemDppFailed,
+        retryable: true,
+        diagnosticMessage: 'DPP:K:PRIVATE;;',
+      ),
+    );
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(_pageHarness(cubit));
+
+    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pump();
+
+    expect(find.text('重新尝试 DPP'), findsOneWidget);
+    expect(find.textContaining('DPP:K:'), findsNothing);
+
+    await tester.tap(find.text('重新尝试 DPP'));
+    await tester.pump();
+
+    expect(
+      repository.calls.where((call) => call == 'startDppProvisioning'),
+      hasLength(2),
+    );
+  });
+
+  testWidgets('DPP timeout still offers a safe fresh attempt', (
+    tester,
+  ) async {
+    final repository = FakeProvisioningRepository(
+      startDppError: const ProvisioningException(
+        code: ProvisioningErrorCode.dppTimeout,
+        retryable: false,
+        diagnosticMessage: 'DPP:K:PRIVATE;;',
+      ),
+    );
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(_pageHarness(cubit));
+
+    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pump();
+
+    expect(find.text('重新尝试 DPP'), findsOneWidget);
+    expect(find.textContaining('DPP:K:'), findsNothing);
+  });
+
+  testWidgets('non-DPP failure does not expose DPP retry', (tester) async {
+    final repository = FakeProvisioningRepository(
+      startDppError: const ProvisioningException(
+        code: ProvisioningErrorCode.wifiScanFailed,
+        retryable: true,
+        diagnosticMessage: 'DPP:K:PRIVATE;;',
+      ),
+    );
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(_pageHarness(cubit));
+
+    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pump();
+
+    expect(find.text('重新尝试 DPP'), findsNothing);
+    expect(find.textContaining('DPP:K:'), findsNothing);
+  });
 }
+
+Widget _pageHarness(
+  NetworkProvisioningCubit cubit, {
+  ValueChanged<Uri>? onCompleted,
+  VoidCallback? onBack,
+}) => MaterialApp(
+  theme: AppTheme.light(),
+  home: Scaffold(
+    body: BlocProvider.value(
+      value: cubit,
+      child: NetworkProvisioningPage(
+        onBack: onBack ?? cubit.backToMethodSelection,
+        onCompleted: onCompleted,
+      ),
+    ),
+  ),
+);
 
 ProvisioningDeviceInfo _deviceInfo() => ProvisioningDeviceInfo(
   protocolVersion: '1.0-rc4',
