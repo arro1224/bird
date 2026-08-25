@@ -3,31 +3,40 @@ import 'package:aves/bird_companion/core/models/json_value.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:equatable/equatable.dart';
 
-enum NetworkMode { hotspot, lan, manual, qr, unknown }
+enum NetworkMode {
+  directAp,
+  infrastructureSta,
+  none,
+
+  /// Legacy UI entry modes kept source-compatible while persisted values use
+  /// the rc4 network identity contract.
+  hotspot,
+  lan,
+  manual,
+  qr,
+  unknown,
+}
 
 extension NetworkModeWireValue on NetworkMode {
   static NetworkMode fromWire(String? value) => switch (value) {
-    'hotspot' => NetworkMode.hotspot,
-    'lan' => NetworkMode.lan,
-    'manual' => NetworkMode.manual,
-    'qr' => NetworkMode.qr,
+    'direct_ap' || 'hotspot' => NetworkMode.directAp,
+    'infrastructure_sta' || 'lan' || 'manual' || 'qr' => NetworkMode.infrastructureSta,
+    'none' => NetworkMode.none,
     _ => NetworkMode.unknown,
   };
 
   String get wireValue => switch (this) {
-    NetworkMode.hotspot => 'hotspot',
-    NetworkMode.lan => 'lan',
-    NetworkMode.manual => 'manual',
-    NetworkMode.qr => 'qr',
-    NetworkMode.unknown => 'unknown',
+    NetworkMode.directAp || NetworkMode.hotspot => 'direct_ap',
+    NetworkMode.infrastructureSta || NetworkMode.lan || NetworkMode.manual || NetworkMode.qr => 'infrastructure_sta',
+    NetworkMode.none || NetworkMode.unknown => 'none',
   };
 
   String get label => switch (this) {
-    NetworkMode.hotspot => '盒子热点',
-    NetworkMode.lan => '同一个 Wi-Fi',
+    NetworkMode.directAp || NetworkMode.hotspot => '盒子热点',
+    NetworkMode.infrastructureSta || NetworkMode.lan => '同一个 Wi-Fi',
     NetworkMode.manual => '手动地址',
     NetworkMode.qr => '扫码连接',
-    NetworkMode.unknown => '未知连接方式',
+    NetworkMode.none || NetworkMode.unknown => '未知连接方式',
   };
 }
 
@@ -53,7 +62,9 @@ class DeviceConnection extends Equatable {
   Map<String, dynamic> toJson() => {
     'device_id': id,
     'device_name': name,
-    'base_uri': baseUri.toString(),
+    // The address is only a reconnect hint. Stable identity always comes from
+    // device_id and must be revalidated by /health or the device status API.
+    'address_hint': baseUri.toString(),
     'network_mode': networkMode.wireValue,
     'api_version': apiVersion,
     'signal_strength': signalStrength,
@@ -61,7 +72,7 @@ class DeviceConnection extends Equatable {
   };
 
   factory DeviceConnection.fromJson(Map<String, dynamic> json) {
-    final rawUri = json.stringOrNull('base_uri') ?? json.stringOrNull('ip_address') ?? '';
+    final rawUri = json.stringOrNull('address_hint') ?? json.stringOrNull('base_uri') ?? json.stringOrNull('ip_address') ?? '';
     return DeviceConnection(
       id: json.stringOrNull('device_id') ?? rawUri,
       name: json.stringOrNull('device_name') ?? '拍鸟盒子',
@@ -72,6 +83,22 @@ class DeviceConnection extends Equatable {
       isPaired: json.boolOrNull('is_paired') ?? false,
     );
   }
+
+  DeviceConnection copyWith({
+    Uri? baseUri,
+    NetworkMode? networkMode,
+    String? apiVersion,
+    int? signalStrength,
+    bool? isPaired,
+  }) => DeviceConnection(
+    id: id,
+    name: name,
+    baseUri: baseUri ?? this.baseUri,
+    networkMode: networkMode ?? this.networkMode,
+    apiVersion: apiVersion ?? this.apiVersion,
+    signalStrength: signalStrength ?? this.signalStrength,
+    isPaired: isPaired ?? this.isPaired,
+  );
 
   @override
   List<Object?> get props => [id, name, baseUri, networkMode, apiVersion, signalStrength, isPaired];

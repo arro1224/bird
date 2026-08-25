@@ -82,4 +82,46 @@ void main() {
     expect(payload['project_id'], 'project-1');
     expect(payload, isNot(contains('batch_id')));
   });
+
+  test('legacy device addresses become v3 hints with rc4 modes', () {
+    final legacyActive = {
+      'device_id': 'bbx-82f41c9e7a3d4b68a1501e21e536c649',
+      'device_name': 'BirdBox-82F41C9E',
+      'base_uri': 'http://192.168.4.1:8080',
+      'network_mode': 'hotspot',
+      'is_paired': true,
+    };
+    final legacyRecent = [
+      legacyActive,
+      {
+        'device_id': 'bbx-11111111111111111111111111111111',
+        'ip_address': 'http://192.168.1.17:8080',
+        'network_mode': 'qr',
+      },
+    ];
+
+    final writes = CacheSchemaMigrator.writesFor({
+      CacheSchemaMigrator.schemaVersionKey: 2,
+      CacheSchemaMigrator.legacyActiveDeviceKey: legacyActive,
+      CacheSchemaMigrator.legacyRecentDevicesKey: legacyRecent,
+    });
+
+    expect(
+      writes[CacheSchemaMigrator.activeDeviceBackupKey],
+      same(legacyActive),
+    );
+    final active = writes[CacheSchemaMigrator.activeDeviceKey] as Map;
+    expect(active['address_hint'], 'http://192.168.4.1:8080');
+    expect(active['network_mode'], 'direct_ap');
+    expect(active, isNot(contains('base_uri')));
+
+    final recent = writes[CacheSchemaMigrator.recentDevicesKey] as List;
+    expect((recent.last as Map)['network_mode'], 'infrastructure_sta');
+    expect((recent.last as Map), isNot(contains('ip_address')));
+    expect(
+      writes[CacheSchemaMigrator.legacyActiveDeviceKey],
+      isNull,
+      reason: 'Migration must leave legacy keys untouched.',
+    );
+  });
 }

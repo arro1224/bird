@@ -43,6 +43,6 @@ final _savedDevice = DeviceConnection(
   id: 'saved-k7',
   name: '拍鸟伴侣 K7',
   baseUri: Uri.parse('http://192.168.1.7:8787'),
-  networkMode: NetworkMode.lan,
+  networkMode: NetworkMode.infrastructureSta,
   isPaired: true,
 );
