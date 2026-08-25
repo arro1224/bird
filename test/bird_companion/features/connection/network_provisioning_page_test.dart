@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:aves/bird_companion/features/connection/presentation/pages/connection_method_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/pages/network_provisioning_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/network_provisioning_cubit.dart';
@@ -164,6 +167,46 @@ void main() {
     expect(find.text('选择 Wi-Fi 配网方式'), findsOneWidget);
   });
 
+  testWidgets('rapid DPP taps start only one repository command', (tester) async {
+    final startCompleter = Completer<CommandAccepted>();
+    final fakeRepository = FakeProvisioningRepository();
+    final repository = _PendingStartDppRepository(
+      fakeRepository,
+      startCompleter.future,
+    );
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(fakeRepository.dispose);
+    addTearDown(() {
+      if (!startCompleter.isCompleted) {
+        startCompleter.complete(
+          const CommandAccepted(
+            operationId: 'op_dpp_single_flight',
+            desiredMode: ProvisioningNetworkMode.infrastructureSta,
+            provisioningMethod: ProvisioningMethod.androidDpp,
+          ),
+        );
+      }
+    });
+    await tester.pumpWidget(_pageHarness(cubit));
+
+    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.tap(find.text('使用 DPP 安全配网'));
+
+    expect(repository.startDppCalls, 1);
+
+    startCompleter.complete(
+      const CommandAccepted(
+        operationId: 'op_dpp_single_flight',
+        desiredMode: ProvisioningNetworkMode.infrastructureSta,
+        provisioningMethod: ProvisioningMethod.androidDpp,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(cubit.state.activeOperationId, 'op_dpp_single_flight');
+  });
+
   testWidgets('retryable DPP failure exposes one safe retry action', (
     tester,
   ) async {
@@ -304,3 +347,23 @@ DeviceCapabilities _capabilities({bool directAp = true}) => DeviceCapabilities(
   apBand24Ghz: true,
   apBand5Ghz: false,
 );
+
+final class _PendingStartDppRepository implements ProvisioningRepository {
+  _PendingStartDppRepository(this._delegate, this._startDppResult);
+
+  final FakeProvisioningRepository _delegate;
+  final Future<CommandAccepted> _startDppResult;
+  var startDppCalls = 0;
+
+  @override
+  Stream<ProvisioningEvent> get events => _delegate.events;
+
+  @override
+  Future<CommandAccepted> startDppProvisioning() {
+    startDppCalls++;
+    return _startDppResult;
+  }
+
+  @override
+  Never noSuchMethod(Invocation invocation) => throw UnsupportedError('Unexpected repository call: ${invocation.memberName}');
+}

@@ -312,6 +312,12 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   Future<void> startDppProvisioning() async {
+    final currentError = state.error;
+    final canStart =
+        state.phase == NetworkProvisioningPhase.choosingWifiMethod ||
+        (state.phase == NetworkProvisioningPhase.failure && currentError is ProvisioningException && (currentError.code == ProvisioningErrorCode.systemDppFailed || currentError.code == ProvisioningErrorCode.dppTimeout));
+    if (!canStart) return;
+
     final capabilities = state.capabilities;
     if (capabilities?.infrastructureSta != true || capabilities?.dppUsableByBox != true) {
       emit(state.copyWith(phase: NetworkProvisioningPhase.methodUnavailable));
@@ -627,7 +633,12 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       return;
     }
     final settled = switch (state.phase) {
-      NetworkProvisioningPhase.dppUnavailable || NetworkProvisioningPhase.success || NetworkProvisioningPhase.stopped || NetworkProvisioningPhase.recovered || NetworkProvisioningPhase.cancelled => true,
+      NetworkProvisioningPhase.choosingWifiMethod ||
+      NetworkProvisioningPhase.dppUnavailable ||
+      NetworkProvisioningPhase.success ||
+      NetworkProvisioningPhase.stopped ||
+      NetworkProvisioningPhase.recovered ||
+      NetworkProvisioningPhase.cancelled => true,
       _ => false,
     };
     if (settled) return;
