@@ -235,6 +235,28 @@ void main() {
     expect(find.text('重新尝试 DPP'), findsNothing);
     expect(find.textContaining('DPP:K:'), findsNothing);
   });
+
+  testWidgets('unknown DPP failure uses the safe generic fallback without retry', (
+    tester,
+  ) async {
+    const privateDiagnostic = 'synthetic-private-diagnostic://password=secret';
+    final repository = FakeProvisioningRepository(
+      startDppError: StateError(privateDiagnostic),
+    );
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(_pageHarness(cubit));
+
+    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pump();
+
+    expect(find.text('操作未完成'), findsOneWidget);
+    expect(find.text('请检查与盒子的连接后重试。'), findsOneWidget);
+    expect(find.text('返回连接方式'), findsOneWidget);
+    expect(find.text('重新尝试 DPP'), findsNothing);
+    expect(find.textContaining(privateDiagnostic), findsNothing);
+  });
 }
 
 Widget _pageHarness(
