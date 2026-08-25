@@ -609,7 +609,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       return;
     }
     final settled = switch (state.phase) {
-      NetworkProvisioningPhase.success || NetworkProvisioningPhase.stopped || NetworkProvisioningPhase.recovered || NetworkProvisioningPhase.cancelled => true,
+      NetworkProvisioningPhase.dppUnavailable || NetworkProvisioningPhase.success || NetworkProvisioningPhase.stopped || NetworkProvisioningPhase.recovered || NetworkProvisioningPhase.cancelled => true,
       _ => false,
     };
     if (settled) return;
