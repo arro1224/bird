@@ -620,6 +620,151 @@ void main() {
       expect(cubit.state.phase, NetworkProvisioningPhase.methodUnavailable);
       expect(repository.calls, isNot(contains('startDppProvisioning')));
     });
+
+    test('maps unavailable phone DPP to a dedicated safe phase', () async {
+      final repository = FakeProvisioningRepository(
+        startDppError: const ProvisioningException(
+          code: ProvisioningErrorCode.phoneDppNotSupported,
+          retryable: false,
+          diagnosticMessage: 'DPP:K:SYNTHETIC_PRIVATE_DIAGNOSTIC;;',
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+
+      await cubit.startDppProvisioning();
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.dppUnavailable);
+      expect(cubit.state.activeOperationId, isNull);
+      expect(cubit.state.canCancel, isFalse);
+      expect(cubit.state.error, isNull);
+      expect(
+        cubit.state.toString(),
+        isNot(contains('DPP:K:SYNTHETIC_PRIVATE_DIAGNOSTIC;;')),
+      );
+      expect(
+        repository.calls.where((call) => call == 'startDppProvisioning'),
+        hasLength(1),
+      );
+    });
+
+    test('maps a system DPP cancellation to the cancelled result', () async {
+      final repository = FakeProvisioningRepository(
+        startDppResult: const CommandAccepted(
+          operationId: 'op_dpp_cancelled',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+
+      repository.emitError(
+        const ProvisioningException(
+          code: ProvisioningErrorCode.userCancelledDppDialog,
+          retryable: false,
+          diagnosticMessage: 'private system result',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.cancelled);
+      expect(cubit.state.error, isNull);
+      expect(cubit.state.activeOperationId, isNull);
+      expect(cubit.state.canCancel, isFalse);
+    });
+
+    test('keeps retryable DPP failures sanitized', () async {
+      final repository = FakeProvisioningRepository(
+        startDppError: const ProvisioningException(
+          code: ProvisioningErrorCode.systemDppFailed,
+          retryable: true,
+          diagnosticMessage: 'platform result contains private data',
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+
+      await cubit.startDppProvisioning();
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.failure);
+      expect(cubit.state.error, isA<ProvisioningException>());
+      final error = cubit.state.error! as ProvisioningException;
+      expect(error.code, ProvisioningErrorCode.systemDppFailed);
+      expect(error.retryable, isTrue);
+      expect(error.diagnosticMessage, isNull);
+    });
+
+    test('system DPP handoff waits for box confirmation before success', () async {
+      final repository = FakeProvisioningRepository(
+        startDppResult: const CommandAccepted(
+          operationId: 'op_dpp_success',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+        networkStatus: _networkStatus(
+          mode: ProvisioningNetworkMode.infrastructureSta,
+          operationState: NetworkOperationState.staConnected,
+          operationId: 'op_dpp_success',
+          baseUri: Uri.parse('http://192.0.2.20'),
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+
+      repository.emitEvent(
+        ProvisioningEvent.fromJson({
+          'protocol_version': '1.0-rc4',
+          'type': 'dpp_bootstrap_ready',
+          'request_id': 'request-dpp-bootstrap',
+          'device_id': _deviceInfo().deviceId,
+          'ok': true,
+          'payload': {
+            'operation_id': 'op_dpp_success',
+            'operation_state': 'waiting_dpp_configurator',
+            'dpp_uri': 'DPP:K:SYNTHETIC_PUBLIC_BOOTSTRAP;;',
+            'expires_in_seconds': 120,
+          },
+        }),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.preparingDpp);
+      expect(
+        cubit.state.operationState,
+        NetworkOperationState.waitingDppConfigurator,
+      );
+      expect(cubit.state.baseUri, isNull);
+
+      repository.emitEvent(
+        ProvisioningEvent(
+          type: ProvisioningEventType.staConnected,
+          requestId: 'request-dpp-sta-connected',
+          deviceId: _deviceInfo().deviceId,
+          payload: StaConnected(
+            operationId: 'op_dpp_success',
+            ssid: 'Studio',
+            ipv4: '192.0.2.20',
+            prefixLength: 24,
+            gatewayIpv4: '192.0.2.1',
+            baseUri: Uri.parse('http://192.0.2.20'),
+            networkKind: StaNetworkKind.router,
+            provisioningMethod: ProvisioningMethod.androidDpp,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.success);
+      expect(cubit.state.baseUri, Uri.parse('http://192.0.2.20'));
+    });
   });
 }
 

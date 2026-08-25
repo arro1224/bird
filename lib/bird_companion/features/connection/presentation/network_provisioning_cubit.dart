@@ -16,6 +16,7 @@ enum NetworkProvisioningPhase {
   enteringWifiManually,
   configuringSta,
   preparingDpp,
+  dppUnavailable,
   confirmingNetwork,
   success,
   stopped,
@@ -315,14 +316,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       emit(state.copyWith(activeOperationId: accepted.operationId));
     } catch (error) {
       if (isClosed || generation != _generation) return;
-      emit(
-        state.copyWith(
-          phase: NetworkProvisioningPhase.failure,
-          error: _safePresentationError(error),
-          clearOperation: true,
-          canCancel: false,
-        ),
-      );
+      _emitDppOutcome(error);
     }
   }
 
@@ -350,6 +344,30 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
         ),
       );
     }
+  }
+
+  void _emitDppOutcome(Object error) {
+    final safeError = _safePresentationError(error);
+    final phase = switch (safeError) {
+      ProvisioningException(
+        code: ProvisioningErrorCode.userCancelledDppDialog,
+      ) =>
+        NetworkProvisioningPhase.cancelled,
+      ProvisioningException(
+        code: ProvisioningErrorCode.phoneDppNotSupported || ProvisioningErrorCode.systemDppActivityUnavailable || ProvisioningErrorCode.systemDppInvalidUri,
+      ) =>
+        NetworkProvisioningPhase.dppUnavailable,
+      _ => NetworkProvisioningPhase.failure,
+    };
+    emit(
+      state.copyWith(
+        phase: phase,
+        error: phase == NetworkProvisioningPhase.failure ? safeError : null,
+        clearError: phase != NetworkProvisioningPhase.failure,
+        clearOperation: true,
+        canCancel: false,
+      ),
+    );
   }
 
   void _onEvent(ProvisioningEvent event) {
@@ -586,6 +604,10 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   void _onEventError(Object error, StackTrace stackTrace) {
     if (isClosed || state.trustedDeviceId == null) return;
+    if (state.phase == NetworkProvisioningPhase.preparingDpp) {
+      _emitDppOutcome(error);
+      return;
+    }
     final settled = switch (state.phase) {
       NetworkProvisioningPhase.success || NetworkProvisioningPhase.stopped || NetworkProvisioningPhase.recovered || NetworkProvisioningPhase.cancelled => true,
       _ => false,
