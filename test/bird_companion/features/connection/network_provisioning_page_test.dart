@@ -167,6 +167,61 @@ void main() {
     expect(find.text('选择 Wi-Fi 配网方式'), findsOneWidget);
   });
 
+  testWidgets('network recovery is not reported as DPP success', (
+    tester,
+  ) async {
+    final deviceInfo = _deviceInfo();
+    final repository = FakeProvisioningRepository(
+      startDppResult: const CommandAccepted(
+        operationId: 'op_dpp_recovery',
+        desiredMode: ProvisioningNetworkMode.infrastructureSta,
+        provisioningMethod: ProvisioningMethod.androidDpp,
+      ),
+    );
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(deviceInfo);
+    var completed = false;
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      _pageHarness(cubit, onCompleted: (_) => completed = true),
+    );
+
+    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pump();
+
+    expect(repository.calls, contains('startDppProvisioning'));
+    expect(cubit.state.activeOperationId, 'op_dpp_recovery');
+
+    repository.emitEvent(
+      ProvisioningEvent(
+        type: ProvisioningEventType.networkRecovered,
+        requestId: 'request-dpp-recovery',
+        deviceId: deviceInfo.deviceId,
+        payload: NetworkRecovered(
+          operationId: 'op_dpp_recovery',
+          activeMode: ProvisioningNetworkMode.directAp,
+          operationState: NetworkOperationState.idle,
+          recoveredMode: ProvisioningNetworkMode.directAp,
+          recoveryReason: 'previous_sta_connect_failed',
+          ssid: 'Synthetic-AP',
+          security: WifiSecurity.wpa2Personal,
+          passphrase: 'must-never-render',
+          gatewayIpv4: '192.0.2.1',
+          prefixLength: 24,
+          baseUri: Uri.parse('http://192.0.2.1'),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('已恢复可用网络'), findsOneWidget);
+    expect(find.text('盒子已加入 Wi-Fi'), findsNothing);
+    expect(find.text('完成'), findsNothing);
+    expect(find.textContaining('must-never-render'), findsNothing);
+    expect(find.textContaining('192.0.2.1'), findsNothing);
+    expect(completed, isFalse);
+  });
+
   testWidgets('rapid DPP taps start only one repository command', (tester) async {
     final startCompleter = Completer<CommandAccepted>();
     final fakeRepository = FakeProvisioningRepository();
