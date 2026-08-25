@@ -89,6 +89,72 @@ void main() {
       },
     );
 
+    test('ignores matching events that arrive after success', () async {
+      final repository = FakeProvisioningRepository(
+        startDirectApResult: const CommandAccepted(
+          operationId: 'op_direct',
+          desiredMode: ProvisioningNetworkMode.directAp,
+        ),
+        networkStatus: _networkStatus(
+          mode: ProvisioningNetworkMode.directAp,
+          operationState: NetworkOperationState.apReady,
+          operationId: 'op_direct',
+          baseUri: Uri.parse('http://192.168.8.1'),
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      await cubit.startDirectAp(_deviceInfo());
+      repository.emitEvent(
+        _directApReady(
+          deviceId: _deviceInfo().deviceId,
+          operationId: 'op_direct',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      repository.emitEvent(
+        const ProvisioningEvent(
+          type: ProvisioningEventType.networkProgress,
+          requestId: 'request-late-progress',
+          deviceId: 'bbx-0123456789abcdef0123456789abcdef',
+          payload: NetworkProgress(
+            operationId: 'op_direct',
+            operationState: NetworkOperationState.scanning,
+          ),
+        ),
+      );
+      repository.emitEvent(
+        const ProvisioningEvent(
+          type: ProvisioningEventType.cancelled,
+          requestId: 'request-late-cancelled',
+          deviceId: 'bbx-0123456789abcdef0123456789abcdef',
+          payload: CancelledOperation(operationId: 'op_direct'),
+        ),
+      );
+      repository.emitEvent(
+        const ProvisioningEvent(
+          type: ProvisioningEventType.networkRecovered,
+          requestId: 'request-late-recovery',
+          deviceId: 'bbx-0123456789abcdef0123456789abcdef',
+          payload: NetworkRecovered(
+            operationId: 'op_direct',
+            activeMode: ProvisioningNetworkMode.infrastructureSta,
+            operationState: NetworkOperationState.idle,
+            recoveredMode: ProvisioningNetworkMode.infrastructureSta,
+            recoveryReason: 'previous_sta_connect_failed',
+          ),
+        ),
+      );
+      repository.emitError(StateError('late stream error'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.success);
+      expect(cubit.state.operationState, NetworkOperationState.apReady);
+      expect(cubit.state.canCancel, isFalse);
+    });
+
     test('stops a confirmed Direct AP and can return to method choice', () async {
       final repository = FakeProvisioningRepository(
         startDirectApResult: const CommandAccepted(
@@ -300,7 +366,7 @@ void main() {
             networks: [
               WifiScanNetwork(
                 ssid: 'Studio-old',
-                bssid: 'AA:00:00:00:00:01',
+                bssid: 'aa:00:00:00:00:01',
                 rssiDbm: -70,
                 frequencyMhz: 2412,
                 security: WifiSecurity.wpa2Personal,
@@ -332,6 +398,7 @@ void main() {
         scanWifiError: const ProvisioningException(
           code: ProvisioningErrorCode.wifiScanFailed,
           retryable: true,
+          diagnosticMessage: 'password=must-not-enter-state',
         ),
       );
       final cubit = NetworkProvisioningCubit(repository);
@@ -345,6 +412,45 @@ void main() {
         (cubit.state.error as ProvisioningException).code,
         ProvisioningErrorCode.wifiScanFailed,
       );
+      expect(
+        (cubit.state.error as ProvisioningException).diagnosticMessage,
+        isNull,
+      );
+    });
+
+    test('sanitizes provisioning errors emitted by the event stream', () async {
+      final repository = FakeProvisioningRepository();
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+
+      repository.emitError(
+        const ProvisioningException(
+          code: ProvisioningErrorCode.networkInternalError,
+          retryable: true,
+          diagnosticMessage: 'token=must-not-enter-state',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.failure);
+      expect(
+        (cubit.state.error as ProvisioningException).diagnosticMessage,
+        isNull,
+      );
+    });
+
+    test('replaces unknown event stream errors with a safe failure', () async {
+      final repository = FakeProvisioningRepository();
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+
+      repository.emitError(StateError('password=must-not-enter-state'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.failure);
+      expect(cubit.state.error, isA<NetworkOperationFailedException>());
     });
   });
 

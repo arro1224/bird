@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -134,7 +135,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.failure,
-          error: error,
+          error: _safePresentationError(error),
           clearOperation: true,
           canCancel: false,
         ),
@@ -167,7 +168,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.failure,
-          error: error,
+          error: _safePresentationError(error),
           canCancel: false,
         ),
       );
@@ -228,7 +229,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.failure,
-          error: error,
+          error: _safePresentationError(error),
           clearOperation: true,
           canCancel: false,
         ),
@@ -283,7 +284,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.failure,
-          error: error,
+          error: _safePresentationError(error),
           clearOperation: true,
           canCancel: false,
         ),
@@ -317,7 +318,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.failure,
-          error: error,
+          error: _safePresentationError(error),
           clearOperation: true,
           canCancel: false,
         ),
@@ -344,7 +345,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.failure,
-          error: error,
+          error: _safePresentationError(error),
           canCancel: false,
         ),
       );
@@ -364,6 +365,11 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       return;
     }
     if (payload is NetworkProgress) {
+      final acceptsProgress = switch (state.phase) {
+        NetworkProvisioningPhase.startingDirectAp || NetworkProvisioningPhase.stoppingDirectAp || NetworkProvisioningPhase.scanningWifi || NetworkProvisioningPhase.configuringSta || NetworkProvisioningPhase.preparingDpp => true,
+        _ => false,
+      };
+      if (!acceptsProgress) return;
       if (payload.operationState == NetworkOperationState.failed) {
         emit(
           state.copyWith(
@@ -421,6 +427,11 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       return;
     }
     if (payload is NetworkRecovered) {
+      final acceptsRecovery = switch (state.phase) {
+        NetworkProvisioningPhase.startingDirectAp || NetworkProvisioningPhase.stoppingDirectAp || NetworkProvisioningPhase.configuringSta || NetworkProvisioningPhase.preparingDpp || NetworkProvisioningPhase.failure => true,
+        _ => false,
+      };
+      if (!acceptsRecovery) return;
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.recovered,
@@ -434,6 +445,9 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       return;
     }
     if (payload is CancelledOperation) {
+      if (state.phase != NetworkProvisioningPhase.scanningWifi && state.phase != NetworkProvisioningPhase.preparingDpp) {
+        return;
+      }
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.cancelled,
@@ -474,9 +488,10 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       final currentBatch = _scanBatches[index];
       if (currentBatch == null) return;
       for (final network in currentBatch.networks) {
-        final current = strongestByBssid[network.bssid];
+        final key = network.bssid.toUpperCase();
+        final current = strongestByBssid[key];
         if (current == null || network.rssiDbm > current.rssiDbm) {
-          strongestByBssid[network.bssid] = network;
+          strongestByBssid[key] = network;
         }
       }
     }
@@ -561,7 +576,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.failure,
-          error: error,
+          error: _safePresentationError(error),
           clearBaseUri: true,
           canCancel: false,
         ),
@@ -571,10 +586,15 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   void _onEventError(Object error, StackTrace stackTrace) {
     if (isClosed || state.trustedDeviceId == null) return;
+    final settled = switch (state.phase) {
+      NetworkProvisioningPhase.success || NetworkProvisioningPhase.stopped || NetworkProvisioningPhase.recovered || NetworkProvisioningPhase.cancelled => true,
+      _ => false,
+    };
+    if (settled) return;
     emit(
       state.copyWith(
         phase: NetworkProvisioningPhase.failure,
-        error: error,
+        error: _safePresentationError(error),
         canCancel: false,
       ),
     );
@@ -600,4 +620,18 @@ final class NetworkOperationFailedException implements Exception {
 
   @override
   String toString() => 'NetworkOperationFailedException';
+}
+
+Object _safePresentationError(Object error) {
+  if (error is ProvisioningException) {
+    return ProvisioningException(
+      code: error.code,
+      retryable: error.retryable,
+      retryAfter: error.retryAfter,
+    );
+  }
+  if (error is NetworkStatusConfirmationException || error is NetworkOperationFailedException) {
+    return error;
+  }
+  return const NetworkOperationFailedException();
 }
