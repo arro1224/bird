@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:aves/bird_companion/features/connection/presentation/network_provisioning_cubit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -251,7 +254,7 @@ void main() {
       await cubit.startDirectAp(_deviceInfo());
 
       repository.emitEvent(
-        const ProvisioningEvent(
+        ProvisioningEvent(
           type: ProvisioningEventType.networkRecovered,
           requestId: 'request-recovery',
           deviceId: 'bbx-0123456789abcdef0123456789abcdef',
@@ -261,6 +264,7 @@ void main() {
             operationState: NetworkOperationState.idle,
             recoveredMode: ProvisioningNetworkMode.infrastructureSta,
             recoveryReason: 'previous_sta_connect_failed',
+            baseUri: Uri.parse('http://192.0.2.1'),
           ),
         ),
       );
@@ -272,6 +276,7 @@ void main() {
         ProvisioningNetworkMode.infrastructureSta,
       );
       expect(cubit.state.confirmedMode, isNull);
+      expect(cubit.state.baseUri, isNull);
     });
   });
 
@@ -419,10 +424,17 @@ void main() {
     });
 
     test('sanitizes provisioning errors emitted by the event stream', () async {
-      final repository = FakeProvisioningRepository();
+      final repository = FakeProvisioningRepository(
+        scanWifiResult: const CommandAccepted(
+          operationId: 'op_scan',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.bleScanSelection,
+        ),
+      );
       final cubit = NetworkProvisioningCubit(repository);
       addTearDown(cubit.close);
       cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.scanWifi();
 
       repository.emitError(
         const ProvisioningException(
@@ -441,10 +453,17 @@ void main() {
     });
 
     test('replaces unknown event stream errors with a safe failure', () async {
-      final repository = FakeProvisioningRepository();
+      final repository = FakeProvisioningRepository(
+        scanWifiResult: const CommandAccepted(
+          operationId: 'op_scan',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.bleScanSelection,
+        ),
+      );
       final cubit = NetworkProvisioningCubit(repository);
       addTearDown(cubit.close);
       cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.scanWifi();
 
       repository.emitError(StateError('password=must-not-enter-state'));
       await Future<void>.delayed(Duration.zero);
@@ -609,6 +628,162 @@ void main() {
       expect(cubit.state.phase, NetworkProvisioningPhase.cancelled);
     });
 
+    test('sends only one cancel command while cancellation is pending', () async {
+      final cancelCompleter = Completer<CommandAccepted>();
+      final fakeRepository = FakeProvisioningRepository(
+        startDppResult: const CommandAccepted(
+          operationId: 'op_dpp',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+      );
+      final repository = _PendingCancelRepository(
+        fakeRepository,
+        cancelCompleter.future,
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+
+      final firstCancel = cubit.cancelActiveOperation();
+      final secondCancel = cubit.cancelActiveOperation();
+
+      expect(repository.cancelCalls, 1);
+      expect(cubit.state.canCancel, isFalse);
+
+      cancelCompleter.complete(
+        const CommandAccepted(
+          operationId: 'op_cancel',
+          desiredMode: ProvisioningNetworkMode.none,
+        ),
+      );
+      await Future.wait([firstCancel, secondCancel]);
+
+      expect(cubit.state.activeOperationId, 'op_cancel');
+    });
+
+    test('ignores cancellable progress while cancellation is pending', () async {
+      final cancelCompleter = Completer<CommandAccepted>();
+      final fakeRepository = FakeProvisioningRepository(
+        startDppResult: const CommandAccepted(
+          operationId: 'op_dpp',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+      );
+      final repository = _PendingCancelRepository(
+        fakeRepository,
+        cancelCompleter.future,
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+
+      final firstCancel = cubit.cancelActiveOperation();
+      fakeRepository.emitEvent(
+        const ProvisioningEvent(
+          type: ProvisioningEventType.networkProgress,
+          requestId: 'request-late-progress',
+          deviceId: 'bbx-0123456789abcdef0123456789abcdef',
+          payload: NetworkProgress(
+            operationId: 'op_dpp',
+            operationState: NetworkOperationState.waitingDppConfigurator,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.canCancel, isFalse);
+      final secondCancel = cubit.cancelActiveOperation();
+      expect(repository.cancelCalls, 1);
+
+      cancelCompleter.complete(
+        const CommandAccepted(
+          operationId: 'op_cancel',
+          desiredMode: ProvisioningNetworkMode.none,
+        ),
+      );
+      await Future.wait([firstCancel, secondCancel]);
+    });
+
+    test('ignores stream errors while cancellation is pending', () async {
+      final cancelCompleter = Completer<CommandAccepted>();
+      final fakeRepository = FakeProvisioningRepository(
+        startDppResult: const CommandAccepted(
+          operationId: 'op_dpp',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+      );
+      final repository = _PendingCancelRepository(
+        fakeRepository,
+        cancelCompleter.future,
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+
+      final cancel = cubit.cancelActiveOperation();
+      fakeRepository.emitError(StateError('late cancellation stream error'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.preparingDpp);
+      expect(cubit.state.error, isNull);
+
+      cancelCompleter.complete(
+        const CommandAccepted(
+          operationId: 'op_cancel',
+          desiredMode: ProvisioningNetworkMode.none,
+        ),
+      );
+      await cancel;
+      fakeRepository.emitEvent(
+        const ProvisioningEvent(
+          type: ProvisioningEventType.cancelled,
+          requestId: 'request-cancelled',
+          deviceId: 'bbx-0123456789abcdef0123456789abcdef',
+          payload: CancelledOperation(operationId: 'op_cancel'),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.cancelled);
+    });
+
+    test('starts only one DPP command while the first request is pending', () async {
+      final startCompleter = Completer<CommandAccepted>();
+      final fakeRepository = FakeProvisioningRepository();
+      final repository = _PendingStartDppRepository(
+        fakeRepository,
+        startCompleter.future,
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+
+      final firstStart = cubit.startDppProvisioning();
+      final secondStart = cubit.startDppProvisioning();
+
+      expect(repository.startDppCalls, 1);
+      expect(cubit.state.phase, NetworkProvisioningPhase.preparingDpp);
+      expect(cubit.state.canCancel, isFalse);
+
+      startCompleter.complete(
+        const CommandAccepted(
+          operationId: 'op_dpp_single_flight',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+      );
+      await Future.wait([firstStart, secondStart]);
+
+      expect(cubit.state.activeOperationId, 'op_dpp_single_flight');
+      expect(cubit.state.canCancel, isTrue);
+    });
+
     test('does not start DPP when the box capability is unavailable', () async {
       final repository = FakeProvisioningRepository();
       final cubit = NetworkProvisioningCubit(repository);
@@ -620,7 +795,337 @@ void main() {
       expect(cubit.state.phase, NetworkProvisioningPhase.methodUnavailable);
       expect(repository.calls, isNot(contains('startDppProvisioning')));
     });
+
+    test('maps unavailable phone DPP to a dedicated safe phase', () async {
+      final repository = FakeProvisioningRepository(
+        startDppError: const ProvisioningException(
+          code: ProvisioningErrorCode.phoneDppNotSupported,
+          retryable: false,
+          diagnosticMessage: 'DPP:K:SYNTHETIC_PRIVATE_DIAGNOSTIC;;',
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+
+      await cubit.startDppProvisioning();
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.dppUnavailable);
+      expect(cubit.state.activeOperationId, isNull);
+      expect(cubit.state.canCancel, isFalse);
+      expect(cubit.state.error, isNull);
+      expect(
+        repository.calls.where((call) => call == 'startDppProvisioning'),
+        hasLength(1),
+      );
+    });
+
+    test('keeps unavailable DPP settled after a late stream error', () async {
+      final repository = FakeProvisioningRepository(
+        startDppError: const ProvisioningException(
+          code: ProvisioningErrorCode.phoneDppNotSupported,
+          retryable: false,
+          diagnosticMessage: 'private initial diagnostic',
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      final emittedStates = <NetworkProvisioningState>[];
+      final stateSubscription = cubit.stream.listen(emittedStates.add);
+      addTearDown(stateSubscription.cancel);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+      expect(cubit.state.phase, NetworkProvisioningPhase.dppUnavailable);
+
+      repository.emitError(
+        const ProvisioningException(
+          code: ProvisioningErrorCode.systemDppFailed,
+          retryable: true,
+          diagnosticMessage: 'private late diagnostic',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.dppUnavailable);
+      expect(cubit.state.error, isNull);
+      expect(cubit.state.activeOperationId, isNull);
+      expect(cubit.state.canCancel, isFalse);
+      for (final emittedState in emittedStates) {
+        final error = emittedState.error;
+        if (error is ProvisioningException) {
+          expect(error.diagnosticMessage, isNull);
+        }
+      }
+    });
+
+    test('ignores a late DPP stream error after returning to method choice', () async {
+      final repository = FakeProvisioningRepository(
+        startDppError: const ProvisioningException(
+          code: ProvisioningErrorCode.phoneDppNotSupported,
+          retryable: false,
+          diagnosticMessage: 'private initial diagnostic',
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+      expect(cubit.state.phase, NetworkProvisioningPhase.dppUnavailable);
+
+      cubit.returnToWifiMethodSelection();
+      expect(cubit.state.phase, NetworkProvisioningPhase.choosingWifiMethod);
+
+      repository.emitError(
+        const ProvisioningException(
+          code: ProvisioningErrorCode.systemDppFailed,
+          retryable: true,
+          diagnosticMessage: 'private late diagnostic',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.choosingWifiMethod);
+      expect(cubit.state.error, isNull);
+      expect(cubit.state.activeOperationId, isNull);
+      expect(cubit.state.canCancel, isFalse);
+    });
+
+    test('maps a system DPP cancellation to the cancelled result', () async {
+      final repository = FakeProvisioningRepository(
+        startDppResult: const CommandAccepted(
+          operationId: 'op_dpp_cancelled',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+
+      repository.emitError(
+        const ProvisioningException(
+          code: ProvisioningErrorCode.userCancelledDppDialog,
+          retryable: false,
+          diagnosticMessage: 'private system result',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.cancelled);
+      expect(cubit.state.error, isNull);
+      expect(cubit.state.activeOperationId, isNull);
+      expect(cubit.state.canCancel, isFalse);
+    });
+
+    test('keeps retryable DPP failures sanitized', () async {
+      final repository = FakeProvisioningRepository(
+        startDppError: const ProvisioningException(
+          code: ProvisioningErrorCode.systemDppFailed,
+          retryable: true,
+          diagnosticMessage: 'platform result contains private data',
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+
+      await cubit.startDppProvisioning();
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.failure);
+      expect(cubit.state.error, isA<ProvisioningException>());
+      final error = cubit.state.error! as ProvisioningException;
+      expect(error.code, ProvisioningErrorCode.systemDppFailed);
+      expect(error.retryable, isTrue);
+      expect(error.diagnosticMessage, isNull);
+    });
+
+    test('system DPP handoff waits for box confirmation before success', () async {
+      final statusCompleter = Completer<ProvisioningNetworkStatus>();
+      final fakeRepository = FakeProvisioningRepository(
+        startDppResult: const CommandAccepted(
+          operationId: 'op_dpp_success',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+      );
+      final repository = _PendingNetworkStatusRepository(
+        fakeRepository,
+        statusCompleter.future,
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+
+      fakeRepository.emitEvent(
+        ProvisioningEvent.fromJson({
+          'protocol_version': '1.0-rc4',
+          'type': 'dpp_bootstrap_ready',
+          'request_id': 'request-dpp-bootstrap',
+          'device_id': _deviceInfo().deviceId,
+          'ok': true,
+          'payload': {
+            'operation_id': 'op_dpp_success',
+            'operation_state': 'waiting_dpp_configurator',
+            'dpp_uri': 'DPP:K:SYNTHETIC_PUBLIC_BOOTSTRAP;;',
+            'expires_in_seconds': 120,
+          },
+        }),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.preparingDpp);
+      expect(
+        cubit.state.operationState,
+        NetworkOperationState.waitingDppConfigurator,
+      );
+      expect(cubit.state.baseUri, isNull);
+
+      fakeRepository.emitEvent(
+        ProvisioningEvent(
+          type: ProvisioningEventType.staConnected,
+          requestId: 'request-dpp-sta-connected',
+          deviceId: _deviceInfo().deviceId,
+          payload: StaConnected(
+            operationId: 'op_dpp_success',
+            ssid: 'Studio',
+            ipv4: '192.0.2.20',
+            prefixLength: 24,
+            gatewayIpv4: '192.0.2.1',
+            baseUri: Uri.parse('http://192.0.2.20'),
+            networkKind: StaNetworkKind.router,
+            provisioningMethod: ProvisioningMethod.androidDpp,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.confirmingNetwork);
+      expect(cubit.state.phase, isNot(NetworkProvisioningPhase.success));
+      expect(cubit.state.baseUri, isNull);
+
+      statusCompleter.complete(
+        _networkStatus(
+          mode: ProvisioningNetworkMode.infrastructureSta,
+          operationState: NetworkOperationState.staConnected,
+          operationId: 'op_dpp_success',
+          baseUri: Uri.parse('http://192.0.2.20'),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.success);
+      expect(cubit.state.baseUri, Uri.parse('http://192.0.2.20'));
+    });
+
+    test('fails DPP confirmation when the status operation does not match', () async {
+      final repository = FakeProvisioningRepository(
+        startDppResult: const CommandAccepted(
+          operationId: 'op_dpp_expected',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+        networkStatus: _networkStatus(
+          mode: ProvisioningNetworkMode.infrastructureSta,
+          operationState: NetworkOperationState.staConnected,
+          operationId: 'op_dpp_stale',
+          baseUri: Uri.parse('http://192.0.2.20'),
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+
+      repository.emitEvent(
+        ProvisioningEvent(
+          type: ProvisioningEventType.staConnected,
+          requestId: 'request-dpp-sta-mismatch',
+          deviceId: _deviceInfo().deviceId,
+          payload: StaConnected(
+            operationId: 'op_dpp_expected',
+            ssid: 'Studio',
+            ipv4: '192.0.2.20',
+            prefixLength: 24,
+            gatewayIpv4: '192.0.2.1',
+            baseUri: Uri.parse('http://192.0.2.20'),
+            networkKind: StaNetworkKind.router,
+            provisioningMethod: ProvisioningMethod.androidDpp,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.failure);
+      expect(cubit.state.error, isA<NetworkStatusConfirmationException>());
+      expect(cubit.state.baseUri, isNull);
+    });
   });
+}
+
+final class _PendingNetworkStatusRepository implements ProvisioningRepository {
+  _PendingNetworkStatusRepository(this._delegate, this._networkStatus);
+
+  final FakeProvisioningRepository _delegate;
+  final Future<ProvisioningNetworkStatus> _networkStatus;
+
+  @override
+  Stream<ProvisioningEvent> get events => _delegate.events;
+
+  @override
+  Future<ProvisioningNetworkStatus> getNetworkStatus() => _networkStatus;
+
+  @override
+  Future<CommandAccepted> startDppProvisioning() => _delegate.startDppProvisioning();
+
+  @override
+  Never noSuchMethod(Invocation invocation) => throw UnsupportedError('Unexpected repository call: ${invocation.memberName}');
+}
+
+final class _PendingStartDppRepository implements ProvisioningRepository {
+  _PendingStartDppRepository(this._delegate, this._startDppResult);
+
+  final FakeProvisioningRepository _delegate;
+  final Future<CommandAccepted> _startDppResult;
+  var startDppCalls = 0;
+
+  @override
+  Stream<ProvisioningEvent> get events => _delegate.events;
+
+  @override
+  Future<CommandAccepted> startDppProvisioning() {
+    startDppCalls++;
+    return _startDppResult;
+  }
+
+  @override
+  Never noSuchMethod(Invocation invocation) => throw UnsupportedError('Unexpected repository call: ${invocation.memberName}');
+}
+
+final class _PendingCancelRepository implements ProvisioningRepository {
+  _PendingCancelRepository(this._delegate, this._cancelResult);
+
+  final FakeProvisioningRepository _delegate;
+  final Future<CommandAccepted> _cancelResult;
+  var cancelCalls = 0;
+
+  @override
+  Stream<ProvisioningEvent> get events => _delegate.events;
+
+  @override
+  Future<CommandAccepted> startDppProvisioning() => _delegate.startDppProvisioning();
+
+  @override
+  Future<CommandAccepted> cancelNetworkOperation(String operationId) {
+    cancelCalls++;
+    return _cancelResult;
+  }
+
+  @override
+  Never noSuchMethod(Invocation invocation) => throw UnsupportedError('Unexpected repository call: ${invocation.memberName}');
 }
 
 ProvisioningEvent _directApReady({

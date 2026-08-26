@@ -40,6 +40,50 @@ void main() {
     'production settings must use persistent storage',
   );
 
+  const dependencyPath = 'lib/bird_companion/app/app_dependencies.dart';
+  _requireContains(
+    failures,
+    dependencyPath,
+    'PlatformBirdBoxBleDataSource()',
+    'production must construct the real BLE data source',
+  );
+  _requireContains(
+    failures,
+    dependencyPath,
+    'MethodChannelBirdBoxWifiPlatform()',
+    'production must construct the real Wi-Fi platform bridge',
+  );
+  _requireContains(
+    failures,
+    dependencyPath,
+    'MethodChannelBirdBoxDppPlatform()',
+    'production must construct the real DPP platform bridge',
+  );
+  _requireContains(
+    failures,
+    dependencyPath,
+    'rememberDynamicAddress:',
+    'production must persist dynamically discovered device addresses',
+  );
+  _requireContains(
+    failures,
+    dependencyPath,
+    'restoreSavedSession()',
+    'production must restore the saved device session at startup',
+  );
+  _forbid(
+    failures,
+    dependencyPath,
+    'FakeBirdBox',
+    'production must not construct a FakeBirdBox adapter',
+  );
+  _forbid(
+    failures,
+    dependencyPath,
+    'FakeProvisioningRepository',
+    'production must not construct a FakeProvisioningRepository',
+  );
+
   const productionFiles = [
     'lib/main.dart',
     'lib/main_bird.dart',

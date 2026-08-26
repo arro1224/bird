@@ -16,6 +16,7 @@ enum NetworkProvisioningPhase {
   enteringWifiManually,
   configuringSta,
   preparingDpp,
+  dppUnavailable,
   confirmingNetwork,
   success,
   stopped,
@@ -96,6 +97,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   final ProvisioningRepository _repository;
   late final StreamSubscription<ProvisioningEvent> _eventSubscription;
   var _generation = 0;
+  String? _cancellingOperationId;
   final Map<int, WifiScanBatch> _scanBatches = {};
   int? _expectedScanBatchCount;
   var _scanCompleteSeen = false;
@@ -250,6 +252,24 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     );
   }
 
+  void returnToWifiMethodSelection() {
+    _generation++;
+    _clearScanAccumulator();
+    emit(
+      state.copyWith(
+        phase: NetworkProvisioningPhase.choosingWifiMethod,
+        clearOperation: true,
+        clearOperationState: true,
+        clearNetworks: true,
+        clearBaseUri: true,
+        clearConfirmedMode: true,
+        clearRecoveredMode: true,
+        clearError: true,
+        canCancel: false,
+      ),
+    );
+  }
+
   Future<void> submitStaConfiguration(
     StaNetworkConfiguration configuration,
   ) async {
@@ -293,6 +313,12 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   Future<void> startDppProvisioning() async {
+    final currentError = state.error;
+    final canStart =
+        state.phase == NetworkProvisioningPhase.choosingWifiMethod ||
+        (state.phase == NetworkProvisioningPhase.failure && currentError is ProvisioningException && (currentError.code == ProvisioningErrorCode.systemDppFailed || currentError.code == ProvisioningErrorCode.dppTimeout));
+    if (!canStart) return;
+
     final capabilities = state.capabilities;
     if (capabilities?.infrastructureSta != true || capabilities?.dppUsableByBox != true) {
       emit(state.copyWith(phase: NetworkProvisioningPhase.methodUnavailable));
@@ -306,23 +332,21 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
         clearOperation: true,
         clearBaseUri: true,
         clearError: true,
-        canCancel: true,
+        canCancel: false,
       ),
     );
     try {
       final accepted = await _repository.startDppProvisioning();
       if (isClosed || generation != _generation) return;
-      emit(state.copyWith(activeOperationId: accepted.operationId));
-    } catch (error) {
-      if (isClosed || generation != _generation) return;
       emit(
         state.copyWith(
-          phase: NetworkProvisioningPhase.failure,
-          error: _safePresentationError(error),
-          clearOperation: true,
-          canCancel: false,
+          activeOperationId: accepted.operationId,
+          canCancel: true,
         ),
       );
+    } catch (error) {
+      if (isClosed || generation != _generation) return;
+      _emitDppOutcome(error);
     }
   }
 
@@ -330,8 +354,13 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     final operationId = state.activeOperationId;
     if (!state.canCancel || operationId == null) return;
     final generation = ++_generation;
+    _cancellingOperationId = operationId;
+    emit(state.copyWith(canCancel: false));
     try {
       final accepted = await _repository.cancelNetworkOperation(operationId);
+      if (_cancellingOperationId == operationId) {
+        _cancellingOperationId = null;
+      }
       if (isClosed || generation != _generation) return;
       emit(
         state.copyWith(
@@ -341,6 +370,9 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
         ),
       );
     } catch (error) {
+      if (_cancellingOperationId == operationId) {
+        _cancellingOperationId = null;
+      }
       if (isClosed || generation != _generation) return;
       emit(
         state.copyWith(
@@ -352,10 +384,37 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     }
   }
 
+  void _emitDppOutcome(Object error) {
+    final safeError = _safePresentationError(error);
+    final phase = switch (safeError) {
+      ProvisioningException(
+        code: ProvisioningErrorCode.userCancelledDppDialog,
+      ) =>
+        NetworkProvisioningPhase.cancelled,
+      ProvisioningException(
+        code: ProvisioningErrorCode.phoneDppNotSupported || ProvisioningErrorCode.systemDppActivityUnavailable || ProvisioningErrorCode.systemDppInvalidUri,
+      ) =>
+        NetworkProvisioningPhase.dppUnavailable,
+      _ => NetworkProvisioningPhase.failure,
+    };
+    emit(
+      state.copyWith(
+        phase: phase,
+        error: phase == NetworkProvisioningPhase.failure ? safeError : null,
+        clearError: phase != NetworkProvisioningPhase.failure,
+        clearOperation: true,
+        canCancel: false,
+      ),
+    );
+  }
+
   void _onEvent(ProvisioningEvent event) {
     if (isClosed || event.deviceId != state.trustedDeviceId) return;
     final eventOperationId = event.operationId;
     if (eventOperationId != null && eventOperationId != state.activeOperationId) {
+      return;
+    }
+    if (eventOperationId != null && eventOperationId == _cancellingOperationId) {
       return;
     }
 
@@ -437,7 +496,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
           phase: NetworkProvisioningPhase.recovered,
           operationState: payload.operationState,
           recoveredMode: payload.recoveredMode,
-          baseUri: payload.baseUri,
+          clearBaseUri: true,
           canCancel: false,
           clearError: true,
         ),
@@ -586,8 +645,18 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   void _onEventError(Object error, StackTrace stackTrace) {
     if (isClosed || state.trustedDeviceId == null) return;
+    if (_cancellingOperationId != null) return;
+    if (state.phase == NetworkProvisioningPhase.preparingDpp) {
+      _emitDppOutcome(error);
+      return;
+    }
     final settled = switch (state.phase) {
-      NetworkProvisioningPhase.success || NetworkProvisioningPhase.stopped || NetworkProvisioningPhase.recovered || NetworkProvisioningPhase.cancelled => true,
+      NetworkProvisioningPhase.choosingWifiMethod ||
+      NetworkProvisioningPhase.dppUnavailable ||
+      NetworkProvisioningPhase.success ||
+      NetworkProvisioningPhase.stopped ||
+      NetworkProvisioningPhase.recovered ||
+      NetworkProvisioningPhase.cancelled => true,
       _ => false,
     };
     if (settled) return;
