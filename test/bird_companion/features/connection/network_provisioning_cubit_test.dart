@@ -626,6 +626,41 @@ void main() {
       expect(cubit.state.phase, NetworkProvisioningPhase.cancelled);
     });
 
+    test('sends only one cancel command while cancellation is pending', () async {
+      final cancelCompleter = Completer<CommandAccepted>();
+      final fakeRepository = FakeProvisioningRepository(
+        startDppResult: const CommandAccepted(
+          operationId: 'op_dpp',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+      );
+      final repository = _PendingCancelRepository(
+        fakeRepository,
+        cancelCompleter.future,
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+
+      final firstCancel = cubit.cancelActiveOperation();
+      final secondCancel = cubit.cancelActiveOperation();
+
+      expect(repository.cancelCalls, 1);
+      expect(cubit.state.canCancel, isFalse);
+
+      cancelCompleter.complete(
+        const CommandAccepted(
+          operationId: 'op_cancel',
+          desiredMode: ProvisioningNetworkMode.none,
+        ),
+      );
+      await Future.wait([firstCancel, secondCancel]);
+
+      expect(cubit.state.activeOperationId, 'op_cancel');
+    });
+
     test('starts only one DPP command while the first request is pending', () async {
       final startCompleter = Completer<CommandAccepted>();
       final fakeRepository = FakeProvisioningRepository();
@@ -970,6 +1005,29 @@ final class _PendingStartDppRepository implements ProvisioningRepository {
   Future<CommandAccepted> startDppProvisioning() {
     startDppCalls++;
     return _startDppResult;
+  }
+
+  @override
+  Never noSuchMethod(Invocation invocation) => throw UnsupportedError('Unexpected repository call: ${invocation.memberName}');
+}
+
+final class _PendingCancelRepository implements ProvisioningRepository {
+  _PendingCancelRepository(this._delegate, this._cancelResult);
+
+  final FakeProvisioningRepository _delegate;
+  final Future<CommandAccepted> _cancelResult;
+  var cancelCalls = 0;
+
+  @override
+  Stream<ProvisioningEvent> get events => _delegate.events;
+
+  @override
+  Future<CommandAccepted> startDppProvisioning() => _delegate.startDppProvisioning();
+
+  @override
+  Future<CommandAccepted> cancelNetworkOperation(String operationId) {
+    cancelCalls++;
+    return _cancelResult;
   }
 
   @override

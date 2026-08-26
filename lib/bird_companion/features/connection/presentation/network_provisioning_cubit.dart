@@ -348,6 +348,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     final operationId = state.activeOperationId;
     if (!state.canCancel || operationId == null) return;
     final generation = ++_generation;
+    emit(state.copyWith(canCancel: false));
     try {
       final accepted = await _repository.cancelNetworkOperation(operationId);
       if (isClosed || generation != _generation) return;
