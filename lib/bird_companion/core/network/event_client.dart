@@ -48,11 +48,14 @@ class EventClient {
 
   final ReconnectPolicy _reconnectPolicy;
   final EventChannelConnector _connector;
+  static const _closeTimeout = Duration(seconds: 2);
   final _events = StreamController<DeviceEvent>.broadcast();
   final _connectionStates = StreamController<EventConnectionState>.broadcast();
   final _authenticationFailures = StreamController<int>.broadcast();
   StreamSubscription<dynamic>? _subscription;
   WebSocketChannel? _channel;
+  Completer<void>? _channelDone;
+  final Map<WebSocketChannel, Future<void>> _closingChannels = Map.identity();
   Uri? _endpoint;
   String? _accessToken;
   String _apiVersion = 'v1';
@@ -97,15 +100,7 @@ class EventClient {
     final accessToken = _accessToken;
     if (generation != _connectionGeneration || endpoint == null || accessToken == null || _manualDisconnect || _authenticationBlocked) return;
     _emitState(isReconnect ? EventConnectionState.reconnecting : EventConnectionState.connecting);
-    try {
-      await _subscription?.cancel();
-    } catch (_) {
-      // A failed old stream must not prevent a new device session opening.
-    }
-    _subscription = null;
-    final previousChannel = _channel;
-    _channel = null;
-    await _closeChannel(previousChannel);
+    await _closeActiveChannel();
     if (generation != _connectionGeneration || _manualDisconnect || _authenticationBlocked) return;
     try {
       final channel = _connector(endpoint, {
@@ -120,6 +115,8 @@ class EventClient {
       }
       _attempt = 0;
       _emitState(EventConnectionState.connected);
+      final channelDone = Completer<void>();
+      _channelDone = channelDone;
       _subscription = channel.stream.listen(
         (message) {
           if (generation == _connectionGeneration && identical(channel, _channel)) {
@@ -127,7 +124,10 @@ class EventClient {
           }
         },
         onError: (error, _) => _handleFailure(error, channel, generation),
-        onDone: () => _handleClosed(channel, generation),
+        onDone: () {
+          if (!channelDone.isCompleted) channelDone.complete();
+          _handleClosed(channel, generation);
+        },
         cancelOnError: false,
       );
     } catch (error) {
@@ -181,8 +181,18 @@ class EventClient {
     _authenticationBlocked = true;
     _retryTimer?.cancel();
     final channel = _channel;
+    final subscription = _subscription;
+    final channelDone = _channelDone;
     _channel = null;
-    unawaited(_closeChannel(channel));
+    _subscription = null;
+    _channelDone = null;
+    unawaited(
+      _closeChannel(
+        channel,
+        subscription: subscription,
+        channelDone: channelDone?.future,
+      ),
+    );
     _emitState(EventConnectionState.disconnected);
     _authenticationFailures.add(statusCode);
   }
@@ -215,28 +225,92 @@ class EventClient {
     _manualDisconnect = true;
     _authenticationBlocked = false;
     _retryTimer?.cancel();
-    try {
-      await _subscription?.cancel();
-    } catch (_) {
-      // The session is still cleared when the old stream failed noisily.
-    }
-    _subscription = null;
-    await _closeChannel(_channel);
-    _channel = null;
+    await _closeActiveChannel();
     _accessToken = null;
     _emitState(EventConnectionState.disconnected);
   }
 
-  Future<void> _closeChannel(WebSocketChannel? channel) async {
+  Future<void> _closeActiveChannel() {
+    final channel = _channel;
+    final subscription = _subscription;
+    final channelDone = _channelDone;
+    _channel = null;
+    _subscription = null;
+    _channelDone = null;
+    return _closeChannel(
+      channel,
+      subscription: subscription,
+      channelDone: channelDone?.future,
+    );
+  }
+
+  Future<void> _closeChannel(
+    WebSocketChannel? channel, {
+    StreamSubscription<dynamic>? subscription,
+    Future<void>? channelDone,
+  }) {
+    if (channel == null) return _cancelSubscription(subscription);
+    final closing = _closingChannels[channel];
+    if (closing != null) return closing;
+    final future = _performClose(
+      channel,
+      subscription: subscription,
+      channelDone: channelDone,
+    );
+    _closingChannels[channel] = future;
+    return future.whenComplete(() => _closingChannels.remove(channel));
+  }
+
+  Future<void> _performClose(
+    WebSocketChannel channel, {
+    StreamSubscription<dynamic>? subscription,
+    Future<void>? channelDone,
+  }) async {
+    var readSubscription = subscription;
+    var done = channelDone;
+    if (readSubscription == null || done == null) {
+      final completer = Completer<void>();
+      readSubscription = channel.stream.listen(
+        (_) {},
+        onError: (_, _) {},
+        onDone: () {
+          if (!completer.isCompleted) completer.complete();
+        },
+        cancelOnError: false,
+      );
+      done = completer.future;
+    }
     try {
-      await channel?.sink.close();
+      // Keep the read subscription alive until the peer acknowledges our
+      // close frame. Cancelling it first can strand the server-side socket.
+      await channel.sink.close(1000, 'client session closed').timeout(_closeTimeout);
     } catch (_) {
-      // Closing is best effort. Connection generations reject late callbacks.
+      // A channel that already failed still needs its subscription released.
+    }
+    try {
+      await done.timeout(_closeTimeout);
+    } catch (_) {
+      // Do not block a replacement session forever when a peer is gone. The
+      // final subscription cancellation is the transport's forced fallback.
+    }
+    await _cancelSubscription(readSubscription);
+  }
+
+  Future<void> _cancelSubscription(
+    StreamSubscription<dynamic>? subscription,
+  ) async {
+    try {
+      await subscription?.cancel();
+    } catch (_) {
+      // Cleanup remains best effort after a stream failure.
     }
   }
 
   Future<void> dispose() async {
     await disconnect();
+    await Future.wait(
+      _closingChannels.values.toList(growable: false),
+    );
     await _events.close();
     await _connectionStates.close();
     await _authenticationFailures.close();
