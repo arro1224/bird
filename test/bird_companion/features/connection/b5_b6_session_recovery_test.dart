@@ -27,9 +27,15 @@ void main() {
       refresh,
     );
     addTearDown(() async {
-      await session.close();
-      await events.dispose();
-      await refresh.dispose();
+      try {
+        await session.close();
+      } finally {
+        try {
+          await events.dispose();
+        } finally {
+          await refresh.dispose();
+        }
+      }
     });
 
     final restored = await session.restoreSavedSession();
@@ -48,6 +54,7 @@ void main() {
     final events = EventClient();
     final refresh = SessionRefreshCoordinator();
     var recoveryCalls = 0;
+    int? recoveryRefreshGeneration;
     final session = DeviceSessionCubit(
       repository,
       _FixedConnectivityMonitor(true),
@@ -55,12 +62,19 @@ void main() {
       refresh,
       onConnectionRecovered: () async {
         recoveryCalls++;
+        recoveryRefreshGeneration = refresh.generation;
       },
     );
     addTearDown(() async {
-      await session.close();
-      await events.dispose();
-      await refresh.dispose();
+      try {
+        await session.close();
+      } finally {
+        try {
+          await events.dispose();
+        } finally {
+          await refresh.dispose();
+        }
+      }
     });
 
     final restored = await session.restoreSavedSession();
@@ -69,6 +83,7 @@ void main() {
     expect(repository.reconnectCalls, 1);
     expect(recoveryCalls, 1);
     expect(session.state.isConnected, isTrue);
+    expect(recoveryRefreshGeneration, 1);
     expect(refresh.generation, 2);
   });
 
