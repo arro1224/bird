@@ -708,6 +708,51 @@ void main() {
       await Future.wait([firstCancel, secondCancel]);
     });
 
+    test('ignores stream errors while cancellation is pending', () async {
+      final cancelCompleter = Completer<CommandAccepted>();
+      final fakeRepository = FakeProvisioningRepository(
+        startDppResult: const CommandAccepted(
+          operationId: 'op_dpp',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+      );
+      final repository = _PendingCancelRepository(
+        fakeRepository,
+        cancelCompleter.future,
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+
+      final cancel = cubit.cancelActiveOperation();
+      fakeRepository.emitError(StateError('late cancellation stream error'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.preparingDpp);
+      expect(cubit.state.error, isNull);
+
+      cancelCompleter.complete(
+        const CommandAccepted(
+          operationId: 'op_cancel',
+          desiredMode: ProvisioningNetworkMode.none,
+        ),
+      );
+      await cancel;
+      fakeRepository.emitEvent(
+        const ProvisioningEvent(
+          type: ProvisioningEventType.cancelled,
+          requestId: 'request-cancelled',
+          deviceId: 'bbx-0123456789abcdef0123456789abcdef',
+          payload: CancelledOperation(operationId: 'op_cancel'),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.cancelled);
+    });
+
     test('starts only one DPP command while the first request is pending', () async {
       final startCompleter = Completer<CommandAccepted>();
       final fakeRepository = FakeProvisioningRepository();

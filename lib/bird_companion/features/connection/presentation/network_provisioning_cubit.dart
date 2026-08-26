@@ -645,6 +645,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   void _onEventError(Object error, StackTrace stackTrace) {
     if (isClosed || state.trustedDeviceId == null) return;
+    if (_cancellingOperationId != null) return;
     if (state.phase == NetworkProvisioningPhase.preparingDpp) {
       _emitDppOutcome(error);
       return;
