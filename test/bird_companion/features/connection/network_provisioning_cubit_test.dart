@@ -254,7 +254,7 @@ void main() {
       await cubit.startDirectAp(_deviceInfo());
 
       repository.emitEvent(
-        const ProvisioningEvent(
+        ProvisioningEvent(
           type: ProvisioningEventType.networkRecovered,
           requestId: 'request-recovery',
           deviceId: 'bbx-0123456789abcdef0123456789abcdef',
@@ -264,6 +264,7 @@ void main() {
             operationState: NetworkOperationState.idle,
             recoveredMode: ProvisioningNetworkMode.infrastructureSta,
             recoveryReason: 'previous_sta_connect_failed',
+            baseUri: Uri.parse('http://192.0.2.1'),
           ),
         ),
       );
@@ -275,6 +276,7 @@ void main() {
         ProvisioningNetworkMode.infrastructureSta,
       );
       expect(cubit.state.confirmedMode, isNull);
+      expect(cubit.state.baseUri, isNull);
     });
   });
 
@@ -661,6 +663,51 @@ void main() {
       expect(cubit.state.activeOperationId, 'op_cancel');
     });
 
+    test('ignores cancellable progress while cancellation is pending', () async {
+      final cancelCompleter = Completer<CommandAccepted>();
+      final fakeRepository = FakeProvisioningRepository(
+        startDppResult: const CommandAccepted(
+          operationId: 'op_dpp',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+      );
+      final repository = _PendingCancelRepository(
+        fakeRepository,
+        cancelCompleter.future,
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      cubit.openWifiProvisioning(_deviceInfo());
+      await cubit.startDppProvisioning();
+
+      final firstCancel = cubit.cancelActiveOperation();
+      fakeRepository.emitEvent(
+        const ProvisioningEvent(
+          type: ProvisioningEventType.networkProgress,
+          requestId: 'request-late-progress',
+          deviceId: 'bbx-0123456789abcdef0123456789abcdef',
+          payload: NetworkProgress(
+            operationId: 'op_dpp',
+            operationState: NetworkOperationState.waitingDppConfigurator,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.canCancel, isFalse);
+      final secondCancel = cubit.cancelActiveOperation();
+      expect(repository.cancelCalls, 1);
+
+      cancelCompleter.complete(
+        const CommandAccepted(
+          operationId: 'op_cancel',
+          desiredMode: ProvisioningNetworkMode.none,
+        ),
+      );
+      await Future.wait([firstCancel, secondCancel]);
+    });
+
     test('starts only one DPP command while the first request is pending', () async {
       final startCompleter = Completer<CommandAccepted>();
       final fakeRepository = FakeProvisioningRepository();
@@ -677,6 +724,7 @@ void main() {
 
       expect(repository.startDppCalls, 1);
       expect(cubit.state.phase, NetworkProvisioningPhase.preparingDpp);
+      expect(cubit.state.canCancel, isFalse);
 
       startCompleter.complete(
         const CommandAccepted(
@@ -688,6 +736,7 @@ void main() {
       await Future.wait([firstStart, secondStart]);
 
       expect(cubit.state.activeOperationId, 'op_dpp_single_flight');
+      expect(cubit.state.canCancel, isTrue);
     });
 
     test('does not start DPP when the box capability is unavailable', () async {
