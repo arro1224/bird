@@ -8,6 +8,7 @@ import 'package:aves/bird_companion/core/widgets/bird_error_boundary.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
 import 'package:aves/bird_companion/features/settings/presentation/settings_showcase_page.dart';
+import 'package:aves/bird_companion/features/connection/presentation/pages/b7_simulated_demo_page.dart';
 import 'package:aves/bird_companion/features/tasks/demo/demo_task_experience_data_source.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/task_experience_controller.dart';
@@ -124,16 +125,34 @@ class _BirdSettingsAppState extends State<BirdSettingsApp> {
           taskController: _taskController,
           settingsPageBuilder: (context, onOpenTask, onOpenAlbum) {
             final task = _taskController.currentTask;
-            return SettingsShowcasePage(
-              embedded: true,
-              deviceSession: widget.dependencies.deviceSessionCubit,
-              deviceStatus: _deviceStatus,
-              currentBatchTitle: task.sourceBatch ?? '当前批次',
-              currentBatchSummary: '${task.total} 张照片 · ${task.pendingReviewCount ?? 0} 张待审',
-              currentTaskTitle: task.type.label,
-              currentTaskSummary: '${task.processed} / ${task.total} · ${task.progressPercent}%',
-              onOpenCurrentBatch: onOpenAlbum,
-              onOpenCurrentTask: onOpenTask,
+            return Stack(
+              children: [
+                SettingsShowcasePage(
+                  embedded: true,
+                  deviceSession: widget.dependencies.deviceSessionCubit,
+                  deviceStatus: _deviceStatus,
+                  currentBatchTitle: task.sourceBatch ?? '当前批次',
+                  currentBatchSummary: '${task.total} 张照片 · ${task.pendingReviewCount ?? 0} 张待审',
+                  currentTaskTitle: task.type.label,
+                  currentTaskSummary: '${task.processed} / ${task.total} · ${task.progressPercent}%',
+                  onOpenCurrentBatch: onOpenAlbum,
+                  onOpenCurrentTask: onOpenTask,
+                ),
+                Positioned(
+                  right: 16,
+                  bottom: 96,
+                  child: FloatingActionButton.extended(
+                    heroTag: 'b7-simulated-demo',
+                    onPressed: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const B7SimulatedDemoPage(),
+                      ),
+                    ),
+                    icon: const Icon(Icons.bluetooth_searching_rounded),
+                    label: const Text('B7 蓝牙演示'),
+                  ),
+                ),
+              ],
             );
           },
         ),
