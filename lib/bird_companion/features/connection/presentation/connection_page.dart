@@ -38,12 +38,14 @@ class ConnectionPage extends StatelessWidget {
     this.provisioningRepository,
     this.onProvisioningMethodSelected,
     this.onProvisioningCompleted,
+    this.titlePrefix,
   });
 
   final ConnectionEntryMode entryMode;
   final ProvisioningRepository? provisioningRepository;
   final ValueChanged<ConnectionMethod>? onProvisioningMethodSelected;
   final ValueChanged<Uri>? onProvisioningCompleted;
+  final String? titlePrefix;
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +65,7 @@ class ConnectionPage extends StatelessWidget {
           child: _BleConnectionView(
             onMethodSelected: onProvisioningMethodSelected,
             onProvisioningCompleted: onProvisioningCompleted,
+            titlePrefix: titlePrefix,
           ),
         ),
       );
@@ -85,10 +88,12 @@ class _BleConnectionView extends StatelessWidget {
   const _BleConnectionView({
     this.onMethodSelected,
     this.onProvisioningCompleted,
+    this.titlePrefix,
   });
 
   final ValueChanged<ConnectionMethod>? onMethodSelected;
   final ValueChanged<Uri>? onProvisioningCompleted;
+  final String? titlePrefix;
 
   @override
   Widget build(BuildContext context) => BlocBuilder<NetworkProvisioningCubit, NetworkProvisioningState>(
@@ -97,7 +102,7 @@ class _BleConnectionView extends StatelessWidget {
         final networkCubit = context.read<NetworkProvisioningCubit>();
         return _scaffold(
           context,
-          title: _networkTitle(networkState.phase),
+          title: '${titlePrefix ?? ''}${_networkTitle(networkState.phase)}',
           onBack: networkCubit.backToMethodSelection,
           content: NetworkProvisioningPage(
             onBack: networkCubit.backToMethodSelection,
@@ -155,7 +160,7 @@ class _BleConnectionView extends StatelessWidget {
               onRetry: cubit.retry,
             ),
           };
-          return _scaffold(context, title: title, content: content);
+          return _scaffold(context, title: '${titlePrefix ?? ''}$title', content: content);
         },
       );
     },

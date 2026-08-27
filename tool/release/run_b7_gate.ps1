@@ -203,21 +203,20 @@ try {
 
     if ($Mode -eq "Preflight") {
         Invoke-GateStep "simulated RC4 acceptance" {
-            $previousErrorAction = $ErrorActionPreference
+            $runnerStdoutPath = [System.IO.Path]::GetTempFileName()
+            $runnerStderrPath = [System.IO.Path]::GetTempFileName()
             try {
-                $ErrorActionPreference = "Continue"
-                $runnerOutput = @(
-                    & $DartCommand "run" "tool/acceptance/ble_provisioning_rc4_acceptance.dart" 2>&1 |
-                        ForEach-Object { $_.ToString() }
-                )
+                & $DartCommand "run" "tool/acceptance/ble_provisioning_rc4_acceptance.dart" `
+                    1> $runnerStdoutPath `
+                    2> $runnerStderrPath
                 $runnerExitCode = $LASTEXITCODE
+                $runnerText = Get-Content -LiteralPath $runnerStdoutPath -Raw
             } finally {
-                $ErrorActionPreference = $previousErrorAction
+                Remove-Item -LiteralPath $runnerStdoutPath, $runnerStderrPath -Force -ErrorAction SilentlyContinue
             }
             if ($runnerExitCode -ne 0) {
                 throw "$DartCommand simulated RC4 acceptance exited with code $runnerExitCode."
             }
-            $runnerText = $runnerOutput -join [Environment]::NewLine
             $jsonMatch = [regex]::Match($runnerText, '(?s)\{.*\}')
             if (-not $jsonMatch.Success) {
                 throw "Simulated RC4 acceptance did not emit a JSON report."
