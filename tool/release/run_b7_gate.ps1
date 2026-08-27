@@ -203,11 +203,19 @@ try {
 
     if ($Mode -eq "Preflight") {
         Invoke-GateStep "simulated RC4 acceptance" {
-            $runnerOutput = @(
-                & $DartCommand "run" "tool/acceptance/ble_provisioning_rc4_acceptance.dart" 2>&1
-            )
-            if ($LASTEXITCODE -ne 0) {
-                throw "$DartCommand simulated RC4 acceptance exited with code $LASTEXITCODE."
+            $previousErrorAction = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = "Continue"
+                $runnerOutput = @(
+                    & $DartCommand "run" "tool/acceptance/ble_provisioning_rc4_acceptance.dart" 2>&1 |
+                        ForEach-Object { $_.ToString() }
+                )
+                $runnerExitCode = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $previousErrorAction
+            }
+            if ($runnerExitCode -ne 0) {
+                throw "$DartCommand simulated RC4 acceptance exited with code $runnerExitCode."
             }
             $runnerText = $runnerOutput -join [Environment]::NewLine
             $jsonMatch = [regex]::Match($runnerText, '(?s)\{.*\}')
