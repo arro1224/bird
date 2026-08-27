@@ -10,6 +10,9 @@
 - `birdbox-v1-baseline.json`：App、源分支和真实盒子联调基线。
 - `../decisions/ADR-001-birdbox-v1.md`：冲突决议、兼容窗口和责任边界。
 - `../../test/contracts/fixture-manifest.json`：可同时用于 mock 与真实盒子的固定样例。
+- `birdbox-network-v1.0-rc4-app-profile.md`：BLE 双模式配网 App 侧冻结接口。
+- `A7-K7-INTEROP-AND-SECURITY-AUDIT-2026-08-26.md`：A7 自动证据、真机矩阵与阻断记录。
+- `A7-SIMULATED-BASELINE-B7-HANDOFF-2026-08-27.md`：不弱化真实门禁的 A7 模拟基线与 B7 预检交接方案。
 
 `birdbox-v1.openapi.yaml` 使用 JSON 语法编写。JSON 是 YAML 1.2 的合法子集，
 因此该文件既可被标准 OpenAPI/YAML 工具读取，也可在无第三方依赖的 CI 中直接

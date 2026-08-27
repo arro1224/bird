@@ -17,8 +17,10 @@ class MockBoxServer {
     this.progressiveMedia = false,
     this.emitAssetReadyEvents = true,
     this.stateFile,
+    void Function(String message)? requestLogSink,
     DateTime Function()? clock,
-  }) : assetDirectory = assetDirectory ?? Directory('tool/mock_box_server/assets') {
+  }) : assetDirectory = assetDirectory ?? Directory('tool/mock_box_server/assets'),
+       requestLogSink = requestLogSink ?? ((message) => stdout.writeln(message)) {
     _clock = clock ?? DateTime.now;
     _assetEventsEnabled = emitAssetReadyEvents;
     if (photoCount <= 0) {
@@ -47,6 +49,7 @@ class MockBoxServer {
   final bool progressiveMedia;
   final bool emitAssetReadyEvents;
   final File? stateFile;
+  final void Function(String message) requestLogSink;
   late final DateTime Function() _clock;
 
   late final List<Map<String, dynamic>> _photos;
@@ -195,7 +198,11 @@ class MockBoxServer {
         try {
           await _handle(request);
         } catch (error, stackTrace) {
-          stderr.writeln('Mock box request failed: $error\n$stackTrace');
+          // Never print the raw exception value. URI and decoding exceptions can
+          // contain request material, including short-lived credentials.
+          stderr.writeln(
+            'Mock box request failed: ${error.runtimeType}\n$stackTrace',
+          );
           try {
             await _json(
               request,
@@ -229,7 +236,7 @@ class MockBoxServer {
   Future<void> _handle(HttpRequest request) async {
     if (logRequests) {
       // Query strings may contain short-lived signatures. Never print them.
-      stdout.writeln('${request.method} ${request.uri.path}');
+      requestLogSink('${request.method} ${request.uri.path}');
     }
     _cors(request.response);
     if (request.method == 'OPTIONS') {

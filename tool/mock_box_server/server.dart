@@ -11,6 +11,7 @@ Future<void> main(List<String> arguments) async {
     assetDirectory: assets,
     logRequests: !options.quiet,
     requireAuthentication: options.requireAuthentication,
+    deviceId: options.deviceId,
     progressiveMedia: options.progressiveMedia,
     emitAssetReadyEvents: options.emitAssetReadyEvents,
     stateFile: options.stateFile,
@@ -47,6 +48,7 @@ class _Options {
     required this.photoCount,
     required this.quiet,
     required this.requireAuthentication,
+    required this.deviceId,
     required this.progressiveMedia,
     required this.emitAssetReadyEvents,
     required this.stateFile,
@@ -57,6 +59,7 @@ class _Options {
   final int photoCount;
   final bool quiet;
   final bool requireAuthentication;
+  final String deviceId;
   final bool progressiveMedia;
   final bool emitAssetReadyEvents;
   final File? stateFile;
@@ -67,6 +70,7 @@ class _Options {
     var photoCount = 1200;
     var quiet = false;
     var requireAuthentication = false;
+    var deviceId = 'mock-k7-001';
     var progressiveMedia = false;
     var emitAssetReadyEvents = true;
     File? stateFile;
@@ -87,6 +91,11 @@ class _Options {
         port = int.parse(argument.substring('--port='.length));
       } else if (argument.startsWith('--photos=')) {
         photoCount = int.parse(argument.substring('--photos='.length));
+      } else if (argument.startsWith('--device-id=')) {
+        deviceId = argument.substring('--device-id='.length).trim();
+        if (deviceId.isEmpty) {
+          throw const FormatException('--device-id requires a value.');
+        }
       } else if (argument.startsWith('--state-file=')) {
         final path = argument.substring('--state-file='.length).trim();
         if (path.isEmpty) {
@@ -98,7 +107,7 @@ class _Options {
           'Usage: dart run tool/mock_box_server/server.dart '
           '[--quick] [--auth] [--progressive-media] [--no-asset-events] '
           '[--photos=1200] [--host=0.0.0.0] '
-          '[--port=8787] [--quiet] [--state-file=path]',
+          '[--port=8787] [--device-id=id] [--quiet] [--state-file=path]',
         );
         exit(0);
       } else {
@@ -111,6 +120,7 @@ class _Options {
       photoCount: photoCount,
       quiet: quiet,
       requireAuthentication: requireAuthentication,
+      deviceId: deviceId,
       progressiveMedia: progressiveMedia,
       emitAssetReadyEvents: emitAssetReadyEvents,
       stateFile: stateFile,
