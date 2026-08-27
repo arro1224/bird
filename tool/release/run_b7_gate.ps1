@@ -21,6 +21,7 @@ $startedAt = (Get-Date).ToUniversalTime()
 $status = "running"
 $failure = $null
 $realBoxEvidence = $null
+$simulatedAcceptance = $null
 
 function Invoke-NativeCommand {
     param(
@@ -202,6 +203,27 @@ try {
         )
     }
 
+    if ($Mode -eq "Preflight") {
+        Invoke-GateStep "simulated RC4 acceptance" {
+            $runnerOutput = @(
+                & $DartCommand "run" "tool/acceptance/ble_provisioning_rc4_acceptance.dart" 2>&1
+            )
+            if ($LASTEXITCODE -ne 0) {
+                throw "$DartCommand simulated RC4 acceptance exited with code $LASTEXITCODE."
+            }
+            $simulatedAcceptance = ($runnerOutput -join [Environment]::NewLine) | ConvertFrom-Json
+            if ($simulatedAcceptance.result -ne "pass" -or
+                $simulatedAcceptance.environment -ne "simulated" -or
+                $simulatedAcceptance.releasable -ne $false -or
+                $simulatedAcceptance.real_k7_status -ne "pending") {
+                throw "Simulated RC4 acceptance did not produce fail-closed metadata."
+            }
+            if (@($simulatedAcceptance.cases).Count -ne 10) {
+                throw "Simulated RC4 acceptance must report exactly ten cases."
+            }
+        }
+    }
+
     if ($Mode -eq "Release") {
         $hasKeyProperties = Test-Path -LiteralPath (
             Join-Path $repoRoot "android\key.properties"
@@ -367,6 +389,22 @@ try {
                 $realBoxEvidence.device_model
             } else {
                 $null
+            }
+        }
+        acceptance = if ($Mode -eq "Preflight") {
+            [ordered]@{
+                result = $simulatedAcceptance.result
+                environment = "simulated"
+                releasable = $false
+                real_k7_status = "pending"
+                cases = @($simulatedAcceptance.cases)
+            }
+        } else {
+            [ordered]@{
+                result = "pass"
+                environment = "real_k7"
+                releasable = $true
+                real_k7_status = "verified"
             }
         }
         contract = [ordered]@{

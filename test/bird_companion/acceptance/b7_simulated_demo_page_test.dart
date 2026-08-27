@@ -10,6 +10,7 @@ void main() {
     );
 
     expect(find.text('发现附近盒子'), findsOneWidget);
+    expect(find.text('B7 模拟配网'), findsOneWidget);
     final readButton = find.ancestor(of: find.text('读取设备信息'), matching: find.byType(FilledButton));
     await tester.ensureVisible(readButton);
     tester.widget<FilledButton>(readButton).onPressed!();

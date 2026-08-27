@@ -13,7 +13,10 @@ powershell -ExecutionPolicy Bypass -File tool/release/run_b7_gate.ps1 `
 ```
 
 证据默认写入 `build/b7/b7-gate-evidence.json`，包括工具版本、App SHA、工作树
-状态、契约版本、各步骤耗时以及 APK 路径、大小和 SHA-256。
+状态、契约版本、各步骤耗时以及 APK 路径、大小和 SHA-256。Preflight 还会实际运行
+`tool/acceptance/ble_provisioning_rc4_acceptance.dart`，并在证据中记录
+`environment=simulated`、`releasable=false`、`real_k7_status=pending` 和十个模拟用例。
+这条结果只能用于页面流程回归和录屏演示，不能作为 Release 证据。
 
 ## 正式发布
 
