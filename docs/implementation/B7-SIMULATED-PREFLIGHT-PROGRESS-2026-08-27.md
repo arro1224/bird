@@ -1,7 +1,7 @@
 # B7 模拟预检进度记录
 
-日期：2026-08-27  
-工作分支：`part2`  
+日期：2026-08-27
+工作分支：`part2`
 同步基线：`thirdtime@463b25d9bd60b3bce4183d637dfd69114d4e22f0`
 
 ## 当前结论
@@ -30,10 +30,13 @@ B7 simulated preflight in progress; real K7 acceptance pending.
 
 ## 当前未完成
 
-- 真实设备证据空模板；
 - B7 Preflight 脚本接入模拟验收并输出完整模拟元数据；
 - B7 acceptance/flow/page 的最终全量回归；
 - 真实 K7、真实 Android、Release 签名和 S4 关闭。
+
+## 已完成（本批次）
+
+- 真实设备证据空模板（`docs/acceptance/ble-provisioning-rc4-real-device-evidence.template.json`）；
 
 ## 最新验证
 

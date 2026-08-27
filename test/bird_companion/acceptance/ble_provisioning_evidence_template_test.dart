@@ -54,9 +54,11 @@ void main() {
     final requiredPlaceholders = [
       'captured_at',
       'android_device_serial',
+      'android_os_version',
       'operator',
       'location',
       'git_sha',
+      'build_mode',
       'certificate_sha256',
       'apk_sha256',
       'device_id',
@@ -64,6 +66,7 @@ void main() {
       'hardware_serial',
       'firmware_sha',
       'base_url',
+      'notes',
     ];
     for (final field in requiredPlaceholders) {
       final values = _findFieldValues(template, field).toList();
