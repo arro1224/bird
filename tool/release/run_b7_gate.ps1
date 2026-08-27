@@ -21,7 +21,7 @@ $startedAt = (Get-Date).ToUniversalTime()
 $status = "running"
 $failure = $null
 $realBoxEvidence = $null
-$simulatedAcceptance = $null
+$script:simulatedAcceptance = $null
 
 function Invoke-NativeCommand {
     param(
@@ -216,14 +216,14 @@ try {
             if (-not $jsonMatch.Success) {
                 throw "Simulated RC4 acceptance did not emit a JSON report."
             }
-            $simulatedAcceptance = $jsonMatch.Value | ConvertFrom-Json
-            if ($simulatedAcceptance.result -ne "pass" -or
-                $simulatedAcceptance.environment -ne "simulated" -or
-                $simulatedAcceptance.releasable -ne $false -or
-                $simulatedAcceptance.real_k7_status -ne "pending") {
+            $script:simulatedAcceptance = $jsonMatch.Value | ConvertFrom-Json
+            if ($script:simulatedAcceptance.result -ne "pass" -or
+                $script:simulatedAcceptance.environment -ne "simulated" -or
+                $script:simulatedAcceptance.releasable -ne $false -or
+                $script:simulatedAcceptance.real_k7_status -ne "pending") {
                 throw "Simulated RC4 acceptance did not produce fail-closed metadata."
             }
-            if (@($simulatedAcceptance.cases).Count -ne 10) {
+            if (@($script:simulatedAcceptance.cases).Count -ne 10) {
                 throw "Simulated RC4 acceptance must report exactly ten cases."
             }
         }
@@ -398,11 +398,11 @@ try {
         }
         acceptance = if ($Mode -eq "Preflight") {
             [ordered]@{
-                result = $simulatedAcceptance.result
+                result = $script:simulatedAcceptance.result
                 environment = "simulated"
                 releasable = $false
                 real_k7_status = "pending"
-                cases = @($simulatedAcceptance.cases)
+                cases = @($script:simulatedAcceptance.cases)
             }
         } else {
             [ordered]@{
