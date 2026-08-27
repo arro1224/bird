@@ -1,11 +1,14 @@
-# 照片模块模拟盒子
+# BirdBox 业务与 rc4 配网模拟盒子
 
 > 契约基线：`birdbox-v1@1.0.0`
 >
 > 固定样例入口：`test/contracts/fixture-manifest.json`。mock 后续新增或调整响应时
 > 必须复用这些 fixtures，不得维护一套独立字段定义。
 
-该服务用于本地恢复照片首页、详情、场景、连拍组和审阅操作的数据链路。它只依赖 Dart SDK，不需要安装额外服务。
+该服务用于本地恢复照片、任务和审阅业务链路，并提供 rc4 首次配对所需的
+`GET /health` 与 `POST /api/v1/pairing`。BLE 广播、GATT、分片和网络切换仍由
+`FakeBirdBoxBleDataSource`、Fake Wi-Fi 与 Fake DPP 覆盖；HTTP Mock 不能替代真实
+K7 无线链路证据。服务只依赖 Dart SDK，不需要安装额外服务。
 
 ## 启动
 
@@ -27,6 +30,7 @@ dart run tool/mock_box_server/server.dart
 --photos=1200
 --host=0.0.0.0
 --port=8787
+--device-id=mock-k7-001
 --quiet
 --auth
 --progressive-media
@@ -34,7 +38,8 @@ dart run tool/mock_box_server/server.dart
 --state-file=.tmp/mock-box-state.json
 ```
 
-`--auth` 开启 B3 全通道鉴权；仅用于本地联调的配对码为 `2468`。
+`--auth` 开启全通道鉴权。配对码 `2468` 只供旧
+`POST /api/v1/device/pair` 兼容测试使用；rc4 主流程禁止通过 HTTP 发送验证码。
 `--progressive-media` 开启 P1 候选协议的照片状态、资源错误、ETag/304 和
 `asset_ready`；默认关闭，因此原有 v1 回归响应保持不变。`--no-asset-events`
 用于模拟 WebSocket 不推送资源就绪事件。
@@ -44,7 +49,28 @@ dart run tool/mock_box_server/server.dart
 
 - 宿主机：`http://127.0.0.1:8787`
 - Android 模拟器：`http://10.0.2.2:8787`
-- 健康检查：`GET /healthz`
+- rc4 身份健康检查：`GET /health`
+- 工具兼容健康检查：`GET /healthz`（不得作为 App rc4 正式接口）
+
+## rc4 配网 HTTP 联调
+
+rc4 Schema 要求完整设备身份使用 `bbx-` 加 32 位小写十六进制。启动用于配网契约
+测试的 Mock 时，应显式传入符合约束的设备 ID：
+
+```powershell
+dart run tool/mock_box_server/server.dart --quick --auth `
+  --device-id=bbx-82f41c9e7a3d4b68a1501e21e536c649
+```
+
+rc4 HTTP 接口：
+
+- `GET /health`：无鉴权返回完整 `device_id`、`1.0-rc4`、API 版本和当前网络模式。
+- `POST /api/v1/pairing`：使用 BLE 临时 `pairing_session_id` 换取 Token；请求中出现
+  `pairing_code` 会按非法请求处理。
+
+旧 `GET /healthz` 与 `POST /api/v1/device/pair` 仅保留兼容测试。正式配网流程必须先
+比较 GATT `Device Info.device_id` 与 `/health.device_id`，再交换配对会话；不能用
+`/healthz`、名称、蓝牙 MAC 或短编号替代身份确认。
 
 让应用自动连接：
 
@@ -143,7 +169,7 @@ dart run tool/acceptance/b12a_k7_acceptance.dart --base-url=http://127.0.0.1:878
 暂停、恢复、取消、409、422、复制报告和日志下载。写入仅存在于模拟器进程；
 重启未指定 `--state-file` 的模拟盒子即可恢复初始数据。
 
-B3 鉴权联调接口：
+B3 旧鉴权兼容联调接口：
 
 - `POST /api/v1/device/pair`
 - `GET /api/v1/events`（Bearer WebSocket）
@@ -183,8 +209,10 @@ dart run tool/mock_box_server/server.dart --quick --auth --state-file=.tmp/mock-
 
 ```powershell
 flutter test test/bird_companion/core/authentication_flow_test.dart test/bird_companion/core/media_uri_resolution_test.dart test/bird_companion/core/mock_box_server_test.dart
+flutter test test/contracts/a7_mock_security_audit_test.dart
 ```
 
 测试覆盖配对、REST/WS Bearer、重启恢复、并发幂等重放、吊销、Token/签名 URL
 到期、设备切换、媒体与日志重新申请，以及原有图片、分页、场景、连拍组、详情和
-审阅操作。
+审阅操作。A7 安全审计另行验证请求日志不包含查询串、Authorization、Wi-Fi 密码
+或完整 DPP URI，并验证持久化状态不写入验证码、配对会话或 Token。
