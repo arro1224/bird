@@ -32,4 +32,26 @@ void main() {
       expect(serialized.toLowerCase(), isNot(contains(secret.toLowerCase())));
     }
   });
+
+  test('rejects base URLs containing sensitive URI components', () async {
+    for (final value in [
+      'https://user:secret@example.test/box',
+      'https://example.test/box?token=synthetic',
+      'https://example.test/box#fragment',
+    ]) {
+      expect(
+        () => runBleProvisioningRc4Acceptance(baseUri: Uri.parse(value)),
+        throwsA(isA<FormatException>()),
+      );
+    }
+  });
+
+  test('aggregates a failed case into a failed report', () async {
+    final report = await runBleProvisioningRc4Acceptance(
+      runCase: (caseId) async => caseId != 'SIM-07',
+    );
+
+    expect(report.toJson()['result'], 'fail');
+    expect(report.cases.singleWhere((value) => value['id'] == 'SIM-07')['result'], 'fail');
+  });
 }
