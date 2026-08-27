@@ -211,7 +211,12 @@ try {
             if ($LASTEXITCODE -ne 0) {
                 throw "$DartCommand simulated RC4 acceptance exited with code $LASTEXITCODE."
             }
-            $simulatedAcceptance = ($runnerOutput -join [Environment]::NewLine) | ConvertFrom-Json
+            $runnerText = $runnerOutput -join [Environment]::NewLine
+            $jsonMatch = [regex]::Match($runnerText, '(?s)\{.*\}\s*$')
+            if (-not $jsonMatch.Success) {
+                throw "Simulated RC4 acceptance did not emit a JSON report."
+            }
+            $simulatedAcceptance = $jsonMatch.Value | ConvertFrom-Json
             if ($simulatedAcceptance.result -ne "pass" -or
                 $simulatedAcceptance.environment -ne "simulated" -or
                 $simulatedAcceptance.releasable -ne $false -or
