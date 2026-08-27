@@ -43,8 +43,9 @@ flutter analyze
 - `flutter analyze`：通过，0 issues。
 - Android `bird`、`birdV1` 两个 flavor 的 AndroidTest 源码编译：通过；当前平台侧
   自动证据仍是 DPP MethodChannel 测试，不能替代 K7 真机联调。
-- 仓库全量测试仍存在 B 所属 `settings_phone_layout_test.dart` 首屏布局阻断；该项
-  不属于本次 A7 文件改动，不能记录为 A7 底层失败，也不能在 S4 最终门禁中忽略。
+- 成员 B 的 `settings_phone_layout_test.dart` 首屏布局阻断已由
+  `thirdtime@23489978d` 修复并合入 `part1@c37a337e`；仓库全量 Flutter 测试
+  533/533 通过。
 
 ## 二、必须使用真实 K7 与 Android 手机的证据
 
@@ -72,6 +73,6 @@ flutter analyze
 
 ## 四、当前结论
 
-A7 的 Mock、契约和安全审计可以在没有 K7 时推进；K7-01～K7-10 在真实设备证据
-补齐前保持外部阻断。成员 B 的 settings 页面测试阻断与本表底层证据独立处理，不能
-由成员 A 修改 B 所属页面或通过弱化测试绕过。
+A7 的 Mock、契约和安全审计自动验证已经通过；K7-01～K7-10 在真实设备证据补齐前
+仍保持外部阻断。成员 B 的 settings 页面测试阻断已经解除，当前不能关闭 A7/S4 的
+原因仅为缺少真实 K7 与真实 Android 联调证据。
