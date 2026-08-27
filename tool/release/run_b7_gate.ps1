@@ -212,7 +212,7 @@ try {
                 throw "$DartCommand simulated RC4 acceptance exited with code $LASTEXITCODE."
             }
             $runnerText = $runnerOutput -join [Environment]::NewLine
-            $jsonMatch = [regex]::Match($runnerText, '(?s)\{.*\}\s*$')
+            $jsonMatch = [regex]::Match($runnerText, '(?s)\{.*\}')
             if (-not $jsonMatch.Success) {
                 throw "Simulated RC4 acceptance did not emit a JSON report."
             }
