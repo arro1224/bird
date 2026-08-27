@@ -205,13 +205,16 @@ try {
         Invoke-GateStep "simulated RC4 acceptance" {
             $runnerStdoutPath = [System.IO.Path]::GetTempFileName()
             $runnerStderrPath = [System.IO.Path]::GetTempFileName()
+            $runnerErrorActionPreference = $ErrorActionPreference
             try {
+                $ErrorActionPreference = "Continue"
                 & $DartCommand "run" "tool/acceptance/ble_provisioning_rc4_acceptance.dart" `
                     1> $runnerStdoutPath `
                     2> $runnerStderrPath
                 $runnerExitCode = $LASTEXITCODE
                 $runnerText = Get-Content -LiteralPath $runnerStdoutPath -Raw
             } finally {
+                $ErrorActionPreference = $runnerErrorActionPreference
                 Remove-Item -LiteralPath $runnerStdoutPath, $runnerStderrPath -Force -ErrorAction SilentlyContinue
             }
             if ($runnerExitCode -ne 0) {

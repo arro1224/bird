@@ -22,4 +22,11 @@ void main() {
     expect(source, contains('environment = "real_k7"'));
     expect(source, contains('real_k7_status = "verified"'));
   });
+
+  test('Preflight tolerates simulated runner diagnostics on stderr', () {
+    final source = File('tool/release/run_b7_gate.ps1').readAsStringSync();
+    expect(source, contains(r'$runnerErrorActionPreference = $ErrorActionPreference'));
+    expect(source, contains(r'$ErrorActionPreference = "Continue"'));
+    expect(source, contains(r'$ErrorActionPreference = $runnerErrorActionPreference'));
+  });
 }
