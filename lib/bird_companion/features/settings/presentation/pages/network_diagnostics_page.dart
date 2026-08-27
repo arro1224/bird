@@ -97,6 +97,17 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
+          const BirdSettingsCard(
+            key: Key('network-transfer-note'),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline_rounded, color: AppColors.forestPrimary),
+                SizedBox(width: AppSpacing.sm),
+                Expanded(child: Text('照片仍通过 Wi-Fi 传输，蓝牙仅用于发现与配网')),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
           BirdSettingsCard(
             child: Column(
               children: [
@@ -262,20 +273,6 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
                           'connected',
                   showDivider: false,
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          const BirdSettingsCard(
-            key: Key('network-transfer-note'),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  color: AppColors.forestPrimary,
-                ),
-                SizedBox(width: AppSpacing.sm),
-                Expanded(child: Text('照片仍通过 Wi-Fi 传输，蓝牙仅用于发现与配网')),
               ],
             ),
           ),
