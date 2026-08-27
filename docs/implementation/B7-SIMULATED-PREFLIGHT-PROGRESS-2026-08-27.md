@@ -27,11 +27,12 @@ B7 simulated preflight in progress; real K7 acceptance pending.
 | Fake Wi-Fi 加入、绑定、释放边界 | 已完成 | `ble_provisioning_simulated_flow_test.dart` |
 | Fake DPP 能力、启动、临时 URI 清理 | 已完成 | `ble_provisioning_simulated_flow_test.dart` |
 | 配网页面入口和安全文案 | 已完成 | `network_provisioning_page_test.dart` |
+| B7 页面接入真实模拟状态流 | 已完成 | `880509566`、`b7_simulated_demo_page_test.dart` |
 
 ## 当前未完成
 
-- B7 Preflight 脚本接入模拟验收并输出完整模拟元数据；
-- B7 acceptance/flow/page 的最终全量回归；
+- B7 Preflight 脚本的最终全量回归；
+- B7 acceptance/flow/page 的 Flutter widget 回归（当前机器 Flutter 3.38.1 / Dart 3.10.0，不满足项目 Dart `>=3.12.0`，编译器无法启动）；
 - 真实 K7、真实 Android、Release 签名和 S4 关闭。
 
 ## 已完成（本批次）
@@ -49,7 +50,7 @@ flutter test --no-pub test/bird_companion/features/connection/network_provisioni
 flutter analyze --no-pub tool/acceptance/ble_provisioning_rc4_acceptance.dart test/bird_companion/acceptance/ble_provisioning_rc4_acceptance_test.dart test/bird_companion/features/connection/ble_provisioning_simulated_flow_test.dart
 ```
 
-结果：验收报告 3/3、模拟边界 3/3、配网页面 10/10，静态分析 `No issues found`。
+结果：此前验收报告 3/3、模拟边界 3/3、配网页面 10/10；本批次 B7 页面相关 Dart 静态分析 `No issues found`。Flutter widget 测试需在满足项目 SDK 要求的环境重新执行。
 
 ## 安全和边界
 
