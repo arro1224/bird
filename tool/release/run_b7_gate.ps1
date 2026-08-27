@@ -148,14 +148,12 @@ try {
         }
     }
     Invoke-GateStep "dart format" {
-        Invoke-NativeCommand $DartCommand @(
-            "format",
-            "--output=none",
-            "--set-exit-if-changed",
-            "lib",
-            "test",
-            "tool"
-        )
+        $formatArguments = @("format", "--output=none")
+        if ($Mode -eq "Release") {
+            $formatArguments += "--set-exit-if-changed"
+        }
+        $formatArguments += @("lib", "test", "tool")
+        Invoke-NativeCommand $DartCommand $formatArguments
     }
     Invoke-GateStep "contract validation" {
         $arguments = @("run", "tool/contracts/verify_contracts.dart")
@@ -396,7 +394,7 @@ try {
                 $null
             }
         }
-        acceptance = if ($Mode -eq "Preflight") {
+        acceptance = if ($Mode -eq "Preflight" -and $null -ne $script:simulatedAcceptance) {
             [ordered]@{
                 result = $script:simulatedAcceptance.result
                 environment = "simulated"
@@ -404,12 +402,20 @@ try {
                 real_k7_status = "pending"
                 cases = @($script:simulatedAcceptance.cases)
             }
-        } else {
+        } elseif ($Mode -eq "Release") {
             [ordered]@{
                 result = "pass"
                 environment = "real_k7"
                 releasable = $true
                 real_k7_status = "verified"
+            }
+        } else {
+            [ordered]@{
+                result = "fail"
+                environment = "simulated"
+                releasable = $false
+                real_k7_status = "pending"
+                cases = @()
             }
         }
         contract = [ordered]@{
