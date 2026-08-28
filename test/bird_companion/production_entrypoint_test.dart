@@ -27,6 +27,14 @@ void main() {
     expect(demoMain, contains('demo-only'));
   });
 
+  test('settings entrypoint routes device setup through production repository', () {
+    final demoMain = File('lib/main_bird_settings.dart').readAsStringSync();
+
+    expect(demoMain, isNot(contains('B7SimulatedDemoPage')));
+    expect(demoMain, contains("BirdRoutes.connection"));
+    expect(demoMain, contains('provisioningRepository: widget.dependencies.provisioningRepository'));
+  });
+
   test('production task flow has no demo fallback or fixed task totals', () {
     final root = File(
       'lib/bird_companion/features/tasks/presentation/task_experience_root.dart',

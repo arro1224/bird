@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/bird_demo_shell.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/core/widgets/bird_error_boundary.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
 import 'package:aves/bird_companion/features/settings/presentation/settings_showcase_page.dart';
-import 'package:aves/bird_companion/features/connection/presentation/pages/b7_simulated_demo_page.dart';
 import 'package:aves/bird_companion/features/tasks/demo/demo_task_experience_data_source.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/task_experience_controller.dart';
@@ -142,10 +142,11 @@ class _BirdSettingsAppState extends State<BirdSettingsApp> {
                   right: 16,
                   bottom: 96,
                   child: FloatingActionButton.extended(
-                    heroTag: 'b7-simulated-demo',
-                    onPressed: () => Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const B7SimulatedDemoPage(),
+                    heroTag: 'device-connection',
+                    onPressed: () => Navigator.of(context).pushNamed(
+                      BirdRoutes.connection,
+                      arguments: const ConnectionArgs(
+                        entryMode: ConnectionEntryMode.addOrSwitch,
                       ),
                     ),
                     icon: const Icon(Icons.bluetooth_searching_rounded),
@@ -157,7 +158,10 @@ class _BirdSettingsAppState extends State<BirdSettingsApp> {
           },
         ),
       ),
-      onGenerateRoute: BirdAppRouter.onGenerateRoute,
+      onGenerateRoute: (settings) => BirdAppRouter.onGenerateRoute(
+        settings,
+        provisioningRepository: widget.dependencies.provisioningRepository,
+      ),
     ),
   );
 }
