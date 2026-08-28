@@ -28,6 +28,5 @@ class _B7SimulatedDemoPageState extends State<B7SimulatedDemoPage> {
   @override
   Widget build(BuildContext context) => ConnectionPage(
     provisioningRepository: _repository,
-    titlePrefix: 'B7 模拟 · ',
   );
 }

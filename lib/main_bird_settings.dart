@@ -149,7 +149,7 @@ class _BirdSettingsAppState extends State<BirdSettingsApp> {
                       ),
                     ),
                     icon: const Icon(Icons.bluetooth_searching_rounded),
-                    label: const Text('B7 蓝牙演示'),
+                    label: const Text('蓝牙配网'),
                   ),
                 ),
               ],

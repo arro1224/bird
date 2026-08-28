@@ -25,7 +25,9 @@ void main() {
 
     await settleSimulatedEvent(tester);
     expect(find.text('附近的盒子'), findsOneWidget);
-    expect(find.text('B7 模拟 · 查找盒子'), findsOneWidget);
+    expect(find.text('查找盒子'), findsOneWidget);
+    expect(find.textContaining('模拟'), findsNothing);
+    expect(find.textContaining('演示'), findsNothing);
     await tester.tap(find.text('连接此盒子'));
     await settleSimulatedEvent(tester);
     expect(find.text('设备验证完成'), findsOneWidget);
@@ -48,6 +50,12 @@ void main() {
     await settleSimulatedEvent(tester);
     expect(find.text('盒子直连已就绪'), findsOneWidget);
     expect(repository.calls, contains('getNetworkStatus'));
+
+    await tester.tap(find.text('停止盒子直连'));
+    await settleSimulatedEvent(tester);
+    expect(find.text('直连已停止'), findsOneWidget);
+    expect(find.text('返回连接方式'), findsOneWidget);
+    expect(repository.calls, contains('stopDirectAp'));
   });
 
   testWidgets('B7 simulated demo exposes the real Wi-Fi method state flow', (tester) async {
@@ -71,7 +79,7 @@ void main() {
     await tester.tap(find.text('加入现有 Wi-Fi'));
     await settleSimulatedEvent(tester);
 
-    expect(find.text('B7 模拟 · Wi-Fi 配网'), findsOneWidget);
+    expect(find.text('Wi-Fi 配网'), findsOneWidget);
     expect(find.text('选择 Wi-Fi 配网方式'), findsOneWidget);
     expect(repository.calls, contains('connect:demo-b7'));
   });

@@ -93,7 +93,22 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository 
   @override
   Future<CommandAccepted> stopDirectAp() async {
     calls.add('stopDirectAp');
-    return const CommandAccepted(operationId: 'op_b7_stop_ap', desiredMode: ProvisioningNetworkMode.none);
+    const accepted = CommandAccepted(operationId: 'op_b7_stop_ap', desiredMode: ProvisioningNetworkMode.none);
+    _emitLater(
+      const ProvisioningEvent(
+        type: ProvisioningEventType.directApStopped,
+        requestId: 'request-b7-stop-ap',
+        deviceId: 'bbx-b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7',
+        payload: DirectApStopped(
+          operationId: 'op_b7_stop_ap',
+          activeMode: ProvisioningNetworkMode.none,
+          operationState: NetworkOperationState.idle,
+          restoredSta: false,
+          reason: 'user_requested',
+        ),
+      ),
+    );
+    return accepted;
   }
 
   @override
