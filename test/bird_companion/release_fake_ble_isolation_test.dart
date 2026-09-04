@@ -14,6 +14,8 @@ void main() {
       'MethodChannelBirdBoxDppPlatform()',
       'rememberDynamicAddress:',
       'restoreSavedSession()',
+      'Future<void> completeProvisioning(',
+      'deviceSessionCubit.setConnectedFromStatus(status)',
     ];
     const fakeNeedles = [
       'FakeBirdBox',
@@ -40,6 +42,40 @@ void main() {
         gate,
         matches(_gateCall('_forbid', needle)),
         reason: 'production gate must forbid fake dependency: $needle',
+      );
+    }
+
+    expect(
+      gate,
+      contains(
+        'onProvisioningCompleted: dependencies.completeProvisioning',
+      ),
+      reason: 'production gate must require the session hand-off wiring',
+    );
+    expect(
+      gate,
+      contains('onProvisioningCompleted: onProvisioningCompleted'),
+      reason: 'production gate must require router forwarding',
+    );
+    expect(
+      gate,
+      contains('widget.repository.disconnect()'),
+      reason: 'production gate must require unfinished-flow cleanup',
+    );
+    for (final needle in const [
+      'DppAvailabilityRepository',
+      'checkDppAvailability()',
+      '_dpp.checkCapability()',
+      '使用手机安全共享 Wi-Fi',
+      '扫描 Wi-Fi 二维码',
+      '选择或手动输入网络',
+      'WifiQrScannerPage()',
+      'parseWifiQrCredentials',
+    ]) {
+      expect(
+        gate,
+        contains(needle),
+        reason: 'production gate must lock the B2 requirement: $needle',
       );
     }
 

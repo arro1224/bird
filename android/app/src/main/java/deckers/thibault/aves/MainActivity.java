@@ -100,6 +100,14 @@ public final class MainActivity extends FlutterActivity {
         super.cleanUpFlutterEngine(flutterEngine);
     }
 
+    @Override
+    protected void onDestroy() {
+        if (birdBoxDppChannel != null) {
+            birdBoxDppChannel.onHostDestroying(isChangingConfigurations());
+        }
+        super.onDestroy();
+    }
+
     private void handleClientIdentity(MethodCall call, MethodChannel.Result result) {
         try {
             final SharedPreferences preferences = getSharedPreferences(

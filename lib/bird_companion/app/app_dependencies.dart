@@ -122,7 +122,10 @@ class BirdCompanionDependencies {
   final MediaAssetCoordinator mediaAssetCoordinator;
   final MediaAssetService mediaAssetService;
 
-  static Future<BirdCompanionDependencies> create() async {
+  static Future<BirdCompanionDependencies> create({
+    bool connectEnvironmentTestEndpoint = true,
+    bool restoreSavedSession = true,
+  }) async {
     final cache = await LocalCache.open();
     final apiClient = ApiClient();
     final eventClient = EventClient();
@@ -249,7 +252,7 @@ class BirdCompanionDependencies {
     );
     dependencies.birdSyncService.start();
     const testBaseUrl = String.fromEnvironment('BIRD_TEST_BASE_URL');
-    if (testBaseUrl.isNotEmpty) {
+    if (connectEnvironmentTestEndpoint && testBaseUrl.isNotEmpty) {
       final uri = Uri.tryParse(testBaseUrl);
       if (uri != null && uri.hasScheme && uri.host.isNotEmpty) {
         try {
@@ -261,10 +264,32 @@ class BirdCompanionDependencies {
         }
       }
     }
-    if (!deviceSessionCubit.state.isConnected) {
+    if (restoreSavedSession && !deviceSessionCubit.state.isConnected) {
       await deviceSessionCubit.restoreSavedSession();
     }
     return dependencies;
+  }
+
+  /// Promotes a network endpoint confirmed by BLE provisioning into the
+  /// application-wide authenticated device session.
+  Future<void> completeProvisioning(
+    ProvisioningCompletion completion,
+  ) async {
+    if (completion.networkMode == ProvisioningNetworkMode.none) {
+      throw StateError('Provisioning completed without an active network.');
+    }
+    final status = await connectionRepository.connect(
+      completion.baseUri,
+      networkMode: switch (completion.networkMode) {
+        ProvisioningNetworkMode.directAp => NetworkMode.directAp,
+        ProvisioningNetworkMode.infrastructureSta => NetworkMode.infrastructureSta,
+        ProvisioningNetworkMode.none => NetworkMode.none,
+      },
+    );
+    if (status.connection.id != completion.deviceId) {
+      throw StateError('Provisioned device identity does not match the connected box.');
+    }
+    await deviceSessionCubit.setConnectedFromStatus(status);
   }
 
   void dispose() {

@@ -1,17 +1,48 @@
 import 'dart:async';
 
+import 'package:aves/bird_companion/features/connection/data/ble/ble_protocol_constants.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 
 /// Deterministic repository used only by the B7 simulated acceptance page.
 /// It exercises the same presentation contract as a real BirdBox transport.
-final class B7SimulatedProvisioningRepository implements ProvisioningRepository {
-  B7SimulatedProvisioningRepository();
+final class B7SimulatedProvisioningRepository implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository {
+  B7SimulatedProvisioningRepository({
+    Uri? baseUri,
+    this.deviceId = simulatedBirdBoxDeviceId,
+  }) : baseUri = baseUri ?? simulatedBirdBoxBaseUri,
+       _networkStatus = _directApStatusFor(
+         baseUri ?? simulatedBirdBoxBaseUri,
+       ) {
+    if (!RegExp(r'^bbx-[0-9a-f]{32}$').hasMatch(deviceId)) {
+      throw ArgumentError.value(
+        deviceId,
+        'deviceId',
+        'must match bbx- followed by 32 lowercase hex characters',
+      );
+    }
+  }
+
+  final Uri baseUri;
+  final String deviceId;
 
   final _events = StreamController<ProvisioningEvent>.broadcast();
   final calls = <String>[];
   var _disposed = false;
-  var _networkStatus = _directApStatus;
+  ProvisioningNetworkStatus _networkStatus;
+  ProvisioningDeviceInfo? _connectedDeviceInfo;
+  final _disconnects = StreamController<void>.broadcast();
+  late final ProvisioningDeviceInfo _deviceInfo = _deviceInfoFor(deviceId);
+  late final ProvisioningDevice _device = _deviceFor(_deviceInfo);
+
+  @override
+  ProvisioningDeviceInfo? get connectedDeviceInfo => _connectedDeviceInfo;
+
+  @override
+  Stream<void> get disconnects => _disconnects.stream;
+
+  @override
+  bool get networkStatusResumeRequired => false;
 
   @override
   Stream<ProvisioningDevice> discoverDevices({Duration? timeout}) async* {
@@ -28,14 +59,28 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository 
   Future<ProvisioningDeviceInfo> connect(ProvisioningDevice device) async {
     calls.add('connect:${device.scanId}');
     await Future<void>.delayed(const Duration(milliseconds: 20));
+    _connectedDeviceInfo = _deviceInfo;
     return _deviceInfo;
   }
 
   @override
-  Future<void> disconnect() async => calls.add('disconnect');
+  Future<void> disconnect() async {
+    calls.add('disconnect');
+    _connectedDeviceInfo = null;
+    if (!_disposed) _disconnects.add(null);
+  }
 
   @override
   Stream<ProvisioningEvent> get events => _events.stream;
+
+  @override
+  Future<DppAvailability> checkDppAvailability() async => const DppAvailability(
+    boxSupported: true,
+    apiLevelSupported: true,
+    easyConnectSupported: true,
+    activityAvailable: true,
+    sessionReady: true,
+  );
 
   @override
   Future<PairingWindow> openPairing() async {
@@ -52,7 +97,7 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository 
     calls.add('authorizePairing');
     if (pairingCode.length != 6) throw StateError('demo pairing code must have six digits');
     return PairingAuthorization.fromJson(const {
-      'pairing_session_id': 'pairing-session-b7',
+      'pairing_session_id': simulatedBirdBoxPairingSessionId,
       'expires_in': 120,
     });
   }
@@ -75,7 +120,7 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository 
         type: ProvisioningEventType.directApReady,
         requestId: 'request-b7-direct-ap',
         deviceId: _deviceInfo.deviceId,
-        payload: DirectApReady.fromJson(const {
+        payload: DirectApReady.fromJson({
           'operation_id': 'op_b7_direct_ap',
           'active_mode': 'direct_ap',
           'ssid': 'BirdBox-B7B7B7B7',
@@ -83,7 +128,7 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository 
           'passphrase': 'synthetic-only',
           'gateway_ipv4': '192.0.2.1',
           'prefix_length': 24,
-          'base_uri': 'http://192.0.2.10:8080',
+          'base_uri': baseUri.toString(),
         }),
       ),
     );
@@ -95,11 +140,11 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository 
     calls.add('stopDirectAp');
     const accepted = CommandAccepted(operationId: 'op_b7_stop_ap', desiredMode: ProvisioningNetworkMode.none);
     _emitLater(
-      const ProvisioningEvent(
+      ProvisioningEvent(
         type: ProvisioningEventType.directApStopped,
         requestId: 'request-b7-stop-ap',
-        deviceId: 'bbx-b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7',
-        payload: DirectApStopped(
+        deviceId: deviceId,
+        payload: const DirectApStopped(
           operationId: 'op_b7_stop_ap',
           activeMode: ProvisioningNetworkMode.none,
           operationState: NetworkOperationState.idle,
@@ -143,13 +188,16 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository 
   @override
   Future<CommandAccepted> setStaConfig(StaNetworkConfiguration configuration) async {
     calls.add('setStaConfig');
-    _networkStatus = _staStatus;
+    _networkStatus = _staStatusFor(
+      baseUri,
+      provisioningMethod: configuration.provisioningMethod,
+    );
     _emitLater(
       ProvisioningEvent(
         type: ProvisioningEventType.staConnected,
         requestId: 'request-b7-sta',
         deviceId: _deviceInfo.deviceId,
-        payload: StaConnected.fromJson(const {
+        payload: StaConnected.fromJson({
           'operation_id': 'op_b7_sta',
           'active_mode': 'infrastructure_sta',
           'ssid': 'BirdLab-5G',
@@ -157,9 +205,9 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository 
           'ipv4': '192.0.2.20',
           'prefix_length': 24,
           'gateway_ipv4': '192.0.2.1',
-          'base_uri': 'http://192.0.2.20:8080',
+          'base_uri': baseUri.toString(),
           'network_kind': 'router',
-          'provisioning_method': 'ble_scan_selection',
+          'provisioning_method': configuration.provisioningMethod.wireValue,
         }),
       ),
     );
@@ -169,7 +217,55 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository 
   @override
   Future<CommandAccepted> startDppProvisioning() async {
     calls.add('startDppProvisioning');
-    return const CommandAccepted(operationId: 'op_b7_dpp', desiredMode: ProvisioningNetworkMode.infrastructureSta);
+    const accepted = CommandAccepted(
+      operationId: 'op_b7_dpp',
+      desiredMode: ProvisioningNetworkMode.infrastructureSta,
+      provisioningMethod: ProvisioningMethod.androidDpp,
+    );
+    _networkStatus = _staStatusFor(
+      baseUri,
+      provisioningMethod: ProvisioningMethod.androidDpp,
+    );
+    _emitLater(
+      ProvisioningEvent(
+        type: ProvisioningEventType.dppBootstrapReady,
+        requestId: 'request-b7-dpp',
+        deviceId: deviceId,
+        payload: DppBootstrapReady.fromJson(const {
+          'operation_id': 'op_b7_dpp',
+          'operation_state': 'waiting_dpp_configurator',
+          'dpp_uri': 'DPP:K:SIMULATED_PUBLIC_KEY;M:001122334455;;',
+          'expires_in_seconds': 120,
+        }),
+      ),
+    );
+    Future<void>.delayed(const Duration(milliseconds: 40), () {
+      if (_disposed) return;
+      _networkStatus = _staStatusFor(
+        baseUri,
+        provisioningMethod: ProvisioningMethod.androidDpp,
+      );
+      _events.add(
+        ProvisioningEvent(
+          type: ProvisioningEventType.staConnected,
+          requestId: 'request-b7-dpp',
+          deviceId: deviceId,
+          payload: StaConnected.fromJson({
+            'operation_id': 'op_b7_dpp',
+            'active_mode': 'infrastructure_sta',
+            'ssid': 'BirdLab-DPP',
+            'bssid': '02:00:00:00:00:08',
+            'ipv4': '192.0.2.21',
+            'prefix_length': 24,
+            'gateway_ipv4': '192.0.2.1',
+            'base_uri': baseUri.toString(),
+            'network_kind': 'router',
+            'provisioning_method': 'android_dpp',
+          }),
+        ),
+      );
+    });
+    return accepted;
   }
 
   @override
@@ -188,30 +284,35 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository 
   Future<void> dispose() async {
     _disposed = true;
     await _events.close();
+    await _disconnects.close();
   }
 }
 
-final _device = ProvisioningDevice(
+final simulatedBirdBoxBaseUri = Uri.parse('http://127.0.0.1:8787');
+const simulatedBirdBoxDeviceId = 'bbx-b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7';
+const simulatedBirdBoxPairingSessionId = 'ps_mock_pairing_session';
+
+ProvisioningDevice _deviceFor(ProvisioningDeviceInfo info) => ProvisioningDevice(
   scanId: 'demo-b7',
   advertisement: BirdBoxAdvertisement(
-    localName: 'BirdBox-B7B7B7B7',
-    serviceUuids: {'0000b7b7-0000-1000-8000-00805f9b34fb'},
+    localName: info.deviceName,
+    serviceUuids: const {BleProtocolConstants.serviceUuid},
     rssi: -44,
   ),
 );
 
-const _deviceInfo = ProvisioningDeviceInfo(
+ProvisioningDeviceInfo _deviceInfoFor(String deviceId) => ProvisioningDeviceInfo(
   protocolVersion: '1.0-rc4',
   minAppProtocolVersion: '1.0-rc4',
-  deviceId: 'bbx-b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7',
+  deviceId: deviceId,
   deviceName: 'BirdBox-B7B7B7B7',
   firmwareVersion: '1.0.0-simulated',
   apiVersion: 'v1',
   pairingCodeMode: PairingCodeMode.sessionRandom,
   pairingCodeLength: 6,
-  pairingCodeTtl: Duration(minutes: 2),
+  pairingCodeTtl: const Duration(minutes: 2),
   displayAvailable: false,
-  capabilities: DeviceCapabilities(
+  capabilities: const DeviceCapabilities(
     directAp: true,
     infrastructureSta: true,
     wifiScan: true,
@@ -227,26 +328,37 @@ const _deviceInfo = ProvisioningDeviceInfo(
   ),
 );
 
-final _directApStatus = ProvisioningNetworkStatus(
+ProvisioningNetworkStatus _directApStatusFor(Uri baseUri) => ProvisioningNetworkStatus(
   activeMode: ProvisioningNetworkMode.directAp,
   desiredMode: ProvisioningNetworkMode.directAp,
   operationState: NetworkOperationState.apReady,
   operationId: 'op_b7_direct_ap',
   busy: false,
-  baseUri: Uri.parse('http://192.0.2.10:8080'),
+  baseUri: baseUri,
   directAp: const DirectApSnapshot(ssid: 'BirdBox-B7B7B7B7', security: WifiSecurity.wpa2Personal, gatewayIpv4: '192.0.2.1', prefixLength: 24, clientCount: 1),
   infrastructureSta: const InfrastructureStaSnapshot(saved: true),
   updatedAt: DateTime.utc(2026, 8, 27),
 );
 
-final _staStatus = ProvisioningNetworkStatus(
+ProvisioningNetworkStatus _staStatusFor(
+  Uri baseUri, {
+  required ProvisioningMethod provisioningMethod,
+}) => ProvisioningNetworkStatus(
   activeMode: ProvisioningNetworkMode.infrastructureSta,
   desiredMode: ProvisioningNetworkMode.infrastructureSta,
   operationState: NetworkOperationState.staConnected,
   operationId: 'op_b7_sta',
   busy: false,
-  baseUri: Uri.parse('http://192.0.2.20:8080'),
+  baseUri: baseUri,
   directAp: const DirectApSnapshot(),
-  infrastructureSta: const InfrastructureStaSnapshot(ssid: 'BirdLab-5G', ipv4: '192.0.2.20', prefixLength: 24, gatewayIpv4: '192.0.2.1', saved: true),
+  infrastructureSta: InfrastructureStaSnapshot(
+    ssid: provisioningMethod == ProvisioningMethod.androidDpp ? 'BirdLab-DPP' : 'BirdLab-5G',
+    ipv4: '192.0.2.20',
+    prefixLength: 24,
+    gatewayIpv4: '192.0.2.1',
+    networkKind: StaNetworkKind.router,
+    provisioningMethod: provisioningMethod,
+    saved: true,
+  ),
   updatedAt: DateTime.utc(2026, 8, 27),
 );

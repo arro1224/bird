@@ -52,6 +52,9 @@ void main() {
     expect(repository.calls, contains('getNetworkStatus'));
 
     await tester.tap(find.text('停止盒子直连'));
+    await tester.pumpAndSettle();
+    expect(find.text('断开盒子直连？'), findsOneWidget);
+    await tester.tap(find.text('断开并恢复 Wi-Fi'));
     await settleSimulatedEvent(tester);
     expect(find.text('直连已停止'), findsOneWidget);
     expect(find.text('返回连接方式'), findsOneWidget);

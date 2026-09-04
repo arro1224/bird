@@ -161,6 +161,7 @@ class _BirdSettingsAppState extends State<BirdSettingsApp> {
       onGenerateRoute: (settings) => BirdAppRouter.onGenerateRoute(
         settings,
         provisioningRepository: widget.dependencies.provisioningRepository,
+        onProvisioningCompleted: widget.dependencies.completeProvisioning,
       ),
     ),
   );

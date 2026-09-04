@@ -4,6 +4,7 @@ import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/core/widgets/empty_state.dart';
 import 'package:aves/bird_companion/features/batches/presentation/batch_list_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_page.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_confirmation_page.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_page.dart';
@@ -22,6 +23,7 @@ import 'package:aves/bird_companion/features/settings/presentation/pages/device_
 import 'package:aves/bird_companion/features/settings/presentation/pages/display_settings_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/help_center_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/network_diagnostics_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/network_settings_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/photo_settings_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/storage_target_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
@@ -50,6 +52,7 @@ abstract final class BirdRoutes {
   static const settingsCopyBackup = '/settings/copy-backup';
   static const settingsStorageTarget = '/settings/storage-target';
   static const settingsNetworkDiagnostics = '/settings/network-diagnostics';
+  static const settingsNetwork = '/settings/network';
   static const settingsSystemLogs = '/settings/system-logs';
   static const settingsHelp = '/settings/help';
 }
@@ -71,6 +74,7 @@ abstract final class BirdAppRouter {
   static Route<void> onGenerateRoute(
     RouteSettings settings, {
     ProvisioningRepository? provisioningRepository,
+    ProvisioningCompletionHandler? onProvisioningCompleted,
   }) {
     Widget page;
     switch (settings.name) {
@@ -79,6 +83,7 @@ abstract final class BirdAppRouter {
         page = ConnectionPage(
           entryMode: args is ConnectionArgs ? args.entryMode : ConnectionEntryMode.initialSetup,
           provisioningRepository: provisioningRepository,
+          onProvisioningCompleted: onProvisioningCompleted,
         );
       case BirdRoutes.shell:
         final args = settings.arguments;
@@ -88,6 +93,7 @@ abstract final class BirdAppRouter {
           onGenerateRoute: (settings) => onGenerateRoute(
             settings,
             provisioningRepository: provisioningRepository,
+            onProvisioningCompleted: onProvisioningCompleted,
           ),
         );
       case BirdRoutes.gallery:
@@ -196,6 +202,13 @@ abstract final class BirdAppRouter {
         );
       case BirdRoutes.settingsNetworkDiagnostics:
         page = const NetworkDiagnosticsPage();
+      case BirdRoutes.settingsNetwork:
+        page = provisioningRepository == null
+            ? _invalid('网络设置', '当前未提供蓝牙配网服务')
+            : NetworkSettingsPage(
+                repository: provisioningRepository,
+                onProvisioningCompleted: onProvisioningCompleted,
+              );
       case BirdRoutes.settingsSystemLogs:
         page = const SystemLogsPage();
       case BirdRoutes.settingsHelp:

@@ -51,4 +51,17 @@ void main() {
       isNot(contains('password=secret')),
     );
   });
+
+  test('maps exhausted network recovery to BLE-preserving reconfiguration', () {
+    final message = UserMessageMapper.fromError(
+      const ProvisioningException(
+        code: ProvisioningErrorCode.networkRecoveryFailed,
+        retryable: true,
+      ),
+    );
+
+    expect(message.title, '网络恢复失败');
+    expect(message.message, contains('蓝牙连接会保留'));
+    expect(message.actionLabel, '重新配网');
+  });
 }

@@ -71,7 +71,7 @@ final class MethodChannelBirdBoxDppPlatform implements BirdBoxDppPlatform {
         'timed_out' => DppLaunchOutcome.timedOut,
         _ => DppLaunchOutcome.failed,
       },
-      systemResultCode: raw?['systemResultCode'] as String?,
+      systemResultCode: _safeSystemResultCode(raw?['systemResultCode']),
     );
   }
 
@@ -96,11 +96,29 @@ final class MethodChannelBirdBoxDppPlatform implements BirdBoxDppPlatform {
           'dpp_activity_unavailable' => ProvisioningErrorCode.systemDppActivityUnavailable,
           'dpp_invalid_uri' => ProvisioningErrorCode.systemDppInvalidUri,
           'dpp_unsupported' => ProvisioningErrorCode.phoneDppNotSupported,
+          'dpp_operation_busy' || 'invalid_state' => ProvisioningErrorCode.invalidRequest,
           _ => ProvisioningErrorCode.systemDppFailed,
         },
-        retryable: error.code == 'dpp_launch_failed',
+        retryable: error.code == 'dpp_launch_failed' || error.code == 'dpp_operation_busy',
         diagnosticMessage: 'Android Easy Connect platform error: ${error.code}',
       );
     }
+  }
+
+  static String? _safeSystemResultCode(Object? value) {
+    if (value is! String) return null;
+    const allowed = {
+      'result_ok',
+      'result_cancelled',
+      'result_other',
+      'timeout',
+      'api_level',
+      'unresolved',
+      'invalid_uri',
+      'launch_exception',
+      'host_destroyed',
+      'activity_disposed',
+    };
+    return allowed.contains(value) ? value : 'result_other';
   }
 }

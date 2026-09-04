@@ -68,6 +68,7 @@ class ApiClient {
   final Dio _publicDio;
   final Dio _assetDio;
   final _authenticationFailures = StreamController<int>.broadcast();
+  int _requestSequence = 0;
 
   Uri? get baseUri => _baseUri;
   Stream<int> get authenticationFailures => _authenticationFailures.stream;
@@ -253,7 +254,7 @@ class ApiClient {
     return baseUri.resolveUri(reference).toString();
   }
 
-  String _newRequestId() => 'app-${DateTime.now().microsecondsSinceEpoch}';
+  String _newRequestId() => 'app-${DateTime.now().microsecondsSinceEpoch}-${_requestSequence++}';
 
   Future<void> dispose() async {
     await _authenticationFailures.close();

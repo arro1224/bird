@@ -1,21 +1,38 @@
 {
   "schema_version": 1,
-  "acceptance_suite": "ble-provisioning-rc4",
+  "acceptance_suite": "ble-provisioning-rc4-real-device",
   "captured_at": "REQUIRED_ISO_8601_TIMESTAMP",
   "final_result": "pending",
   "releasable": false,
   "real_k7_status": "pending",
   "environment": {
     "real_hardware": false,
-    "android_device_serial": "REQUIRED_PHYSICAL_ANDROID_SERIAL",
-    "android_os_version": "REQUIRED_ANDROID_OS_VERSION",
     "operator": "REQUIRED_OPERATOR",
-    "location": "REQUIRED_TEST_LOCATION"
+    "location": "REQUIRED_TEST_LOCATION",
+    "android_devices": [
+      {
+        "id": "android-primary",
+        "serial": "REQUIRED_PHYSICAL_ANDROID_SERIAL",
+        "manufacturer": "REQUIRED_ANDROID_MANUFACTURER",
+        "model": "REQUIRED_ANDROID_MODEL",
+        "os_version": "REQUIRED_ANDROID_OS_VERSION",
+        "physical": false
+      }
+    ],
+    "routers": [
+      {
+        "id": "router-primary",
+        "model": "REQUIRED_ROUTER_MODEL",
+        "firmware": "REQUIRED_ROUTER_FIRMWARE",
+        "band": "REQUIRED_ROUTER_BAND",
+        "security": "REQUIRED_ROUTER_SECURITY"
+      }
+    ]
   },
   "app": {
     "git_sha": "REQUIRED_40_CHAR_GIT_SHA",
     "package_id": "deckers.thibault.aves.bird",
-    "build_mode": "REQUIRED_BUILD_MODE",
+    "build_mode": "REQUIRED_RELEASE_BUILD_MODE",
     "signed": false,
     "signature_verified": false,
     "certificate_sha256": "REQUIRED_APPROVED_CERT_SHA256",
@@ -26,21 +43,29 @@
     "device_model": "REQUIRED_REAL_DEVICE_MODEL",
     "hardware_serial": "REQUIRED_HARDWARE_SERIAL",
     "firmware_sha": "REQUIRED_FROZEN_FIRMWARE_SHA",
-    "api_version": "v1",
-    "base_url": "REQUIRED_REAL_LAN_OR_HOTSPOT_URL"
+    "api_version": "v1"
   },
   "cases": [
-    {"id": "SIM-01", "status": "pending", "evidence": []},
-    {"id": "SIM-02", "status": "pending", "evidence": []},
-    {"id": "SIM-03", "status": "pending", "evidence": []},
-    {"id": "SIM-04", "status": "pending", "evidence": []},
-    {"id": "SIM-05", "status": "pending", "evidence": []},
-    {"id": "SIM-06", "status": "pending", "evidence": []},
-    {"id": "SIM-07", "status": "pending", "evidence": []},
-    {"id": "SIM-08", "status": "pending", "evidence": []},
-    {"id": "SIM-09", "status": "pending", "evidence": []},
-    {"id": "SIM-10", "status": "pending", "evidence": []}
+    {"id": "K7-01", "status": "pending", "summary": "REQUIRED_REDACTED_RESULT_SUMMARY", "device_ids": ["android-primary"], "router_ids": [], "evidence": []},
+    {"id": "K7-02", "status": "pending", "summary": "REQUIRED_REDACTED_RESULT_SUMMARY", "device_ids": ["android-primary"], "router_ids": [], "evidence": []},
+    {"id": "K7-03", "status": "pending", "summary": "REQUIRED_REDACTED_RESULT_SUMMARY", "device_ids": ["android-primary"], "router_ids": [], "evidence": []},
+    {"id": "K7-04", "status": "pending", "summary": "REQUIRED_REDACTED_RESULT_SUMMARY", "device_ids": ["android-primary"], "router_ids": [], "evidence": []},
+    {"id": "K7-05", "status": "pending", "summary": "REQUIRED_REDACTED_RESULT_SUMMARY", "device_ids": ["android-primary"], "router_ids": [], "evidence": []},
+    {"id": "K7-06", "status": "pending", "summary": "REQUIRED_REDACTED_RESULT_SUMMARY", "device_ids": ["android-primary"], "router_ids": ["router-primary"], "evidence": []},
+    {"id": "K7-07", "status": "pending", "summary": "REQUIRED_REDACTED_RESULT_SUMMARY", "device_ids": ["android-primary"], "router_ids": ["router-primary"], "evidence": []},
+    {"id": "K7-08", "status": "pending", "summary": "REQUIRED_REDACTED_RESULT_SUMMARY", "device_ids": ["android-primary"], "router_ids": ["router-primary"], "evidence": []},
+    {"id": "K7-09", "status": "pending", "summary": "REQUIRED_REDACTED_RESULT_SUMMARY", "device_ids": ["android-primary"], "router_ids": ["router-primary"], "evidence": []},
+    {"id": "K7-10", "status": "pending", "summary": "REQUIRED_REDACTED_RESULT_SUMMARY", "device_ids": ["android-primary"], "router_ids": ["router-primary"], "evidence": []}
   ],
-  "evidence": [],
-  "notes": "REQUIRED_REAL_DEVICE_CAPTURE_NOTES"
+  "evidence_summary": "REQUIRED_REDACTED_EVIDENCE_SUMMARY",
+  "redaction": {
+    "reviewed": false,
+    "reviewer": "REQUIRED_REDACTION_REVIEWER",
+    "statement": "REQUIRED_NO_SECRETS_OR_COMPLETE_IDENTIFIERS_STATEMENT",
+    "report": "REQUIRED_REDACTION_REPORT_PATH"
+  },
+  "approvals": {
+    "protocol": {"status": "pending", "evidence": "REQUIRED_PROTOCOL_APPROVAL_PATH"},
+    "qa_release": {"status": "pending", "evidence": "REQUIRED_QA_APPROVAL_PATH"}
+  }
 }

@@ -12,6 +12,51 @@ K7 无线链路证据。服务只依赖 Dart SDK，不需要安装额外服务�
 
 ## 启动
 
+### vivo 真机 Debug 模拟（两个终端窗口）
+
+窗口 1 保持 HTTP Mock 运行：
+
+```powershell
+Set-Location -LiteralPath "D:\Androidstudio2\project\4"
+dart run .\tool\mock_box_server\server.dart --quick `
+  --auth `
+  --progressive-media `
+  --host=0.0.0.0 `
+  --port=8787 `
+  --device-id=bbx-82f41c9e7a3d4b68a1501e21e536c649
+```
+
+窗口 2 建立 vivo 的 TCP 反向映射，并启动仅 Debug 可用的 App 内置 BLE/Wi-Fi/DPP
+模拟入口：
+
+```powershell
+Set-Location -LiteralPath "D:\Androidstudio2\project\4"
+& "D:\Androidstudio2\platform-tools\adb.exe" -s b502aabb reverse tcp:8787 tcp:8787
+& "D:\Androidstudio2\platform-tools\adb.exe" -s b502aabb reverse --list
+& "D:\flutter344\flutter\bin\flutter.bat" run `
+  -d b502aabb `
+  --debug `
+  --flavor birdV1 `
+  -t .\lib\main_bird_simulated.dart `
+  --dart-define=BIRD_TEST_BASE_URL=http://127.0.0.1:8787 `
+  --dart-define=BIRD_SIMULATED_DEVICE_ID=bbx-82f41c9e7a3d4b68a1501e21e536c649
+```
+
+也可以在 Android Studio 中选择 `Bird V1 - Simulated Box (Debug)` 运行配置；仍需
+先在窗口 1 启动 Mock，并在窗口 2 执行两条 `adb reverse` 命令。真机使用
+`127.0.0.1`；`10.0.2.2` 仅用于 Android Emulator。
+
+该入口在配网页面标题中显示“模拟”，不显示右上角 `SIMULATED` 角标；它使用 Fake BLE 发现和网络
+事件；点击配网完成时会真实访问 HTTP Mock 的 `/health`，核对 BLE 模拟身份与 HTTP
+`device_id`，再交换 RC4 临时配对会话、激活 Bearer REST/WebSocket，并进入正式三标签
+首页。首页后的相册、审阅、任务、复制、存储、设备状态与设置都使用正式 Repository，
+仅盒子服务地址由 `adb reverse` 指向本机 Mock。
+
+模拟会话不写入 Android Keystore，也不恢复或覆盖真实盒子的保存凭据。入口在非 Debug
+模式直接拒绝启动，且没有接入 `lib/main.dart` 的生产依赖图。每个 Mock 进程的 RC4
+临时会话只能消费一次，重新完整运行 App 前需要重启 Mock。结果仍只能用于预验收，固定
+视为 `releasable=false`、真实 K7 待验收。
+
 快速开发集（60 张）：
 
 ```powershell

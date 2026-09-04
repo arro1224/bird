@@ -15,6 +15,7 @@ import 'package:aves/bird_companion/features/settings/presentation/pages/device_
 import 'package:aves/bird_companion/features/settings/presentation/pages/display_settings_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/help_center_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/network_diagnostics_page.dart';
+import 'package:aves/bird_companion/features/settings/presentation/pages/network_settings_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/photo_settings_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/storage_target_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
@@ -119,6 +120,17 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
                       sectionKey: const Key('device-section-connection'),
                       title: '设备与连接',
                       items: [
+                        if (context
+                                .dependOnInheritedWidgetOfExactType<
+                                  BirdCompanionScope
+                                >() !=
+                            null)
+                          _HomeItem(
+                            key: const Key('showcase-network-settings'),
+                            title: '网络设置',
+                            icon: Icons.router_outlined,
+                            onTap: () => _open(_SettingsPage.networkSettings),
+                          ),
                         _HomeItem(
                           key: const Key('showcase-device-management'),
                           title: '连接设备',
@@ -407,6 +419,11 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     _SettingsPage.photos => PhotoSettingsPage(controller: _controller),
     _SettingsPage.copyBackup => CopyBackupSettingsPage(controller: _controller),
     _SettingsPage.storageTarget => StorageTargetPage(controller: _controller),
+    _SettingsPage.networkSettings => NetworkSettingsPage(
+      repository: BirdCompanionScope.of(context).provisioningRepository,
+      onProvisioningCompleted:
+          BirdCompanionScope.of(context).completeProvisioning,
+    ),
     _SettingsPage.networkDiagnostics => const NetworkDiagnosticsPage(),
     _SettingsPage.systemLogs => const SystemLogsPage(),
     _SettingsPage.help => const HelpCenterPage(),
@@ -648,6 +665,7 @@ enum _SettingsPage {
   photos,
   copyBackup,
   storageTarget,
+  networkSettings,
   networkDiagnostics,
   systemLogs,
   help,

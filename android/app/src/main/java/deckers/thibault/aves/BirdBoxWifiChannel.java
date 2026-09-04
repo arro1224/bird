@@ -10,6 +10,8 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.wifi.WifiNetworkSpecifier;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -20,24 +22,31 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import io.flutter.plugin.common.BinaryMessenger;
+import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 
 /** Android 10+ local-only Wi-Fi request and process routing bridge. */
 final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
-    private static final String CHANNEL = "bird_companion/birdbox_wifi/methods";
+    private static final String METHOD_CHANNEL = "bird_companion/birdbox_wifi/methods";
+    private static final String NETWORK_EVENTS_CHANNEL = "bird_companion/birdbox_wifi/network_events";
     private static final int PERMISSION_REQUEST = 0xB172;
     private static final int JOIN_TIMEOUT_MS = 30000;
 
     private final Activity activity;
     private final ConnectivityManager connectivityManager;
     private final MethodChannel channel;
+    private final EventChannel networkEventsChannel;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Object stateLock = new Object();
 
+    @Nullable private EventChannel.EventSink networkEventsSink;
     @Nullable private MethodChannel.Result pendingPermissionResult;
     @Nullable private MethodChannel.Result pendingJoinResult;
     @Nullable private ConnectivityManager.NetworkCallback networkCallback;
     @Nullable private Network requestedNetwork;
     @Nullable private String requestedSsid;
+    private long requestGeneration;
     private boolean disposed;
 
     BirdBoxWifiChannel(
@@ -46,8 +55,20 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
     ) {
         this.activity = activity;
         this.connectivityManager = (ConnectivityManager) activity.getSystemService(Context.CONNECTIVITY_SERVICE);
-        this.channel = new MethodChannel(messenger, CHANNEL);
+        this.channel = new MethodChannel(messenger, METHOD_CHANNEL);
+        this.networkEventsChannel = new EventChannel(messenger, NETWORK_EVENTS_CHANNEL);
         this.channel.setMethodCallHandler(this);
+        this.networkEventsChannel.setStreamHandler(new EventChannel.StreamHandler() {
+            @Override
+            public void onListen(Object arguments, EventChannel.EventSink events) {
+                networkEventsSink = events;
+            }
+
+            @Override
+            public void onCancel(Object arguments) {
+                networkEventsSink = null;
+            }
+        });
     }
 
     @Override
@@ -67,7 +88,7 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
                 bindProcessToNetwork(call, result);
                 return;
             case "releaseNetwork":
-                releaseNetwork();
+                releaseNetwork(true);
                 result.success(null);
                 return;
             case "dispose":
@@ -129,7 +150,7 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
             return;
         }
 
-        releaseNetwork();
+        releaseNetwork(false);
         final WifiNetworkSpecifier specifier;
         final NetworkRequest request;
         try {
@@ -147,105 +168,217 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
             return;
         }
 
-        pendingJoinResult = result;
-        requestedSsid = ssid;
+        final long generation;
+        synchronized (stateLock) {
+            pendingJoinResult = result;
+            requestedSsid = ssid;
+            generation = ++requestGeneration;
+        }
         networkCallback = new ConnectivityManager.NetworkCallback() {
             @Override
             public void onAvailable(@NonNull Network network) {
-                requestedNetwork = network;
-                final MethodChannel.Result pending = pendingJoinResult;
-                pendingJoinResult = null;
+                final MethodChannel.Result pending;
+                final String responseSsid;
+                synchronized (stateLock) {
+                    if (!isActiveCallback(this, generation)) return;
+                    requestedNetwork = network;
+                    pending = pendingJoinResult;
+                    pendingJoinResult = null;
+                    responseSsid = requestedSsid;
+                }
                 if (pending == null) return;
                 final Map<String, Object> response = new LinkedHashMap<>();
                 response.put("outcome", "joined");
                 response.put("handle", Long.toUnsignedString(network.getNetworkHandle()));
-                response.put("ssid", requestedSsid == null ? "" : requestedSsid);
-                activity.runOnUiThread(() -> pending.success(response));
+                response.put("ssid", responseSsid == null ? "" : responseSsid);
+                mainHandler.post(() -> pending.success(response));
             }
 
             @Override
             public void onUnavailable() {
-                completeJoinFailure("system_denied", "wifi_join_denied");
+                completeJoinFailure(this, generation, "system_denied", "wifi_request_unavailable");
             }
 
             @Override
             public void onLost(@NonNull Network network) {
-                if (network.equals(requestedNetwork)) {
-                    connectivityManager.bindProcessToNetwork(null);
+                final String handle;
+                final String ssid;
+                synchronized (stateLock) {
+                    if (!isActiveCallback(this, generation) || !network.equals(requestedNetwork)) return;
+                    handle = Long.toUnsignedString(network.getNetworkHandle());
+                    ssid = requestedSsid;
                     requestedNetwork = null;
                 }
+                unbindProcess();
+                emitNetworkLost(handle, ssid, "network_lost");
+                releaseCallback(this, generation);
             }
         };
         try {
             connectivityManager.requestNetwork(request, networkCallback, JOIN_TIMEOUT_MS);
         } catch (SecurityException error) {
-            completeJoinError("wifi_permission_denied", "Wi-Fi permission was denied.");
+            completeJoinError(generation, "wifi_permission_denied", "Wi-Fi permission was denied.");
         } catch (RuntimeException error) {
-            completeJoinError("wifi_join_failed", "Wi-Fi request failed.");
+            completeJoinError(generation, "wifi_join_failed", "Wi-Fi request failed.");
         }
     }
 
     private void bindProcessToNetwork(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
+        if (connectivityManager == null) {
+            result.error("wifi_unsupported", "Connectivity service is unavailable.", null);
+            return;
+        }
         final Network network = requestedNetwork;
         final String handle = call.argument("handle");
         if (network == null || handle == null || !handle.equals(Long.toUnsignedString(network.getNetworkHandle()))) {
             result.error("invalid_state", "The requested Wi-Fi network is no longer available.", null);
             return;
         }
-        if (!connectivityManager.bindProcessToNetwork(network)) {
-            result.error("wifi_join_failed", "Process routing could not be bound.", null);
+        try {
+            if (!connectivityManager.bindProcessToNetwork(network)) {
+                result.error("wifi_bind_failed", "Process routing could not be bound.", null);
+                return;
+            }
+        } catch (SecurityException error) {
+            result.error("wifi_permission_denied", "Wi-Fi routing permission was denied.", null);
+            return;
+        } catch (RuntimeException error) {
+            result.error("wifi_bind_failed", "Process routing could not be bound.", null);
             return;
         }
         result.success(null);
     }
 
-    private void completeJoinFailure(@NonNull String outcome, @NonNull String errorCode) {
-        final MethodChannel.Result result = pendingJoinResult;
-        pendingJoinResult = null;
-        if (result == null) return;
-        final Map<String, Object> response = new LinkedHashMap<>();
-        response.put("outcome", outcome);
-        response.put("errorCode", errorCode);
-        activity.runOnUiThread(() -> result.success(response));
+    private void completeJoinFailure(
+            @NonNull ConnectivityManager.NetworkCallback callback,
+            long generation,
+            @NonNull String outcome,
+            @NonNull String errorCode
+    ) {
+        final MethodChannel.Result result;
+        synchronized (stateLock) {
+            if (!isActiveCallback(callback, generation)) return;
+            result = pendingJoinResult;
+            pendingJoinResult = null;
+        }
+        releaseCallback(callback, generation);
+        if (result != null) {
+            final Map<String, Object> response = new LinkedHashMap<>();
+            response.put("outcome", outcome);
+            response.put("errorCode", errorCode);
+            mainHandler.post(() -> result.success(response));
+        }
     }
 
-    private void completeJoinError(@NonNull String code, @NonNull String message) {
-        final MethodChannel.Result result = pendingJoinResult;
-        pendingJoinResult = null;
-        if (result != null) activity.runOnUiThread(() -> result.error(code, message, null));
-        releaseNetwork();
+    private void completeJoinError(long generation, @NonNull String code, @NonNull String message) {
+        final MethodChannel.Result result;
+        synchronized (stateLock) {
+            if (generation != requestGeneration) return;
+            result = pendingJoinResult;
+            pendingJoinResult = null;
+        }
+        if (result != null) mainHandler.post(() -> result.error(code, message, null));
+        releaseNetwork(false);
     }
 
-    private void releaseNetwork() {
-        if (connectivityManager != null) connectivityManager.bindProcessToNetwork(null);
-        final ConnectivityManager.NetworkCallback callback = networkCallback;
-        networkCallback = null;
+    private boolean isActiveCallback(
+            @NonNull ConnectivityManager.NetworkCallback callback,
+            long generation
+    ) {
+        return !disposed && generation == requestGeneration && callback == networkCallback;
+    }
+
+    private void releaseCallback(
+            @NonNull ConnectivityManager.NetworkCallback callback,
+            long generation
+    ) {
+        synchronized (stateLock) {
+            if (generation != requestGeneration || callback != networkCallback) return;
+            networkCallback = null;
+            requestedSsid = null;
+            requestGeneration++;
+        }
+        unregisterCallback(callback);
+    }
+
+    private void releaseNetwork(boolean userInitiated) {
+        unbindProcess();
+        final ConnectivityManager.NetworkCallback callback;
+        final MethodChannel.Result pending;
+        synchronized (stateLock) {
+            callback = networkCallback;
+            networkCallback = null;
+            requestedNetwork = null;
+            requestedSsid = null;
+            pending = pendingJoinResult;
+            pendingJoinResult = null;
+            requestGeneration++;
+        }
+        unregisterCallback(callback);
+        if (pending != null) {
+            final Map<String, Object> response = new LinkedHashMap<>();
+            response.put("outcome", userInitiated ? "user_cancelled" : "failed");
+            response.put("errorCode", userInitiated ? "wifi_join_cancelled" : "wifi_request_released");
+            mainHandler.post(() -> pending.success(response));
+        }
+    }
+
+    private void unbindProcess() {
+        if (connectivityManager == null) return;
+        try {
+            connectivityManager.bindProcessToNetwork(null);
+        } catch (RuntimeException ignored) {
+            // Cleanup is idempotent even if connectivity service state changed.
+        }
+    }
+
+    private void unregisterCallback(@Nullable ConnectivityManager.NetworkCallback callback) {
         if (callback != null && connectivityManager != null) {
             try {
                 connectivityManager.unregisterNetworkCallback(callback);
-            } catch (IllegalArgumentException ignored) {
+            } catch (IllegalArgumentException | SecurityException ignored) {
                 // The timed request may already have been automatically released.
             }
         }
-        requestedNetwork = null;
-        requestedSsid = null;
-        final MethodChannel.Result pending = pendingJoinResult;
-        pendingJoinResult = null;
-        if (pending != null) {
-            final Map<String, Object> response = new LinkedHashMap<>();
-            response.put("outcome", "user_cancelled");
-            activity.runOnUiThread(() -> pending.success(response));
-        }
+    }
+
+    private void emitNetworkLost(
+            @NonNull String handle,
+            @Nullable String ssid,
+            @NonNull String reason
+    ) {
+        final EventChannel.EventSink sink = networkEventsSink;
+        if (sink == null || disposed) return;
+        final Map<String, Object> event = networkLostEvent(handle, ssid, reason);
+        mainHandler.post(() -> {
+            if (!disposed && sink == networkEventsSink) sink.success(event);
+        });
+    }
+
+    @NonNull
+    static Map<String, Object> networkLostEvent(
+            @NonNull String handle,
+            @Nullable String ssid,
+            @NonNull String reason
+    ) {
+        final Map<String, Object> event = new LinkedHashMap<>();
+        event.put("type", "lost");
+        event.put("handle", handle);
+        event.put("ssid", ssid == null ? "" : ssid);
+        event.put("reason", reason);
+        return event;
     }
 
     void dispose() {
         if (disposed) return;
         disposed = true;
-        releaseNetwork();
+        releaseNetwork(false);
         if (pendingPermissionResult != null) {
             pendingPermissionResult.error("invalid_state", "Wi-Fi bridge was disposed.", null);
             pendingPermissionResult = null;
         }
         channel.setMethodCallHandler(null);
+        networkEventsChannel.setStreamHandler(null);
+        networkEventsSink = null;
     }
 }

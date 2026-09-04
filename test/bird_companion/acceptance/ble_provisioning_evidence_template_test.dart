@@ -5,16 +5,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   const expectedCaseIds = [
-    'SIM-01',
-    'SIM-02',
-    'SIM-03',
-    'SIM-04',
-    'SIM-05',
-    'SIM-06',
-    'SIM-07',
-    'SIM-08',
-    'SIM-09',
-    'SIM-10',
+    'K7-01',
+    'K7-02',
+    'K7-03',
+    'K7-04',
+    'K7-05',
+    'K7-06',
+    'K7-07',
+    'K7-08',
+    'K7-09',
+    'K7-10',
   ];
 
   test('real-device RC4 evidence template is pending and fail-closed', () {
@@ -32,29 +32,55 @@ void main() {
     expect(template['environment'], isA<Map>());
     final environment = Map<String, dynamic>.from(template['environment'] as Map);
     expect(environment['real_hardware'], isFalse);
+    expect(environment['android_devices'], isNotEmpty);
+    expect(environment['routers'], isNotEmpty);
 
-    final cases = (template['cases'] as List)
-        .whereType<Map>()
-        .map(Map<String, dynamic>.from)
-        .toList();
+    final cases = (template['cases'] as List).whereType<Map>().map(Map<String, dynamic>.from).toList();
     expect(cases.map((item) => item['id']), expectedCaseIds);
-    expect(cases, everyElement(predicate<Map<String, dynamic>>((item) {
-      return item['status'] == 'pending' &&
-          item['evidence'] is List &&
-          (item['evidence'] as List).isEmpty;
-    })));
+    expect(
+      cases,
+      everyElement(
+        predicate<Map<String, dynamic>>((item) {
+          return item['status'] == 'pending' &&
+              item['summary'] is String &&
+              item['device_ids'] is List &&
+              (item['device_ids'] as List).isNotEmpty &&
+              item['router_ids'] is List &&
+              item['evidence'] is List &&
+              (item['evidence'] as List).isEmpty;
+        }),
+      ),
+    );
+
+    final redaction = Map<String, dynamic>.from(template['redaction'] as Map);
+    expect(redaction['reviewed'], isFalse);
+    expect(redaction['reviewer'], startsWith('REQUIRED_'));
+    expect(redaction['statement'], startsWith('REQUIRED_'));
+    expect(redaction['report'], startsWith('REQUIRED_'));
+    final approvals = Map<String, dynamic>.from(template['approvals'] as Map);
+    expect((approvals['protocol'] as Map)['status'], 'pending');
+    expect((approvals['qa_release'] as Map)['status'], 'pending');
 
     final serialized = jsonEncode(template).toLowerCase();
     expect(serialized, isNot(contains('"status":"passed"')));
     expect(serialized, isNot(contains('"result":"pass"')));
-    for (final secret in ['password', 'token', 'pairing_code', 'dpp://', 'aa:bb:cc']) {
+    for (final secret in [
+      'password',
+      'passphrase',
+      'token',
+      'pairing_code',
+      'dpp:k:',
+      'aa:bb:cc:dd:ee:ff',
+    ]) {
       expect(serialized, isNot(contains(secret)));
     }
 
     final requiredPlaceholders = [
       'captured_at',
-      'android_device_serial',
-      'android_os_version',
+      'serial',
+      'manufacturer',
+      'model',
+      'os_version',
       'operator',
       'location',
       'git_sha',
@@ -65,8 +91,10 @@ void main() {
       'device_model',
       'hardware_serial',
       'firmware_sha',
-      'base_url',
-      'notes',
+      'evidence_summary',
+      'reviewer',
+      'statement',
+      'report',
     ];
     for (final field in requiredPlaceholders) {
       final values = _findFieldValues(template, field).toList();

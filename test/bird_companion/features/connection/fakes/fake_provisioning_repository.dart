@@ -21,7 +21,7 @@ final class FakeStaConfigObservation {
   final bool passwordProvided;
 }
 
-final class FakeProvisioningRepository implements ProvisioningRepository {
+final class FakeProvisioningRepository implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository {
   FakeProvisioningRepository({
     Iterable<ProvisioningDevice> devices = const [],
     this.deviceInfo,
@@ -44,6 +44,14 @@ final class FakeProvisioningRepository implements ProvisioningRepository {
     this.setStaConfigError,
     this.startDppError,
     this.cancelError,
+    this.dppAvailability = const DppAvailability(
+      boxSupported: true,
+      apiLevelSupported: true,
+      easyConnectSupported: true,
+      activityAvailable: true,
+      sessionReady: true,
+    ),
+    this.networkStatusResumeRequired = false,
   }) : _devices = List.of(devices);
 
   final List<ProvisioningDevice> _devices;
@@ -67,9 +75,20 @@ final class FakeProvisioningRepository implements ProvisioningRepository {
   final Object? setStaConfigError;
   final Object? startDppError;
   final Object? cancelError;
+  final DppAvailability dppAvailability;
+  @override
+  final bool networkStatusResumeRequired;
   final StreamController<ProvisioningEvent> _events = StreamController.broadcast();
+  final StreamController<void> _disconnects = StreamController.broadcast();
   final List<String> calls = [];
   FakeStaConfigObservation? lastStaObservation;
+  ProvisioningDeviceInfo? _connectedDeviceInfo;
+
+  @override
+  ProvisioningDeviceInfo? get connectedDeviceInfo => _connectedDeviceInfo ?? deviceInfo;
+
+  @override
+  Stream<void> get disconnects => _disconnects.stream;
 
   @override
   Stream<ProvisioningDevice> discoverDevices({Duration? timeout}) {
@@ -85,11 +104,17 @@ final class FakeProvisioningRepository implements ProvisioningRepository {
   Future<ProvisioningDeviceInfo> connect(ProvisioningDevice device) async {
     calls.add('connect:${device.scanId}');
     if (connectError != null) throw connectError!;
-    return deviceInfo ?? (throw StateError('deviceInfo must be configured'));
+    final info = deviceInfo ?? (throw StateError('deviceInfo must be configured'));
+    _connectedDeviceInfo = info;
+    return info;
   }
 
   @override
-  Future<void> disconnect() async => calls.add('disconnect');
+  Future<void> disconnect() async {
+    calls.add('disconnect');
+    _connectedDeviceInfo = null;
+    _disconnects.add(null);
+  }
 
   @override
   Stream<ProvisioningEvent> get events => _events.stream;
@@ -162,6 +187,12 @@ final class FakeProvisioningRepository implements ProvisioningRepository {
   }
 
   @override
+  Future<DppAvailability> checkDppAvailability() async {
+    calls.add('checkDppAvailability');
+    return dppAvailability;
+  }
+
+  @override
   Future<CommandAccepted> cancelNetworkOperation(String operationId) async {
     calls.add('cancelNetworkOperation:$operationId');
     if (cancelError != null) throw cancelError!;
@@ -173,5 +204,13 @@ final class FakeProvisioningRepository implements ProvisioningRepository {
   void emitError(Object error) => _events.addError(error);
 
   @override
-  Future<void> dispose() => _events.close();
+  Future<void> dispose() async {
+    await _events.close();
+    await _disconnects.close();
+  }
+
+  void emitDisconnect() {
+    _connectedDeviceInfo = null;
+    _disconnects.add(null);
+  }
 }

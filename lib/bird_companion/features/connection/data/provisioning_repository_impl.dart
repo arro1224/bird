@@ -16,7 +16,7 @@ import 'package:aves/bird_companion/features/connection/domain/request_id_factor
 
 /// Production owner of rc4 identifiers, authorization, operation correlation,
 /// Android routing and transient secret lifetime.
-final class ProvisioningRepositoryImpl implements ProvisioningRepository {
+final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository, ProvisioningNetworkStatusVerifier {
   factory ProvisioningRepositoryImpl({
     required BirdBoxBleDataSource ble,
     required BirdBoxWifiPlatform wifi,
@@ -66,6 +66,18 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
       _clearTransientState();
       _disconnects.add(null);
     }, onError: _disconnects.addError);
+    _wifiLossSubscription = _wifi.networkLosses.listen((loss) {
+      scheduleMicrotask(() {
+        if (_disposed) return;
+        _events.addError(
+          ProvisioningException(
+            code: ProvisioningErrorCode.networkInternalError,
+            retryable: true,
+            diagnosticMessage: 'Android local-only Wi-Fi network was lost: ${loss.reason}',
+          ),
+        );
+      });
+    }, onError: _events.addError);
   }
 
   final BirdBoxBleDataSource _ble;
@@ -95,6 +107,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
 
   late final StreamSubscription<ProvisioningEvent> _bleEventSubscription;
   late final StreamSubscription<void> _disconnectSubscription;
+  late final StreamSubscription<WifiNetworkLoss> _wifiLossSubscription;
   ProvisioningDeviceInfo? _deviceInfo;
   String? _clientId;
   SessionCredential? _credential;
@@ -105,12 +118,20 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
   int _scanSequence = 0;
   bool _disposed = false;
   String? _lastTrustedDeviceId;
+  bool _networkStatusResumeRequired = false;
 
   /// Final de-duplicated scan snapshots for B-owned selection pages.
   Stream<List<WifiScanNetwork>> get wifiScanResults => _wifiScanResults.stream;
 
   /// BLE disconnect is informational. It never sends a cancellation command.
+  @override
   Stream<void> get disconnects => _disconnects.stream;
+
+  @override
+  ProvisioningDeviceInfo? get connectedDeviceInfo => _deviceInfo;
+
+  @override
+  bool get networkStatusResumeRequired => _networkStatusResumeRequired;
 
   @override
   Stream<ProvisioningDevice> discoverDevices({Duration? timeout}) async* {
@@ -147,6 +168,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
         }
       }
       final reconnecting = _lastTrustedDeviceId == info.deviceId;
+      _networkStatusResumeRequired = reconnecting;
       _lastTrustedDeviceId = info.deviceId;
       final status = reconnecting ? await _networkStatusAfterReconnect() : await _ble.readNetworkStatus();
       _resumeOperation(status);
@@ -220,6 +242,25 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
     return status;
   }
 
+  @override
+  Future<void> verifyNetworkStatus(ProvisioningNetworkStatus status) async {
+    final baseUri = status.baseUri;
+    final isTerminal =
+        !status.busy &&
+        ((status.activeMode == ProvisioningNetworkMode.directAp && status.operationState == NetworkOperationState.apReady) ||
+            (status.activeMode == ProvisioningNetworkMode.infrastructureSta && status.operationState == NetworkOperationState.staConnected));
+    if (!isTerminal || baseUri == null) {
+      throw const ProvisioningProtocolException(
+        'network_status',
+        'cannot verify a non-terminal network status',
+      );
+    }
+    if (status.activeMode == ProvisioningNetworkMode.infrastructureSta) {
+      await _wifi.releaseNetwork();
+    }
+    await _validateAndExchange(baseUri, status.activeMode);
+  }
+
   Future<ProvisioningNetworkStatus> _networkStatusAfterReconnect() async {
     try {
       return await getNetworkStatus();
@@ -272,6 +313,34 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
     BleCommandType.setStaConfig,
     payload: configuration.toProtocolJson(),
   );
+
+  @override
+  Future<DppAvailability> checkDppAvailability() async {
+    final boxSupported = _requireDeviceInfo().capabilities.dppUsableByBox;
+    var sessionReady = false;
+    try {
+      await _authorization();
+      sessionReady = true;
+    } catch (_) {
+      // Capability probing is fail-closed. The command path will surface the
+      // precise authorization error if it is invoked after state recovery.
+    }
+    if (!boxSupported || !sessionReady) {
+      return DppAvailability.unavailable(boxSupported: boxSupported);
+    }
+    try {
+      final phone = await _dpp.checkCapability();
+      return DppAvailability(
+        boxSupported: true,
+        apiLevelSupported: phone.apiLevelSupported,
+        easyConnectSupported: phone.easyConnectSupported,
+        activityAvailable: phone.activityAvailable,
+        sessionReady: true,
+      );
+    } catch (_) {
+      return const DppAvailability.unavailable(boxSupported: true);
+    }
+  }
 
   @override
   Future<CommandAccepted> startDppProvisioning() async {
@@ -734,6 +803,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository {
     _disposed = true;
     await _bleEventSubscription.cancel();
     await _disconnectSubscription.cancel();
+    await _wifiLossSubscription.cancel();
     await _wifi.dispose();
     await _clearDppTransientUri();
     await _ble.dispose();

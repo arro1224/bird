@@ -214,6 +214,134 @@ void main() {
       expect(cubit.state.baseUri, isNull);
     });
 
+    test('confirms restored STA before reporting stop-direct success', () async {
+      final repository = FakeProvisioningRepository(
+        networkStatus: _networkStatus(
+          mode: ProvisioningNetworkMode.directAp,
+          operationState: NetworkOperationState.apReady,
+          operationId: 'op_direct',
+          baseUri: Uri.parse('http://192.168.8.1'),
+        ),
+        stopDirectApResult: const CommandAccepted(
+          operationId: 'op_stop',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+
+      await cubit.resumeAfterBleReconnect(_deviceInfo());
+      await cubit.stopDirectAp();
+      repository.networkStatus = _networkStatus(
+        mode: ProvisioningNetworkMode.infrastructureSta,
+        operationState: NetworkOperationState.staConnected,
+        operationId: 'op_stop',
+        baseUri: Uri.parse('http://192.0.2.40:8080'),
+      );
+      repository.emitEvent(
+        ProvisioningEvent(
+          type: ProvisioningEventType.staConnected,
+          requestId: 'request-stop-restored',
+          deviceId: _deviceInfo().deviceId,
+          payload: StaConnected(
+            operationId: 'op_stop',
+            ssid: 'Studio-WiFi',
+            ipv4: '192.0.2.40',
+            prefixLength: 24,
+            gatewayIpv4: '192.0.2.1',
+            baseUri: Uri.parse('http://192.0.2.40:8080'),
+            networkKind: StaNetworkKind.router,
+            provisioningMethod: ProvisioningMethod.bleManual,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.success);
+      expect(
+        cubit.state.confirmedMode,
+        ProvisioningNetworkMode.infrastructureSta,
+      );
+      expect(cubit.state.baseUri, Uri.parse('http://192.0.2.40:8080'));
+    });
+
+    test('preserves no-saved-profile reason in the stopped terminal', () async {
+      final repository = FakeProvisioningRepository(
+        networkStatus: _networkStatus(
+          mode: ProvisioningNetworkMode.directAp,
+          operationState: NetworkOperationState.apReady,
+          operationId: 'op_direct',
+          baseUri: Uri.parse('http://192.168.8.1'),
+        ),
+        stopDirectApResult: const CommandAccepted(
+          operationId: 'op_stop',
+          desiredMode: ProvisioningNetworkMode.none,
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+
+      await cubit.resumeAfterBleReconnect(_deviceInfo());
+      await cubit.stopDirectAp();
+      repository.emitEvent(
+        ProvisioningEvent(
+          type: ProvisioningEventType.directApStopped,
+          requestId: 'request-no-profile',
+          deviceId: _deviceInfo().deviceId,
+          payload: const DirectApStopped(
+            operationId: 'op_stop',
+            activeMode: ProvisioningNetworkMode.none,
+            operationState: NetworkOperationState.idle,
+            restoredSta: false,
+            reason: 'no_saved_sta_profile',
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.stopped);
+      expect(cubit.state.directApStopReason, 'no_saved_sta_profile');
+    });
+
+    test('resumes an accepted stop operation from authoritative status', () async {
+      final repository = FakeProvisioningRepository(
+        networkStatus: ProvisioningNetworkStatus(
+          activeMode: ProvisioningNetworkMode.directAp,
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          operationState: NetworkOperationState.stoppingAp,
+          operationId: 'op_stop_after_reconnect',
+          busy: true,
+          baseUri: Uri.parse('http://192.168.8.1'),
+          directAp: const DirectApSnapshot(ssid: 'BirdBox-Test'),
+          infrastructureSta: const InfrastructureStaSnapshot(saved: true),
+          updatedAt: DateTime.utc(2026, 9, 2),
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+
+      await cubit.resumeAfterBleReconnect(_deviceInfo());
+
+      expect(cubit.state.phase, NetworkProvisioningPhase.stoppingDirectAp);
+      expect(cubit.state.activeOperationId, 'op_stop_after_reconnect');
+      expect(repository.calls, contains('getNetworkStatus'));
+
+      repository.emitEvent(
+        const ProvisioningEvent(
+          type: ProvisioningEventType.networkProgress,
+          requestId: 'request-stale',
+          deviceId: 'bbx-0123456789abcdef0123456789abcdef',
+          payload: NetworkProgress(
+            operationId: 'op_stale',
+            operationState: NetworkOperationState.recovering,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(cubit.state.operationState, NetworkOperationState.stoppingAp);
+    });
+
     test('maps a matching failed progress event to a safe failure', () async {
       final repository = FakeProvisioningRepository(
         startDirectApResult: const CommandAccepted(

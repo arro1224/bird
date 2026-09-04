@@ -88,6 +88,23 @@ void main() {
         expect(repository.calls, isNot(contains('startDirectAp')));
       },
     );
+
+    test('closing the presentation cubit does not tear down the app-wide connection', () async {
+      final repository = FakeProvisioningRepository(
+        devices: [_compactDevice()],
+        deviceInfo: _deviceInfo(),
+      );
+      final cubit = ProvisioningCubit(repository);
+
+      await cubit.discover();
+      await Future<void>.delayed(Duration.zero);
+      repository.calls.clear();
+      await cubit.close();
+
+      expect(repository.calls, ['stopDiscovery']);
+      expect(repository.calls, isNot(contains('disconnect')));
+      await repository.dispose();
+    });
   });
 }
 

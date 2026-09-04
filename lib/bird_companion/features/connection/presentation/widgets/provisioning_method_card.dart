@@ -11,6 +11,7 @@ class ProvisioningMethodCard extends StatelessWidget {
     required this.description,
     required this.onTap,
     this.disabledReason,
+    this.badge,
   });
 
   final IconData icon;
@@ -18,6 +19,7 @@ class ProvisioningMethodCard extends StatelessWidget {
   final String description;
   final VoidCallback? onTap;
   final String? disabledReason;
+  final String? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +46,34 @@ class ProvisioningMethodCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: Theme.of(context).textTheme.titleLarge),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                    if (badge != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.xs,
+                          vertical: AppSpacing.xxs,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.brandLight,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          badge!,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: AppColors.brand,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
                 const SizedBox(height: AppSpacing.xxs),
                 Text(
                   description,

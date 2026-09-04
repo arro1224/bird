@@ -27,7 +27,9 @@ powershell -ExecutionPolicy Bypass -File tool/release/run_b7_gate.ps1 `
    `ready`；
 3. 正式签名四项凭据完整注入；
 4. 提供与冻结盒子 SHA 一致的真实盒子 E2E 证据；
-5. release APK 通过 `apksigner verify --print-certs`。
+5. 提供 BLE RC4 的 K7-01～K7-10 真机证据并通过脱敏检查；
+6. 提供 B12-B 真实硬件专项证据；
+7. release APK 通过 `apksigner verify --print-certs`。
 
 签名凭据只能通过未入库的 `android/key.properties`，或以下环境变量注入：
 
@@ -71,6 +73,7 @@ powershell -ExecutionPolicy Bypass -File tool/release/run_b7_gate.ps1 `
 powershell -ExecutionPolicy Bypass -File tool/release/run_b7_gate.ps1 `
   -Mode Release `
   -RealBoxEvidencePath C:\secure\bird-real-box-e2e.json `
+  -BleRc4EvidencePath C:\secure\ble-provisioning-rc4-k7.json `
   -B12BEvidencePath C:\secure\b12b-real-hardware-evidence.json
 ```
 
@@ -80,6 +83,30 @@ powershell -ExecutionPolicy Bypass -File tool/release/run_b7_gate.ps1 `
 ```powershell
 powershell -ExecutionPolicy Bypass -File tool/release/verify_android_release.ps1
 ```
+
+## BLE RC4 真机专项证据
+
+复制并填写
+`docs/acceptance/ble-provisioning-rc4-real-device-evidence.template.json`。证据必须使用
+K7-01～K7-10，用物理 Android 设备和真实路由器完成；十项均须通过并引用存在的
+脱敏证据文件。App Git SHA、正式 APK SHA-256、签名证书指纹和盒子固件 SHA
+必须与当前发布构建、批准证书及冻结基线一致。
+
+可单独执行专项校验：
+
+```powershell
+dart run tool/acceptance/ble_provisioning_rc4_real_device_gate.dart `
+  --evidence=C:\secure\ble-provisioning-rc4-k7.json `
+  --baseline=docs\contracts\birdbox-v1-baseline.json `
+  --apk=build\app\outputs\flutter-apk\app-bird-release.apk `
+  --approved-certificate=$env:AVES_RELEASE_CERT_SHA256
+```
+
+校验器会拒绝 `pending`、SIM/mock、模拟器、Debug 或未签名构建、脏工作树、
+SHA/证书不一致、缺失或重复用例，以及密码、配对码、Token、完整 DPP URI 和完整
+MAC 地址。通用真实盒子证据、BLE RC4 证据与 B12-B 证据是三个独立门禁，不能
+互相替代；任一未通过时，B7 证据保持 `releasable=false`、
+`real_k7_status=pending`。
 
 ## B12-B 真实硬件专项证据
 

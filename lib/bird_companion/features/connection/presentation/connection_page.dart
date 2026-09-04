@@ -9,6 +9,7 @@ import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
+import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_cubit.dart';
 import 'package:aves/bird_companion/features/connection/presentation/pages/connection_method_page.dart';
@@ -44,30 +45,19 @@ class ConnectionPage extends StatelessWidget {
   final ConnectionEntryMode entryMode;
   final ProvisioningRepository? provisioningRepository;
   final ValueChanged<ConnectionMethod>? onProvisioningMethodSelected;
-  final ValueChanged<Uri>? onProvisioningCompleted;
+  final ProvisioningCompletionHandler? onProvisioningCompleted;
   final String? titlePrefix;
 
   @override
   Widget build(BuildContext context) {
     final provisioning = provisioningRepository;
     if (provisioning != null) {
-      return Theme(
-        data: AppTheme.light(),
-        child: MultiBlocProvider(
-          providers: [
-            BlocProvider(
-              create: (_) => ProvisioningCubit(provisioning)..discover(),
-            ),
-            BlocProvider(
-              create: (_) => NetworkProvisioningCubit(provisioning),
-            ),
-          ],
-          child: _BleConnectionView(
-            onMethodSelected: onProvisioningMethodSelected,
-            onProvisioningCompleted: onProvisioningCompleted,
-            titlePrefix: titlePrefix,
-          ),
-        ),
+      return _BleConnectionHost(
+        repository: provisioning,
+        entryMode: entryMode,
+        onMethodSelected: onProvisioningMethodSelected,
+        onProvisioningCompleted: onProvisioningCompleted,
+        titlePrefix: titlePrefix,
       );
     }
     return Theme(
@@ -84,15 +74,115 @@ class ConnectionPage extends StatelessWidget {
   }
 }
 
-class _BleConnectionView extends StatelessWidget {
-  const _BleConnectionView({
+class _BleConnectionHost extends StatefulWidget {
+  const _BleConnectionHost({
+    required this.repository,
+    required this.entryMode,
     this.onMethodSelected,
     this.onProvisioningCompleted,
     this.titlePrefix,
   });
 
+  final ProvisioningRepository repository;
+  final ConnectionEntryMode entryMode;
   final ValueChanged<ConnectionMethod>? onMethodSelected;
-  final ValueChanged<Uri>? onProvisioningCompleted;
+  final ProvisioningCompletionHandler? onProvisioningCompleted;
+  final String? titlePrefix;
+
+  @override
+  State<_BleConnectionHost> createState() => _BleConnectionHostState();
+}
+
+class _BleConnectionHostState extends State<_BleConnectionHost> {
+  var _completing = false;
+  var _handoffCommitted = false;
+
+  @override
+  void dispose() {
+    if (!_handoffCommitted) {
+      unawaited(widget.repository.disconnect());
+    }
+    super.dispose();
+  }
+
+  Future<void> _complete(
+    NetworkProvisioningState state,
+    Uri baseUri,
+  ) async {
+    final handler = widget.onProvisioningCompleted;
+    final deviceId = state.trustedDeviceId;
+    final networkMode = state.confirmedMode;
+    if (_completing || handler == null || deviceId == null || networkMode == null) {
+      return;
+    }
+
+    setState(() => _completing = true);
+    try {
+      await handler(
+        ProvisioningCompletion(
+          deviceId: deviceId,
+          baseUri: baseUri,
+          networkMode: networkMode,
+        ),
+      );
+      if (!mounted) return;
+      _handoffCommitted = true;
+      unawaited(
+        Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+          BirdRoutes.shell,
+          (_) => false,
+          arguments: ShellArgs(
+            initialIndex: automaticConnectionDestination(widget.entryMode) ?? 0,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _completing = false);
+      final message = UserMessageMapper.fromError(error);
+      BirdFeedback.error(context, message.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Theme(
+    data: AppTheme.light(),
+    child: MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (_) => ProvisioningCubit(widget.repository)..discover(),
+        ),
+        BlocProvider(
+          create: (_) => NetworkProvisioningCubit(widget.repository),
+        ),
+      ],
+      child: _BleConnectionView(
+        onMethodSelected: widget.onMethodSelected,
+        onProvisioningCompleted: _complete,
+        completing: _completing,
+        titlePrefix: widget.titlePrefix,
+      ),
+    ),
+  );
+}
+
+typedef _NetworkProvisioningCompletion =
+    Future<void> Function(
+      NetworkProvisioningState state,
+      Uri baseUri,
+    );
+
+class _BleConnectionView extends StatelessWidget {
+  const _BleConnectionView({
+    this.onMethodSelected,
+    this.onProvisioningCompleted,
+    this.completing = false,
+    this.titlePrefix,
+  });
+
+  final ValueChanged<ConnectionMethod>? onMethodSelected;
+  final _NetworkProvisioningCompletion? onProvisioningCompleted;
+  final bool completing;
   final String? titlePrefix;
 
   @override
@@ -106,7 +196,12 @@ class _BleConnectionView extends StatelessWidget {
           onBack: networkCubit.backToMethodSelection,
           content: NetworkProvisioningPage(
             onBack: networkCubit.backToMethodSelection,
-            onCompleted: onProvisioningCompleted,
+            completing: completing,
+            onCompleted: onProvisioningCompleted == null
+                ? null
+                : (baseUri) => unawaited(
+                    onProvisioningCompleted!(networkState, baseUri),
+                  ),
           ),
         );
       }
@@ -134,21 +229,10 @@ class _BleConnectionView extends StatelessWidget {
               onSubmit: cubit.authorizePairing,
               onCancel: cubit.reset,
             ),
-            ProvisioningPhase.methodSelection => ConnectionMethodPage(
-              deviceName: state.deviceInfo!.deviceName,
-              capabilities: state.deviceInfo!.capabilities,
-              onSelected: (method) {
-                onMethodSelected?.call(method);
-                final networkCubit = context.read<NetworkProvisioningCubit>();
-                switch (method) {
-                  case ConnectionMethod.directAp:
-                    unawaited(networkCubit.startDirectAp(state.deviceInfo!));
-                    break;
-                  case ConnectionMethod.existingWifi:
-                    networkCubit.openWifiProvisioning(state.deviceInfo!);
-                    break;
-                }
-              },
+            ProvisioningPhase.methodSelection => _methodSelection(
+              context,
+              state.deviceInfo!,
+              networkState,
             ),
             ProvisioningPhase.connecting || ProvisioningPhase.authorizing => const _BleLoadingView(),
             _ => _BleDiscoveryView(
@@ -165,6 +249,37 @@ class _BleConnectionView extends StatelessWidget {
       );
     },
   );
+
+  Widget _methodSelection(
+    BuildContext context,
+    ProvisioningDeviceInfo info,
+    NetworkProvisioningState networkState,
+  ) {
+    final networkCubit = context.read<NetworkProvisioningCubit>();
+    if (networkCubit.networkStatusResumeRequired && networkState.trustedDeviceId != info.deviceId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!networkCubit.isClosed) {
+          unawaited(networkCubit.resumeAfterBleReconnect(info));
+        }
+      });
+      return const _BleLoadingView();
+    }
+    return ConnectionMethodPage(
+      deviceName: info.deviceName,
+      capabilities: info.capabilities,
+      onSelected: (method) {
+        onMethodSelected?.call(method);
+        switch (method) {
+          case ConnectionMethod.directAp:
+            unawaited(networkCubit.startDirectAp(info));
+            break;
+          case ConnectionMethod.existingWifi:
+            networkCubit.openWifiProvisioning(info);
+            break;
+        }
+      },
+    );
+  }
 
   Widget _scaffold(
     BuildContext context, {

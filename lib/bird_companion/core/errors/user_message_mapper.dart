@@ -213,6 +213,12 @@ abstract final class UserMessageMapper {
           message: '盒子暂时没有完成 Wi-Fi 搜索，请稍后重试。',
           actionLabel: '重试',
         );
+      case ProvisioningErrorCode.networkRecoveryFailed:
+        return const UserMessage(
+          title: '网络恢复失败',
+          message: '盒子未能恢复之前的 Wi-Fi，也未能重新开启直连热点。蓝牙连接会保留，请重新为盒子配网。',
+          actionLabel: '重新配网',
+        );
       case ProvisioningErrorCode.pairingCodeInvalid:
         return const UserMessage(
           title: '配对码不正确',

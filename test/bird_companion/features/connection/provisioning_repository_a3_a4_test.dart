@@ -283,6 +283,21 @@ void main() {
       expect(request.payload['bssid'], isNull);
       expect(request.toString(), isNot(contains('TEST_ONLY_NOT_A_REAL_SECRET')));
     });
+
+    test('native Direct AP loss reaches the repository as a retryable error', () async {
+      await harness.completeDirectApExchange();
+      final errorExpectation = expectLater(
+        harness.repository.events,
+        emitsError(
+          isA<ProvisioningException>().having((error) => error.code, 'code', ProvisioningErrorCode.networkInternalError).having((error) => error.retryable, 'retryable', isTrue),
+        ),
+      );
+
+      harness.wifi.loseNetwork();
+
+      await errorExpectation;
+      expect(harness.wifi.boundNetwork, isNull);
+    });
   });
 }
 

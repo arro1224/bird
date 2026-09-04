@@ -83,6 +83,118 @@ void main() {
     await tester.pump();
     expect(networkCubit.state.phase, NetworkProvisioningPhase.idle);
   });
+
+  testWidgets('leaving unfinished BLE provisioning releases transport and network binding', (tester) async {
+    final repository = FakeProvisioningRepository(
+      devices: [_device()],
+      deviceInfo: _deviceInfo(),
+    );
+    addTearDown(repository.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ConnectionPage(provisioningRepository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    repository.calls.clear();
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    await tester.pump();
+
+    expect(repository.calls, contains('disconnect'));
+  });
+
+  testWidgets('successful Direct AP hand-off keeps binding and opens the app shell', (tester) async {
+    final baseUri = Uri.parse('http://192.168.4.1:8080');
+    final repository = FakeProvisioningRepository(
+      devices: [_device()],
+      deviceInfo: _deviceInfo(),
+      startDirectApResult: const CommandAccepted(
+        operationId: 'op_direct',
+        desiredMode: ProvisioningNetworkMode.directAp,
+      ),
+      networkStatus: ProvisioningNetworkStatus(
+        activeMode: ProvisioningNetworkMode.directAp,
+        desiredMode: ProvisioningNetworkMode.directAp,
+        operationState: NetworkOperationState.apReady,
+        operationId: 'op_direct',
+        busy: false,
+        baseUri: baseUri,
+        directAp: const DirectApSnapshot(
+          ssid: 'BirdBox-1A2B3C4D',
+          security: WifiSecurity.wpa2Personal,
+          gatewayIpv4: '192.168.4.1',
+          prefixLength: 24,
+          clientCount: 1,
+        ),
+        infrastructureSta: const InfrastructureStaSnapshot(saved: false),
+        updatedAt: DateTime.utc(2026, 9, 2),
+      ),
+    );
+    addTearDown(repository.dispose);
+    final completions = <ProvisioningCompletion>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ConnectionPage(
+          provisioningRepository: repository,
+          onProvisioningCompleted: (completion) async {
+            completions.add(completion);
+          },
+        ),
+        onGenerateRoute: (settings) {
+          if (settings.name == '/shell') {
+            return MaterialPageRoute<void>(
+              settings: settings,
+              builder: (_) => const Scaffold(body: Text('app-shell')),
+            );
+          }
+          return null;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final networkCubit = BlocProvider.of<NetworkProvisioningCubit>(
+      tester.element(find.text('附近的盒子')),
+    );
+    await networkCubit.startDirectAp(_deviceInfo());
+    repository.emitEvent(
+      ProvisioningEvent(
+        type: ProvisioningEventType.directApReady,
+        requestId: 'req_direct',
+        deviceId: _deviceInfo().deviceId,
+        payload: DirectApReady.fromJson({
+          'operation_id': 'op_direct',
+          'active_mode': 'direct_ap',
+          'ssid': 'BirdBox-1A2B3C4D',
+          'security': 'wpa2_personal',
+          'passphrase': 'test-password',
+          'gateway_ipv4': '192.168.4.1',
+          'prefix_length': 24,
+          'base_uri': baseUri.toString(),
+        }),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('盒子直连已就绪'), findsOneWidget);
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('app-shell'), findsOneWidget);
+    expect(completions, hasLength(1));
+    expect(completions.single.deviceId, _deviceInfo().deviceId);
+    expect(completions.single.baseUri, baseUri);
+    expect(
+      completions.single.networkMode,
+      ProvisioningNetworkMode.directAp,
+    );
+    expect(repository.calls, isNot(contains('disconnect')));
+  });
 }
 
 ProvisioningDevice _device() => ProvisioningDevice(

@@ -47,6 +47,8 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     private static final String NOTIFICATION_CHANNEL = "bird_companion/birdbox_ble/notifications";
     private static final String DISCONNECT_CHANNEL = "bird_companion/birdbox_ble/disconnects";
     private static final int PERMISSION_REQUEST_CODE = 6204;
+    // ATT error 0x0c is not exposed as a BluetoothGatt constant on all SDKs.
+    static final int GATT_INSUFFICIENT_ENCRYPTION_KEY_SIZE = 0x0c;
 
     private static final UUID SERVICE_UUID = UUID.fromString("6f7d0001-7a66-4c45-a1b9-5f4d2e3c1000");
     private static final UUID DEVICE_INFO_UUID = UUID.fromString("6f7d0002-7a66-4c45-a1b9-5f4d2e3c1000");
@@ -75,15 +77,18 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     @Nullable private EventChannel.EventSink notificationSink;
     @Nullable private EventChannel.EventSink disconnectSink;
     @Nullable private BluetoothLeScanner scanner;
-    @Nullable private BluetoothGatt gatt;
-    @Nullable private BluetoothDevice connectedDevice;
+    @Nullable private volatile BluetoothGatt gatt;
+    @Nullable private volatile BluetoothDevice connectedDevice;
     @Nullable private MethodChannel.Result pendingPermissionResult;
     @Nullable private MethodChannel.Result pendingOperationResult;
-    @Nullable private String pendingOperation;
+    @Nullable private volatile String pendingOperation;
     @Nullable private Runnable pendingOperationTimeout;
     @Nullable private Runnable scanTimeout;
     private boolean scanning;
-    private boolean disposed;
+    private volatile boolean linkReady;
+    private volatile boolean disconnectRequested;
+    private volatile boolean securityFailureObserved;
+    private volatile boolean disposed;
 
     public BirdBoxBleChannel(@NonNull Activity activity, @NonNull BinaryMessenger messenger) {
         this.activity = activity;
@@ -121,7 +126,8 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 break;
             case "disconnect":
                 failPending("gatt_operation_failed", "GATT operation was interrupted by disconnect.");
-                closeGatt(true);
+                disconnectRequested = true;
+                closeGatt(true, "requested", BluetoothGatt.GATT_SUCCESS);
                 result.success(null);
                 break;
             case "requestMtu":
@@ -137,7 +143,12 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 writeWithResponse(call, result);
                 break;
             case "isLinkEncrypted":
-                result.success(connectedDevice != null && connectedDevice.getBondState() == BluetoothDevice.BOND_BONDED);
+                // Android does not expose a trustworthy per-link encryption bit. Bond
+                // state is only a preflight signal; characteristic permissions and
+                // GATT security failures remain authoritative at both endpoints.
+                result.success(connectedDevice != null
+                        && connectedDevice.getBondState() == BluetoothDevice.BOND_BONDED
+                        && !securityFailureObserved);
                 break;
             case "dispose":
                 dispose();
@@ -257,6 +268,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         @Override
         public void onScanFailed(int errorCode) {
             scanning = false;
+            scanner = null;
+            if (scanTimeout != null) mainHandler.removeCallbacks(scanTimeout);
+            scanTimeout = null;
             emitError(scanSink, "gatt_operation_failed", "BLE scan failed.");
         }
     };
@@ -298,7 +312,12 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     }
 
     private void connect(MethodCall call, MethodChannel.Result result) {
-        if (!requireBluetooth(result) || !beginOperation("connect", result)) return;
+        if (!requireBluetooth(result)) return;
+        if (gatt != null) {
+            result.error("invalid_state", "BirdBox GATT is already connected.", null);
+            return;
+        }
+        if (!beginOperation("connect", result)) return;
         final String deviceId = call.argument("deviceId");
         if (deviceId == null || deviceId.isEmpty()) {
             failPending("invalid_request", "A platform device handle is required.");
@@ -306,6 +325,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         }
         stopScan();
         try {
+            disconnectRequested = false;
+            linkReady = false;
+            securityFailureObserved = false;
             connectedDevice = adapter.getRemoteDevice(deviceId);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 gatt = connectedDevice.connectGatt(activity, false, gattCallback, BluetoothDevice.TRANSPORT_LE);
@@ -396,6 +418,11 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             failPending("invalid_request", "A writable characteristic and non-empty value are required.");
             return;
         }
+        if (WIFI_CONFIG_UUID.equals(characteristic.getUuid())
+                && (connectedDevice == null || connectedDevice.getBondState() != BluetoothDevice.BOND_BONDED)) {
+            failPending("ble_link_not_encrypted", "Sensitive GATT write requires an authenticated encrypted link.");
+            return;
+        }
         try {
             final boolean started;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -432,7 +459,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         }
     }
 
-    private boolean beginOperation(String operation, MethodChannel.Result result) {
+    private synchronized boolean beginOperation(String operation, MethodChannel.Result result) {
         if (pendingOperationResult != null) {
             result.error("gatt_busy", "Another GATT operation is active.", null);
             return false;
@@ -442,13 +469,13 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         pendingOperationTimeout = () -> {
             final boolean connectionTimedOut = "connect".equals(pendingOperation);
             failPending("gatt_operation_failed", "GATT operation timed out.");
-            if (connectionTimedOut) closeGatt(false);
+            if (connectionTimedOut) closeGatt(false, "timeout", BluetoothGatt.GATT_FAILURE);
         };
         mainHandler.postDelayed(pendingOperationTimeout, "connect".equals(operation) ? 15000L : 10000L);
         return true;
     }
 
-    private void succeedPending(@Nullable Object value) {
+    private synchronized void succeedPending(@Nullable Object value) {
         cancelPendingOperationTimeout();
         final MethodChannel.Result result = pendingOperationResult;
         pendingOperationResult = null;
@@ -456,7 +483,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         if (result != null) mainHandler.post(() -> result.success(value));
     }
 
-    private void failPending(String code, String message) {
+    private synchronized void failPending(String code, String message) {
         cancelPendingOperationTimeout();
         final MethodChannel.Result result = pendingOperationResult;
         pendingOperationResult = null;
@@ -464,7 +491,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         if (result != null) mainHandler.post(() -> result.error(code, message, null));
     }
 
-    private void cancelPendingOperationTimeout() {
+    private synchronized void cancelPendingOperationTimeout() {
         if (pendingOperationTimeout != null) mainHandler.removeCallbacks(pendingOperationTimeout);
         pendingOperationTimeout = null;
     }
@@ -472,6 +499,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
         @Override
         public void onConnectionStateChange(@NonNull BluetoothGatt callbackGatt, int status, int newState) {
+            if (callbackGatt != gatt) {
+                callbackGatt.close();
+                return;
+            }
             if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
                 try {
                     callbackGatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
@@ -483,77 +514,105 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             }
             if (newState == BluetoothProfile.STATE_DISCONNECTED || status != BluetoothGatt.GATT_SUCCESS) {
                 final boolean connecting = "connect".equals(pendingOperation);
-                closeGatt(false);
-                if (connecting) failPending("gatt_operation_failed", "BirdBox GATT connection failed.");
-                else failPending("gatt_operation_failed", "BirdBox GATT disconnected during an operation.");
-                emitSuccess(disconnectSink, new LinkedHashMap<>());
+                final boolean wasReady = linkReady;
+                final boolean expected = disconnectRequested;
+                closeGatt(false, expected ? "requested" : "link_lost", status);
+                if (connecting) failPending(gattErrorCode(status), "BirdBox GATT connection failed.");
+                else failPending(gattErrorCode(status), "BirdBox GATT disconnected during an operation.");
+                if (wasReady && !expected) emitDisconnect("link_lost", status, true);
             }
         }
 
         @Override
         public void onServicesDiscovered(@NonNull BluetoothGatt callbackGatt, int status) {
+            if (callbackGatt != gatt || !"connect".equals(pendingOperation)) return;
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                failPending("gatt_operation_failed", "GATT service discovery failed.");
+                failGattStatus(status, "GATT service discovery failed.");
+                closeGatt(false, "service_discovery_failed", status);
                 return;
             }
             final BluetoothGattService service = callbackGatt.getService(SERVICE_UUID);
             if (service == null) {
                 failPending("invalid_request", "BirdBox network service is unavailable.");
-                closeGatt(false);
+                closeGatt(false, "service_unavailable", status);
                 return;
             }
             for (UUID uuid : REQUIRED_CHARACTERISTICS) {
                 if (service.getCharacteristic(uuid) == null) {
                     failPending("invalid_request", "A required BirdBox characteristic is unavailable.");
-                    closeGatt(false);
+                    closeGatt(false, "service_invalid", status);
                     return;
                 }
             }
+            linkReady = true;
             succeedPending(null);
         }
 
         @Override
         public void onMtuChanged(@NonNull BluetoothGatt callbackGatt, int mtu, int status) {
+            if (callbackGatt != gatt || !"requestMtu".equals(pendingOperation)) return;
             if (status == BluetoothGatt.GATT_SUCCESS) succeedPending(mtu);
-            else failPending("gatt_operation_failed", "MTU negotiation failed.");
+            else failGattStatus(status, "MTU negotiation failed.");
         }
 
         @Override
         public void onCharacteristicRead(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattCharacteristic characteristic, int status) {
+            if (callbackGatt != gatt || !"read".equals(pendingOperation)) return;
             completeRead(characteristic.getValue(), status);
         }
 
         @Override
         public void onCharacteristicRead(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattCharacteristic characteristic, @NonNull byte[] value, int status) {
+            if (callbackGatt != gatt || !"read".equals(pendingOperation)) return;
             completeRead(value, status);
         }
 
         @Override
         public void onCharacteristicWrite(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattCharacteristic characteristic, int status) {
+            if (callbackGatt != gatt || !"write".equals(pendingOperation)) return;
             if (status == BluetoothGatt.GATT_SUCCESS) succeedPending(null);
-            else failPending("gatt_operation_failed", "GATT write failed.");
+            else failGattStatus(status, "GATT write failed.");
         }
 
         @Override
         public void onDescriptorWrite(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattDescriptor descriptor, int status) {
+            if (callbackGatt != gatt || !"descriptor".equals(pendingOperation)) return;
             if (status == BluetoothGatt.GATT_SUCCESS) succeedPending(null);
-            else failPending("gatt_operation_failed", "Notification descriptor write failed.");
+            else failGattStatus(status, "Notification descriptor write failed.");
         }
 
         @Override
         public void onCharacteristicChanged(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattCharacteristic characteristic) {
+            if (callbackGatt != gatt || !linkReady) return;
             emitNotification(characteristic.getUuid(), characteristic.getValue());
         }
 
         @Override
         public void onCharacteristicChanged(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattCharacteristic characteristic, @NonNull byte[] value) {
+            if (callbackGatt != gatt || !linkReady) return;
             emitNotification(characteristic.getUuid(), value);
         }
     };
 
     private void completeRead(@Nullable byte[] value, int status) {
         if (status == BluetoothGatt.GATT_SUCCESS && value != null) succeedPending(value);
-        else failPending("gatt_operation_failed", "GATT read failed.");
+        else failGattStatus(status, "GATT read failed.");
+    }
+
+    private void failGattStatus(int status, @NonNull String message) {
+        if (isGattSecurityFailure(status)) securityFailureObserved = true;
+        failPending(gattErrorCode(status), message);
+    }
+
+    static boolean isGattSecurityFailure(int status) {
+        return status == BluetoothGatt.GATT_INSUFFICIENT_AUTHENTICATION
+                || status == BluetoothGatt.GATT_INSUFFICIENT_ENCRYPTION
+                || status == GATT_INSUFFICIENT_ENCRYPTION_KEY_SIZE;
+    }
+
+    @NonNull
+    static String gattErrorCode(int status) {
+        return isGattSecurityFailure(status) ? "ble_link_not_encrypted" : "gatt_operation_failed";
     }
 
     private void emitNotification(UUID characteristicUuid, @Nullable byte[] value) {
@@ -564,26 +623,40 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         emitSuccess(notificationSink, event);
     }
 
-    private void closeGatt(boolean emitDisconnect) {
+    private synchronized void closeGatt(boolean emitDisconnect, @NonNull String reason, int status) {
         stopScan();
         final BluetoothGatt current = gatt;
         gatt = null;
         connectedDevice = null;
+        linkReady = false;
         if (current != null) {
             try {
                 current.disconnect();
             } catch (SecurityException ignored) {
                 // Closing must still continue after permission revocation.
             }
-            current.close();
-            if (emitDisconnect) emitSuccess(disconnectSink, new LinkedHashMap<>());
+            try {
+                current.close();
+            } catch (RuntimeException ignored) {
+                // Vendor stacks may already have torn down the client.
+            }
+            if (emitDisconnect) emitDisconnect(reason, status, !disconnectRequested);
         }
+        disconnectRequested = false;
+    }
+
+    private void emitDisconnect(@NonNull String reason, int status, boolean unexpected) {
+        final Map<String, Object> event = new LinkedHashMap<>();
+        event.put("reason", reason);
+        event.put("gattStatus", status);
+        event.put("unexpected", unexpected);
+        emitSuccess(disconnectSink, event);
     }
 
     public void dispose() {
         if (disposed) return;
         disposed = true;
-        closeGatt(false);
+        closeGatt(false, "disposed", BluetoothGatt.GATT_SUCCESS);
         if (pendingPermissionResult != null) {
             pendingPermissionResult.error("invalid_state", "BLE bridge was disposed.", null);
             pendingPermissionResult = null;

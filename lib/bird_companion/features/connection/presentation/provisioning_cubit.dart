@@ -211,7 +211,6 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   Future<void> close() async {
     await _discoverySubscription?.cancel();
     await _repository.stopDiscovery();
-    await _repository.disconnect();
     return super.close();
   }
 }

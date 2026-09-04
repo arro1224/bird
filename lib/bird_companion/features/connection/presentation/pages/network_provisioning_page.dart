@@ -7,7 +7,9 @@ import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:aves/bird_companion/features/connection/domain/wifi_qr_credentials.dart';
 import 'package:aves/bird_companion/features/connection/presentation/network_provisioning_cubit.dart';
+import 'package:aves/bird_companion/features/connection/presentation/pages/wifi_qr_scanner_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/provisioning_method_card.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/sta_network_form.dart';
 import 'package:flutter/material.dart';
@@ -18,10 +20,14 @@ class NetworkProvisioningPage extends StatefulWidget {
     super.key,
     required this.onBack,
     this.onCompleted,
+    this.onChangeWifi,
+    this.completing = false,
   });
 
   final VoidCallback onBack;
   final ValueChanged<Uri>? onCompleted;
+  final VoidCallback? onChangeWifi;
+  final bool completing;
 
   @override
   State<NetworkProvisioningPage> createState() => _NetworkProvisioningPageState();
@@ -62,24 +68,33 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
           mode: state.confirmedMode,
           baseUri: state.baseUri,
           onCompleted: widget.onCompleted,
-          onStopDirectAp: state.confirmedMode == ProvisioningNetworkMode.directAp ? () => unawaited(cubit.stopDirectAp()) : null,
+          completing: widget.completing,
+          onStopDirectAp: state.confirmedMode == ProvisioningNetworkMode.directAp ? () => unawaited(_confirmStopDirectAp(context, cubit)) : null,
+          onChangeWifi: state.confirmedMode == ProvisioningNetworkMode.infrastructureSta ? widget.onChangeWifi : null,
         ),
         NetworkProvisioningPhase.recovered => _RecoveredView(
           mode: state.recoveredMode,
           onBack: widget.onBack,
         ),
         NetworkProvisioningPhase.stopped => _StoppedView(
+          reason: state.directApStopReason,
           onBack: widget.onBack,
         ),
         NetworkProvisioningPhase.failure => _FailureView(
           error: state.error,
           onBack: widget.onBack,
           onRetry: _canRetryDpp(state) ? () => unawaited(cubit.startDppProvisioning()) : null,
+          onScanWifiQr: () => unawaited(_openWifiQrScanner(context, cubit)),
+          onChooseNetwork: () => _showConventionalWifiOptions(
+            context,
+            state.capabilities,
+            cubit,
+          ),
         ),
         NetworkProvisioningPhase.dppUnavailable => _MessageView(
           icon: Icons.phonelink_erase_rounded,
           title: '手机暂不支持 DPP 配网',
-          message: '请选择搜索 Wi-Fi 或手动输入继续连接。',
+          message: '请选择扫描 Wi-Fi 二维码，或选择/手动输入网络。',
           actionLabel: '选择其他方式',
           onAction: cubit.returnToWifiMethodSelection,
         ),
@@ -109,33 +124,46 @@ class _WifiMethodView extends StatelessWidget {
   Widget build(BuildContext context) {
     final cubit = context.read<NetworkProvisioningCubit>();
     final capabilities = state.capabilities!;
+    final dppAvailability = state.dppAvailability;
+    final dppEnabled = dppAvailability?.supported == true;
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.pageHorizontal),
       children: [
-        Text('选择 Wi-Fi 配网方式', style: Theme.of(context).textTheme.headlineSmall),
+        Text(
+          '选择 Wi-Fi 配网方式',
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: AppSpacing.xxs),
+        const Text('连接到现有 Wi-Fi'),
         const SizedBox(height: AppSpacing.md),
         ProvisioningMethodCard(
+          icon: Icons.security_rounded,
+          title: '使用手机安全共享 Wi-Fi',
+          description: '无需在 App 中输入密码，由 Android 系统安全共享。',
+          badge: dppEnabled ? '推荐' : null,
+          onTap: dppEnabled ? () => unawaited(cubit.startDppProvisioning()) : null,
+          disabledReason: state.dppAvailabilityChecking ? '正在检查手机与盒子的安全共享能力…' : '当前手机或盒子暂不支持安全共享',
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        ProvisioningMethodCard(
+          icon: Icons.qr_code_scanner_rounded,
+          title: '扫描 Wi-Fi 二维码',
+          description: '扫描路由器或另一台设备提供的标准 Wi-Fi 二维码。',
+          onTap: () => unawaited(_openWifiQrScanner(context, cubit)),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        ProvisioningMethodCard(
           icon: Icons.wifi_find_rounded,
-          title: '搜索附近 Wi-Fi',
-          description: '让盒子扫描网络，然后从列表中选择。',
-          onTap: capabilities.wifiScan ? () => unawaited(cubit.scanWifi()) : null,
-          disabledReason: capabilities.wifiScan ? null : '此盒子不支持 Wi-Fi 扫描',
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        ProvisioningMethodCard(
-          icon: Icons.edit_rounded,
-          title: '手动输入 Wi-Fi',
-          description: '输入网络名称、安全类型和密码。',
-          onTap: capabilities.wifiManual ? cubit.showManualWifi : null,
-          disabledReason: capabilities.wifiManual ? null : '此盒子不支持手动配网',
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        ProvisioningMethodCard(
-          icon: Icons.qr_code_2_rounded,
-          title: '使用 DPP 安全配网',
-          description: '通过 Android 系统界面安全传递网络配置。',
-          onTap: capabilities.dppUsableByBox ? () => unawaited(cubit.startDppProvisioning()) : null,
-          disabledReason: capabilities.dppUsableByBox ? null : '盒子暂不支持 DPP',
+          title: '选择或手动输入网络',
+          description: '让盒子搜索附近网络，或直接输入 Wi-Fi 信息。',
+          onTap: capabilities.wifiScan || capabilities.wifiManual
+              ? () => _showConventionalWifiOptions(
+                  context,
+                  capabilities,
+                  cubit,
+                )
+              : null,
+          disabledReason: capabilities.wifiScan || capabilities.wifiManual ? null : '此盒子不支持搜索或手动配网',
         ),
       ],
     );
@@ -229,13 +257,17 @@ class _SuccessView extends StatelessWidget {
     required this.mode,
     required this.baseUri,
     required this.onCompleted,
+    required this.completing,
     required this.onStopDirectAp,
+    required this.onChangeWifi,
   });
 
   final ProvisioningNetworkMode? mode;
   final Uri? baseUri;
   final ValueChanged<Uri>? onCompleted;
+  final bool completing;
   final VoidCallback? onStopDirectAp;
+  final VoidCallback? onChangeWifi;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -253,14 +285,22 @@ class _SuccessView extends StatelessWidget {
       const Text('网络状态已通过盒子再次确认。', textAlign: TextAlign.center),
       const SizedBox(height: AppSpacing.xl),
       BirdButton(
-        label: '完成',
-        onPressed: baseUri == null || onCompleted == null ? null : () => onCompleted!(baseUri!),
+        label: completing ? '正在进入首页…' : '完成',
+        onPressed: completing || baseUri == null || onCompleted == null ? null : () => onCompleted!(baseUri!),
       ),
       if (onStopDirectAp != null) ...[
         const SizedBox(height: AppSpacing.sm),
         BirdButton(
           label: '停止盒子直连',
           onPressed: onStopDirectAp,
+          variant: BirdButtonVariant.outlined,
+        ),
+      ],
+      if (onChangeWifi != null) ...[
+        const SizedBox(height: AppSpacing.sm),
+        BirdButton(
+          label: '切换 Wi-Fi',
+          onPressed: onChangeWifi,
           variant: BirdButtonVariant.outlined,
         ),
       ],
@@ -277,30 +317,39 @@ class _RecoveredView extends StatelessWidget {
   Widget build(BuildContext context) => _MessageView(
     icon: Icons.settings_backup_restore_rounded,
     title: '已恢复可用网络',
-    message: mode == ProvisioningNetworkMode.directAp ? '盒子已恢复到直连网络，本次目标网络没有连接成功。' : '盒子已恢复到之前可用的网络，本次目标网络没有连接成功。',
+    message: mode == ProvisioningNetworkMode.directAp ? '之前的 Wi-Fi 恢复失败，盒子已重新开启直连热点。请按盒子返回的热点信息重新连接。' : '盒子已恢复到之前可用的 Wi-Fi，本次目标网络没有连接成功。',
     actionLabel: '返回连接方式',
     onAction: onBack,
   );
 }
 
 class _StoppedView extends StatelessWidget {
-  const _StoppedView({required this.onBack});
+  const _StoppedView({required this.reason, required this.onBack});
+  final String? reason;
   final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) => _MessageView(
     icon: Icons.wifi_tethering_off_rounded,
     title: '盒子直连已停止',
-    message: '盒子已退出直连网络，可以重新选择连接方式。',
+    message: reason == 'no_saved_sta_profile' ? '盒子已关闭直连热点，但没有可恢复的 Wi-Fi。蓝牙连接会保留，请重新为盒子配网。' : '盒子已退出直连网络，可以重新选择连接方式。',
     actionLabel: '返回连接方式',
     onAction: onBack,
   );
 }
 
 class _FailureView extends StatelessWidget {
-  const _FailureView({required this.error, required this.onBack, this.onRetry});
+  const _FailureView({
+    required this.error,
+    required this.onBack,
+    required this.onScanWifiQr,
+    required this.onChooseNetwork,
+    this.onRetry,
+  });
   final Object? error;
   final VoidCallback onBack;
+  final VoidCallback onScanWifiQr;
+  final VoidCallback onChooseNetwork;
   final VoidCallback? onRetry;
 
   @override
@@ -312,11 +361,23 @@ class _FailureView extends StatelessWidget {
         ErrorNotice(title: message.title, message: message.message),
         if (onRetry != null) ...[
           const SizedBox(height: AppSpacing.md),
-          BirdButton(label: '重新尝试 DPP', onPressed: onRetry),
+          BirdButton(label: '重新尝试安全共享', onPressed: onRetry),
         ],
         const SizedBox(height: AppSpacing.md),
         BirdButton(
-          label: '返回连接方式',
+          label: '扫描 Wi-Fi 二维码',
+          onPressed: onScanWifiQr,
+          variant: BirdButtonVariant.outlined,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        BirdButton(
+          label: '选择或手动输入网络',
+          onPressed: onChooseNetwork,
+          variant: BirdButtonVariant.outlined,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        BirdButton(
+          label: '返回盒子直连',
           onPressed: onBack,
           variant: BirdButtonVariant.outlined,
         ),
@@ -419,3 +480,90 @@ bool _canRetryDpp(NetworkProvisioningState state) => switch (state.error) {
     true,
   _ => false,
 };
+
+Future<void> _confirmStopDirectAp(
+  BuildContext context,
+  NetworkProvisioningCubit cubit,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('断开盒子直连？'),
+      content: const Text(
+        '盒子将关闭自身热点并尝试恢复之前连接的 Wi-Fi。图片传输可能短暂中断。',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('断开并恢复 Wi-Fi'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true && !cubit.isClosed) {
+    await cubit.stopDirectAp();
+  }
+}
+
+Future<void> _openWifiQrScanner(
+  BuildContext context,
+  NetworkProvisioningCubit cubit,
+) async {
+  final credentials = await Navigator.of(context).push<WifiQrCredentials>(
+    MaterialPageRoute<WifiQrCredentials>(
+      builder: (_) => const WifiQrScannerPage(),
+    ),
+  );
+  if (credentials != null && !cubit.isClosed) {
+    await cubit.submitWifiQrCredentials(credentials);
+  }
+}
+
+void _showConventionalWifiOptions(
+  BuildContext context,
+  DeviceCapabilities? capabilities,
+  NetworkProvisioningCubit cubit,
+) {
+  if (capabilities == null) return;
+  showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.pageHorizontal),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const BirdSectionTitle(text: '选择连接方式'),
+            BirdButton(
+              label: '搜索附近 Wi-Fi',
+              onPressed: capabilities.wifiScan
+                  ? () {
+                      Navigator.of(sheetContext).pop();
+                      unawaited(cubit.scanWifi());
+                    }
+                  : null,
+              icon: const Icon(Icons.wifi_find_rounded),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            BirdButton(
+              label: '手动输入 Wi-Fi',
+              onPressed: capabilities.wifiManual
+                  ? () {
+                      Navigator.of(sheetContext).pop();
+                      cubit.showManualWifi();
+                    }
+                  : null,
+              icon: const Icon(Icons.edit_rounded),
+              variant: BirdButtonVariant.outlined,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}

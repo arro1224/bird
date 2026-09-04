@@ -37,6 +37,31 @@ void main() {
 
   tearDown(() => harness.close());
 
+  test('merges authenticated box and Android DPP capabilities before display', () async {
+    final availability = await harness.repository.checkDppAvailability();
+
+    expect(availability.boxSupported, isTrue);
+    expect(availability.apiLevelSupported, isTrue);
+    expect(availability.easyConnectSupported, isTrue);
+    expect(availability.activityAvailable, isTrue);
+    expect(availability.sessionReady, isTrue);
+    expect(availability.supported, isTrue);
+  });
+
+  test('merged DPP availability fails closed when Easy Connect is unavailable', () async {
+    harness.dpp.capability = const DppCapability(
+      apiLevelSupported: true,
+      easyConnectSupported: false,
+      activityAvailable: true,
+    );
+
+    final availability = await harness.repository.checkDppAvailability();
+
+    expect(availability.boxSupported, isTrue);
+    expect(availability.easyConnectSupported, isFalse);
+    expect(availability.supported, isFalse);
+  });
+
   test('launches Easy Connect for matching DPP bootstrap and clears URI', () async {
     harness.dpp.queueLaunchResult(
       const DppLaunchResult(outcome: DppLaunchOutcome.systemAccepted),

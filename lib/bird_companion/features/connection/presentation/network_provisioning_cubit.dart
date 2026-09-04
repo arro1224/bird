@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
+import 'package:aves/bird_companion/features/connection/domain/wifi_qr_credentials.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 enum NetworkProvisioningPhase {
@@ -36,6 +37,9 @@ final class NetworkProvisioningState {
     this.baseUri,
     this.confirmedMode,
     this.recoveredMode,
+    this.directApStopReason,
+    this.dppAvailability,
+    this.dppAvailabilityChecking = false,
     this.error,
     this.canCancel = false,
   });
@@ -49,6 +53,9 @@ final class NetworkProvisioningState {
   final Uri? baseUri;
   final ProvisioningNetworkMode? confirmedMode;
   final ProvisioningNetworkMode? recoveredMode;
+  final String? directApStopReason;
+  final DppAvailability? dppAvailability;
+  final bool dppAvailabilityChecking;
   final Object? error;
   final bool canCancel;
 
@@ -62,6 +69,9 @@ final class NetworkProvisioningState {
     Uri? baseUri,
     ProvisioningNetworkMode? confirmedMode,
     ProvisioningNetworkMode? recoveredMode,
+    String? directApStopReason,
+    DppAvailability? dppAvailability,
+    bool? dppAvailabilityChecking,
     Object? error,
     bool? canCancel,
     bool clearOperation = false,
@@ -70,6 +80,8 @@ final class NetworkProvisioningState {
     bool clearBaseUri = false,
     bool clearConfirmedMode = false,
     bool clearRecoveredMode = false,
+    bool clearDirectApStopReason = false,
+    bool clearDppAvailability = false,
     bool clearError = false,
   }) => NetworkProvisioningState(
     phase: phase ?? this.phase,
@@ -81,6 +93,9 @@ final class NetworkProvisioningState {
     baseUri: clearBaseUri ? null : baseUri ?? this.baseUri,
     confirmedMode: clearConfirmedMode ? null : confirmedMode ?? this.confirmedMode,
     recoveredMode: clearRecoveredMode ? null : recoveredMode ?? this.recoveredMode,
+    directApStopReason: clearDirectApStopReason ? null : directApStopReason ?? this.directApStopReason,
+    dppAvailability: clearDppAvailability ? null : dppAvailability ?? this.dppAvailability,
+    dppAvailabilityChecking: dppAvailabilityChecking ?? this.dppAvailabilityChecking,
     error: clearError ? null : error ?? this.error,
     canCancel: canCancel ?? this.canCancel,
   );
@@ -101,6 +116,9 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   final Map<int, WifiScanBatch> _scanBatches = {};
   int? _expectedScanBatchCount;
   var _scanCompleteSeen = false;
+  var _resumeConsumed = false;
+
+  bool get networkStatusResumeRequired => !_resumeConsumed && _repository is ProvisioningSessionRepository && (_repository as ProvisioningSessionRepository).networkStatusResumeRequired;
 
   Future<void> startDirectAp(ProvisioningDeviceInfo info) async {
     final generation = ++_generation;
@@ -158,6 +176,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
         clearBaseUri: true,
         clearConfirmedMode: true,
         clearError: true,
+        clearDirectApStopReason: true,
         canCancel: false,
       ),
     );
@@ -177,6 +196,108 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     }
   }
 
+  /// Rebuilds presentation state from the box's authoritative network status.
+  ///
+  /// This is used after BLE reconnect. An accepted operation continues on the
+  /// box while the transport is down, so local phase memory must not be used as
+  /// the source of truth.
+  Future<void> resumeAfterBleReconnect(ProvisioningDeviceInfo info) async {
+    _resumeConsumed = true;
+    final generation = ++_generation;
+    _clearScanAccumulator();
+    emit(
+      NetworkProvisioningState(
+        trustedDeviceId: info.deviceId,
+        capabilities: info.capabilities,
+      ),
+    );
+    try {
+      final status = await _repository.getNetworkStatus();
+      if (isClosed || generation != _generation) return;
+      if (status.busy && status.operationId != null) {
+        emit(
+          state.copyWith(
+            phase: _phaseForResumedOperation(status),
+            activeOperationId: status.operationId,
+            operationState: status.operationState,
+            canCancel: status.operationState.cancellable,
+            clearError: true,
+          ),
+        );
+        return;
+      }
+      if (status.activeMode == ProvisioningNetworkMode.directAp && status.operationState == NetworkOperationState.apReady && status.baseUri != null) {
+        await _verifyResumedTerminal(status);
+        if (isClosed || generation != _generation) return;
+        emit(
+          state.copyWith(
+            phase: NetworkProvisioningPhase.success,
+            activeOperationId: status.operationId,
+            operationState: status.operationState,
+            baseUri: status.baseUri,
+            confirmedMode: ProvisioningNetworkMode.directAp,
+            clearError: true,
+          ),
+        );
+        return;
+      }
+      if (status.activeMode == ProvisioningNetworkMode.infrastructureSta && status.operationState == NetworkOperationState.staConnected && status.baseUri != null) {
+        await _verifyResumedTerminal(status);
+        if (isClosed || generation != _generation) return;
+        emit(
+          state.copyWith(
+            phase: NetworkProvisioningPhase.success,
+            activeOperationId: status.operationId,
+            operationState: status.operationState,
+            baseUri: status.baseUri,
+            confirmedMode: ProvisioningNetworkMode.infrastructureSta,
+            clearError: true,
+          ),
+        );
+        return;
+      }
+      if (status.operationState == NetworkOperationState.failed || status.lastError != null) {
+        emit(
+          state.copyWith(
+            phase: NetworkProvisioningPhase.failure,
+            activeOperationId: status.operationId,
+            operationState: status.operationState,
+            error: status.lastError ?? const NetworkOperationFailedException(),
+            canCancel: false,
+          ),
+        );
+        return;
+      }
+      if (status.operationState == NetworkOperationState.cancelled) {
+        emit(
+          state.copyWith(
+            phase: NetworkProvisioningPhase.cancelled,
+            activeOperationId: status.operationId,
+            operationState: status.operationState,
+            canCancel: false,
+            clearError: true,
+          ),
+        );
+      }
+      // idle/none deliberately remains idle so a fresh pairing continues to
+      // the normal connection-method chooser.
+    } catch (error) {
+      if (isClosed || generation != _generation) return;
+      emit(
+        state.copyWith(
+          phase: NetworkProvisioningPhase.failure,
+          error: _safePresentationError(error),
+          canCancel: false,
+        ),
+      );
+    }
+  }
+
+  Future<void> _verifyResumedTerminal(ProvisioningNetworkStatus status) async {
+    final verifier = _repository is ProvisioningNetworkStatusVerifier ? _repository as ProvisioningNetworkStatusVerifier : null;
+    await verifier?.verifyNetworkStatus(status);
+  }
+
   void backToMethodSelection() {
     _generation++;
     _clearScanAccumulator();
@@ -184,15 +305,57 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   void openWifiProvisioning(ProvisioningDeviceInfo info) {
-    _generation++;
+    final generation = ++_generation;
     _clearScanAccumulator();
     emit(
       NetworkProvisioningState(
         phase: info.capabilities.infrastructureSta ? NetworkProvisioningPhase.choosingWifiMethod : NetworkProvisioningPhase.methodUnavailable,
         trustedDeviceId: info.deviceId,
         capabilities: info.capabilities,
+        dppAvailability: info.capabilities.dppUsableByBox ? null : const DppAvailability.unavailable(),
+        dppAvailabilityChecking: info.capabilities.infrastructureSta && info.capabilities.dppUsableByBox,
       ),
     );
+    if (info.capabilities.infrastructureSta && info.capabilities.dppUsableByBox) {
+      unawaited(_refreshDppAvailability(generation));
+    }
+  }
+
+  Future<void> _refreshDppAvailability(int generation) async {
+    final capabilityRepository = _repository is DppAvailabilityRepository ? _repository as DppAvailabilityRepository : null;
+    if (capabilityRepository == null) {
+      if (!isClosed && generation == _generation) {
+        emit(
+          state.copyWith(
+            dppAvailability: const DppAvailability.unavailable(
+              boxSupported: true,
+            ),
+            dppAvailabilityChecking: false,
+          ),
+        );
+      }
+      return;
+    }
+    try {
+      final availability = await capabilityRepository.checkDppAvailability();
+      if (isClosed || generation != _generation) return;
+      emit(
+        state.copyWith(
+          dppAvailability: availability,
+          dppAvailabilityChecking: false,
+        ),
+      );
+    } catch (_) {
+      if (isClosed || generation != _generation) return;
+      emit(
+        state.copyWith(
+          dppAvailability: const DppAvailability.unavailable(
+            boxSupported: true,
+          ),
+          dppAvailabilityChecking: false,
+        ),
+      );
+    }
   }
 
   Future<void> scanWifi() async {
@@ -277,6 +440,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     final supported =
         capabilities?.infrastructureSta == true &&
         switch (configuration.selectionMethod) {
+          _ when configuration.provisioningMethod == ProvisioningMethod.wifiQr => true,
           WifiSelectionMethod.scanResult => capabilities?.wifiScan == true,
           WifiSelectionMethod.manual => capabilities?.wifiManual == true,
         };
@@ -311,6 +475,8 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       );
     }
   }
+
+  Future<void> submitWifiQrCredentials(WifiQrCredentials credentials) => submitStaConfiguration(credentials.toStaNetworkConfiguration());
 
   Future<void> startDppProvisioning() async {
     final currentError = state.error;
@@ -456,6 +622,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
           operationState: payload.operationState,
           clearBaseUri: true,
           clearConfirmedMode: true,
+          directApStopReason: payload.reason,
           canCancel: false,
           clearError: true,
         ),
@@ -472,7 +639,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       );
       return;
     }
-    if (payload is StaConnected && (state.phase == NetworkProvisioningPhase.configuringSta || state.phase == NetworkProvisioningPhase.preparingDpp)) {
+    if (payload is StaConnected && (state.phase == NetworkProvisioningPhase.configuringSta || state.phase == NetworkProvisioningPhase.preparingDpp || state.phase == NetworkProvisioningPhase.stoppingDirectAp)) {
       final generation = _generation;
       emit(
         state.copyWith(
@@ -676,6 +843,17 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     return super.close();
   }
 }
+
+NetworkProvisioningPhase _phaseForResumedOperation(
+  ProvisioningNetworkStatus status,
+) => switch (status.operationState) {
+  NetworkOperationState.startingAp => NetworkProvisioningPhase.startingDirectAp,
+  NetworkOperationState.stoppingAp => NetworkProvisioningPhase.stoppingDirectAp,
+  NetworkOperationState.scanning || NetworkOperationState.scanComplete => NetworkProvisioningPhase.scanningWifi,
+  NetworkOperationState.preparingDpp || NetworkOperationState.waitingDppConfigurator || NetworkOperationState.dppAuthenticating || NetworkOperationState.dppConfigurationReceived => NetworkProvisioningPhase.preparingDpp,
+  _ when status.desiredMode == ProvisioningNetworkMode.directAp => NetworkProvisioningPhase.startingDirectAp,
+  _ => NetworkProvisioningPhase.configuringSta,
+};
 
 final class NetworkStatusConfirmationException implements Exception {
   const NetworkStatusConfirmationException();

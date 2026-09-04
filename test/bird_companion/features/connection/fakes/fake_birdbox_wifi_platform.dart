@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart';
 
 final class FakeBirdBoxWifiPlatform implements BirdBoxWifiPlatform {
@@ -6,6 +8,17 @@ final class FakeBirdBoxWifiPlatform implements BirdBoxWifiPlatform {
   final List<String> requestedSsids = [];
   int releaseCount = 0;
   BirdBoxWifiNetwork? _boundNetwork;
+  final StreamController<WifiNetworkLoss> _networkLosses = StreamController<WifiNetworkLoss>.broadcast(sync: true);
+
+  @override
+  Stream<WifiNetworkLoss> get networkLosses => _networkLosses.stream;
+
+  void loseNetwork({String reason = 'network_lost'}) {
+    final network = _boundNetwork;
+    if (network == null) return;
+    _boundNetwork = null;
+    _networkLosses.add(WifiNetworkLoss(handle: network.handle, ssid: network.ssid, reason: reason));
+  }
 
   @override
   Future<bool> ensurePermissions() async => permissionGranted;
@@ -34,5 +47,8 @@ final class FakeBirdBoxWifiPlatform implements BirdBoxWifiPlatform {
   BirdBoxWifiNetwork? get boundNetwork => _boundNetwork;
 
   @override
-  Future<void> dispose() => releaseNetwork();
+  Future<void> dispose() async {
+    await releaseNetwork();
+    await _networkLosses.close();
+  }
 }

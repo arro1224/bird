@@ -23,6 +23,7 @@ import io.flutter.plugin.common.MethodChannel;
 final class BirdBoxDppChannel {
     static final String CHANNEL = "bird_companion/birdbox_dpp/methods";
     static final int REQUEST_PROCESS_DPP_URI = 48241;
+    private static final int REQUEST_CODE_WINDOW = 1024;
     private static final long SYSTEM_ACTIVITY_TIMEOUT_MS = 180_000L;
 
     private final Activity activity;
@@ -30,8 +31,10 @@ final class BirdBoxDppChannel {
     private final Handler handler = new Handler(Looper.getMainLooper());
     @Nullable private MethodChannel.Result pendingResult;
     @Nullable private Uri transientDppUri;
-
-    private final Runnable timeout = () -> completeLaunch("timed_out", "timeout");
+    @Nullable private Runnable pendingTimeout;
+    private int activeRequestCode = -1;
+    private int launchGeneration;
+    private boolean disposed;
 
     BirdBoxDppChannel(@NonNull Activity activity, @NonNull BinaryMessenger messenger) {
         this.activity = activity;
@@ -40,6 +43,10 @@ final class BirdBoxDppChannel {
     }
 
     private void handleMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
+        if (disposed) {
+            result.error("invalid_state", "Easy Connect bridge is disposed.", null);
+            return;
+        }
         switch (call.method) {
             case "checkCapability":
                 result.success(capability());
@@ -102,19 +109,25 @@ final class BirdBoxDppChannel {
 
         pendingResult = result;
         transientDppUri = uri;
+        final int requestCode = requestCodeForGeneration(launchGeneration++);
+        activeRequestCode = requestCode;
+        pendingTimeout = () -> {
+            if (activeRequestCode == requestCode) completeLaunch("timed_out", "timeout");
+        };
         try {
-            activity.startActivityForResult(intent, REQUEST_PROCESS_DPP_URI);
-            handler.postDelayed(timeout, SYSTEM_ACTIVITY_TIMEOUT_MS);
+            activity.startActivityForResult(intent, requestCode);
+            handler.postDelayed(pendingTimeout, SYSTEM_ACTIVITY_TIMEOUT_MS);
         } catch (RuntimeException error) {
-            completeLaunch("failed", error.getClass().getSimpleName());
+            completeLaunch("failed", "launch_exception");
         }
     }
 
     boolean onActivityResult(int requestCode, int resultCode) {
-        if (requestCode != REQUEST_PROCESS_DPP_URI) return false;
+        if (!isDppRequestCode(requestCode)) return false;
+        if (requestCode != activeRequestCode || pendingResult == null) return true;
         completeLaunch(
                 mapActivityResult(resultCode),
-                Integer.toString(resultCode)
+                mapSystemResultCode(resultCode)
         );
         return true;
     }
@@ -123,7 +136,10 @@ final class BirdBoxDppChannel {
         return value != null
                 && value.startsWith("DPP:")
                 && value.endsWith(";;")
-                && value.length() > "DPP:;;".length();
+                && value.length() > "DPP:;;".length()
+                && value.length() <= 4096
+                && value.indexOf('\n') < 0
+                && value.indexOf('\r') < 0;
     }
 
     @NonNull
@@ -133,6 +149,22 @@ final class BirdBoxDppChannel {
         return "failed";
     }
 
+    @NonNull
+    static String mapSystemResultCode(int resultCode) {
+        if (resultCode == Activity.RESULT_OK) return "result_ok";
+        if (resultCode == Activity.RESULT_CANCELED) return "result_cancelled";
+        return "result_other";
+    }
+
+    static int requestCodeForGeneration(int generation) {
+        return REQUEST_PROCESS_DPP_URI + Math.floorMod(generation, REQUEST_CODE_WINDOW);
+    }
+
+    static boolean isDppRequestCode(int requestCode) {
+        return requestCode >= REQUEST_PROCESS_DPP_URI
+                && requestCode < REQUEST_PROCESS_DPP_URI + REQUEST_CODE_WINDOW;
+    }
+
     private void completeLaunch(@NonNull String outcome, @Nullable String systemResultCode) {
         final MethodChannel.Result result = pendingResult;
         if (result == null) {
@@ -140,7 +172,10 @@ final class BirdBoxDppChannel {
             return;
         }
         pendingResult = null;
-        handler.removeCallbacks(timeout);
+        final Runnable timeout = pendingTimeout;
+        pendingTimeout = null;
+        if (timeout != null) handler.removeCallbacks(timeout);
+        activeRequestCode = -1;
         clearTransientUri();
         result.success(launchResult(outcome, systemResultCode));
     }
@@ -160,10 +195,21 @@ final class BirdBoxDppChannel {
         transientDppUri = null;
     }
 
+    void onHostDestroying(boolean changingConfigurations) {
+        if (!changingConfigurations && pendingResult != null) {
+            completeLaunch("failed", "host_destroyed");
+        }
+    }
+
     void dispose() {
-        handler.removeCallbacks(timeout);
+        if (disposed) return;
+        disposed = true;
+        final Runnable timeout = pendingTimeout;
+        pendingTimeout = null;
+        if (timeout != null) handler.removeCallbacks(timeout);
         final MethodChannel.Result result = pendingResult;
         pendingResult = null;
+        activeRequestCode = -1;
         clearTransientUri();
         if (result != null) {
             result.success(launchResult("failed", "activity_disposed"));

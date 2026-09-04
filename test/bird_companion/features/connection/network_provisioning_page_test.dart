@@ -4,6 +4,7 @@ import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
+import 'package:aves/bird_companion/features/connection/domain/wifi_qr_credentials.dart';
 import 'package:aves/bird_companion/features/connection/presentation/pages/connection_method_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/pages/network_provisioning_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/network_provisioning_cubit.dart';
@@ -105,10 +106,23 @@ void main() {
       ),
     );
 
-    expect(find.text('搜索附近 Wi-Fi'), findsOneWidget);
-    expect(find.text('手动输入 Wi-Fi'), findsOneWidget);
-    expect(find.text('使用 DPP 安全配网'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('使用手机安全共享 Wi-Fi'), findsOneWidget);
+    expect(find.text('扫描 Wi-Fi 二维码'), findsOneWidget);
+    expect(find.text('选择或手动输入网络'), findsOneWidget);
+    expect(find.text('推荐'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('使用手机安全共享 Wi-Fi')).dy,
+      lessThan(tester.getTopLeft(find.text('扫描 Wi-Fi 二维码')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('扫描 Wi-Fi 二维码')).dy,
+      lessThan(tester.getTopLeft(find.text('选择或手动输入网络')).dy),
+    );
 
+    await tester.tap(find.text('选择或手动输入网络'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('搜索附近 Wi-Fi'));
     await tester.tap(find.text('搜索附近 Wi-Fi'));
     await tester.pump();
     repository.emitEvent(
@@ -139,6 +153,57 @@ void main() {
     expect(find.text('-42 dBm'), findsOneWidget);
   });
 
+  testWidgets('DPP stays disabled unless phone and box capabilities are both available', (tester) async {
+    final repository = FakeProvisioningRepository(
+      dppAvailability: const DppAvailability(
+        boxSupported: true,
+        apiLevelSupported: true,
+        easyConnectSupported: false,
+        activityAvailable: true,
+        sessionReady: true,
+      ),
+    );
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(_pageHarness(cubit));
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前手机或盒子暂不支持安全共享'), findsOneWidget);
+    expect(find.text('推荐'), findsNothing);
+    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
+    await tester.pump();
+    expect(repository.calls, isNot(contains('startDppProvisioning')));
+    expect(find.text('扫描 Wi-Fi 二维码'), findsOneWidget);
+    expect(find.text('选择或手动输入网络'), findsOneWidget);
+  });
+
+  test('Wi-Fi QR credentials use wifi_qr without entering Cubit state', () async {
+    final repository = FakeProvisioningRepository(
+      setStaConfigResult: const CommandAccepted(
+        operationId: 'op_qr',
+        desiredMode: ProvisioningNetworkMode.infrastructureSta,
+        provisioningMethod: ProvisioningMethod.wifiQr,
+      ),
+    );
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+
+    await cubit.submitWifiQrCredentials(
+      const WifiQrCredentials(
+        ssid: 'Studio',
+        security: WifiSecurity.wpa2Personal,
+        password: 'synthetic-pass',
+      ),
+    );
+
+    expect(repository.lastStaObservation?.provisioningMethod, ProvisioningMethod.wifiQr);
+    expect(repository.lastStaObservation?.selectionMethod, WifiSelectionMethod.manual);
+    expect(repository.lastStaObservation?.passwordProvided, isTrue);
+    expect(cubit.state.toString(), isNot(contains('synthetic-pass')));
+  });
+
   testWidgets('DPP unavailable returns to the safe method choice', (
     tester,
   ) async {
@@ -154,17 +219,18 @@ void main() {
     addTearDown(repository.dispose);
     await tester.pumpWidget(_pageHarness(cubit));
 
-    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
     await tester.pump();
 
     expect(find.text('手机暂不支持 DPP 配网'), findsOneWidget);
-    expect(find.text('请选择搜索 Wi-Fi 或手动输入继续连接。'), findsOneWidget);
+    expect(find.text('请选择扫描 Wi-Fi 二维码，或选择/手动输入网络。'), findsOneWidget);
     expect(find.textContaining('DPP:K:'), findsNothing);
 
     await tester.tap(find.text('选择其他方式'));
     await tester.pumpAndSettle();
 
-    expect(find.text('选择 Wi-Fi 配网方式'), findsOneWidget);
+    expect(find.text('连接到现有 Wi-Fi'), findsOneWidget);
   });
 
   testWidgets('network recovery is not reported as DPP success', (
@@ -186,7 +252,8 @@ void main() {
       _pageHarness(cubit, onCompleted: (_) => completed = true),
     );
 
-    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
     await tester.pump();
 
     expect(repository.calls, contains('startDppProvisioning'));
@@ -245,8 +312,9 @@ void main() {
     });
     await tester.pumpWidget(_pageHarness(cubit));
 
-    await tester.tap(find.text('使用 DPP 安全配网'));
-    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
+    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
 
     expect(repository.startDppCalls, 1);
 
@@ -277,13 +345,14 @@ void main() {
     addTearDown(repository.dispose);
     await tester.pumpWidget(_pageHarness(cubit));
 
-    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
     await tester.pump();
 
-    expect(find.text('重新尝试 DPP'), findsOneWidget);
+    expect(find.text('重新尝试安全共享'), findsOneWidget);
     expect(find.textContaining('DPP:K:'), findsNothing);
 
-    await tester.tap(find.text('重新尝试 DPP'));
+    await tester.tap(find.text('重新尝试安全共享'));
     await tester.pump();
 
     expect(
@@ -307,10 +376,11 @@ void main() {
     addTearDown(repository.dispose);
     await tester.pumpWidget(_pageHarness(cubit));
 
-    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
     await tester.pump();
 
-    expect(find.text('重新尝试 DPP'), findsOneWidget);
+    expect(find.text('重新尝试安全共享'), findsOneWidget);
     expect(find.textContaining('DPP:K:'), findsNothing);
   });
 
@@ -327,10 +397,11 @@ void main() {
     addTearDown(repository.dispose);
     await tester.pumpWidget(_pageHarness(cubit));
 
-    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
     await tester.pump();
 
-    expect(find.text('重新尝试 DPP'), findsNothing);
+    expect(find.text('重新尝试安全共享'), findsNothing);
     expect(find.textContaining('DPP:K:'), findsNothing);
   });
 
@@ -346,13 +417,14 @@ void main() {
     addTearDown(repository.dispose);
     await tester.pumpWidget(_pageHarness(cubit));
 
-    await tester.tap(find.text('使用 DPP 安全配网'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
     await tester.pump();
 
     expect(find.text('操作未完成'), findsOneWidget);
     expect(find.text('请检查与盒子的连接后重试。'), findsOneWidget);
-    expect(find.text('返回连接方式'), findsOneWidget);
-    expect(find.text('重新尝试 DPP'), findsNothing);
+    expect(find.text('返回盒子直连'), findsOneWidget);
+    expect(find.text('重新尝试安全共享'), findsNothing);
     expect(find.textContaining(privateDiagnostic), findsNothing);
   });
 }
@@ -403,7 +475,7 @@ DeviceCapabilities _capabilities({bool directAp = true}) => DeviceCapabilities(
   apBand5Ghz: false,
 );
 
-final class _PendingStartDppRepository implements ProvisioningRepository {
+final class _PendingStartDppRepository implements ProvisioningRepository, DppAvailabilityRepository {
   _PendingStartDppRepository(this._delegate, this._startDppResult);
 
   final FakeProvisioningRepository _delegate;
@@ -412,6 +484,9 @@ final class _PendingStartDppRepository implements ProvisioningRepository {
 
   @override
   Stream<ProvisioningEvent> get events => _delegate.events;
+
+  @override
+  Future<DppAvailability> checkDppAvailability() => _delegate.checkDppAvailability();
 
   @override
   Future<CommandAccepted> startDppProvisioning() {

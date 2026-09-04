@@ -52,6 +52,10 @@ class SettingsPage extends StatelessWidget {
                             icon: Icons.wifi_rounded,
                             title: '连接方式',
                             value: session.device?.networkMode.label ?? '未连接',
+                            enabled: session.device != null,
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pushNamed(BirdRoutes.settingsNetwork),
                           ),
                           _SettingsTile(
                             icon: Icons.memory_rounded,

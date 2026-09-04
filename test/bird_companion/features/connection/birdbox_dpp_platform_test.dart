@@ -23,7 +23,7 @@ void main() {
         },
         'launchEasyConnect' => <String, Object>{
           'outcome': 'system_accepted',
-          'systemResultCode': '-1',
+          'systemResultCode': 'result_ok',
         },
         'clearTransientUri' => null,
         _ => throw MissingPluginException(),
@@ -39,7 +39,7 @@ void main() {
 
     expect(capability.supported, isTrue);
     expect(result.outcome, DppLaunchOutcome.systemAccepted);
-    expect(result.systemResultCode, '-1');
+    expect(result.systemResultCode, 'result_ok');
     expect(calls, [
       'checkCapability',
       'launchEasyConnect',
@@ -85,5 +85,23 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('redacts unknown native result details', () async {
+    messenger.setMockMethodCallHandler(
+      channel,
+      (call) async => <String, Object>{
+        'outcome': 'failed',
+        'systemResultCode': 'exception containing sensitive vendor detail',
+      },
+    );
+    final platform = MethodChannelBirdBoxDppPlatform(channel: channel);
+
+    final result = await platform.launchEasyConnect(
+      Uri.parse('DPP:K:TEST_PUBLIC_BOOTSTRAP_KEY;C:81/1;;'),
+    );
+
+    expect(result.outcome, DppLaunchOutcome.failed);
+    expect(result.systemResultCode, 'result_other');
   });
 }

@@ -6,6 +6,7 @@ param(
     [string]$DartCommand = "dart",
     [string]$EvidencePath = "build\b7\b7-gate-evidence.json",
     [string]$RealBoxEvidencePath,
+    [string]$BleRc4EvidencePath,
     [string]$B12BEvidencePath,
     [switch]$SkipPubGet
 )
@@ -22,6 +23,7 @@ $status = "running"
 $failure = $null
 $realBoxEvidence = $null
 $script:simulatedAcceptance = $null
+$script:bleRc4Verified = $false
 
 function Invoke-NativeCommand {
     param(
@@ -130,6 +132,17 @@ function Resolve-JavaCommand {
 
 Push-Location $repoRoot
 try {
+    if ($Mode -eq "Release") {
+        if ([string]::IsNullOrWhiteSpace($RealBoxEvidencePath)) {
+            throw "Release mode requires -RealBoxEvidencePath."
+        }
+        if ([string]::IsNullOrWhiteSpace($BleRc4EvidencePath)) {
+            throw "Release mode requires -BleRc4EvidencePath."
+        }
+        if ([string]::IsNullOrWhiteSpace($B12BEvidencePath)) {
+            throw "Release mode requires -B12BEvidencePath."
+        }
+    }
     $gitSha = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) {
         throw "Unable to resolve the App Git SHA."
@@ -255,15 +268,13 @@ try {
         if ([string]::IsNullOrWhiteSpace($env:AVES_RELEASE_CERT_SHA256)) {
             throw "AVES_RELEASE_CERT_SHA256 is required in Release mode."
         }
-        if ([string]::IsNullOrWhiteSpace($RealBoxEvidencePath)) {
-            throw "Release mode requires -RealBoxEvidencePath."
-        }
-        if ([string]::IsNullOrWhiteSpace($B12BEvidencePath)) {
-            throw "Release mode requires -B12BEvidencePath."
-        }
         $resolvedRealBoxEvidence = Resolve-EvidencePath $RealBoxEvidencePath
         if (-not (Test-Path -LiteralPath $resolvedRealBoxEvidence)) {
             throw "Real-box evidence was not found: $resolvedRealBoxEvidence"
+        }
+        $resolvedBleRc4Evidence = Resolve-EvidencePath $BleRc4EvidencePath
+        if (-not (Test-Path -LiteralPath $resolvedBleRc4Evidence)) {
+            throw "BLE RC4 evidence was not found: $resolvedBleRc4Evidence"
         }
         $resolvedB12BEvidence = Resolve-EvidencePath $B12BEvidencePath
         if (-not (Test-Path -LiteralPath $resolvedB12BEvidence)) {
@@ -331,6 +342,17 @@ try {
                 throw "Android release signature verification failed."
             }
         }
+        Invoke-GateStep "BLE RC4 K7 real-hardware evidence" {
+            Invoke-NativeCommand $DartCommand @(
+                "run",
+                "tool/acceptance/ble_provisioning_rc4_real_device_gate.dart",
+                "--evidence=$resolvedBleRc4Evidence",
+                "--baseline=$baselinePath",
+                "--apk=build/app/outputs/flutter-apk/app-bird-release.apk",
+                "--approved-certificate=$env:AVES_RELEASE_CERT_SHA256"
+            )
+        }
+        $script:bleRc4Verified = $true
         Invoke-GateStep "B12-B real-hardware evidence" {
             Invoke-NativeCommand $DartCommand @(
                 "run",
@@ -412,7 +434,7 @@ try {
                 real_k7_status = "pending"
                 cases = @($script:simulatedAcceptance.cases)
             }
-        } elseif ($Mode -eq "Release") {
+        } elseif ($Mode -eq "Release" -and $status -eq "passed" -and $script:bleRc4Verified) {
             [ordered]@{
                 result = "pass"
                 environment = "real_k7"
@@ -427,6 +449,14 @@ try {
                 real_k7_status = "pending"
                 cases = @()
             }
+        }
+        ble_rc4 = [ordered]@{
+            evidence_path = if ([string]::IsNullOrWhiteSpace($BleRc4EvidencePath)) {
+                $null
+            } else {
+                Resolve-EvidencePath $BleRc4EvidencePath
+            }
+            verified = $script:bleRc4Verified
         }
         contract = [ordered]@{
             id = "$($baseline.contract_id)@$($baseline.contract_version)"

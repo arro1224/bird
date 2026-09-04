@@ -25,3 +25,26 @@ abstract interface class ProvisioningRepository {
 
   Future<void> dispose();
 }
+
+/// Optional production capability implemented by repositories that can merge
+/// the authenticated BLE/box state with the current phone's DPP support.
+abstract interface class DppAvailabilityRepository {
+  Future<DppAvailability> checkDppAvailability();
+}
+
+/// Optional lifecycle view exposed by long-lived provisioning repositories.
+///
+/// Settings pages use it to inspect the currently trusted BLE peer and to
+/// react to transport loss without cancelling an operation already accepted
+/// by the box.
+abstract interface class ProvisioningSessionRepository {
+  ProvisioningDeviceInfo? get connectedDeviceInfo;
+  Stream<void> get disconnects;
+  bool get networkStatusResumeRequired;
+}
+
+/// Optional production verifier used before a status restored after BLE loss
+/// is presented as a reachable terminal network.
+abstract interface class ProvisioningNetworkStatusVerifier {
+  Future<void> verifyNetworkStatus(ProvisioningNetworkStatus status);
+}

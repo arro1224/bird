@@ -4,6 +4,7 @@ import 'package:aves/bird_companion/app/app_shell.dart';
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:flutter/material.dart';
 
@@ -27,10 +28,12 @@ class BirdCompanionApp extends StatelessWidget {
         home: birdStartupHome(
           dependencies.deviceSessionCubit.state,
           provisioningRepository: dependencies.provisioningRepository,
+          onProvisioningCompleted: dependencies.completeProvisioning,
         ),
         onGenerateRoute: (settings) => BirdAppRouter.onGenerateRoute(
           settings,
           provisioningRepository: dependencies.provisioningRepository,
+          onProvisioningCompleted: dependencies.completeProvisioning,
         ),
       ),
     );
@@ -46,12 +49,14 @@ class BirdCompanionApp extends StatelessWidget {
 Widget birdStartupHome(
   DeviceSessionState session, {
   ProvisioningRepository? provisioningRepository,
+  ProvisioningCompletionHandler? onProvisioningCompleted,
 }) {
   return BirdAppShell(
     initialIndex: 0,
     onGenerateRoute: (settings) => BirdAppRouter.onGenerateRoute(
       settings,
       provisioningRepository: provisioningRepository,
+      onProvisioningCompleted: onProvisioningCompleted,
     ),
   );
 }

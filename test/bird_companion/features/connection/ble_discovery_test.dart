@@ -155,7 +155,7 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   final bool encrypted;
   final StreamController<Map<String, dynamic>> _scan = StreamController.broadcast();
   final StreamController<Map<String, dynamic>> _notifications = StreamController.broadcast();
-  final StreamController<void> _disconnects = StreamController.broadcast();
+  final StreamController<BleDisconnectEvent> _disconnects = StreamController.broadcast();
   final Map<String, List<Uint8List>> _reads = {};
   final Set<String> subscribed = {};
   final List<_Write> writes = [];
@@ -167,11 +167,11 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   @override
   Stream<Map<String, dynamic>> get notifications => _notifications.stream;
   @override
-  Stream<void> get disconnects => _disconnects.stream;
+  Stream<BleDisconnectEvent> get disconnects => _disconnects.stream;
 
   void emitAdvertisement(Map<String, dynamic> value) => _scan.add(value);
   void emitNotification(String characteristicUuid, Uint8List value) => _notifications.add({'characteristicUuid': characteristicUuid, 'value': value});
-  void emitDisconnect() => _disconnects.add(null);
+  void emitDisconnect() => _disconnects.add(const BleDisconnectEvent(reason: 'link_lost', gattStatus: 133, unexpected: true));
   void queueRead(String characteristicUuid, List<Uint8List> packets) => _reads[characteristicUuid] = List.of(packets);
 
   @override

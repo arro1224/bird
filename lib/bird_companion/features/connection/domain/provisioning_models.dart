@@ -3,6 +3,48 @@ import 'package:aves/bird_companion/features/connection/domain/provisioning_erro
 
 enum ProvisioningNetworkMode { none, directAp, infrastructureSta }
 
+/// Trusted hand-off from BLE provisioning to the regular HTTP session.
+final class ProvisioningCompletion {
+  const ProvisioningCompletion({
+    required this.deviceId,
+    required this.baseUri,
+    required this.networkMode,
+  });
+
+  /// Stable identity read from the authenticated BLE channel.
+  final String deviceId;
+
+  /// Address confirmed by the terminal network status from the same box.
+  final Uri baseUri;
+  final ProvisioningNetworkMode networkMode;
+}
+
+/// Non-sensitive merged capability used to gate Android Easy Connect.
+final class DppAvailability {
+  const DppAvailability({
+    required this.boxSupported,
+    required this.apiLevelSupported,
+    required this.easyConnectSupported,
+    required this.activityAvailable,
+    required this.sessionReady,
+  });
+
+  const DppAvailability.unavailable({this.boxSupported = false}) : apiLevelSupported = false, easyConnectSupported = false, activityAvailable = false, sessionReady = false;
+
+  final bool boxSupported;
+  final bool apiLevelSupported;
+  final bool easyConnectSupported;
+  final bool activityAvailable;
+  final bool sessionReady;
+
+  bool get supported => boxSupported && apiLevelSupported && easyConnectSupported && activityAvailable && sessionReady;
+}
+
+typedef ProvisioningCompletionHandler =
+    Future<void> Function(
+      ProvisioningCompletion completion,
+    );
+
 extension ProvisioningNetworkModeWireValue on ProvisioningNetworkMode {
   String get wireValue => switch (this) {
     ProvisioningNetworkMode.none => 'none',

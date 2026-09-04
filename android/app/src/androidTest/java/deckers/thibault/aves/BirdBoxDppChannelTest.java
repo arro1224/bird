@@ -26,5 +26,19 @@ public final class BirdBoxDppChannelTest {
         assertEquals("system_accepted", BirdBoxDppChannel.mapActivityResult(Activity.RESULT_OK));
         assertEquals("user_cancelled", BirdBoxDppChannel.mapActivityResult(Activity.RESULT_CANCELED));
         assertEquals("failed", BirdBoxDppChannel.mapActivityResult(42));
+        assertEquals("result_ok", BirdBoxDppChannel.mapSystemResultCode(Activity.RESULT_OK));
+        assertEquals("result_cancelled", BirdBoxDppChannel.mapSystemResultCode(Activity.RESULT_CANCELED));
+        assertEquals("result_other", BirdBoxDppChannel.mapSystemResultCode(42));
+    }
+
+    @Test
+    public void assignsDifferentRequestCodesToConsecutiveLaunches() {
+        final int first = BirdBoxDppChannel.requestCodeForGeneration(0);
+        final int second = BirdBoxDppChannel.requestCodeForGeneration(1);
+
+        assertTrue(BirdBoxDppChannel.isDppRequestCode(first));
+        assertTrue(BirdBoxDppChannel.isDppRequestCode(second));
+        assertFalse(first == second);
+        assertFalse(BirdBoxDppChannel.isDppRequestCode(first - 1));
     }
 }

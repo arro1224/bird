@@ -11,7 +11,7 @@ import 'package:flutter/services.dart';
 abstract interface class BirdBoxBlePlatform {
   Stream<Map<String, dynamic>> get scanResults;
   Stream<Map<String, dynamic>> get notifications;
-  Stream<void> get disconnects;
+  Stream<BleDisconnectEvent> get disconnects;
 
   Future<bool> ensurePermissions();
   Future<void> startScan(Duration timeout);
@@ -26,12 +26,23 @@ abstract interface class BirdBoxBlePlatform {
   Future<void> dispose();
 }
 
+final class BleDisconnectEvent {
+  const BleDisconnectEvent({required this.reason, required this.gattStatus, required this.unexpected});
+
+  final String reason;
+  final int gattStatus;
+  final bool unexpected;
+
+  @override
+  String toString() => 'BleDisconnectEvent(reason: $reason, gattStatus: $gattStatus, unexpected: $unexpected)';
+}
+
 final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
   MethodChannelBirdBoxBlePlatform()
     : _methodChannel = const MethodChannel(_methodChannelName),
       _scanResults = const EventChannel(_scanChannelName).receiveBroadcastStream().map(_eventMap).asBroadcastStream(),
       _notifications = const EventChannel(_notificationChannelName).receiveBroadcastStream().map(_eventMap).asBroadcastStream(),
-      _disconnects = const EventChannel(_disconnectChannelName).receiveBroadcastStream().map((_) {}).asBroadcastStream();
+      _disconnects = const EventChannel(_disconnectChannelName).receiveBroadcastStream().map(_disconnectEvent).asBroadcastStream();
 
   static const _methodChannelName = 'bird_companion/birdbox_ble/methods';
   static const _scanChannelName = 'bird_companion/birdbox_ble/scan';
@@ -41,14 +52,14 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
   final MethodChannel _methodChannel;
   final Stream<Map<String, dynamic>> _scanResults;
   final Stream<Map<String, dynamic>> _notifications;
-  final Stream<void> _disconnects;
+  final Stream<BleDisconnectEvent> _disconnects;
 
   @override
   Stream<Map<String, dynamic>> get scanResults => _scanResults;
   @override
   Stream<Map<String, dynamic>> get notifications => _notifications;
   @override
-  Stream<void> get disconnects => _disconnects;
+  Stream<BleDisconnectEvent> get disconnects => _disconnects;
 
   @override
   Future<bool> ensurePermissions() async => (await _invoke<bool>('ensurePermissions')) ?? false;
@@ -100,11 +111,23 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
     return Map<String, dynamic>.from(event);
   }
 
+  static BleDisconnectEvent _disconnectEvent(Object? raw) {
+    final event = _eventMap(raw);
+    final reason = event['reason'];
+    final gattStatus = event['gattStatus'];
+    final unexpected = event['unexpected'];
+    if (reason is! String || reason.isEmpty || gattStatus is! int || unexpected is! bool) {
+      throw const ProvisioningProtocolException('platform_disconnect_event', 'contains invalid fields');
+    }
+    return BleDisconnectEvent(reason: reason, gattStatus: gattStatus, unexpected: unexpected);
+  }
+
   static ProvisioningException _platformError(String code) => ProvisioningException(
     code: switch (code) {
       'bluetooth_permission_denied' => ProvisioningErrorCode.bluetoothPermissionDenied,
       'ble_link_not_encrypted' => ProvisioningErrorCode.authorizationRequired,
       'invalid_request' || 'invalid_state' => ProvisioningErrorCode.invalidRequest,
+      'bluetooth_unavailable' => ProvisioningErrorCode.capabilityUnsupported,
       _ => ProvisioningErrorCode.networkInternalError,
     },
     retryable: code == 'gatt_busy' || code == 'gatt_operation_failed',
@@ -115,7 +138,7 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
 final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource {
   PlatformBirdBoxBleDataSource({BirdBoxBlePlatform? platform}) : _platform = platform ?? MethodChannelBirdBoxBlePlatform(), _fragmentCodec = const BleFragmentCodec(), _messageCodec = const BleMessageCodec() {
     _notificationSubscription = _platform.notifications.listen(_handleNotification, onError: _events.addError);
-    _disconnectSubscription = _platform.disconnects.listen((_) => _handleDisconnect(), onError: _disconnects.addError);
+    _disconnectSubscription = _platform.disconnects.listen(_handleDisconnect, onError: _disconnects.addError);
   }
 
   final BirdBoxBlePlatform _platform;
@@ -127,7 +150,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource {
   final Map<String, Completer<ProvisioningEvent>> _pendingCommands = {};
 
   late final StreamSubscription<Map<String, dynamic>> _notificationSubscription;
-  late final StreamSubscription<void> _disconnectSubscription;
+  late final StreamSubscription<BleDisconnectEvent> _disconnectSubscription;
   StreamSubscription<Map<String, dynamic>>? _scanSubscription;
   StreamController<BirdBoxAdvertisement>? _scanController;
   Timer? _scanTimer;
@@ -351,20 +374,20 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource {
   @override
   Stream<void> get disconnects => _disconnects.stream;
 
-  void _handleDisconnect() {
+  void _handleDisconnect([BleDisconnectEvent? event]) {
     if (!_connected) return;
-    _markDisconnected();
+    _markDisconnected(event?.reason ?? 'unknown');
     _disconnects.add(null);
   }
 
-  void _markDisconnected() {
+  void _markDisconnected([String reason = 'unknown']) {
     _connected = false;
     _requiredNotificationsSubscribed = false;
     for (final reassembler in _notificationReassemblers.values) {
       reassembler.reset();
     }
     _notificationReassemblers.clear();
-    const error = ProvisioningException(code: ProvisioningErrorCode.networkInternalError, retryable: true, diagnosticMessage: 'BLE disconnected before the command response');
+    final error = ProvisioningException(code: ProvisioningErrorCode.networkInternalError, retryable: true, diagnosticMessage: 'BLE disconnected before the command response: $reason');
     for (final completer in _pendingCommands.values) {
       if (!completer.isCompleted) completer.completeError(error);
     }
