@@ -2,6 +2,7 @@ import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
+import 'package:aves/bird_companion/features/review/domain/review_save_receipt.dart';
 import 'package:aves/bird_companion/features/review/domain/review_undo_entry.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
@@ -80,6 +81,15 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
     UserDecision decision, {
     String successMessage = '修改已保存',
   }) async {
+    if (state.conflict) {
+      emit(
+        state.copyWith(
+          message: '请先载入盒子最新版本，或保留当前本机草稿。',
+          messageIsError: true,
+        ),
+      );
+      return;
+    }
     final previous =
         state.detail?.decision ??
         UserDecision(
@@ -90,23 +100,30 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
         );
     emit(state.copyWith(saving: true));
     try {
-      final result = await _repository.save(
+      final receipt = await _saveWithReceipt(
         decision,
         projectId: projectId,
       );
-      if (result.conflict) {
-        emit(state.copyWith(saving: false, conflict: true, pendingConflictDecision: decision, message: result.message));
+      if (receipt.conflict) {
+        final current = state.detail;
+        emit(
+          state.copyWith(
+            detail: current == null ? null : _withDecision(current, decision),
+            saving: false,
+            conflict: true,
+            pendingConflictDecision: decision,
+          ),
+        );
         return;
       }
-      final undo = ReviewUndoEntry(before: previous, after: decision);
-      final refreshed = await _refreshedDetail(decision.fileId);
-      final updated = refreshed == null ? null : _withDecision(refreshed, decision);
-      _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'photo_review_saved');
+      final accepted = receipt.authoritativeDecision ?? decision;
+      final undo = ReviewUndoEntry(before: previous, after: accepted);
+      final updated = await _detailAfterSave(receipt, accepted);
       emit(
         state.copyWith(
           detail: updated,
           saving: false,
-          message: result.queued ? result.message : successMessage,
+          message: receipt.queued ? receipt.message : successMessage,
           messageIsError: false,
           undoEntry: undo,
         ),
@@ -126,18 +143,27 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
   Future<void> undo() async {
     final entry = state.undoEntry;
     if (entry == null) return;
+    final currentVersion = state.detail?.decision?.version ?? state.detail?.photo.summary.version ?? entry.after.version;
+    final desired = _decisionWithVersion(entry.before, currentVersion);
     emit(state.copyWith(saving: true));
-    final result = await _repository.save(
-      entry.before,
+    final receipt = await _saveWithReceipt(
+      desired,
       projectId: projectId,
     );
-    if (result.conflict) {
-      emit(state.copyWith(saving: false, conflict: true, pendingConflictDecision: entry.before, message: result.message));
+    if (receipt.conflict) {
+      final current = state.detail;
+      emit(
+        state.copyWith(
+          detail: current == null ? null : _withDecision(current, desired),
+          saving: false,
+          conflict: true,
+          pendingConflictDecision: desired,
+        ),
+      );
       return;
     }
-    final refreshed = await _refreshedDetail(entry.before.fileId);
-    final updated = refreshed == null ? null : _withDecision(refreshed, entry.before);
-    _dataChanges?.publish({AppDataResource.photos, AppDataResource.batches}, reason: 'photo_review_undone');
+    final accepted = receipt.authoritativeDecision ?? desired;
+    final updated = await _detailAfterSave(receipt, accepted);
     emit(state.copyWith(detail: updated, saving: false, message: '已撤销最近一次修改', messageIsError: false, clearUndo: true));
   }
 
@@ -179,14 +205,67 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
   }
 
   Future<void> keepLocal() async {
-    emit(state.copyWith(clearConflict: true));
     emit(
       state.copyWith(
-        message: '盒子内容未被覆盖：当前协议未提供强制保存能力，请稍后在照片详情中重试。',
-        messageIsError: true,
+        message: '本机草稿已保留，但尚未写入盒子。载入盒子最新版本前不会再次提交。',
+        messageIsError: false,
       ),
     );
   }
+
+  Future<ReviewSaveReceipt> _saveWithReceipt(
+    UserDecision decision, {
+    String? projectId,
+  }) async {
+    final repository = _repository;
+    if (repository is AuthoritativeReviewWriter) {
+      return (repository as AuthoritativeReviewWriter).saveAuthoritative(
+        decision,
+        projectId: projectId,
+      );
+    }
+    return ReviewSaveReceipt.fromLegacy(
+      await repository.save(decision, projectId: projectId),
+    );
+  }
+
+  Future<ReviewDetail?> _detailAfterSave(
+    ReviewSaveReceipt receipt,
+    UserDecision decision,
+  ) async {
+    final authoritativePhoto = receipt.authoritativePhoto;
+    final current = state.detail;
+    if (authoritativePhoto != null && current != null) {
+      return ReviewDetail(
+        photo: PhotoDetail(
+          summary: authoritativePhoto.copyWith(
+            keepState: decision.keepState.wireValue,
+          ),
+          subjects: current.photo.subjects,
+          tags: current.photo.tags,
+          exif: current.photo.exif,
+        ),
+        decision: decision,
+        history: current.history,
+      );
+    }
+    final refreshed = await _refreshedDetail(decision.fileId);
+    return refreshed == null ? null : _withDecision(refreshed, decision);
+  }
+
+  UserDecision _decisionWithVersion(
+    UserDecision decision,
+    int? version,
+  ) => UserDecision(
+    fileId: decision.fileId,
+    keepState: decision.keepState,
+    userScore: decision.userScore,
+    userSpeciesId: decision.userSpeciesId,
+    userSpecies: decision.userSpecies,
+    userTags: decision.userTags,
+    updatedAt: DateTime.now(),
+    version: version,
+  );
 
   Future<ReviewDetail?> _refreshedDetail(String fileId) async {
     try {

@@ -59,6 +59,7 @@ abstract final class JobStatusViewAdapter {
               message: job.errorMessage,
             ).message,
       connectionState: connectionState,
+      finishedAt: job.finishedAt,
       availableActions: _actions(job),
     );
   }

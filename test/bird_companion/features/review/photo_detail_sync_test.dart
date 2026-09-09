@@ -3,6 +3,7 @@ import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
+import 'package:aves/bird_companion/features/review/domain/review_save_receipt.dart';
 import 'package:aves/bird_companion/features/review/presentation/photo_detail_cubit.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/rating_reason_panel.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/recognition_panel.dart';
@@ -59,6 +60,33 @@ void main() {
 
       expect(cubit.state.message, '标签添加成功');
       expect(cubit.state.messageIsError, isFalse);
+    });
+
+    test('连续保存使用上一次 PhotoResponse 返回的新 version', () async {
+      final repository = _AuthoritativeReviewRepository(_originalDetail());
+      final cubit = PhotoDetailCubit(repository);
+      addTearDown(cubit.close);
+      await cubit.load('photo-1');
+
+      await cubit.save(
+        const UserDecision(
+          fileId: 'photo-1',
+          keepState: KeepState.keep,
+          version: 1,
+        ),
+      );
+      final nextVersion = cubit.state.detail?.decision?.version;
+      await cubit.save(
+        UserDecision(
+          fileId: 'photo-1',
+          keepState: KeepState.discard,
+          version: nextVersion,
+        ),
+      );
+
+      expect(repository.submittedVersions, <int?>[1, 2]);
+      expect(cubit.state.detail?.decision?.version, 3);
+      expect(cubit.state.detail?.decision?.keepState, KeepState.discard);
     });
 
     test('详情加载失败时保留异常对象而不是暴露原始异常文本', () async {
@@ -211,6 +239,65 @@ class _StaleReviewRepository implements ReviewRepository {
   }) async {
     savedProjectId = projectId;
     return const ReviewSaveResult();
+  }
+}
+
+class _AuthoritativeReviewRepository implements ReviewRepository, AuthoritativeReviewWriter {
+  _AuthoritativeReviewRepository(this.detailValue);
+
+  ReviewDetail detailValue;
+  final List<int?> submittedVersions = <int?>[];
+
+  @override
+  Future<ReviewDetail> detail(String fileId) async => detailValue;
+
+  @override
+  Future<List<BirdGroup>> groups(
+    String batchId, {
+    String? sceneId,
+  }) async => const [];
+
+  @override
+  Future<ReviewSaveResult> save(
+    UserDecision value, {
+    String? projectId,
+  }) async => (await saveAuthoritative(value, projectId: projectId)).result;
+
+  @override
+  Future<ReviewSaveReceipt> saveAuthoritative(
+    UserDecision value, {
+    String? projectId,
+  }) async {
+    submittedVersions.add(value.version);
+    final version = (value.version ?? 0) + 1;
+    final accepted = UserDecision(
+      fileId: value.fileId,
+      keepState: value.keepState,
+      userScore: value.userScore,
+      userSpeciesId: value.userSpeciesId,
+      userSpecies: value.userSpecies,
+      userTags: value.userTags,
+      updatedAt: value.updatedAt,
+      version: version,
+    );
+    final photo = PhotoSummary(
+      id: value.fileId,
+      filename: '${value.fileId}.jpg',
+      format: 'JPEG',
+      preview: const PreviewRef(),
+      analysisState: AnalysisState.completed,
+      keepState: value.keepState.wireValue,
+      userTags: value.userTags,
+      version: version,
+    );
+    detailValue = ReviewDetail(
+      photo: PhotoDetail(summary: photo),
+      decision: accepted,
+    );
+    return ReviewSaveReceipt(
+      authoritativeDecision: accepted,
+      authoritativePhoto: photo,
+    );
   }
 }
 

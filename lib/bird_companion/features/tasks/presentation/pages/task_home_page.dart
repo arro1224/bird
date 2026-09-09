@@ -415,11 +415,7 @@ class TaskHomePage extends StatelessWidget {
         fontWeight: FontWeight.w700,
       ),
     ),
-    subtitle: Text(
-      task.failureReason ?? _stateLabel(task),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    ),
+    subtitle: _taskSubtitle(task),
     trailing: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -526,6 +522,40 @@ class TaskHomePage extends StatelessWidget {
     TaskRunState.completed => '已完成',
     TaskRunState.cancelled => '已取消',
   };
+
+  Widget _taskSubtitle(TaskSummary task) {
+    final source = task.sourceBatch?.trim();
+    final parts = <String>[
+      if (source != null && source.isNotEmpty) '来源拍摄记录：$source',
+      if (task.state == TaskRunState.completed && task.finishedAt != null) '完成于 ${_formatTime(task.finishedAt!)}',
+      '处理 ${_count(task.processed)}/${_count(task.total)} 张',
+      if ((task.failedCount ?? 0) > 0) '失败 ${_count(task.failedCount!)} 张',
+    ];
+    return Text.rich(
+      TextSpan(
+        children: [
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Text(
+              task.failureReason ?? _stateLabel(task),
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.clip,
+            ),
+          ),
+          TextSpan(text: ' · ${parts.join(' · ')}'),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  String _formatTime(DateTime value) {
+    final local = value.toLocal();
+    String two(int part) => part.toString().padLeft(2, '0');
+    return '${local.month}月${local.day}日 ${two(local.hour)}:${two(local.minute)}';
+  }
 
   String _count(int value) {
     final digits = value.toString();

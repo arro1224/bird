@@ -523,6 +523,15 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     } else if (job.type == BirdJobType.analysis && job.state == BirdJobState.completed) {
       final projectId = job.sourceProjectId;
       if (projectId != null && projectId.isNotEmpty && !_disposed) {
+        final deviceId = _deviceSessionCubit.state.device?.id.trim();
+        if (deviceId != null && deviceId.isNotEmpty) {
+          _dataChangeBus?.publishChange(
+            AnalysisCompleted(
+              deviceId: deviceId,
+              projectId: projectId,
+            ),
+          );
+        }
         _analysisCompleted.add(projectId);
       }
     } else if (job.type == BirdJobType.copy && job.state == BirdJobState.completed && !_disposed) {

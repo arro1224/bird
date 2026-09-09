@@ -4,6 +4,7 @@ import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
+import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/core/sync/sync_coordinator.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
@@ -19,6 +20,7 @@ class BirdSyncService {
     this._dataChanges,
     String? Function()? deviceId,
     this._acceptRemoteReview,
+    this._acceptSyncedReview,
   ]) : _deviceId = deviceId ?? (() => null);
   final ConnectivityMonitor _connectivity;
   final SyncCoordinator _coordinator;
@@ -26,6 +28,7 @@ class BirdSyncService {
   final AppDataChangeBus? _dataChanges;
   final String? Function() _deviceId;
   final Future<void> Function(String fileId)? _acceptRemoteReview;
+  final Future<void> Function(PhotoSummary photo)? _acceptSyncedReview;
   StreamSubscription<bool>? _subscription;
   Future<SyncResult>? _synchronizing;
   bool _synchronizeAgain = false;
@@ -85,11 +88,36 @@ class BirdSyncService {
             if (id.trim().isEmpty) {
               throw StateError('Offline review is missing file_id.');
             }
-            await _client.post(
+            final response = await _client.post(
               ApiEndpoints.photoDecision.replaceFirst('{fileId}', id),
               data: _decisionPayload(operation.payload),
               idempotencyKey: operation.id,
             );
+            final acceptSyncedReview = _acceptSyncedReview;
+            if (acceptSyncedReview != null) {
+              final authoritativeResponse = response['file'] is Map || response['file_id'] != null
+                  ? response
+                  : await _client.get(
+                      ApiEndpoints.photoDetail.replaceFirst(
+                        '{fileId}',
+                        id,
+                      ),
+                    );
+              final photo = PhotoSummary.fromJson(
+                authoritativeResponse['file'] is Map
+                    ? Map<String, dynamic>.from(
+                        authoritativeResponse['file'] as Map,
+                      )
+                    : authoritativeResponse,
+              );
+              if (photo.id != id || photo.version == null) {
+                throw const ProtocolCompatibilityException(
+                  'decision_response',
+                  '离线审阅回放必须返回同一照片的权威版本',
+                );
+              }
+              await acceptSyncedReview(photo);
+            }
             return;
           case PendingOperationType.batchReview:
             final projectId = (operation.projectId ?? operation.payload['project_id']?.toString() ?? operation.payload['batch_id']?.toString() ?? '').trim();

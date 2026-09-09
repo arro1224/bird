@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:aves/bird_companion/features/connection/data/ble/ble_fragment_codec.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_protocol_constants.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart';
+import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   test('compact, full and malformed optional advertisements remain candidates', () async {
@@ -43,6 +44,99 @@ void main() {
     expect(advertisement.hasValidLocalName, isTrue);
     expect(advertisement.hasBirdBoxService, isFalse);
     expect(advertisement.toString(), isNot(contains('handle-fallback')));
+  });
+
+  test('records a secret-safe scan session with raw and filtered evidence', () async {
+    final platform = _FakeBlePlatform();
+    final sink = _RecordingDiagnosticSink();
+    final dataSource = PlatformBirdBoxBleDataSource(
+      platform: platform,
+      diagnosticSink: sink,
+      scanSessionIdFactory: () => 'scan-session-b7-1',
+    );
+    addTearDown(dataSource.dispose);
+    final diagnosticFuture = dataSource.scanDiagnostics.first;
+
+    final result = dataSource.scan(timeout: const Duration(milliseconds: 20)).toList();
+    await Future<void>.delayed(Duration.zero);
+    platform.emitFiltered('non_birdbox');
+    platform.emitAdvertisement(_advertisement('accepted'));
+    final advertisements = await result;
+    final diagnostic = await diagnosticFuture;
+
+    expect(advertisements, hasLength(1));
+    expect(diagnostic.scanSessionId, 'scan-session-b7-1');
+    expect(diagnostic.permissionBefore, BleScanPermissionState.granted);
+    expect(diagnostic.permissionAfter, BleScanPermissionState.granted);
+    expect(diagnostic.adapterAfter, BleAdapterState.enabled);
+    expect(diagnostic.rawResultCount, 2);
+    expect(diagnostic.acceptedCount, 1);
+    expect(diagnostic.filteredCount, 1);
+    expect(diagnostic.reasonCounts['non_birdbox'], 1);
+    expect(diagnostic.firstRawResultAt, isNotNull);
+    expect(diagnostic.firstCandidateAt, isNotNull);
+    expect(diagnostic.endReason, BleScanEndReason.timeout);
+    expect(sink.sessions.single.toJson(), diagnostic.toJson());
+    expect(diagnostic.toJson().toString(), isNot(contains('handle-accepted')));
+  });
+
+  test('preserves Android scan error code in the terminal diagnostic', () async {
+    final platform = _FakeBlePlatform();
+    final dataSource = PlatformBirdBoxBleDataSource(
+      platform: platform,
+      scanSessionIdFactory: () => 'scan-session-b7-error',
+    );
+    addTearDown(dataSource.dispose);
+    final diagnosticFuture = dataSource.scanDiagnostics.first;
+
+    final result = dataSource.scan().toList();
+    await Future<void>.delayed(Duration.zero);
+    platform.emitScanFailure(2);
+
+    await expectLater(
+      result,
+      throwsA(
+        isA<ProvisioningException>().having(
+          (error) => error.diagnosticMessage,
+          'diagnosticMessage',
+          contains('Android scan error 2'),
+        ),
+      ),
+    );
+    final diagnostic = await diagnosticFuture;
+    expect(diagnostic.endReason, BleScanEndReason.platformError);
+    expect(diagnostic.androidScanErrorCode, 2);
+  });
+
+  test('records permission and disabled-adapter preflight failures without starting a scan', () async {
+    final platform = _FakeBlePlatform(
+      permissionGranted: false,
+      adapterState: BleAdapterState.disabled,
+    );
+    final dataSource = PlatformBirdBoxBleDataSource(
+      platform: platform,
+      scanSessionIdFactory: () => 'scan-session-b7-permission',
+    );
+    addTearDown(dataSource.dispose);
+    final diagnosticFuture = dataSource.scanDiagnostics.first;
+
+    await expectLater(
+      dataSource.scan().toList(),
+      throwsA(
+        isA<ProvisioningException>().having(
+          (error) => error.code,
+          'code',
+          ProvisioningErrorCode.bluetoothPermissionDenied,
+        ),
+      ),
+    );
+    final diagnostic = await diagnosticFuture;
+
+    expect(diagnostic.permissionBefore, BleScanPermissionState.denied);
+    expect(diagnostic.permissionAfter, BleScanPermissionState.denied);
+    expect(diagnostic.adapterAfter, BleAdapterState.disabled);
+    expect(diagnostic.endReason, BleScanEndReason.permissionDenied);
+    expect(platform.startedScanSessionId, isNull);
   });
 
   test('connect negotiates MTU, reads authoritative GATT models and subscribes both notifications', () async {
@@ -149,10 +243,17 @@ final class _Write {
 }
 
 final class _FakeBlePlatform implements BirdBoxBlePlatform {
-  _FakeBlePlatform({this.negotiatedMtu = 23, this.encrypted = false});
+  _FakeBlePlatform({
+    this.negotiatedMtu = 23,
+    this.encrypted = false,
+    this.permissionGranted = true,
+    this.adapterState = BleAdapterState.enabled,
+  });
 
   final int negotiatedMtu;
   final bool encrypted;
+  final bool permissionGranted;
+  final BleAdapterState adapterState;
   final StreamController<Map<String, dynamic>> _scan = StreamController.broadcast();
   final StreamController<Map<String, dynamic>> _notifications = StreamController.broadcast();
   final StreamController<BleDisconnectEvent> _disconnects = StreamController.broadcast();
@@ -161,6 +262,7 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   final List<_Write> writes = [];
   String? connectedHandle;
   int? requestedMtu;
+  String? startedScanSessionId;
 
   @override
   Stream<Map<String, dynamic>> get scanResults => _scan.stream;
@@ -170,14 +272,46 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   Stream<BleDisconnectEvent> get disconnects => _disconnects.stream;
 
   void emitAdvertisement(Map<String, dynamic> value) => _scan.add(value);
+  void emitFiltered(String reason) => _scan.add({
+    'eventType': 'advertisement',
+    'scanSessionId': startedScanSessionId,
+    'accepted': false,
+    'decisionReason': reason,
+  });
+  void emitScanFailure(int errorCode) {
+    _scan.add({
+      'eventType': 'scanFailure',
+      'scanSessionId': startedScanSessionId,
+      'androidScanErrorCode': errorCode,
+    });
+    _scan.addError(
+      PlatformException(
+        code: 'gatt_operation_failed',
+        details: {
+          'androidScanErrorCode': errorCode,
+          'scanSessionId': startedScanSessionId,
+        },
+      ),
+    );
+  }
   void emitNotification(String characteristicUuid, Uint8List value) => _notifications.add({'characteristicUuid': characteristicUuid, 'value': value});
   void emitDisconnect() => _disconnects.add(const BleDisconnectEvent(reason: 'link_lost', gattStatus: 133, unexpected: true));
   void queueRead(String characteristicUuid, List<Uint8List> packets) => _reads[characteristicUuid] = List.of(packets);
 
   @override
-  Future<bool> ensurePermissions() async => true;
+  Future<BleScanEnvironment> readScanEnvironment() async => BleScanEnvironment(
+    permission: permissionGranted ? BleScanPermissionState.granted : BleScanPermissionState.denied,
+    adapter: adapterState,
+  );
   @override
-  Future<void> startScan(Duration timeout) async {}
+  Future<bool> ensurePermissions() async => permissionGranted;
+  @override
+  Future<void> startScan(
+    Duration timeout, {
+    required String scanSessionId,
+  }) async {
+    startedScanSessionId = scanSessionId;
+  }
   @override
   Future<void> stopScan() async {}
   @override
@@ -216,5 +350,14 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
     await _scan.close();
     await _notifications.close();
     await _disconnects.close();
+  }
+}
+
+final class _RecordingDiagnosticSink implements BleScanDiagnosticSink {
+  final List<BleScanDiagnosticSession> sessions = [];
+
+  @override
+  Future<void> record(BleScanDiagnosticSession session) async {
+    sessions.add(session);
   }
 }

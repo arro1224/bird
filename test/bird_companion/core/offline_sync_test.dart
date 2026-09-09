@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
+import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/sync/bird_sync_service.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
@@ -296,6 +297,53 @@ void main() {
     expect(store.read('device-switch-1'), isNull);
     expect(store.read('device-switch-2')?.status, PendingOperationStatus.pending);
   });
+
+  test('review replay publishes the authoritative PhotoResponse before removal', () async {
+    final store = PendingOperationStore.memory();
+    await store.save(_operation('review-version-replay', 'photo-9'));
+    final client = _RecordingApiClient();
+    PhotoSummary? accepted;
+    final service = BirdSyncService(
+      ConnectivityMonitor(),
+      SyncCoordinator(store),
+      client,
+      null,
+      () => 'box-a',
+      null,
+      (photo) async => accepted = photo,
+    );
+
+    final result = await service.synchronize();
+
+    expect(result.syncedCount, 1);
+    expect(accepted?.id, 'photo-9');
+    expect(accepted?.version, 2);
+    expect(store.read('review-version-replay'), isNull);
+  });
+
+  test('review replay reads detail after a legacy simulator decision response', () async {
+    final store = PendingOperationStore.memory();
+    await store.save(_operation('legacy-review-replay', 'photo-9'));
+    final client = _RecordingApiClient(legacyDecisionResponse: true);
+    PhotoSummary? accepted;
+    final service = BirdSyncService(
+      ConnectivityMonitor(),
+      SyncCoordinator(store),
+      client,
+      null,
+      () => 'box-a',
+      null,
+      (photo) async => accepted = photo,
+    );
+
+    final result = await service.synchronize();
+
+    expect(result.syncedCount, 1);
+    expect(client.getPaths, ['/api/v1/files/photo-9']);
+    expect(accepted?.id, 'photo-9');
+    expect(accepted?.version, 2);
+    expect(store.read('legacy-review-replay'), isNull);
+  });
 }
 
 PendingOperation _operation(
@@ -320,12 +368,15 @@ class _RecordingApiClient extends ApiClient {
   _RecordingApiClient({
     this.conflictKeys = const {},
     this.beforePost,
+    this.legacyDecisionResponse = false,
   });
 
   final Set<String> conflictKeys;
   final Future<void> Function(String key)? beforePost;
+  final bool legacyDecisionResponse;
   final List<String> idempotencyKeys = [];
   final List<String> paths = [];
+  final List<String> getPaths = [];
   final List<Object?> payloads = [];
 
   @override
@@ -348,6 +399,50 @@ class _RecordingApiClient extends ApiClient {
         statusCode: 409,
       );
     }
+    if (path.endsWith('/decision')) {
+      final payload = Map<String, dynamic>.from(data! as Map);
+      final fileId = path.split('/').elementAt(path.split('/').length - 2);
+      if (legacyDecisionResponse) {
+        return {
+          'decision': {
+            'file_id': fileId,
+            'keep_state': payload['keep_state'],
+            'version': (payload['version'] as int) + 1,
+          },
+        };
+      }
+      return <String, dynamic>{
+        'file_id': fileId,
+        'filename': '$fileId.jpg',
+        'format': 'JPEG',
+        'thumb_ref': 'http://box.local/$fileId-thumb.jpg',
+        'preview_ref': 'http://box.local/$fileId-preview.jpg',
+        'analysis_state': 'completed',
+        'keep_state': payload['keep_state'],
+        'is_recommended': false,
+        'user_tags': payload['user_tags'] ?? const <String>[],
+        'version': (payload['version'] as int) + 1,
+      };
+    }
     return const {};
+  }
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    getPaths.add(path);
+    final fileId = path.split('/').last;
+    return {
+      'file': {
+        'file_id': fileId,
+        'filename': '$fileId.jpg',
+        'format': 'JPEG',
+        'analysis_state': 'completed',
+        'keep_state': 'keep',
+        'version': 2,
+      },
+    };
   }
 }

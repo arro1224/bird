@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:aves/bird_companion/features/connection/data/ble/birdbox_ble_data_source.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_fragment_codec.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_message_codec.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_protocol_constants.dart';
+import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 abstract interface class BirdBoxBlePlatform {
@@ -13,8 +16,12 @@ abstract interface class BirdBoxBlePlatform {
   Stream<Map<String, dynamic>> get notifications;
   Stream<BleDisconnectEvent> get disconnects;
 
+  Future<BleScanEnvironment> readScanEnvironment();
   Future<bool> ensurePermissions();
-  Future<void> startScan(Duration timeout);
+  Future<void> startScan(
+    Duration timeout, {
+    required String scanSessionId,
+  });
   Future<void> stopScan();
   Future<void> connect(String platformDeviceId);
   Future<void> disconnect();
@@ -65,7 +72,21 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
   Future<bool> ensurePermissions() async => (await _invoke<bool>('ensurePermissions')) ?? false;
 
   @override
-  Future<void> startScan(Duration timeout) => _invoke<void>('startScan', {'timeoutMs': timeout.inMilliseconds});
+  Future<BleScanEnvironment> readScanEnvironment() async {
+    final value = await _invoke<Map<Object?, Object?>>('getScanEnvironment');
+    return BleScanEnvironment.fromPlatform(
+      Map<String, dynamic>.from(value ?? const {}),
+    );
+  }
+
+  @override
+  Future<void> startScan(
+    Duration timeout, {
+    required String scanSessionId,
+  }) => _invoke<void>('startScan', {
+    'timeoutMs': timeout.inMilliseconds,
+    'scanSessionId': scanSessionId,
+  });
 
   @override
   Future<void> stopScan() => _invoke<void>('stopScan');
@@ -102,7 +123,7 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
     try {
       return await _methodChannel.invokeMethod<T>(method, arguments);
     } on PlatformException catch (error) {
-      throw _platformError(error.code);
+      throw _platformError(error);
     }
   }
 
@@ -122,30 +143,47 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
     return BleDisconnectEvent(reason: reason, gattStatus: gattStatus, unexpected: unexpected);
   }
 
-  static ProvisioningException _platformError(String code) => ProvisioningException(
-    code: switch (code) {
+  static ProvisioningException _platformError(PlatformException error) {
+    final details = error.details is Map ? Map<String, dynamic>.from(error.details as Map) : const <String, dynamic>{};
+    final scanErrorCode = details['androidScanErrorCode'];
+    final diagnosticSuffix = scanErrorCode is int ? ' (Android scan error $scanErrorCode)' : '';
+    return ProvisioningException(
+      code: switch (error.code) {
       'bluetooth_permission_denied' => ProvisioningErrorCode.bluetoothPermissionDenied,
       'ble_link_not_encrypted' => ProvisioningErrorCode.authorizationRequired,
       'invalid_request' || 'invalid_state' => ProvisioningErrorCode.invalidRequest,
       'bluetooth_unavailable' => ProvisioningErrorCode.capabilityUnsupported,
       _ => ProvisioningErrorCode.networkInternalError,
-    },
-    retryable: code == 'gatt_busy' || code == 'gatt_operation_failed',
-    diagnosticMessage: 'Android BLE platform error: $code',
-  );
+      },
+      retryable: error.code == 'gatt_busy' || error.code == 'gatt_operation_failed',
+      diagnosticMessage: 'Android BLE platform error: ${error.code}$diagnosticSuffix',
+    );
+  }
 }
 
-final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource {
-  PlatformBirdBoxBleDataSource({BirdBoxBlePlatform? platform}) : _platform = platform ?? MethodChannelBirdBoxBlePlatform(), _fragmentCodec = const BleFragmentCodec(), _messageCodec = const BleMessageCodec() {
+final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleScanDiagnosticSource {
+  PlatformBirdBoxBleDataSource({
+    BirdBoxBlePlatform? platform,
+    this._diagnosticSink,
+    DateTime Function()? clock,
+    this._scanSessionIdFactory,
+  }) : _platform = platform ?? MethodChannelBirdBoxBlePlatform(),
+       _clock = clock ?? DateTime.now,
+       _fragmentCodec = const BleFragmentCodec(),
+       _messageCodec = const BleMessageCodec() {
     _notificationSubscription = _platform.notifications.listen(_handleNotification, onError: _events.addError);
     _disconnectSubscription = _platform.disconnects.listen(_handleDisconnect, onError: _disconnects.addError);
   }
 
   final BirdBoxBlePlatform _platform;
+  final BleScanDiagnosticSink? _diagnosticSink;
+  final DateTime Function() _clock;
+  final String Function()? _scanSessionIdFactory;
   final BleFragmentCodec _fragmentCodec;
   final BleMessageCodec _messageCodec;
   final StreamController<ProvisioningEvent> _events = StreamController<ProvisioningEvent>.broadcast(sync: true);
   final StreamController<void> _disconnects = StreamController<void>.broadcast(sync: true);
+  final StreamController<BleScanDiagnosticSession> _scanDiagnostics = StreamController<BleScanDiagnosticSession>.broadcast(sync: true);
   final Map<String, BleFragmentReassembler> _notificationReassemblers = {};
   final Map<String, Completer<ProvisioningEvent>> _pendingCommands = {};
 
@@ -153,42 +191,71 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource {
   late final StreamSubscription<BleDisconnectEvent> _disconnectSubscription;
   StreamSubscription<Map<String, dynamic>>? _scanSubscription;
   StreamController<BirdBoxAdvertisement>? _scanController;
+  _BleScanSessionBuilder? _activeScanDiagnostic;
   Timer? _scanTimer;
   bool _connected = false;
   bool _requiredNotificationsSubscribed = false;
   bool _disposed = false;
   int _negotiatedMtu = 23;
   int _nextMessageId = 0;
+  int _scanSessionSequence = 0;
 
   @override
   Stream<BirdBoxAdvertisement> scan({Duration? timeout}) {
     if (_disposed) return Stream.error(StateError('BLE data source is disposed'));
     if (_scanController != null) return Stream.error(StateError('BLE scan is already active'));
     final scanTimeout = timeout ?? const Duration(seconds: 10);
+    final scanDiagnostic = _BleScanSessionBuilder(
+      scanSessionId: _newScanSessionId(),
+      startedAt: _clock(),
+    );
     late final StreamController<BirdBoxAdvertisement> controller;
     controller = StreamController<BirdBoxAdvertisement>(
       onListen: () async {
+        _activeScanDiagnostic = scanDiagnostic;
         try {
-          if (!await _platform.ensurePermissions()) throw _permissionDenied();
+          scanDiagnostic.environmentBefore = await _readScanEnvironment();
+          if (!await _platform.ensurePermissions()) {
+            scanDiagnostic.environmentAfter = await _readScanEnvironment();
+            throw _permissionDenied();
+          }
+          scanDiagnostic.environmentAfter = await _readScanEnvironment();
           _scanSubscription = _platform.scanResults.listen(
-            (event) {
-              try {
-                final advertisement = advertisementFromPlatform(event);
-                if (advertisement.hasBirdBoxService || advertisement.hasValidLocalName) controller.add(advertisement);
-              } catch (error, stackTrace) {
-                controller.addError(error, stackTrace);
-              }
+            (event) => _handleScanEvent(controller, event),
+            onError: (Object error, StackTrace stackTrace) {
+              final mapped = error is PlatformException ? MethodChannelBirdBoxBlePlatform._platformError(error) : error;
+              controller.addError(mapped, stackTrace);
+              unawaited(
+                _finishScan(
+                  controller,
+                  reason: BleScanEndReason.platformError,
+                ),
+              );
             },
-            onError: controller.addError,
           );
-          await _platform.startScan(scanTimeout);
-          _scanTimer = Timer(scanTimeout, () => _finishScan(controller));
+          await _platform.startScan(
+            scanTimeout,
+            scanSessionId: scanDiagnostic.scanSessionId,
+          );
+          scanDiagnostic.nativeStartedAt = _clock();
+          _scanTimer = Timer(
+            scanTimeout,
+            () => unawaited(
+              _finishScan(controller, reason: BleScanEndReason.timeout),
+            ),
+          );
         } catch (error, stackTrace) {
           controller.addError(error, stackTrace);
-          await _finishScan(controller);
+          await _finishScan(
+            controller,
+            reason: _endReasonFor(error, scanDiagnostic),
+          );
         }
       },
-      onCancel: () => _finishScan(controller),
+      onCancel: () => _finishScan(
+        controller,
+        reason: BleScanEndReason.cancelled,
+      ),
     );
     _scanController = controller;
     return controller.stream;
@@ -197,10 +264,15 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource {
   @override
   Future<void> stopScan() async {
     final controller = _scanController;
-    if (controller != null) await _finishScan(controller);
+    if (controller != null) {
+      await _finishScan(controller, reason: BleScanEndReason.stopped);
+    }
   }
 
-  Future<void> _finishScan(StreamController<BirdBoxAdvertisement> controller) async {
+  Future<void> _finishScan(
+    StreamController<BirdBoxAdvertisement> controller, {
+    required BleScanEndReason reason,
+  }) async {
     if (!identical(controller, _scanController)) return;
     _scanTimer?.cancel();
     _scanTimer = null;
@@ -212,8 +284,101 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource {
       // Scan shutdown is best effort; discovery errors have already reached the stream.
     }
     _scanController = null;
+    await _completeScanDiagnostic(reason);
     if (!controller.isClosed) await controller.close();
   }
+
+  void _handleScanEvent(
+    StreamController<BirdBoxAdvertisement> controller,
+    Map<String, dynamic> event,
+  ) {
+    final diagnostic = _activeScanDiagnostic;
+    final eventSessionId = event['scanSessionId'];
+    if (eventSessionId is String && diagnostic != null && eventSessionId != diagnostic.scanSessionId) {
+      return;
+    }
+    if (event['eventType'] == 'scanFailure') {
+      final errorCode = event['androidScanErrorCode'];
+      if (errorCode is int) diagnostic?.androidScanErrorCode = errorCode;
+      return;
+    }
+
+    final acceptedField = event['accepted'];
+    final accepted = acceptedField is bool ? acceptedField : true;
+    final reason = event['decisionReason'] is String ? event['decisionReason'] as String : 'legacy_candidate';
+    diagnostic?.observe(
+      at: _clock(),
+      accepted: accepted,
+      reason: reason,
+    );
+    if (!accepted) return;
+
+    try {
+      final advertisement = advertisementFromPlatform(event);
+      if (advertisement.hasBirdBoxService || advertisement.hasValidLocalName) {
+        diagnostic?.firstCandidateAt ??= _clock();
+        controller.add(advertisement);
+      }
+    } catch (error, stackTrace) {
+      diagnostic?.addReason('dart_parse_error');
+      controller.addError(error, stackTrace);
+      unawaited(
+        _finishScan(
+          controller,
+          reason: BleScanEndReason.platformError,
+        ),
+      );
+    }
+  }
+
+  Future<BleScanEnvironment> _readScanEnvironment() async {
+    try {
+      return await _platform.readScanEnvironment();
+    } catch (_) {
+      return const BleScanEnvironment.unknown();
+    }
+  }
+
+  String _newScanSessionId() {
+    final custom = _scanSessionIdFactory?.call();
+    if (custom != null && custom.trim().isNotEmpty) return custom.trim();
+    final sequence = _scanSessionSequence++;
+    return 'ble-scan-${_clock().toUtc().microsecondsSinceEpoch}-$sequence';
+  }
+
+  BleScanEndReason _endReasonFor(
+    Object error,
+    _BleScanSessionBuilder diagnostic,
+  ) {
+    if (error is ProvisioningException) {
+      if (error.code == ProvisioningErrorCode.bluetoothPermissionDenied) {
+        return BleScanEndReason.permissionDenied;
+      }
+      if (error.code == ProvisioningErrorCode.capabilityUnsupported ||
+          diagnostic.environmentAfter.adapter == BleAdapterState.disabled ||
+          diagnostic.environmentAfter.adapter == BleAdapterState.unavailable) {
+        return BleScanEndReason.bluetoothUnavailable;
+      }
+    }
+    return BleScanEndReason.platformError;
+  }
+
+  Future<void> _completeScanDiagnostic(BleScanEndReason reason) async {
+    final builder = _activeScanDiagnostic;
+    _activeScanDiagnostic = null;
+    if (builder == null) return;
+    final session = builder.complete(endedAt: _clock(), endReason: reason);
+    if (!_scanDiagnostics.isClosed) _scanDiagnostics.add(session);
+    debugPrint('BLE_SCAN_DIAGNOSTIC ${jsonEncode(session.toJson())}');
+    try {
+      await _diagnosticSink?.record(session);
+    } catch (error) {
+      debugPrint('BLE scan diagnostic persistence failed: ${error.runtimeType}');
+    }
+  }
+
+  @override
+  Stream<BleScanDiagnosticSession> get scanDiagnostics => _scanDiagnostics.stream;
 
   @override
   Future<void> connect(BirdBoxAdvertisement advertisement) async {
@@ -399,7 +564,13 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    await stopScan();
+    final scanController = _scanController;
+    if (scanController != null) {
+      await _finishScan(
+        scanController,
+        reason: BleScanEndReason.disposed,
+      );
+    }
     if (_connected) await _platform.disconnect();
     _markDisconnected();
     await _notificationSubscription.cancel();
@@ -407,6 +578,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource {
     await _platform.dispose();
     await _events.close();
     await _disconnects.close();
+    await _scanDiagnostics.close();
   }
 
   void _checkNotDisposed() {
@@ -419,6 +591,67 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource {
   }
 
   static ProvisioningException _permissionDenied() => const ProvisioningException(code: ProvisioningErrorCode.bluetoothPermissionDenied, retryable: false);
+}
+
+final class _BleScanSessionBuilder {
+  _BleScanSessionBuilder({
+    required this.scanSessionId,
+    required this.startedAt,
+  });
+
+  final String scanSessionId;
+  final DateTime startedAt;
+  BleScanEnvironment environmentBefore = const BleScanEnvironment.unknown();
+  BleScanEnvironment environmentAfter = const BleScanEnvironment.unknown();
+  DateTime? nativeStartedAt;
+  DateTime? firstRawResultAt;
+  DateTime? firstCandidateAt;
+  int rawResultCount = 0;
+  int acceptedCount = 0;
+  int filteredCount = 0;
+  int? androidScanErrorCode;
+  final Map<String, int> reasonCounts = {};
+
+  void observe({
+    required DateTime at,
+    required bool accepted,
+    required String reason,
+  }) {
+    firstRawResultAt ??= at;
+    rawResultCount++;
+    if (accepted) {
+      acceptedCount++;
+    } else {
+      filteredCount++;
+    }
+    addReason(reason);
+  }
+
+  void addReason(String reason) {
+    reasonCounts.update(reason, (value) => value + 1, ifAbsent: () => 1);
+  }
+
+  BleScanDiagnosticSession complete({
+    required DateTime endedAt,
+    required BleScanEndReason endReason,
+  }) => BleScanDiagnosticSession(
+    scanSessionId: scanSessionId,
+    startedAt: startedAt,
+    nativeStartedAt: nativeStartedAt,
+    firstRawResultAt: firstRawResultAt,
+    firstCandidateAt: firstCandidateAt,
+    endedAt: endedAt,
+    permissionBefore: environmentBefore.permission,
+    permissionAfter: environmentAfter.permission,
+    adapterBefore: environmentBefore.adapter,
+    adapterAfter: environmentAfter.adapter,
+    rawResultCount: rawResultCount,
+    acceptedCount: acceptedCount,
+    filteredCount: filteredCount,
+    reasonCounts: Map.unmodifiable(reasonCounts),
+    endReason: endReason,
+    androidScanErrorCode: androidScanErrorCode,
+  );
 }
 
 BirdBoxAdvertisement advertisementFromPlatform(Map<String, dynamic> raw) {

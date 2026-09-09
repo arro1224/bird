@@ -17,6 +17,9 @@ void main() {
     expect(source, isNot(contains('_AlbumPlaceholder')));
     expect(source, isNot(contains('JobCenterPage')));
     expect(source, isNot(contains('SettingsPage()')));
+    expect(source, contains('onAnalysisCompleted: _openAlbumRoot'));
+    expect(source, contains('_selectTabAndPopToRoot(0)'));
+    expect(source, contains('popUntil((route) => route.isFirst)'));
   });
 
   testWidgets('shell navigation forwards tab and named-route requests', (

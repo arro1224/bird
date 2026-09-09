@@ -239,6 +239,7 @@ class _BleConnectionView extends StatelessWidget {
               devices: state.devices,
               searching: state.phase == ProvisioningPhase.discovering,
               error: error,
+              diagnosticId: state.latestScanDiagnostic?.scanSessionId,
               onDiscover: cubit.discover,
               onSelectDevice: cubit.selectDevice,
               onRetry: cubit.retry,
@@ -351,6 +352,7 @@ class _BleDiscoveryView extends StatelessWidget {
     required this.devices,
     required this.searching,
     required this.error,
+    required this.diagnosticId,
     required this.onDiscover,
     required this.onSelectDevice,
     required this.onRetry,
@@ -359,6 +361,7 @@ class _BleDiscoveryView extends StatelessWidget {
   final List<ProvisioningDevice> devices;
   final bool searching;
   final UserMessage? error;
+  final String? diagnosticId;
   final Future<void> Function() onDiscover;
   final Future<void> Function(ProvisioningDevice) onSelectDevice;
   final Future<void> Function() onRetry;
@@ -399,6 +402,17 @@ class _BleDiscoveryView extends StatelessWidget {
           message: error!.message,
           actionLabel: error!.actionLabel ?? '重试',
           onRetry: onRetry,
+        ),
+      ],
+      if (!searching && diagnosticId != null) ...[
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          '本次扫描诊断编号：$diagnosticId',
+          key: const Key('ble-scan-diagnostic-id'),
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: AppColors.inkMuted,
+          ),
         ),
       ],
       const SizedBox(height: AppSpacing.xl),

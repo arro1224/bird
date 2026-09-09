@@ -82,6 +82,26 @@ class BatchSummary extends Equatable {
     if (cover != null) 'cover': cover!.toJson(),
   };
 
+  BatchSummary copyWith({
+    int? reviewCount,
+    int? keepCount,
+    int? discardCount,
+  }) => BatchSummary(
+    id: id,
+    name: name,
+    createdAt: createdAt,
+    totalFiles: totalFiles,
+    analyzedCount: analyzedCount,
+    reviewCount: reviewCount ?? this.reviewCount,
+    keepCount: keepCount ?? this.keepCount,
+    discardCount: discardCount ?? this.discardCount,
+    pendingCopyCount: pendingCopyCount,
+    copyState: copyState,
+    sceneCount: sceneCount,
+    burstGroupCount: burstGroupCount,
+    cover: cover,
+  );
+
   @override
   List<Object?> get props => [id, name, createdAt, totalFiles, analyzedCount, reviewCount, keepCount, discardCount, pendingCopyCount, copyState, sceneCount, burstGroupCount, cover];
 }

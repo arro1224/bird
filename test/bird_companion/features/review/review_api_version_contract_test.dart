@@ -26,6 +26,42 @@ void main() {
     );
     expect(client.postCalls, 0);
   });
+
+  test('saveWithPhoto consumes the frozen PhotoResponse version', () async {
+    final client = _DetailApiClient();
+
+    final photo = await ReviewApi(client).saveWithPhoto(
+      const UserDecisionPatch(
+        fileId: 'photo-7',
+        keepState: PatchField.value(KeepState.keep),
+        version: 3,
+      ),
+      idempotencyKey: 'review-photo-7-v3',
+    );
+
+    expect(client.postCalls, 1);
+    expect(photo.id, 'photo-7');
+    expect(photo.keepState, 'keep');
+    expect(photo.version, 4);
+  });
+
+  test('saveWithPhoto reads detail after a legacy simulator decision response', () async {
+    final client = _LegacyDecisionApiClient();
+
+    final photo = await ReviewApi(client).saveWithPhoto(
+      const UserDecisionPatch(
+        fileId: 'photo-7',
+        keepState: PatchField.value(KeepState.keep),
+        version: 3,
+      ),
+    );
+
+    expect(client.postCalls, 1);
+    expect(client.getCalls, 1);
+    expect(photo.id, 'photo-7');
+    expect(photo.keepState, 'keep');
+    expect(photo.version, 4);
+  });
 }
 
 class _DetailApiClient extends ApiClient {
@@ -62,6 +98,56 @@ class _DetailApiClient extends ApiClient {
     String? idempotencyKey,
   }) async {
     postCalls++;
-    return const {};
+    return const {
+      'file_id': 'photo-7',
+      'filename': 'photo-7.jpg',
+      'format': 'JPEG',
+      'thumb_ref': 'http://box.local/photo-7-thumb.jpg',
+      'preview_ref': 'http://box.local/photo-7-preview.jpg',
+      'analysis_state': 'completed',
+      'keep_state': 'keep',
+      'is_recommended': false,
+      'user_tags': <String>[],
+      'version': 4,
+    };
+  }
+}
+
+class _LegacyDecisionApiClient extends ApiClient {
+  var getCalls = 0;
+  var postCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? data,
+    String? idempotencyKey,
+  }) async {
+    postCalls++;
+    return const {
+      'decision': {
+        'file_id': 'photo-7',
+        'keep_state': 'keep',
+        'version': 4,
+      },
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    getCalls++;
+    return const {
+      'file': {
+        'file_id': 'photo-7',
+        'filename': 'photo-7.jpg',
+        'format': 'JPEG',
+        'analysis_state': 'completed',
+        'keep_state': 'keep',
+        'version': 4,
+      },
+    };
   }
 }

@@ -9,7 +9,7 @@ void main() {
     ).readAsStringSync();
 
     const realNeedles = [
-      'PlatformBirdBoxBleDataSource()',
+      'PlatformBirdBoxBleDataSource(',
       'MethodChannelBirdBoxWifiPlatform()',
       'MethodChannelBirdBoxDppPlatform()',
       'rememberDynamicAddress:',

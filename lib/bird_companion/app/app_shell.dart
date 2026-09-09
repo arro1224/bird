@@ -26,6 +26,8 @@ class BirdAppShell extends StatefulWidget {
 class _BirdAppShellState extends State<BirdAppShell> {
   late int _selectedIndex;
   late final ValueNotifier<int> _selectedTab;
+  late final ValueNotifier<AlbumFocusRequest?> _albumFocusRequest;
+  int _albumFocusGeneration = 0;
   var _bottomNavigationVisible = true;
   final _navigatorKeys = List.generate(3, (_) => GlobalKey<NavigatorState>());
 
@@ -34,6 +36,7 @@ class _BirdAppShellState extends State<BirdAppShell> {
     super.initState();
     _selectedIndex = widget.initialIndex.clamp(0, 2).toInt();
     _selectedTab = ValueNotifier(_selectedIndex);
+    _albumFocusRequest = ValueNotifier<AlbumFocusRequest?>(null);
     final initialRoute = widget.initialRoute;
     if (initialRoute != null && initialRoute.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -44,6 +47,7 @@ class _BirdAppShellState extends State<BirdAppShell> {
 
   @override
   void dispose() {
+    _albumFocusRequest.dispose();
     _selectedTab.dispose();
     super.dispose();
   }
@@ -87,13 +91,16 @@ class _BirdAppShellState extends State<BirdAppShell> {
                   onGenerateRoute: widget.onGenerateRoute,
                   onChildRouteChanged: _setBottomNavigationVisible,
                   root: switch (index) {
-                    0 => const AlbumHomePage(),
+                    0 => AlbumHomePage(
+                      focusRequest: _albumFocusRequest,
+                    ),
                     1 => TaskExperienceRoot(
                       onOpenGallery: (args) => _openTabRoute(
                         0,
                         BirdRoutes.gallery,
                         args,
                       ),
+                      onAnalysisCompleted: _openAlbumRoot,
                     ),
                     _ => SettingsExperienceRoot(
                       onOpenAlbum: () => _selectTab(0),
@@ -130,6 +137,29 @@ class _BirdAppShellState extends State<BirdAppShell> {
   void _setBottomNavigationVisible(bool visible) {
     if (_bottomNavigationVisible == visible || !mounted) return;
     setState(() => _bottomNavigationVisible = visible);
+  }
+
+  void _openAlbumRoot(String projectId) {
+    final normalized = projectId.trim();
+    if (normalized.isEmpty) return;
+    _albumFocusRequest.value = AlbumFocusRequest(
+      projectId: normalized,
+      generation: ++_albumFocusGeneration,
+    );
+    _selectTabAndPopToRoot(0);
+  }
+
+  void _selectTabAndPopToRoot(int index) {
+    BirdFeedback.dismissAll();
+    final next = index.clamp(0, 2).toInt();
+    if (_selectedIndex != next) {
+      setState(() => _selectedIndex = next);
+      _selectedTab.value = next;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _navigatorKeys[next].currentState?.popUntil((route) => route.isFirst);
+    });
   }
 
   void _openTabRoute(int index, String route, [Object? arguments]) {

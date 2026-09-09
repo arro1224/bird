@@ -36,18 +36,7 @@ class ReviewApi {
       );
     }).toList();
     final decisionMap = data['decision'] is Map ? Map<String, dynamic>.from(data['decision'] as Map) : null;
-    final decisionVersion = decisionMap == null ? null : ProtocolValidation.optionalNonNegativeInt(decisionMap, 'version');
-    final decision = decisionMap == null
-        ? null
-        : UserDecision(
-            fileId: id,
-            keepState: KeepStateWireValue.fromWire(decisionMap['keep_state']?.toString()),
-            userScore: (decisionMap['user_score'] as num?)?.toDouble(),
-            userSpeciesId: decisionMap['user_species_id']?.toString(),
-            userSpecies: decisionMap['user_species']?.toString(),
-            userTags: (decisionMap['user_tags'] as List? ?? const []).map((tag) => tag.toString()).toList(),
-            version: decisionVersion ?? photo.version,
-          );
+    final decision = decisionMap == null ? _decisionFromPhoto(photo) : _decisionFromMap(id, photo, decisionMap);
     return ReviewDetail(
       photo: PhotoDetail(
         summary: photo,
@@ -63,7 +52,55 @@ class ReviewApi {
   Future<void> save(
     UserDecisionPatch value, {
     String? idempotencyKey,
-  }) {
+  }) async {
+    _validateSave(value);
+    await _client.post(
+      ApiEndpoints.photoDecision.replaceFirst('{fileId}', value.fileId),
+      data: value.toJson(),
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
+  /// Additive App-side capability that consumes the PhotoResponse already
+  /// defined by birdbox-v1@1.0.0. The legacy [save] method remains unchanged.
+  Future<PhotoSummary> saveWithPhoto(
+    UserDecisionPatch value, {
+    String? idempotencyKey,
+  }) async {
+    _validateSave(value);
+    final data = await _client.post(
+      ApiEndpoints.photoDecision.replaceFirst('{fileId}', value.fileId),
+      data: value.toJson(),
+      idempotencyKey: idempotencyKey,
+    );
+    // Frozen birdbox-v1 returns a PhotoResponse. The auxiliary simulator used
+    // by older debug setups returns only {decision: ...}; in that case read
+    // the authoritative photo through the already-frozen detail endpoint.
+    // Production boxes that honor PhotoResponse keep the single-request path.
+    final response = data['file'] is Map || data['file_id'] != null
+        ? data
+        : await _client.get(
+            ApiEndpoints.photoDetail.replaceFirst('{fileId}', value.fileId),
+          );
+    final photo = PhotoSummary.fromJson(
+      response['file'] is Map ? Map<String, dynamic>.from(response['file'] as Map) : response,
+    );
+    if (photo.id != value.fileId) {
+      throw const ProtocolCompatibilityException(
+        'file_id',
+        '保存响应与请求照片不一致',
+      );
+    }
+    if (photo.version == null) {
+      throw const ProtocolCompatibilityException(
+        'version',
+        '保存响应必须包含权威版本',
+      );
+    }
+    return photo;
+  }
+
+  void _validateSave(UserDecisionPatch value) {
     if (value.fileId.trim().isEmpty) {
       throw const ProtocolCompatibilityException('file_id', '不能为空');
     }
@@ -76,12 +113,31 @@ class ReviewApi {
         '至少包含一个待修改字段',
       );
     }
-    return _client
-        .post(
-          ApiEndpoints.photoDecision.replaceFirst('{fileId}', value.fileId),
-          data: value.toJson(),
-          idempotencyKey: idempotencyKey,
-        )
-        .then((_) {});
+  }
+
+  UserDecision _decisionFromMap(
+    String fileId,
+    PhotoSummary photo,
+    Map<String, dynamic> decision,
+  ) => UserDecision(
+    fileId: fileId,
+    keepState: KeepStateWireValue.fromWire(
+      decision['keep_state']?.toString(),
+    ),
+    userScore: (decision['user_score'] as num?)?.toDouble(),
+    userSpeciesId: decision['user_species_id']?.toString(),
+    userSpecies: decision['user_species']?.toString(),
+    userTags: (decision['user_tags'] as List? ?? const []).map((tag) => tag.toString()).toList(),
+    updatedAt: DateTime.tryParse(decision['updated_at']?.toString() ?? ''),
+    version: ProtocolValidation.optionalNonNegativeInt(decision, 'version') ?? photo.version,
+  );
+
+  UserDecision _decisionFromPhoto(PhotoSummary photo) {
+    return UserDecision(
+      fileId: photo.id,
+      keepState: KeepStateWireValue.fromWire(photo.keepState),
+      userTags: photo.userTags,
+      version: photo.version,
+    );
   }
 }

@@ -24,6 +24,7 @@ import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dar
 import 'package:aves/bird_companion/features/connection/data/connection_api.dart';
 import 'package:aves/bird_companion/features/connection/data/connection_repository_impl.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart';
+import 'package:aves/bird_companion/features/connection/data/ble/ble_scan_diagnostic_store.dart';
 import 'package:aves/bird_companion/features/connection/data/device_discovery_source.dart';
 import 'package:aves/bird_companion/features/connection/data/health_api.dart';
 import 'package:aves/bird_companion/features/connection/data/mdns_device_discovery_source.dart';
@@ -92,6 +93,7 @@ class BirdCompanionDependencies {
     required this.sessionCoordinator,
     required this.mediaAssetCoordinator,
     required this.mediaAssetService,
+    required this.bleScanDiagnosticStore,
   });
 
   final ApiClient apiClient;
@@ -121,6 +123,7 @@ class BirdCompanionDependencies {
   final SessionCoordinator sessionCoordinator;
   final MediaAssetCoordinator mediaAssetCoordinator;
   final MediaAssetService mediaAssetService;
+  final BleScanDiagnosticStore bleScanDiagnosticStore;
 
   static Future<BirdCompanionDependencies> create({
     bool connectEnvironmentTestEndpoint = true,
@@ -136,6 +139,7 @@ class BirdCompanionDependencies {
       secureSessionStore,
     );
     final pairingApi = PairingApi(apiClient);
+    final bleScanDiagnosticStore = BleScanDiagnosticStore(cache);
     final connectionRepository = ConnectionRepositoryImpl(
       ConnectionApi(
         apiClient,
@@ -146,7 +150,9 @@ class BirdCompanionDependencies {
       CompositeDeviceDiscoverySource([MdnsDeviceDiscoverySource(), KnownDeviceDiscoverySource(() async => const [])]),
     );
     final provisioningRepository = ProvisioningRepositoryImpl(
-      ble: PlatformBirdBoxBleDataSource(),
+      ble: PlatformBirdBoxBleDataSource(
+        diagnosticSink: bleScanDiagnosticStore,
+      ),
       wifi: MethodChannelBirdBoxWifiPlatform(),
       dpp: MethodChannelBirdBoxDppPlatform(),
       clientIdentityStore: AndroidKeystoreClientIdentityStore(),
@@ -184,6 +190,7 @@ class BirdCompanionDependencies {
       dataChangeBus,
       activeDeviceId,
       (fileId) => reviewRepository.acceptRemoteDecision(fileId),
+      (photo) => reviewRepository.acceptSyncedPhoto(photo),
     );
     deviceSessionCubit = DeviceSessionCubit(
       connectionRepository,
@@ -195,7 +202,9 @@ class BirdCompanionDependencies {
         await birdSyncService.synchronize();
       },
     );
-    final mediaAssetCache = MediaAssetCache();
+    final mediaAssetCache = MediaAssetCache(
+      etagStore: LocalCacheMediaAssetEtagStore(cache),
+    );
     final mediaAssetCoordinator = MediaAssetCoordinator(
       eventClient: eventClient,
       activeDeviceId: activeDeviceId,
@@ -213,6 +222,7 @@ class BirdCompanionDependencies {
       cache,
       activeDeviceNamespace,
       activeDeviceId,
+      dataChangeBus,
     );
     final dependencies = BirdCompanionDependencies._(
       apiClient: apiClient,
@@ -249,6 +259,7 @@ class BirdCompanionDependencies {
       sessionCoordinator: sessionCoordinator,
       mediaAssetCoordinator: mediaAssetCoordinator,
       mediaAssetService: mediaAssetService,
+      bleScanDiagnosticStore: bleScanDiagnosticStore,
     );
     dependencies.birdSyncService.start();
     const testBaseUrl = String.fromEnvironment('BIRD_TEST_BASE_URL');
@@ -304,6 +315,7 @@ class BirdCompanionDependencies {
     unawaited(refreshCoordinator.dispose());
     unawaited(dataChangeBus.dispose());
     unawaited(pendingOperationStore.dispose());
+    unawaited(bleScanDiagnosticStore.dispose());
     unawaited(cache.close());
   }
 }

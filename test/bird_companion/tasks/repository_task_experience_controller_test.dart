@@ -201,9 +201,23 @@ void main() {
         (job) => job.type == BirdJobType.analysis,
       );
       final navigation = controller.analysisCompletedProjects.first;
+      final materializationChange = dataChanges.changes.where((change) => change is AnalysisCompleted).cast<AnalysisCompleted>().first;
       await server.completeJob(analysis.id, emitEvent: false);
       await controller.refreshFromBox();
       expect(await navigation.timeout(const Duration(seconds: 2)), projectId);
+      final change = await materializationChange.timeout(
+        const Duration(seconds: 2),
+      );
+      expect(change.deviceId, status.connection.id);
+      expect(change.projectId, projectId);
+      expect(
+        change.resources,
+        containsAll({
+          AppDataResource.jobs,
+          AppDataResource.batches,
+          AppDataResource.photos,
+        }),
+      );
 
       final report = await controller.report(analysis.id);
       expect(report.jobId, analysis.id);

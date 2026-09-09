@@ -1,15 +1,17 @@
+import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/data/review_api.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
+import 'package:aves/bird_companion/features/review/domain/review_save_receipt.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
 import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 
-class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictResolver {
+class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictResolver, AuthoritativeReviewWriter, SyncedReviewReceiptConsumer {
   ReviewRepositoryImpl(
     this._api,
     this._connectivity,
@@ -17,6 +19,7 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
     this._cache, [
     String Function()? cacheNamespace,
     String? Function()? deviceId,
+    this._dataChanges,
   ]) : _cacheNamespace = cacheNamespace ?? (() => 'default'),
        _deviceId = deviceId ?? (() => null);
   final ReviewApi _api;
@@ -25,6 +28,7 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
   final LocalCache _cache;
   final String Function() _cacheNamespace;
   final String? Function() _deviceId;
+  final AppDataChangeBus? _dataChanges;
   final Map<String, UserDecision> _optimisticDecisions = {};
 
   @override
@@ -72,13 +76,22 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
   Future<ReviewSaveResult> save(
     UserDecision v, {
     String? projectId,
+  }) async => (await saveAuthoritative(v, projectId: projectId)).result;
+
+  @override
+  Future<ReviewSaveReceipt> saveAuthoritative(
+    UserDecision v, {
+    String? projectId,
   }) async {
     final previous = _optimisticDecisions[_optimisticKey(v.fileId)] ?? _cachedDecision(v.fileId);
+    final beforeKeepState = previous?.keepState ?? _cachedKeepState(v.fileId) ?? KeepState.pending;
     final patch = previous == null ? UserDecisionPatch.fromDecision(v) : UserDecisionPatch.diff(previous, v);
     if (patch.version == null || patch.version! < 0) {
       throw const ProtocolCompatibilityException('version', '必须是非负整数');
     }
-    if (!patch.hasChanges) return const ReviewSaveResult();
+    if (!patch.hasChanges) {
+      return ReviewSaveReceipt(authoritativeDecision: previous ?? v);
+    }
     final deviceId = _activeDeviceId;
     if (deviceId == null) {
       throw StateError('没有可用于隔离修改的设备身份');
@@ -92,19 +105,42 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
           operationId,
           deviceId,
           '设备离线，修改将在重新连接后同步',
+          beforeKeepState,
           projectId: projectId,
         );
       }
-      await _api.save(patch, idempotencyKey: operationId);
+      final photo = await _api.saveWithPhoto(
+        patch,
+        idempotencyKey: operationId,
+      );
+      final accepted = _decisionWithAuthoritativePhoto(v, photo);
       await _removeQueuedReviewOperationsSafely(
         v.fileId,
         projectId: projectId,
       );
-      _optimisticDecisions[_optimisticKey(v.fileId)] = v;
-      await _updateCachedDecisionSafely(v);
-      return const ReviewSaveResult();
+      await _acceptAuthoritativeDecision(accepted);
+      _publishDecisionChanged(
+        deviceId: deviceId,
+        projectId: projectId,
+        fileId: accepted.fileId,
+        beforeKeepState: beforeKeepState,
+        afterKeepState: accepted.keepState,
+        authoritativeVersion: accepted.version,
+        queued: false,
+      );
+      return ReviewSaveReceipt(
+        authoritativeDecision: accepted,
+        authoritativePhoto: _photoWithDecision(photo, accepted),
+      );
     } on ApiException catch (error) {
-      if (error.statusCode == 409) return ReviewSaveResult(conflict: true, message: error.message);
+      if (error.statusCode == 409) {
+        return ReviewSaveReceipt(
+          result: ReviewSaveResult(
+            conflict: true,
+            message: error.message,
+          ),
+        );
+      }
       if (error.statusCode == 401 || error.statusCode == 403) rethrow;
       if (error.statusCode != null && !error.retryable) rethrow;
       return _queue(
@@ -113,17 +149,19 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
         operationId,
         deviceId,
         '暂时无法连接盒子，修改已保存在本机',
+        beforeKeepState,
         projectId: projectId,
       );
     }
   }
 
-  Future<ReviewSaveResult> _queue(
+  Future<ReviewSaveReceipt> _queue(
     UserDecision value,
     UserDecisionPatch patch,
     String operationId,
     String deviceId,
-    String message, {
+    String message,
+    KeepState beforeKeepState, {
     String? projectId,
   }) async {
     final matching = _pending
@@ -169,8 +207,114 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
     );
     _optimisticDecisions[_optimisticKey(value.fileId)] = value;
     await _updateCachedDecisionSafely(value);
-    return ReviewSaveResult(queued: true, message: message);
+    _publishDecisionChanged(
+      deviceId: deviceId,
+      projectId: projectId,
+      fileId: value.fileId,
+      beforeKeepState: beforeKeepState,
+      afterKeepState: value.keepState,
+      authoritativeVersion: null,
+      queued: true,
+    );
+    return ReviewSaveReceipt(
+      result: ReviewSaveResult(queued: true, message: message),
+      authoritativeDecision: value,
+    );
   }
+
+  @override
+  Future<void> acceptSyncedPhoto(PhotoSummary photo) async {
+    final previous = _optimisticDecisions[_optimisticKey(photo.id)] ?? _cachedDecision(photo.id);
+    final beforeKeepState = previous?.keepState ?? _cachedKeepState(photo.id) ?? KeepStateWireValue.fromWire(photo.keepState);
+    final pendingOperation = _pending.readAll().where((operation) {
+      return operation.type == PendingOperationType.updateReview && operation.deviceId == _activeDeviceId && (operation.fileId ?? operation.payload['file_id']?.toString()) == photo.id;
+    }).lastOrNull;
+    final desired =
+        previous ??
+        UserDecision(
+          fileId: photo.id,
+          keepState: KeepStateWireValue.fromWire(photo.keepState),
+          userTags: photo.userTags,
+          version: photo.version,
+        );
+    final accepted = _decisionWithAuthoritativePhoto(desired, photo);
+    await _acceptAuthoritativeDecision(accepted);
+    final eventDeviceId = pendingOperation?.deviceId ?? _activeDeviceId;
+    if (eventDeviceId != null) {
+      _publishDecisionChanged(
+        deviceId: eventDeviceId,
+        projectId: pendingOperation?.projectId,
+        fileId: accepted.fileId,
+        beforeKeepState: beforeKeepState,
+        afterKeepState: accepted.keepState,
+        authoritativeVersion: accepted.version,
+        queued: false,
+      );
+    }
+  }
+
+  void _publishDecisionChanged({
+    required String deviceId,
+    required String? projectId,
+    required String fileId,
+    required KeepState beforeKeepState,
+    required KeepState afterKeepState,
+    required int? authoritativeVersion,
+    required bool queued,
+  }) {
+    _dataChanges?.publishChange(
+      ReviewDecisionChanged(
+        deviceId: deviceId,
+        projectId: projectId,
+        fileId: fileId,
+        beforeKeepState: beforeKeepState,
+        afterKeepState: afterKeepState,
+        authoritativeVersion: authoritativeVersion,
+        queued: queued,
+      ),
+    );
+  }
+
+  Future<void> _acceptAuthoritativeDecision(UserDecision value) async {
+    _optimisticDecisions[_optimisticKey(value.fileId)] = value;
+    await _updateCachedDecisionSafely(value);
+  }
+
+  UserDecision _decisionWithAuthoritativePhoto(
+    UserDecision desired,
+    PhotoSummary photo,
+  ) {
+    final version = photo.version;
+    if (version == null) {
+      throw const ProtocolCompatibilityException(
+        'version',
+        '保存响应必须包含权威版本',
+      );
+    }
+    if (photo.id != desired.fileId) {
+      throw const ProtocolCompatibilityException(
+        'file_id',
+        '保存响应与本机草稿不一致',
+      );
+    }
+    return UserDecision(
+      fileId: desired.fileId,
+      keepState: photo.keepState == null ? desired.keepState : KeepStateWireValue.fromWire(photo.keepState),
+      userScore: desired.userScore,
+      userSpeciesId: desired.userSpeciesId,
+      userSpecies: desired.userSpecies,
+      userTags: photo.userTags,
+      updatedAt: desired.updatedAt,
+      version: version,
+    );
+  }
+
+  PhotoSummary _photoWithDecision(
+    PhotoSummary photo,
+    UserDecision decision,
+  ) => PhotoSummary.fromJson(
+    mergeReviewDecisionIntoPhotoJson(photo.toJson(), decision),
+  );
 
   UserDecision? _cachedDecision(String fileId) {
     final raw = _cache.read<Map>(
@@ -181,6 +325,43 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
     return UserDecision.fromJson(
       Map<String, dynamic>.from(decision),
     );
+  }
+
+  KeepState? _cachedKeepState(String fileId) {
+    final namespace = _cacheNamespace();
+    final detail = _cache.read<Map>('album:detail:$namespace:$fileId');
+    final detailFile = detail?['file'];
+    final detailState = _keepStateFromMap(
+      detailFile is Map ? detailFile : detail,
+    );
+    if (detailState != null) return detailState;
+
+    for (final key in _cache.keysWithPrefix('album:photos:$namespace:')) {
+      final raw = _cache.read<Map>(key);
+      for (final item in raw?['items'] as List? ?? const []) {
+        if (item is! Map || item['file_id']?.toString() != fileId) continue;
+        final state = _keepStateFromMap(item);
+        if (state != null) return state;
+      }
+    }
+
+    for (final key in _cache.keysWithPrefix('album:groups:$namespace:')) {
+      final groups = _cache.read<Object?>(key);
+      if (groups is! List) continue;
+      for (final group in groups.whereType<Map>()) {
+        for (final item in group['members'] as List? ?? const []) {
+          if (item is! Map || item['file_id']?.toString() != fileId) continue;
+          final state = _keepStateFromMap(item);
+          if (state != null) return state;
+        }
+      }
+    }
+    return null;
+  }
+
+  KeepState? _keepStateFromMap(Map<dynamic, dynamic>? value) {
+    if (value == null || !value.containsKey('keep_state')) return null;
+    return KeepStateWireValue.fromWire(value['keep_state']?.toString());
   }
 
   Future<void> _updateCachedDecisionSafely(UserDecision value) async {
@@ -475,6 +656,7 @@ Map<String, dynamic> mergeReviewDecisionIntoPhotoJson(
   final photo = Map<String, dynamic>.from(source);
   photo['keep_state'] = decision.keepState.wireValue;
   photo['user_tags'] = decision.userTags;
+  if (decision.version != null) photo['version'] = decision.version;
 
   if (decision.userScore != null) {
     final rating = photo['rating'] is Map ? Map<String, dynamic>.from(photo['rating'] as Map) : <String, dynamic>{};

@@ -44,7 +44,7 @@ void main() {
   _requireContains(
     failures,
     dependencyPath,
-    'PlatformBirdBoxBleDataSource()',
+    'PlatformBirdBoxBleDataSource(',
     'production must construct the real BLE data source',
   );
   _requireContains(

@@ -84,6 +84,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     @Nullable private volatile String pendingOperation;
     @Nullable private Runnable pendingOperationTimeout;
     @Nullable private Runnable scanTimeout;
+    @Nullable private String activeScanSessionId;
     private boolean scanning;
     private volatile boolean linkReady;
     private volatile boolean disconnectRequested;
@@ -111,6 +112,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             return;
         }
         switch (call.method) {
+            case "getScanEnvironment":
+                result.success(scanEnvironment());
+                break;
             case "ensurePermissions":
                 ensurePermissions(result);
                 break;
@@ -200,6 +204,14 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         if (activity.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) permissions.add(permission);
     }
 
+    @NonNull
+    private Map<String, Object> scanEnvironment() {
+        final Map<String, Object> environment = new LinkedHashMap<>();
+        environment.put("permissionGranted", missingPermissions().isEmpty());
+        environment.put("adapterState", adapter == null ? "unavailable" : adapter.isEnabled() ? "enabled" : "disabled");
+        return environment;
+    }
+
     private boolean requireBluetooth(MethodChannel.Result result) {
         if (adapter == null || !adapter.isEnabled()) {
             result.error("bluetooth_unavailable", "Bluetooth is unavailable or disabled.", null);
@@ -224,19 +236,25 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             return;
         }
         final Integer timeoutMs = call.argument("timeoutMs");
+        final String scanSessionId = call.argument("scanSessionId");
         final long timeout = timeoutMs == null ? 10000L : Math.max(1000L, timeoutMs.longValue());
         try {
             final ScanSettings settings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
             // An unfiltered scan permits the Local Name compatibility fallback. Results
             // containing the frozen Service UUID remain the primary accepted path.
+            activeScanSessionId = scanSessionId == null || scanSessionId.isEmpty() ? "native-unknown" : scanSessionId;
             scanner.startScan(null, settings, scanCallback);
             scanning = true;
             scanTimeout = this::stopScan;
             mainHandler.postDelayed(scanTimeout, timeout);
             result.success(null);
         } catch (SecurityException error) {
+            activeScanSessionId = null;
+            scanner = null;
             result.error("bluetooth_permission_denied", "Bluetooth scan permission is missing.", null);
         } catch (RuntimeException error) {
+            activeScanSessionId = null;
+            scanner = null;
             result.error("gatt_operation_failed", "BLE scan could not start.", null);
         }
     }
@@ -244,7 +262,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     private void stopScan() {
         if (scanTimeout != null) mainHandler.removeCallbacks(scanTimeout);
         scanTimeout = null;
-        if (!scanning || scanner == null) return;
+        if (!scanning || scanner == null) {
+            activeScanSessionId = null;
+            return;
+        }
         try {
             scanner.stopScan(scanCallback);
         } catch (SecurityException ignored) {
@@ -252,6 +273,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         }
         scanning = false;
         scanner = null;
+        activeScanSessionId = null;
     }
 
     private final ScanCallback scanCallback = new ScanCallback() {
@@ -267,18 +289,32 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
 
         @Override
         public void onScanFailed(int errorCode) {
+            final String failedSessionId = activeScanSessionId;
             scanning = false;
             scanner = null;
+            activeScanSessionId = null;
             if (scanTimeout != null) mainHandler.removeCallbacks(scanTimeout);
             scanTimeout = null;
-            emitError(scanSink, "gatt_operation_failed", "BLE scan failed.");
+            final Map<String, Object> diagnostic = new LinkedHashMap<>();
+            diagnostic.put("eventType", "scanFailure");
+            diagnostic.put("scanSessionId", failedSessionId == null ? "native-unknown" : failedSessionId);
+            diagnostic.put("androidScanErrorCode", errorCode);
+            emitSuccess(scanSink, diagnostic);
+            final Map<String, Object> details = new LinkedHashMap<>();
+            details.put("androidScanErrorCode", errorCode);
+            details.put("scanSessionId", failedSessionId == null ? "native-unknown" : failedSessionId);
+            emitError(scanSink, "gatt_operation_failed", "BLE scan failed.", details);
         }
     };
 
     private void emitScanResult(ScanResult result) {
         final EventChannel.EventSink sink = scanSink;
         final ScanRecord record = result.getScanRecord();
-        if (sink == null || record == null) return;
+        if (sink == null) return;
+        if (record == null) {
+            emitScanObservation(sink, false, "missing_scan_record");
+            return;
+        }
         final List<String> serviceUuids = new ArrayList<>();
         boolean hasBirdBoxService = false;
         final List<ParcelUuid> advertised = record.getServiceUuids();
@@ -291,7 +327,14 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         }
         String localName = record.getDeviceName();
         if (localName == null) localName = "";
-        if (!hasBirdBoxService && !localName.startsWith("BirdBox-")) return;
+        final boolean accepted = hasBirdBoxService || localName.startsWith("BirdBox-");
+        final String decisionReason = hasBirdBoxService
+                ? "birdbox_service"
+                : accepted ? "birdbox_local_name" : "non_birdbox";
+        if (!accepted) {
+            emitScanObservation(sink, false, decisionReason);
+            return;
+        }
 
         final SparseArray<byte[]> manufacturerData = record.getManufacturerSpecificData();
         Integer companyIdentifier = null;
@@ -302,12 +345,28 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             manufacturerPayload = manufacturerData.valueAt(index);
         }
         final Map<String, Object> event = new LinkedHashMap<>();
+        event.put("eventType", "advertisement");
+        event.put("scanSessionId", activeScanSessionId == null ? "native-unknown" : activeScanSessionId);
+        event.put("accepted", true);
+        event.put("decisionReason", decisionReason);
         event.put("deviceId", result.getDevice().getAddress());
         event.put("localName", localName);
         event.put("serviceUuids", serviceUuids);
         event.put("rssi", result.getRssi());
         event.put("companyIdentifier", companyIdentifier);
         event.put("manufacturerPayload", manufacturerPayload);
+        emitSuccess(sink, event);
+    }
+
+    private void emitScanObservation(
+            @NonNull EventChannel.EventSink sink,
+            boolean accepted,
+            @NonNull String decisionReason) {
+        final Map<String, Object> event = new LinkedHashMap<>();
+        event.put("eventType", "advertisement");
+        event.put("scanSessionId", activeScanSessionId == null ? "native-unknown" : activeScanSessionId);
+        event.put("accepted", accepted);
+        event.put("decisionReason", decisionReason);
         emitSuccess(sink, event);
     }
 
@@ -677,8 +736,16 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     }
 
     private static void emitError(@Nullable EventChannel.EventSink sink, String code, String message) {
+        emitError(sink, code, message, null);
+    }
+
+    private static void emitError(
+            @Nullable EventChannel.EventSink sink,
+            String code,
+            String message,
+            @Nullable Object details) {
         if (sink == null) return;
-        new Handler(Looper.getMainLooper()).post(() -> sink.error(code, message, null));
+        new Handler(Looper.getMainLooper()).post(() -> sink.error(code, message, details));
     }
 
     private interface SinkConsumer {

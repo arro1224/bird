@@ -68,6 +68,7 @@ class TaskSummary {
     this.reviewedCount,
     this.pendingReviewCount,
     this.connectionState,
+    this.finishedAt,
     this.availableActions = const {},
   });
 
@@ -89,6 +90,7 @@ class TaskSummary {
   final int? reviewedCount;
   final int? pendingReviewCount;
   final TaskConnectionState? connectionState;
+  final DateTime? finishedAt;
   final Set<TaskAction> availableActions;
 
   TaskGroup get group => switch (state) {
@@ -126,6 +128,7 @@ class TaskSummary {
     reviewedCount: reviewedCount,
     pendingReviewCount: pendingReviewCount,
     connectionState: connectionState,
+    finishedAt: finishedAt,
     availableActions: availableActions ?? this.availableActions,
   );
 }

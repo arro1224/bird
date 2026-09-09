@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/presentation/provisioning_cubit.dart';
 import 'fakes/fake_provisioning_repository.dart';
@@ -104,6 +105,32 @@ void main() {
       expect(repository.calls, ['stopDiscovery']);
       expect(repository.calls, isNot(contains('disconnect')));
       await repository.dispose();
+    });
+
+    test('surfaces the latest secret-safe scan diagnostic for support', () async {
+      final repository = FakeProvisioningRepository();
+      final cubit = ProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      final diagnostic = BleScanDiagnosticSession(
+        scanSessionId: 'scan-b7-support',
+        startedAt: DateTime.utc(2026, 9, 8, 1),
+        endedAt: DateTime.utc(2026, 9, 8, 1, 0, 10),
+        permissionBefore: BleScanPermissionState.granted,
+        permissionAfter: BleScanPermissionState.granted,
+        adapterBefore: BleAdapterState.enabled,
+        adapterAfter: BleAdapterState.enabled,
+        rawResultCount: 3,
+        acceptedCount: 0,
+        filteredCount: 3,
+        reasonCounts: const {'non_birdbox': 3},
+        endReason: BleScanEndReason.timeout,
+      );
+
+      repository.emitScanDiagnostic(diagnostic);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(cubit.state.latestScanDiagnostic, same(diagnostic));
+      expect(cubit.state.phase, ProvisioningPhase.idle);
     });
   });
 }

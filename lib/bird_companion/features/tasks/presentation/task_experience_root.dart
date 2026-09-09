@@ -6,6 +6,7 @@ import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
+import 'package:aves/bird_companion/features/tasks/domain/task_destination_resolver.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/batch_setup_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/sd_card_flow_page.dart';
@@ -13,14 +14,20 @@ import 'package:aves/bird_companion/features/tasks/presentation/pages/task_detai
 import 'package:aves/bird_companion/features/tasks/presentation/pages/task_home_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/production_task_result_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/task_sync_result_sheet.dart';
+import 'package:aves/bird_companion/features/tasks/presentation/pages/task_sync_job_summary_sheet.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/repository_task_experience_controller.dart';
 import 'package:flutter/material.dart';
 
 /// Production task tab backed by the box storage, project and job APIs.
 class TaskExperienceRoot extends StatefulWidget {
-  const TaskExperienceRoot({super.key, required this.onOpenGallery});
+  const TaskExperienceRoot({
+    super.key,
+    required this.onOpenGallery,
+    this.onAnalysisCompleted,
+  });
 
   final ValueChanged<GalleryArgs> onOpenGallery;
+  final ValueChanged<String>? onAnalysisCompleted;
 
   @override
   State<TaskExperienceRoot> createState() => _TaskExperienceRootState();
@@ -52,7 +59,14 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
     );
     _controller = controller;
     _analysisSubscription = controller.analysisCompletedProjects.listen(
-      (projectId) => widget.onOpenGallery(GalleryArgs(projectId)),
+      (projectId) {
+        final onAnalysisCompleted = widget.onAnalysisCompleted;
+        if (onAnalysisCompleted != null) {
+          onAnalysisCompleted(projectId);
+        } else {
+          widget.onOpenGallery(GalleryArgs(projectId));
+        }
+      },
     );
     _copySubscription = controller.copyCompletedJobs.listen((jobId) {
       if (!mounted || _autoOpeningReport || !dependencies.settingsStore.read().autoOpenReport) {
@@ -225,6 +239,19 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
     if (!mounted) return;
     final refreshedTask = controller.taskById(taskId);
     final sourceProjectId = refreshedTask.sourceBatchId?.trim();
+    final destination = TaskDestinationResolver.resolve(refreshedTask);
+    switch (destination.kind) {
+      case TaskDestinationKind.album:
+        widget.onOpenGallery(
+          GalleryArgs(destination.sourceProjectId!),
+        );
+        return;
+      case TaskDestinationKind.copyResult:
+        await _openReport(taskId, sourceProjectId);
+        return;
+      case TaskDestinationKind.detail:
+        break;
+    }
     unawaited(
       Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
@@ -234,16 +261,28 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
             allowDemoCompletion: false,
             onControl: _control,
             onExportLog: _exportTaskLog,
-            onShowResult: refreshedTask.state == TaskRunState.completed && refreshedTask.type == TaskType.copy
-                ? () => unawaited(
-                    _openReport(taskId, sourceProjectId),
-                  )
-                : null,
+            onShowResult: switch ((refreshedTask.type, refreshedTask.state)) {
+              (TaskType.copy, TaskRunState.completed) => () => unawaited(
+                _openReport(taskId, sourceProjectId),
+              ),
+              (TaskType.sync, TaskRunState.completed) => () => unawaited(
+                _showSyncJobSummary(refreshedTask),
+              ),
+              _ => null,
+            },
           ),
         ),
       ),
     );
   }
+
+  Future<void> _showSyncJobSummary(TaskSummary task) => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+    builder: (_) => TaskSyncJobSummarySheet(task: task),
+  );
 
   Future<void> _openReport(
     String jobId,

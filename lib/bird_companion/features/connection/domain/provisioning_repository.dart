@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 
 /// The sole boundary used by presentation code for rc4 provisioning.
@@ -47,4 +48,11 @@ abstract interface class ProvisioningSessionRepository {
 /// is presented as a reachable terminal network.
 abstract interface class ProvisioningNetworkStatusVerifier {
   Future<void> verifyNetworkStatus(ProvisioningNetworkStatus status);
+}
+
+/// Optional App-internal view of secret-safe BLE discovery evidence.
+///
+/// This is not part of the BirdBox RC4 or HTTP contract.
+abstract interface class BleScanDiagnosticsRepository {
+  Stream<BleScanDiagnosticSession> get scanDiagnostics;
 }

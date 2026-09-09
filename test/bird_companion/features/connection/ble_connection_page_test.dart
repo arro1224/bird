@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
+import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/network_provisioning_cubit.dart';
@@ -43,6 +44,43 @@ void main() {
       expect(repository.calls, isNot(contains('startDirectAp')));
     },
   );
+
+  testWidgets('empty BLE result exposes a secret-safe support diagnostic id', (
+    tester,
+  ) async {
+    final repository = FakeProvisioningRepository();
+    addTearDown(repository.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ConnectionPage(provisioningRepository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    repository.emitScanDiagnostic(
+      BleScanDiagnosticSession(
+        scanSessionId: 'scan-b7-page',
+        startedAt: DateTime.utc(2026, 9, 8, 1),
+        endedAt: DateTime.utc(2026, 9, 8, 1, 0, 10),
+        permissionBefore: BleScanPermissionState.granted,
+        permissionAfter: BleScanPermissionState.granted,
+        adapterBefore: BleAdapterState.enabled,
+        adapterAfter: BleAdapterState.enabled,
+        rawResultCount: 0,
+        acceptedCount: 0,
+        filteredCount: 0,
+        reasonCounts: const {},
+        endReason: BleScanEndReason.timeout,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('本次扫描诊断编号：scan-b7-page'), findsOneWidget);
+    expect(find.textContaining('android'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
 
   testWidgets('BLE page provides and renders Direct AP provisioning', (tester) async {
     final repository = FakeProvisioningRepository(

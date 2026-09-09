@@ -91,6 +91,9 @@ class _ViewState extends State<_View> {
             return false;
           },
           child: ListView(
+            key: PageStorageKey<String>(
+              'batch-history-scroll-${widget.openMode.name}',
+            ),
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
             children: [

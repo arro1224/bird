@@ -37,14 +37,19 @@ class TaskDetailPage extends StatelessWidget {
       return TaskPageFrame(
         title: '任务详情',
         actions: [
-          if (task.type == TaskType.copy && task.state == TaskRunState.completed && onShowResult != null)
+          if (_canShowResult(task))
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_horiz_rounded),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               onSelected: (value) {
                 if (value == 'result') onShowResult?.call();
               },
-              itemBuilder: (_) => const [PopupMenuItem(value: 'result', child: Text('查看复制结果'))],
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'result',
+                  child: Text(_resultLabel(task)),
+                ),
+              ],
             ),
         ],
         child: Column(
@@ -257,6 +262,7 @@ class TaskDetailPage extends StatelessWidget {
       spacing: 10,
       runSpacing: 10,
       children: [
+        if (_canShowResult(task)) _actionButton(_resultLabel(task), onShowResult),
         if (task.type == TaskType.aiAnalysis && task.state == TaskRunState.queued && actions.contains(TaskAction.resume))
           _actionButton(
             '开始 AI 分析',
@@ -314,6 +320,14 @@ class TaskDetailPage extends StatelessWidget {
       ],
     );
   }
+
+  bool _canShowResult(TaskSummary task) => onShowResult != null && task.state == TaskRunState.completed && (task.type == TaskType.copy || task.type == TaskType.sync);
+
+  String _resultLabel(TaskSummary task) => switch (task.type) {
+    TaskType.copy => '查看复制结果',
+    TaskType.sync => '查看同步摘要',
+    TaskType.importIndex || TaskType.aiAnalysis => '查看任务结果',
+  };
 
   Widget _actionButton(String label, VoidCallback? onPressed, {bool filled = true}) => SizedBox(
     width: 164,

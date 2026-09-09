@@ -18,6 +18,7 @@ import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/core/widgets/page_back_button.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
+import 'package:aves/bird_companion/features/batches/presentation/batch_list_cubit.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
 import 'package:aves/bird_companion/features/device/presentation/widgets/device_status_pills.dart';
 import 'package:aves/bird_companion/features/device/presentation/widgets/device_status_sheet.dart';
@@ -28,6 +29,7 @@ import 'package:aves/bird_companion/features/gallery/domain/photo_version_batch_
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_cubit.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/selection_cubit.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/active_filter_summary.dart';
+import 'package:aves/bird_companion/features/gallery/presentation/widgets/album_history_entry.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/filter_sheet.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/album_add_device_button.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/gallery_search_dialog.dart';
@@ -229,6 +231,7 @@ class _GalleryView extends StatelessWidget {
                 actions: selection.ids.isNotEmpty
                     ? [TextButton(onPressed: selection.submitting ? null : context.read<SelectionCubit>().clear, child: const Text('取消'))]
                     : [
+                        if (rootMode) const AlbumHistoryAppBarAction(),
                         if (rootMode)
                           IconButton(
                             key: const Key('album-copy-project-button'),
@@ -419,7 +422,7 @@ class _GalleryView extends StatelessWidget {
                                     photo: photo,
                                     compact: rootMode,
                                     showRatingOverlay: state.showRatingOverlay,
-                                    onTap: () {
+                                    onTap: () async {
                                       final selection = context.read<SelectionCubit>();
                                       if (selection.state.ids.isEmpty) {
                                         final gallery = context.read<GalleryCubit>();
@@ -429,6 +432,17 @@ class _GalleryView extends StatelessWidget {
                                           initialIndex: index,
                                         );
                                         final dependencies = BirdCompanionScope.of(context);
+                                        final batchCubit = rootMode ? context.read<BatchListCubit>() : null;
+                                        final batchBeforeReview = batchCubit?.state.current;
+                                        final reviewChanges = <ReviewDecisionChanged>[];
+                                        final reviewSubscription = rootMode
+                                            ? dependencies.dataChangeBus.changes
+                                                  .where(
+                                                    (change) => change is ReviewDecisionChanged && change.projectId == batchId,
+                                                  )
+                                                  .cast<ReviewDecisionChanged>()
+                                                  .listen(reviewChanges.add)
+                                            : null;
                                         final deviceId = dependencies.deviceSessionCubit.state.device?.id.trim();
                                         if (deviceId?.isNotEmpty == true) {
                                           unawaited(
@@ -441,23 +455,33 @@ class _GalleryView extends StatelessWidget {
                                             ),
                                           );
                                         }
-                                        Navigator.of(context).pushNamed(
-                                          BirdRoutes.photoDetail,
-                                          arguments: PhotoDetailArgs.fromReview(
-                                            photoContext,
-                                            fileId: photo.id,
-                                            totalCount: totalCount,
-                                            hasMoreSequence: state.hasMore,
-                                            loadMoreSequence: () async {
-                                              await gallery.loadMore();
-                                              final current = gallery.state;
-                                              return PhotoSequencePage(
-                                                ids: current.items.map((item) => item.id).toList(growable: false),
-                                                hasMore: current.hasMore,
-                                              );
-                                            },
-                                          ),
-                                        );
+                                        try {
+                                          await Navigator.of(context).pushNamed(
+                                            BirdRoutes.photoDetail,
+                                            arguments: PhotoDetailArgs.fromReview(
+                                              photoContext,
+                                              fileId: photo.id,
+                                              totalCount: totalCount,
+                                              hasMoreSequence: state.hasMore,
+                                              loadMoreSequence: () async {
+                                                await gallery.loadMore();
+                                                final current = gallery.state;
+                                                return PhotoSequencePage(
+                                                  ids: current.items.map((item) => item.id).toList(growable: false),
+                                                  hasMore: current.hasMore,
+                                                );
+                                              },
+                                            ),
+                                          );
+                                        } finally {
+                                          await reviewSubscription?.cancel();
+                                        }
+                                        if (batchCubit != null && batchBeforeReview != null && reviewChanges.isNotEmpty && !batchCubit.isClosed) {
+                                          batchCubit.reconcileReviewChanges(
+                                            batchBeforeReview,
+                                            reviewChanges,
+                                          );
+                                        }
                                       } else {
                                         selection.toggle(photo.id);
                                       }
@@ -669,8 +693,6 @@ class _GalleryHeader extends StatelessWidget {
                 batchId: batchId,
                 batchName: batchName,
                 createdAt: createdAt,
-                totalCount: totalCount,
-                reviewContext: reviewContext,
                 offline: offline,
               ),
               const SizedBox(height: 8),
@@ -928,16 +950,12 @@ class _AlbumBatchHeading extends StatelessWidget {
     required this.batchId,
     this.batchName,
     this.createdAt,
-    this.totalCount,
-    required this.reviewContext,
     this.offline = false,
   });
 
   final String batchId;
   final String? batchName;
   final DateTime? createdAt;
-  final int? totalCount;
-  final ReviewContext reviewContext;
   final bool offline;
 
   @override
@@ -953,43 +971,23 @@ class _AlbumBatchHeading extends StatelessWidget {
           fontSize: 20,
         ),
       ),
-      const SizedBox(height: 2),
       if (offline)
-        Text(
-          '这些照片已保存在手机上；重新连接后会自动更新你的修改',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            '这些照片已保存在手机上；重新连接后会自动更新你的修改',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
+          ),
         )
       else
-        Row(
-          children: [
-            Text(
-              totalCount == null ? '本次拍摄' : '${_formatCount(totalCount!)} 张照片',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.inkMuted,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: _AlbumReviewPath(
-                  onBatch: () => Navigator.of(context).pushNamed(BirdRoutes.batches),
-                  onScene: () => Navigator.of(context).pushNamed(
-                    BirdRoutes.scenes,
-                    arguments: SceneListArgs(
-                      batchId,
-                      batchName: batchName,
-                      totalCount: totalCount,
-                      reviewContext: reviewContext,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
+        const Padding(
+          padding: EdgeInsets.only(top: 12, bottom: 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: AlbumHistorySecondaryAction(),
+          ),
         ),
     ],
   );
@@ -1005,73 +1003,6 @@ class _AlbumBatchHeading extends StatelessWidget {
     String two(int value) => value.toString().padLeft(2, '0');
     return '${date.year}.${two(date.month)}.${two(date.day)} $name';
   }
-}
-
-class _AlbumReviewPath extends StatelessWidget {
-  const _AlbumReviewPath({required this.onBatch, required this.onScene});
-
-  final VoidCallback onBatch;
-  final VoidCallback onScene;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      _AlbumPathButton(label: '拍摄记录', onTap: onBatch),
-      const _AlbumPathChevron(),
-      _AlbumPathButton(label: '场景', onTap: onScene),
-      const _AlbumPathChevron(),
-      const Text(
-        '连拍照片',
-        style: TextStyle(
-          color: AppColors.inkMuted,
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      const _AlbumPathChevron(),
-    ],
-  );
-}
-
-class _AlbumPathButton extends StatelessWidget {
-  const _AlbumPathButton({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(8),
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 48),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: Center(
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.inkMuted,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-class _AlbumPathChevron extends StatelessWidget {
-  const _AlbumPathChevron();
-
-  @override
-  Widget build(BuildContext context) => const Icon(
-    Icons.chevron_right_rounded,
-    size: 17,
-    color: AppColors.inkMuted,
-  );
 }
 
 class _OfflineSnapshotNotice extends StatelessWidget {

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -23,6 +24,7 @@ final class ProvisioningState {
     this.selectedDevice,
     this.deviceInfo,
     this.pairingWindow,
+    this.latestScanDiagnostic,
     this.error,
   });
 
@@ -31,6 +33,7 @@ final class ProvisioningState {
   final ProvisioningDevice? selectedDevice;
   final ProvisioningDeviceInfo? deviceInfo;
   final PairingWindow? pairingWindow;
+  final BleScanDiagnosticSession? latestScanDiagnostic;
   final Object? error;
 
   ProvisioningState copyWith({
@@ -39,10 +42,12 @@ final class ProvisioningState {
     ProvisioningDevice? selectedDevice,
     ProvisioningDeviceInfo? deviceInfo,
     PairingWindow? pairingWindow,
+    BleScanDiagnosticSession? latestScanDiagnostic,
     Object? error,
     bool clearSelection = false,
     bool clearDeviceInfo = false,
     bool clearPairingWindow = false,
+    bool clearScanDiagnostic = false,
     bool clearError = false,
   }) => ProvisioningState(
     phase: phase ?? this.phase,
@@ -50,6 +55,7 @@ final class ProvisioningState {
     selectedDevice: clearSelection ? null : selectedDevice ?? this.selectedDevice,
     deviceInfo: clearDeviceInfo ? null : deviceInfo ?? this.deviceInfo,
     pairingWindow: clearPairingWindow ? null : pairingWindow ?? this.pairingWindow,
+    latestScanDiagnostic: clearScanDiagnostic ? null : latestScanDiagnostic ?? this.latestScanDiagnostic,
     error: clearError ? null : error ?? this.error,
   );
 }
@@ -60,10 +66,16 @@ final class ProvisioningState {
 /// returns Device Info. Advertisement names and scan IDs are shown only as
 /// discovery hints and never become a device identity.
 final class ProvisioningCubit extends Cubit<ProvisioningState> {
-  ProvisioningCubit(this._repository) : super(const ProvisioningState());
+  ProvisioningCubit(this._repository) : super(const ProvisioningState()) {
+    final repository = _repository;
+    if (repository is BleScanDiagnosticsRepository) {
+      _scanDiagnosticSubscription = (repository as BleScanDiagnosticsRepository).scanDiagnostics.listen(_onScanDiagnostic);
+    }
+  }
 
   final ProvisioningRepository _repository;
   StreamSubscription<ProvisioningDevice>? _discoverySubscription;
+  StreamSubscription<BleScanDiagnosticSession>? _scanDiagnosticSubscription;
   var _lastAction = _ProvisioningAction.discover;
 
   Future<void> discover() async {
@@ -207,9 +219,15 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
     emit(state.copyWith(phase: ProvisioningPhase.failure, error: error));
   }
 
+  void _onScanDiagnostic(BleScanDiagnosticSession diagnostic) {
+    if (isClosed) return;
+    emit(state.copyWith(latestScanDiagnostic: diagnostic));
+  }
+
   @override
   Future<void> close() async {
     await _discoverySubscription?.cancel();
+    await _scanDiagnosticSubscription?.cancel();
     await _repository.stopDiscovery();
     return super.close();
   }

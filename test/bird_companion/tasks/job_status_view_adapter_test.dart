@@ -60,7 +60,8 @@ void main() {
   });
 
   test('maps the production job contract into task presentation data', () {
-    const job = BirdJobStatus(
+    final finishedAt = DateTime.utc(2026, 9, 8, 6, 5);
+    final job = BirdJobStatus(
       id: 'job-copy-7',
       type: BirdJobType.copy,
       state: BirdJobState.failed,
@@ -71,7 +72,8 @@ void main() {
       currentFile: 'DSC_0151.NEF',
       speedBytesPerSecond: 12582912,
       errorMessage: '目标盘已断开',
-      availableActions: ['retry_failed', 'skip_failed'],
+      finishedAt: finishedAt,
+      availableActions: const ['retry_failed', 'skip_failed'],
     );
 
     final task = JobStatusViewAdapter.toTaskSummary(
@@ -89,6 +91,7 @@ void main() {
     expect(task.currentFile, 'DSC_0151.NEF');
     expect(task.speed, '12.0 MB/s');
     expect(task.failureReason, '目标盘已断开');
+    expect(task.finishedAt, finishedAt);
     expect(task.availableActions, containsAll([TaskAction.retry, TaskAction.skipFailed, TaskAction.exportLog]));
   });
 

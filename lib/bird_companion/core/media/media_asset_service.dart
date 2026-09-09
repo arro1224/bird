@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:aves/bird_companion/core/media/media_asset_cache.dart';
@@ -42,6 +43,8 @@ class MediaAssetService implements MediaAssetLoader {
   final MediaAssetHttpClient _httpClient;
   final MediaAssetCache _cache;
   final MediaAssetCoordinator _coordinator;
+  final Map<String, Future<MediaAssetLoadResult>> _inFlight = {};
+  final Map<MediaAssetKey, String> _latestIdentity = {};
 
   @override
   Future<MediaAssetLoadResult> load(
@@ -49,6 +52,9 @@ class MediaAssetService implements MediaAssetLoader {
     bool forceRefresh = false,
     CancelToken? cancelToken,
   }) async {
+    if (cancelToken?.isCancelled ?? false) {
+      throw _cancelledFailure(cancelToken!.cancelError);
+    }
     final tracked = _coordinator.track(descriptor);
     final status = tracked.descriptor.status;
     if (status == MediaAssetStatus.failed || (!status.canRequest && !forceRefresh)) {
@@ -62,9 +68,48 @@ class MediaAssetService implements MediaAssetLoader {
         'Media URI is required before loading.',
       );
     }
-    final cached = await _cache.read(tracked.descriptor);
+    final identity = _cache.keyFor(tracked.descriptor);
+    _latestIdentity[descriptor.key] = identity;
+    final existing = _inFlight[identity];
+    if (existing != null) {
+      return _waitForSubscriber(existing, cancelToken);
+    }
+    final shared = _startTransfer(
+      tracked.descriptor,
+      identity: identity,
+      forceRefresh: forceRefresh,
+    );
+    return _waitForSubscriber(shared, cancelToken);
+  }
+
+  Future<MediaAssetLoadResult> _startTransfer(
+    MediaAssetDescriptor descriptor, {
+    required String identity,
+    required bool forceRefresh,
+  }) {
+    late final Future<MediaAssetLoadResult> shared;
+    shared =
+        _loadShared(
+          descriptor,
+          identity: identity,
+          forceRefresh: forceRefresh,
+        ).whenComplete(() {
+          if (identical(_inFlight[identity], shared)) {
+            _inFlight.remove(identity);
+          }
+        });
+    _inFlight[identity] = shared;
+    return shared;
+  }
+
+  Future<MediaAssetLoadResult> _loadShared(
+    MediaAssetDescriptor descriptor, {
+    required String identity,
+    required bool forceRefresh,
+  }) async {
+    final cached = await _cache.read(descriptor);
     if (cached != null && !cached.isStale && !forceRefresh) {
-      _coordinator.recordLoaded(descriptor.key, etag: cached.etag);
+      _recordLoadedIfCurrent(descriptor.key, identity, cached.etag);
       return MediaAssetLoadResult(
         file: cached.file,
         fromCache: true,
@@ -73,23 +118,23 @@ class MediaAssetService implements MediaAssetLoader {
     }
     try {
       var response = await _httpClient.fetch(
-        uri,
+        descriptor.uri!,
         ifNoneMatch: cached?.etag,
-        cancelToken: cancelToken,
       );
       if (response.notModified && cached == null) {
-        response = await _httpClient.fetch(uri, cancelToken: cancelToken);
+        response = await _httpClient.fetch(descriptor.uri!);
       }
       if (response.notModified) {
         final refreshed = await _cache.write(
-          tracked.descriptor,
+          descriptor,
           await cached!.file.readAsBytes(),
           etag: response.etag ?? cached.etag,
           maxAge: response.maxAge,
         );
-        _coordinator.recordLoaded(
+        _recordLoadedIfCurrent(
           descriptor.key,
-          etag: response.etag ?? cached.etag,
+          identity,
+          response.etag ?? cached.etag,
         );
         return MediaAssetLoadResult(
           file: refreshed,
@@ -98,13 +143,13 @@ class MediaAssetService implements MediaAssetLoader {
         );
       }
       final file = await _cache.write(
-        tracked.descriptor,
+        descriptor,
         response.bytes!,
         etag: response.etag,
         contentType: response.contentType,
         maxAge: response.maxAge,
       );
-      _coordinator.recordLoaded(descriptor.key, etag: response.etag);
+      _recordLoadedIfCurrent(descriptor.key, identity, response.etag);
       return MediaAssetLoadResult(
         file: file,
         fromCache: false,
@@ -112,10 +157,44 @@ class MediaAssetService implements MediaAssetLoader {
       );
     } on MediaAssetFailure catch (failure) {
       if (failure.kind == MediaAssetFailureKind.cancelled) rethrow;
-      _coordinator.recordFailure(descriptor.key, failure);
+      if (_latestIdentity[descriptor.key] == identity) {
+        _coordinator.recordFailure(descriptor.key, failure);
+      }
       rethrow;
     }
   }
+
+  void _recordLoadedIfCurrent(
+    MediaAssetKey key,
+    String identity,
+    String? etag,
+  ) {
+    if (_latestIdentity[key] == identity) {
+      _coordinator.recordLoaded(key, etag: etag);
+    }
+  }
+
+  Future<MediaAssetLoadResult> _waitForSubscriber(
+    Future<MediaAssetLoadResult> shared,
+    CancelToken? cancelToken,
+  ) {
+    if (cancelToken == null) return shared;
+    if (cancelToken.isCancelled) {
+      return Future.error(_cancelledFailure(cancelToken.cancelError));
+    }
+    return Future.any([
+      shared,
+      cancelToken.whenCancel.then<MediaAssetLoadResult>(
+        (error) => throw _cancelledFailure(error),
+      ),
+    ]);
+  }
+
+  MediaAssetFailure _cancelledFailure(Object? cause) => MediaAssetFailure(
+    kind: MediaAssetFailureKind.cancelled,
+    message: 'Media request subscription was cancelled.',
+    cause: cause,
+  );
 
   Future<void> evict(MediaAssetDescriptor descriptor) => _cache.remove(descriptor);
 

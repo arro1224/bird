@@ -9,6 +9,7 @@ import 'package:aves/bird_companion/features/connection/data/health_api.dart';
 import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
 import 'package:aves/bird_companion/features/connection/data/platform/birdbox_dpp_platform.dart';
 import 'package:aves/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart';
+import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
@@ -16,7 +17,7 @@ import 'package:aves/bird_companion/features/connection/domain/request_id_factor
 
 /// Production owner of rc4 identifiers, authorization, operation correlation,
 /// Android routing and transient secret lifetime.
-final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository, ProvisioningNetworkStatusVerifier {
+final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository, ProvisioningNetworkStatusVerifier, BleScanDiagnosticsRepository {
   factory ProvisioningRepositoryImpl({
     required BirdBoxBleDataSource ble,
     required BirdBoxWifiPlatform wifi,
@@ -126,6 +127,14 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
   /// BLE disconnect is informational. It never sends a cancellation command.
   @override
   Stream<void> get disconnects => _disconnects.stream;
+
+  @override
+  Stream<BleScanDiagnosticSession> get scanDiagnostics {
+    final ble = _ble;
+    return ble is BleScanDiagnosticSource
+        ? (ble as BleScanDiagnosticSource).scanDiagnostics
+        : const Stream.empty();
+  }
 
   @override
   ProvisioningDeviceInfo? get connectedDeviceInfo => _deviceInfo;

@@ -18,10 +18,10 @@ import 'package:aves/bird_companion/features/review/presentation/photo_detail_cu
 import 'package:aves/bird_companion/features/review/presentation/review_media_context.dart';
 import 'package:aves/bird_companion/features/review/presentation/review_edit_page.dart';
 import 'package:aves/bird_companion/features/review/presentation/version_history_page.dart';
-import 'package:aves/bird_companion/features/review/presentation/widgets/conflict_dialog.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/exif_panel.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/rating_reason_panel.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/recognition_panel.dart';
+import 'package:aves/bird_companion/features/review/presentation/widgets/review_conflict_banner.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/subject_overlay_view.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/tag_editor_sheet.dart';
 import 'package:flutter/material.dart';
@@ -216,15 +216,8 @@ class _ViewState extends State<_View> {
       ],
     ),
     body: BlocConsumer<PhotoDetailCubit, PhotoDetailState>(
-      listenWhen: (previous, current) => previous.conflict != current.conflict || previous.message != current.message,
+      listenWhen: (previous, current) => previous.message != current.message,
       listener: (context, state) {
-        if (state.conflict) {
-          showDialog<ConflictChoice>(context: context, builder: (_) => const ConflictDialog()).then((choice) {
-            if (!context.mounted) return;
-            if (choice == ConflictChoice.remote) context.read<PhotoDetailCubit>().useRemote(_currentFileId);
-            if (choice == ConflictChoice.local) context.read<PhotoDetailCubit>().keepLocal();
-          });
-        }
         if (state.message != null) {
           if (state.detail == null || state.messageIsError) {
             BirdFeedback.error(context, state.message!);
@@ -254,6 +247,14 @@ class _ViewState extends State<_View> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
+              if (state.conflict) ...[
+                ReviewConflictBanner(
+                  saving: state.saving,
+                  onUseRemote: () => context.read<PhotoDetailCubit>().useRemote(_currentFileId),
+                  onKeepDraft: context.read<PhotoDetailCubit>().keepLocal,
+                ),
+                const SizedBox(height: 12),
+              ],
               SubjectOverlayView(
                 photo: detail.photo,
                 subjects: _showSubjects ? detail.photo.subjects : const [],

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 
@@ -21,7 +22,7 @@ final class FakeStaConfigObservation {
   final bool passwordProvided;
 }
 
-final class FakeProvisioningRepository implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository {
+final class FakeProvisioningRepository implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository, BleScanDiagnosticsRepository {
   FakeProvisioningRepository({
     Iterable<ProvisioningDevice> devices = const [],
     this.deviceInfo,
@@ -80,6 +81,7 @@ final class FakeProvisioningRepository implements ProvisioningRepository, DppAva
   final bool networkStatusResumeRequired;
   final StreamController<ProvisioningEvent> _events = StreamController.broadcast();
   final StreamController<void> _disconnects = StreamController.broadcast();
+  final StreamController<BleScanDiagnosticSession> _scanDiagnostics = StreamController.broadcast();
   final List<String> calls = [];
   FakeStaConfigObservation? lastStaObservation;
   ProvisioningDeviceInfo? _connectedDeviceInfo;
@@ -89,6 +91,9 @@ final class FakeProvisioningRepository implements ProvisioningRepository, DppAva
 
   @override
   Stream<void> get disconnects => _disconnects.stream;
+
+  @override
+  Stream<BleScanDiagnosticSession> get scanDiagnostics => _scanDiagnostics.stream;
 
   @override
   Stream<ProvisioningDevice> discoverDevices({Duration? timeout}) {
@@ -113,7 +118,7 @@ final class FakeProvisioningRepository implements ProvisioningRepository, DppAva
   Future<void> disconnect() async {
     calls.add('disconnect');
     _connectedDeviceInfo = null;
-    _disconnects.add(null);
+    if (!_disconnects.isClosed) _disconnects.add(null);
   }
 
   @override
@@ -203,14 +208,17 @@ final class FakeProvisioningRepository implements ProvisioningRepository, DppAva
 
   void emitError(Object error) => _events.addError(error);
 
+  void emitScanDiagnostic(BleScanDiagnosticSession diagnostic) => _scanDiagnostics.add(diagnostic);
+
   @override
   Future<void> dispose() async {
     await _events.close();
     await _disconnects.close();
+    await _scanDiagnostics.close();
   }
 
   void emitDisconnect() {
     _connectedDeviceInfo = null;
-    _disconnects.add(null);
+    if (!_disconnects.isClosed) _disconnects.add(null);
   }
 }
