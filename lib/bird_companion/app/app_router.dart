@@ -170,16 +170,22 @@ abstract final class BirdAppRouter {
       case BirdRoutes.diagnostics:
         page = const DiagnosticsPage();
       case BirdRoutes.settingsDeviceManagement:
-        page = _SettingsControllerRoute(
-          builder: (context, controller) => DeviceManagementPage(
-            controller: controller,
-            onOpenDetails: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(
-                builder: (_) => DeviceDetailsPage(controller: controller),
-              ),
-            ),
-          ),
-        );
+        page = provisioningRepository == null
+            ? _SettingsControllerRoute(
+                builder: (context, controller) => DeviceManagementPage(
+                  controller: controller,
+                  onOpenDetails: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => DeviceDetailsPage(controller: controller),
+                    ),
+                  ),
+                ),
+              )
+            : ConnectionPage(
+                entryMode: ConnectionEntryMode.addOrSwitch,
+                provisioningRepository: provisioningRepository,
+                onProvisioningCompleted: onProvisioningCompleted,
+              );
       case BirdRoutes.settingsDeviceDetails:
         page = _SettingsControllerRoute(
           builder: (_, controller) => DeviceDetailsPage(controller: controller),

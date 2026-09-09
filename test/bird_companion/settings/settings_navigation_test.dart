@@ -66,7 +66,10 @@ void main() {
       '系统与日志',
       '帮助中心',
     ]) {
-      expect(find.text(entry), findsOneWidget);
+      expect(
+        find.text(entry),
+        entry == '连接设备' ? findsNWidgets(2) : findsOneWidget,
+      );
     }
 
     expect(find.text('更换设备'), findsNothing);
