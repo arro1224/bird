@@ -194,9 +194,29 @@ class PhotoDetailArgs {
   final ReviewContext? reviewContext;
 }
 
+/// 批次复制入口参数（§3.1/§3.2）。
+///
+/// [scope] 为 wire 值：`kept_assets` / `batch_all_assets`（任务首页、相册头部），
+/// `selected_assets`（相册多选，必带 [selectionId]）。不传时按设置默认范围。
 class CopyConfirmationArgs {
-  const CopyConfirmationArgs(this.batchId);
+  const CopyConfirmationArgs(
+    this.batchId, {
+    this.scope,
+    this.selectionId,
+    this.selectionPhotoCount,
+    this.selectionDiscardedCount,
+  });
+
   final String batchId;
+  final String? scope;
+  final String? selectionId;
+  final int? selectionPhotoCount;
+  final int? selectionDiscardedCount;
+}
+
+/// 摄影资料全量备份入口参数（§3.1：独立入口，不依赖当前批次）。
+class FullBackupArgs {
+  const FullBackupArgs();
 }
 
 class JobDetailArgs {

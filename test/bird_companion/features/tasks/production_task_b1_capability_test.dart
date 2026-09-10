@@ -22,7 +22,7 @@ void main() {
     test('uses status, current project and scan to expose valid entries', () {
       expect(
         _resolve(),
-        [TaskType.importIndex, TaskType.aiAnalysis, TaskType.copy],
+        [TaskType.importIndex, TaskType.aiAnalysis, TaskType.copy, TaskType.fullBackup],
       );
       expect(
         _resolve(hasPendingOperations: true),
@@ -30,12 +30,13 @@ void main() {
           TaskType.importIndex,
           TaskType.aiAnalysis,
           TaskType.copy,
+          TaskType.fullBackup,
           TaskType.sync,
         ],
       );
     });
 
-    test('active project pipeline prevents duplicate analysis and copy jobs', () {
+    test('an active analysis pipeline blocks a new analysis but not copy', () {
       final analysis = BirdJobStatus(
         id: 'job-analysis-1',
         type: BirdJobType.analysis,
@@ -44,9 +45,25 @@ void main() {
         availableActions: const ['pause', 'cancel'],
       );
 
+      // 迁移对照文档 §3.1：分析任务不阻止复制。
       expect(
         _resolve(jobs: [analysis], hasPendingOperations: true),
-        [TaskType.importIndex, TaskType.sync],
+        [TaskType.importIndex, TaskType.copy, TaskType.fullBackup, TaskType.sync],
+      );
+    });
+
+    test('a running copy job blocks new target writes but not analysis', () {
+      final copy = BirdJobStatus(
+        id: 'job-copy-1',
+        type: BirdJobType.copy,
+        state: BirdJobState.running,
+        sourceProjectId: _project.id,
+        availableActions: const ['pause', 'cancel'],
+      );
+
+      expect(
+        _resolve(jobs: [copy]),
+        [TaskType.importIndex, TaskType.aiAnalysis],
       );
     });
 
@@ -59,7 +76,10 @@ void main() {
         availableActions: const ['retry_failed', 'skip_failed'],
       );
 
-      expect(_resolve(jobs: [failed]), [TaskType.importIndex]);
+      expect(
+        _resolve(jobs: [failed]),
+        [TaskType.importIndex, TaskType.copy, TaskType.fullBackup],
+      );
     });
 
     test('scan in progress temporarily closes only the SD-card entry', () {
@@ -67,7 +87,16 @@ void main() {
         _resolve(
           currentScan: const CardScanResult(state: CardScanState.scanning),
         ),
-        [TaskType.aiAnalysis, TaskType.copy],
+        [TaskType.aiAnalysis, TaskType.copy, TaskType.fullBackup],
+      );
+    });
+
+    test('full backup requires a present camera card', () {
+      expect(
+        _resolve(
+          deviceStatus: _statusWithoutCard,
+        ),
+        [TaskType.importIndex, TaskType.aiAnalysis, TaskType.copy],
       );
     });
   });
@@ -78,6 +107,7 @@ List<TaskType> _resolve({
   bool authorityReady = true,
   bool hasPendingOperations = false,
   Iterable<BirdJobStatus> jobs = const [],
+  DeviceStatus? deviceStatus,
   CardScanResult currentScan = const CardScanResult(
     state: CardScanState.detected,
     cardId: 'card-1',
@@ -86,7 +116,7 @@ List<TaskType> _resolve({
 }) => TaskHomeCapabilityResolver.resolve(
   connected: connected,
   authorityReady: authorityReady,
-  deviceStatus: _status,
+  deviceStatus: deviceStatus ?? _status,
   currentProject: _project,
   currentScan: currentScan,
   jobs: jobs,
@@ -103,6 +133,11 @@ final _status = DeviceStatus(
     isPaired: true,
   ),
   card: const CardStatus(inserted: true, readable: true),
+);
+
+final _statusWithoutCard = DeviceStatus(
+  connection: _status.connection,
+  card: const CardStatus(inserted: false, readable: false),
 );
 
 final _project = BatchSummary(

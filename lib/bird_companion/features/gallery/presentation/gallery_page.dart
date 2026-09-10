@@ -595,31 +595,84 @@ class _SelectablePhotoTile extends StatelessWidget {
   }
 }
 
-class _SelectionActionOverlay extends StatelessWidget {
+class _SelectionActionOverlay extends StatefulWidget {
   const _SelectionActionOverlay({required this.batchId});
 
   final String batchId;
 
   @override
+  State<_SelectionActionOverlay> createState() => _SelectionActionOverlayState();
+}
+
+class _SelectionActionOverlayState extends State<_SelectionActionOverlay> {
+  var _creatingSelection = false;
+
+  @override
   Widget build(BuildContext context) => BlocBuilder<SelectionCubit, SelectionState>(
     builder: (context, selection) {
       if (selection.ids.isEmpty) return const SizedBox.shrink();
+      final ids = selection.ids.toList(growable: false);
       return Positioned(
         left: 0,
         right: 0,
         bottom: 0,
         child: SelectionActionBar(
-          count: selection.ids.length,
-          busy: selection.submitting,
+          count: ids.length,
+          busy: selection.submitting || _creatingSelection,
           failedCount: selection.failed.length,
           onClear: () => context.read<SelectionCubit>().clear(),
-          onAddTags: () => _showTagDialog(context, batchId, selection.ids.toList(), remove: false),
-          onRemoveTags: () => _showTagDialog(context, batchId, selection.ids.toList(), remove: true),
-          onAction: (action) => _requestBatchAction(context, batchId, selection.ids.toList(), action),
+          onAddTags: () => _showTagDialog(context, widget.batchId, ids, remove: false),
+          onRemoveTags: () => _showTagDialog(context, widget.batchId, ids, remove: true),
+          onAction: (action) => _requestBatchAction(context, widget.batchId, ids, action),
+          onCopy: () => _copySelected(context, ids),
         ),
       );
     },
   );
+
+  /// 创建不可变选择快照（§13.3）后进入复制配置页，范围固定「已选择 N 张」。
+  Future<void> _copySelected(BuildContext context, List<String> ids) async {
+    if (_creatingSelection) return;
+    setState(() => _creatingSelection = true);
+    try {
+      final dependencies = BirdCompanionScope.of(context);
+      final snapshot = await dependencies.copyRepository.createSelection(
+        widget.batchId,
+        ids,
+        clientRevision: 0,
+      );
+      final galleryState = context.read<GalleryCubit>().state;
+      final discardedCount = galleryState.items
+          .where(
+            (photo) =>
+                ids.contains(photo.id) &&
+                KeepStateWireValue.fromWire(photo.keepState) ==
+                    KeepState.discard,
+          )
+          .length;
+      if (!mounted) return;
+      await Navigator.of(context).pushNamed<void>(
+        BirdRoutes.copyConfirmation,
+        arguments: CopyConfirmationArgs(
+          widget.batchId,
+          scope: 'selected_assets',
+          selectionId: snapshot.selectionId,
+          selectionPhotoCount: snapshot.assetCount,
+          selectionDiscardedCount: discardedCount,
+        ),
+      );
+      if (!mounted) return;
+      context.read<SelectionCubit>().clear();
+    } catch (error) {
+      if (!mounted) return;
+      final message = UserMessageMapper.fromError(error);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${message.title}：${message.message}')),
+      );
+    } finally {
+      if (mounted) setState(() => _creatingSelection = false);
+    }
+  }
 }
 
 class _GalleryHeader extends StatelessWidget {

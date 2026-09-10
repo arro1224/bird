@@ -1,26 +1,42 @@
-import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 
 class CopyRepositoryImpl implements CopyRepository {
   CopyRepositoryImpl(this._api);
   final CopyApi _api;
+
   @override
-  Future<CopyEstimate> estimate(String b, String m) => _api.estimate(b, m);
+  Future<List<StorageDeviceSummary>> devices() => _api.devices();
+
   @override
-  Future<BirdJobStatus> create(
-    String b,
-    String m,
-    String t, {
-    required bool xmpEnabled,
-    required bool verifyAfterCopy,
-    required int version,
-  }) => _api.create(
-    b,
-    m,
-    t,
-    xmpEnabled: xmpEnabled,
-    verifyAfterCopy: verifyAfterCopy,
-    version: version,
+  Future<CopySelectionSnapshot> createSelection(
+    String batchId,
+    List<String> assetIds, {
+    required int clientRevision,
+  }) => _api.createSelection(
+    batchId,
+    assetIds,
+    clientRevision: clientRevision,
   );
+
+  @override
+  Future<CopyPreview> preview(CopyRequestDraft draft) => _api.preview(draft);
+
+  @override
+  Future<CopyJobSummary> createJob(
+    CopyRequestDraft draft,
+    String previewToken,
+  ) => _api.createJob(draft, previewToken);
+
+  @override
+  Future<BatchTargetPreference?> lastSuccessfulTarget(String batchId) async {
+    final data = await _api.lastSuccessfulTarget(batchId);
+    if (data == null) return null;
+    return BatchTargetPreference.fromJson(data);
+  }
+
+  @override
+  Future<void> setDeviceAlias(String mediaId, String alias) =>
+      _api.setDeviceAlias(mediaId, alias);
 }

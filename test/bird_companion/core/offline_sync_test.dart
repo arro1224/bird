@@ -387,6 +387,7 @@ class _RecordingApiClient extends ApiClient {
     String path, {
     Object? data,
     String? idempotencyKey,
+    Map<String, String>? headers,
   }) async {
     final key = idempotencyKey ?? '';
     idempotencyKeys.add(key);

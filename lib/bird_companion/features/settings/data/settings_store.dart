@@ -7,6 +7,17 @@ String photoQuerySortFromPreference(String value) => switch (value) {
   _ => 'captured_at_desc',
 };
 
+/// 旧偏好迁移（迁移对照文档 §5-E）：`dual`/`all`/`keptOnly` 映射到新复制范围。
+/// 旧全局默认目标盘直接丢弃，不映射到任何新设备。
+String migrateLegacyCopyMode(String? value) => switch (value) {
+  'batchAllAssets' || 'dualTrack' || 'all' => 'batchAllAssets',
+  'keptAssets' || 'keptOnly' => 'keptAssets',
+  _ => 'keptAssets',
+};
+
+bool migrateLegacyReviewExport(String? value) =>
+    value == null || value != '不导出标记';
+
 class BirdSettingsSnapshot {
   const BirdSettingsSnapshot({
     this.gridColumns = 4,
@@ -17,12 +28,12 @@ class BirdSettingsSnapshot {
     this.sortOrder = 'newest',
     this.birdPhotosOnly = true,
     this.defaultPhotoFilter = 'all',
-    this.copyMode = 'keptOnly',
-    this.xmpStrategy = '生成同名 XMP（推荐）',
-    this.verifyCopies = true,
+    this.copyMode = 'keptAssets',
+    this.reviewExportEnabled = true,
+    this.embedReviewMetadata = true,
     this.lowBatteryReminder = true,
     this.autoOpenReport = false,
-    this.selectedStorageId = 'removable-e',
+    this.batchTargetPreferences = const {},
   });
 
   final int gridColumns;
@@ -33,18 +44,28 @@ class BirdSettingsSnapshot {
   final String sortOrder;
   final bool birdPhotosOnly;
   final String defaultPhotoFilter;
+
+  /// 默认复制范围（仅作为页面初始偏好，§3.7），值为 `keptAssets`/`batchAllAssets`。
   final String copyMode;
-  final String xmpStrategy;
-  final bool verifyCopies;
+
+  /// 随副本保存审阅信息（XMP + CSV）。
+  final bool reviewExportEnabled;
+
+  /// 安全兼容的副本格式上优先嵌入标准字段（§9.1 embed_into_supported_copy）。
+  final bool embedReviewMetadata;
   final bool lowBatteryReminder;
   final bool autoOpenReport;
-  final String selectedStorageId;
+
+  /// 同批次上次成功目标设备（batchId → media_id），仅作为可修改的预选（§4.4）。
+  final Map<String, String> batchTargetPreferences;
 
   BirdSettingsSnapshot copyWith({
     String? copyMode,
-    String? xmpStrategy,
-    bool? verifyCopies,
-    String? selectedStorageId,
+    bool? reviewExportEnabled,
+    bool? embedReviewMetadata,
+    bool? lowBatteryReminder,
+    bool? autoOpenReport,
+    Map<String, String>? batchTargetPreferences,
   }) => BirdSettingsSnapshot(
     gridColumns: gridColumns,
     showSubjectBox: showSubjectBox,
@@ -55,11 +76,11 @@ class BirdSettingsSnapshot {
     birdPhotosOnly: birdPhotosOnly,
     defaultPhotoFilter: defaultPhotoFilter,
     copyMode: copyMode ?? this.copyMode,
-    xmpStrategy: xmpStrategy ?? this.xmpStrategy,
-    verifyCopies: verifyCopies ?? this.verifyCopies,
-    lowBatteryReminder: lowBatteryReminder,
-    autoOpenReport: autoOpenReport,
-    selectedStorageId: selectedStorageId ?? this.selectedStorageId,
+    reviewExportEnabled: reviewExportEnabled ?? this.reviewExportEnabled,
+    embedReviewMetadata: embedReviewMetadata ?? this.embedReviewMetadata,
+    lowBatteryReminder: lowBatteryReminder ?? this.lowBatteryReminder,
+    autoOpenReport: autoOpenReport ?? this.autoOpenReport,
+    batchTargetPreferences: batchTargetPreferences ?? this.batchTargetPreferences,
   );
 
   factory BirdSettingsSnapshot.fromJson(Map<String, dynamic> json) => BirdSettingsSnapshot(
@@ -71,12 +92,16 @@ class BirdSettingsSnapshot {
     sortOrder: json['sort_order']?.toString() ?? 'newest',
     birdPhotosOnly: json['bird_photos_only'] as bool? ?? true,
     defaultPhotoFilter: json['default_photo_filter']?.toString() ?? 'all',
-    copyMode: json['copy_mode']?.toString() ?? 'keptOnly',
-    xmpStrategy: json['xmp_strategy']?.toString() ?? '生成同名 XMP（推荐）',
-    verifyCopies: json['verify_copies'] as bool? ?? true,
+    copyMode: migrateLegacyCopyMode(json['copy_mode']?.toString()),
+    reviewExportEnabled: migrateLegacyReviewExport(
+      json['xmp_strategy']?.toString(),
+    ),
+    embedReviewMetadata: json['embed_review_metadata'] as bool? ?? true,
     lowBatteryReminder: json['low_battery_reminder'] as bool? ?? true,
     autoOpenReport: json['auto_open_report'] as bool? ?? false,
-    selectedStorageId: json['selected_storage_id']?.toString() ?? 'removable-e',
+    batchTargetPreferences: _stringMap(
+      json['batch_target_preferences'],
+    ),
   );
 
   Map<String, dynamic> toJson() => {
@@ -89,12 +114,20 @@ class BirdSettingsSnapshot {
     'bird_photos_only': birdPhotosOnly,
     'default_photo_filter': defaultPhotoFilter,
     'copy_mode': copyMode,
-    'xmp_strategy': xmpStrategy,
-    'verify_copies': verifyCopies,
+    'review_export_enabled': reviewExportEnabled,
+    'embed_review_metadata': embedReviewMetadata,
     'low_battery_reminder': lowBatteryReminder,
     'auto_open_report': autoOpenReport,
-    'selected_storage_id': selectedStorageId,
+    'batch_target_preferences': batchTargetPreferences,
   };
+}
+
+Map<String, String> _stringMap(Object? value) {
+  if (value is! Map) return const {};
+  return Map.unmodifiable(<String, String>{
+    for (final entry in value.entries)
+      if (entry.value != null) entry.key.toString(): entry.value.toString(),
+  });
 }
 
 abstract interface class SettingsStore {

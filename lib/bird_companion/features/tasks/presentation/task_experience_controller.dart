@@ -33,17 +33,19 @@ class TaskExperienceController extends ChangeNotifier {
 
   bool get canSubmitTaskWrites => connectionState == TaskConnectionState.connected && !loading && !acting;
   List<TaskHomeActionCapability> get taskHomeCapabilities => [
-    for (final type in TaskType.values)
+    // demo 能力列表与数据源的可执行类型保持一致，不枚举 TaskType.values。
+    for (final type in executableTaskTypes)
       TaskHomeActionCapability(
         type: type,
-        enabled: executableTaskTypes.contains(type) && canSubmitTaskWrites,
+        enabled: canSubmitTaskWrites,
         description: switch (type) {
           TaskType.importIndex => '读取存储卡并建立批次',
           TaskType.aiAnalysis => '分析当前批次照片',
-          TaskType.copy => '确认范围和目标硬盘',
+          TaskType.copy => '确认范围和目标设备',
+          TaskType.fullBackup => '备份源设备全部摄影资料',
           TaskType.sync => '同步批次和审片结果',
         },
-        disabledReason: executableTaskTypes.contains(type) && canSubmitTaskWrites
+        disabledReason: canSubmitTaskWrites
             ? null
             : connectionState != TaskConnectionState.connected
             ? '连接盒子后可用'

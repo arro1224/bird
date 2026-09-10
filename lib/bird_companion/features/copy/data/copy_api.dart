@@ -1,52 +1,93 @@
-import 'package:aves/bird_companion/core/models/job_models.dart';
+import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
-import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 
+/// birdbox-copy-v1 HTTP 接口（主协议 §13）。
+///
+/// 所有请求携带 `X-BirdBox-Protocol: birdbox-copy-v1`；创建/动作请求由
+/// [ApiClient.post] 自动附加 `X-Idempotency-Key`。
 class CopyApi {
   CopyApi(this._c);
   final ApiClient _c;
-  Future<CopyEstimate> estimate(String id, String mode) async {
-    _validateRequest(id, mode);
-    final d = await _c.get(ApiEndpoints.copyEstimate.replaceFirst('{batchId}', id), queryParameters: {'mode': mode});
-    return CopyEstimate.fromJson(d, requestedMode: mode);
+
+  static const _protocolHeader = {'X-BirdBox-Protocol': 'birdbox-copy-v1'};
+
+  Future<List<StorageDeviceSummary>> devices() async {
+    final raw = await _c.get(ApiEndpoints.storageDevices);
+    final list = raw['devices'];
+    if (list is! List) {
+      throw const ProtocolCompatibilityException('devices', '必须是设备列表');
+    }
+    return list.indexed.map((entry) {
+      final item = entry.$2;
+      if (item is! Map) {
+        throw ProtocolCompatibilityException(
+          'devices[${entry.$1}]',
+          '必须是对象',
+        );
+      }
+      return StorageDeviceSummary.fromJson(Map<String, dynamic>.from(item));
+    }).toList(growable: false);
   }
 
-  Future<BirdJobStatus> create(
-    String i,
-    String m,
-    String t, {
-    required bool xmpEnabled,
-    required bool verifyAfterCopy,
-    required int version,
-  }) {
-    _validateRequest(i, m);
-    if (t.trim().isEmpty) {
-      throw ArgumentError.value(t, 'targetId', 'must not be empty');
+  Future<CopySelectionSnapshot> createSelection(
+    String batchId,
+    List<String> assetIds, {
+    required int clientRevision,
+  }) async {
+    final batch = batchId.trim();
+    if (batch.isEmpty) {
+      throw ArgumentError.value(batchId, 'batchId', 'must not be empty');
     }
-    if (version < 0) {
-      throw ArgumentError.value(version, 'version', 'must be non-negative');
-    }
-    return _c
-        .post(
-          ApiEndpoints.copyCreate.replaceFirst('{batchId}', i),
-          data: {
-            'mode': m,
-            'target_id': t,
-            'xmp_enabled': xmpEnabled,
-            'verify_after_copy': verifyAfterCopy,
-            'version': version,
-          },
-        )
-        .then(BirdJobStatus.fromJson);
+    return CopySelectionSnapshot.fromJson(
+      await _c.post(
+        ApiEndpoints.copySelections.replaceFirst('{batchId}', batch),
+        data: {'asset_ids': assetIds, 'client_revision': clientRevision},
+        headers: _protocolHeader,
+      ),
+    );
   }
 
-  static void _validateRequest(String projectId, String mode) {
-    if (projectId.trim().isEmpty) {
-      throw ArgumentError.value(projectId, 'projectId', 'must not be empty');
+  Future<CopyPreview> preview(CopyRequestDraft draft) async {
+    return CopyPreview.fromJson(
+      await _c.post(
+        ApiEndpoints.copyJobPreview,
+        data: draft.toJson(),
+        headers: _protocolHeader,
+      ),
+    );
+  }
+
+  Future<CopyJobSummary> createJob(
+    CopyRequestDraft draft,
+    String previewToken,
+  ) async {
+    return CopyJobSummary.fromJson(
+      await _c.post(
+        ApiEndpoints.copyJobs,
+        data: {
+          ...draft.toJson(),
+          'preview_token': previewToken,
+        },
+        headers: _protocolHeader,
+      ),
+    );
+  }
+
+  /// 同批次上次成功目标设备的读取端点由后端交付契约确认（§4.4 仅规定保存）。
+  Future<Map<String, dynamic>?> lastSuccessfulTarget(String batchId) async =>
+      null;
+
+  Future<void> setDeviceAlias(String mediaId, String alias) async {
+    final id = mediaId.trim();
+    if (id.isEmpty) {
+      throw ArgumentError.value(mediaId, 'mediaId', 'must not be empty');
     }
-    if (!copyModes.contains(mode)) {
-      throw ArgumentError.value(mode, 'mode', 'must match birdbox-v1');
-    }
+    await _c.post(
+      ApiEndpoints.storageDeviceAlias.replaceFirst('{mediaId}', id),
+      data: {'alias': alias.trim()},
+      headers: _protocolHeader,
+    );
   }
 }

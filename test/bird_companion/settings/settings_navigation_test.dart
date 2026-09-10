@@ -15,7 +15,7 @@ void main() {
       BirdRoutes.settingsDisplay: '显示设置',
       BirdRoutes.settingsPhotos: '照片设置',
       BirdRoutes.settingsCopyBackup: '复制与备份',
-      BirdRoutes.settingsStorageTarget: '选择目标位置',
+      BirdRoutes.settingsStorageTarget: '存储设备',
       BirdRoutes.settingsNetworkDiagnostics: '网络诊断',
       BirdRoutes.settingsSystemLogs: '系统与日志',
       BirdRoutes.settingsHelp: '帮助中心',
@@ -62,7 +62,7 @@ void main() {
       '浏览与显示',
       '照片处理默认值',
       '复制默认设置',
-      '默认目标位置',
+      '存储设备',
       '系统与日志',
       '帮助中心',
     ]) {
@@ -87,7 +87,7 @@ void main() {
       const Key('showcase-display-settings'): '显示设置',
       const Key('showcase-photo-settings'): '照片设置',
       const Key('showcase-copy-settings'): '复制与备份',
-      const Key('showcase-storage-target'): '选择目标位置',
+      const Key('showcase-storage-target'): '存储设备',
       const Key('showcase-system-logs'): '系统与日志',
       const Key('showcase-help-center'): '帮助中心',
     };
@@ -111,15 +111,17 @@ void main() {
     }
   });
 
-  testWidgets('storage target uses a vector icon for the removable drive', (tester) async {
+  testWidgets('storage device page renders a box-offline fallback without a session', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
         home: StorageTargetPage(controller: BirdSettingsController()),
       ),
     );
+    await tester.pump();
 
-    expect(find.byIcon(Icons.storage_rounded), findsOneWidget);
+    expect(find.text('存储设备'), findsOneWidget);
+    expect(find.textContaining('连接盒子后可查看'), findsOneWidget);
   });
 
   testWidgets('secondary device pages hide the shell navigation until returning', (

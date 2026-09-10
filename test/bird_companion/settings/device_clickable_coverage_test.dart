@@ -1,12 +1,9 @@
-import 'dart:async';
-
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/features/settings/presentation/bird_settings_controller.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/copy_backup_settings_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/help_center_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/network_diagnostics_page.dart';
-import 'package:aves/bird_companion/features/settings/presentation/pages/storage_target_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -122,7 +119,7 @@ void main() {
     expect(find.text('快速开始'), findsOneWidget);
   });
 
-  testWidgets('copy naming policy and add storage target have styled targets', (
+  testWidgets('copy naming policy keeps its styled information sheet', (
     tester,
   ) async {
     final controller = BirdSettingsController();
@@ -132,22 +129,11 @@ void main() {
     await tester.tap(find.text('命名与目录规则'));
     await tester.pumpAndSettle();
     expect(find.text('保留原始文件名'), findsOneWidget);
+    expect(find.text('固定目录规则'), findsOneWidget);
     expect(find.text('协议限制'), findsOneWidget);
     await tester.tap(find.text('知道了'));
     await tester.pumpAndSettle();
-
-    unawaited(
-      Navigator.of(tester.element(find.byType(CopyBackupSettingsPage))).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => StorageTargetPage(controller: controller),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('新增目标设备'));
-    await tester.pumpAndSettle();
-    expect(find.text('连接步骤'), findsOneWidget);
-    expect(find.text('重新检测'), findsOneWidget);
+    expect(find.text('复制与备份'), findsOneWidget);
   });
 }
 

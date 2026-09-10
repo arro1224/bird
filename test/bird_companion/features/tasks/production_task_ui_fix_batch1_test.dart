@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/core/sync/sync_coordinator.dart';
-import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
-import 'package:aves/bird_companion/features/copy/presentation/copy_confirmation_cubit.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
+import 'package:aves/bird_companion/features/copy/presentation/copy_config_cubit.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_confirmation_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/task_sync_result_sheet.dart';
 import 'package:flutter/material.dart';
@@ -22,18 +22,22 @@ void main() {
           home: CopyContentStep(
             state: _copyState,
             onBack: () => backCount++,
-            onModeSelected: (_) {},
+            onScopeSelected: (_) {},
+            onSourceSelected: (_) {},
             onTargetSelected: (_) {},
-            onXmpChanged: (_) {},
-            onNext: () {},
+            onPairPolicySelected: (_) {},
+            onConflictSelected: (_) {},
+            onReviewExportChanged: (_) {},
+            onEmbedChanged: (_) {},
             onSaveDefaults: () {},
+            onNext: () {},
           ),
         ),
       );
 
       expect(find.byKey(const Key('copy-flow-titlebar')), findsOneWidget);
       expect(find.text('复制照片'), findsOneWidget);
-      expect(find.text('步骤 2 / 3 · 选择复制内容'), findsOneWidget);
+      expect(find.text('步骤 1 / 2 · 配置复制'), findsOneWidget);
       expect(
         tester.getCenter(find.byKey(const Key('copy-flow-title'))).dx,
         closeTo(160, 1),
@@ -54,13 +58,14 @@ void main() {
           home: CopyFinalConfirmationStep(
             state: _copyState,
             onBack: () {},
+            onRefreshPreview: () {},
             onSubmit: () {},
           ),
         ),
       );
 
       expect(find.text('确认复制'), findsOneWidget);
-      expect(find.text('步骤 3 / 3 · 最后确认'), findsOneWidget);
+      expect(find.text('步骤 2 / 2 · 最后确认'), findsOneWidget);
       expect(
         tester.getCenter(find.byKey(const Key('copy-flow-title'))).dx,
         closeTo(160, 1),
@@ -146,25 +151,45 @@ void main() {
   });
 }
 
-const _copyState = CopyConfirmationState(
-  mode: 'keep',
-  targetId: 'target-1',
-  estimate: CopyEstimate(
-    mode: 'keep',
-    fileCount: 2012,
-    requiredBytes: 238700000000,
-    pendingCount: 12,
-    version: 7,
-    targets: [
-      StorageTarget(
-        id: 'target-1',
-        name: 'Samsung T7 Shield with a long storage name',
-        freeBytes: 1200000000000,
-        totalBytes: 2000000000000,
-        online: true,
-      ),
-    ],
-  ),
+const _copyState = CopyConfigState(
+  scope: CopyScope.keptAssets,
+  batchId: 'batch-1',
+  sourceMediaId: 'media_source_1',
+  loadingDevices: false,
+  devices: [
+    StorageDeviceSummary(
+      mediaId: 'media_source_1',
+      displayName: '相机卡（读卡器）',
+      kind: 'card_reader',
+      kindConfidence: 'high',
+      detail: '双逻辑槽位读卡器 · 119.2 GB · EXFAT',
+      capacityBytes: 128000000000,
+      freeBytes: 96400000000,
+      filesystem: 'exfat',
+      label: '',
+      roleState: 'available',
+      canBeSource: true,
+      canBeTarget: false,
+      targetBlockReasons: ['当前任务源设备'],
+      identityConfidence: 'stable_uuid',
+    ),
+    StorageDeviceSummary(
+      mediaId: 'media_target_1',
+      displayName: 'Samsung T7 Shield with a long storage name',
+      kind: 'external_ssd',
+      kindConfidence: 'high',
+      detail: 'Samsung T7 · 2 TB · EXFAT',
+      capacityBytes: 2000000000000,
+      freeBytes: 1200000000000,
+      filesystem: 'exfat',
+      label: 'T7',
+      roleState: 'available',
+      canBeSource: false,
+      canBeTarget: true,
+      targetBlockReasons: [],
+      identityConfidence: 'stable_uuid',
+    ),
+  ],
 );
 
 PendingOperation _operation(String id, PendingOperationStatus status) => PendingOperation(

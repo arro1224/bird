@@ -50,6 +50,7 @@ import 'package:aves/bird_companion/features/review/data/review_repository_impl.
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_repository_impl.dart';
+import 'package:aves/bird_companion/features/copy/data/mock_copy_repository.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_api.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_repository_impl.dart';
@@ -246,7 +247,10 @@ class BirdCompanionDependencies {
       ),
       reviewRepository: reviewRepository,
       reviewCheckpointStore: ReviewCheckpointStore(cache),
-      copyRepository: CopyRepositoryImpl(CopyApi(apiClient)),
+      // 后端交付 birdbox-copy-v1 后将开关置 false 即切真实接口（迁移对照文档 §7）。
+      copyRepository: useMockCopyRepository
+          ? MockCopyRepository()
+          : CopyRepositoryImpl(CopyApi(apiClient)),
       jobRepository: JobRepositoryImpl(JobApi(apiClient)),
       storageRepository: StorageRepositoryImpl(StorageApi(apiClient)),
       deviceSessionCubit: deviceSessionCubit,
@@ -334,6 +338,10 @@ class BirdCompanionScope extends InheritedWidget {
     assert(scope != null, 'BirdCompanionScope is missing from the widget tree.');
     return scope!.dependencies;
   }
+
+  /// 独立预览/测试环境可能没有盒子会话，返回 null。
+  static BirdCompanionDependencies? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>()?.dependencies;
 
   @override
   bool updateShouldNotify(BirdCompanionScope oldWidget) => dependencies != oldWidget.dependencies;

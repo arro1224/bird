@@ -39,7 +39,8 @@ abstract final class TaskHomeCapabilityResolver {
     const descriptions = {
       TaskType.importIndex: '读取存储卡并建立批次',
       TaskType.aiAnalysis: '分析当前批次照片',
-      TaskType.copy: '确认范围和目标硬盘',
+      TaskType.copy: '确认范围和目标设备',
+      TaskType.fullBackup: '备份源设备全部摄影资料',
       TaskType.sync: '同步批次和审片结果',
     };
     if (!connected || !authorityReady || deviceStatus == null) {
@@ -74,19 +75,41 @@ abstract final class TaskHomeCapabilityResolver {
     final projectId = currentProject?.id.trim();
     final hasProject = projectId != null && projectId.isNotEmpty;
     final hasPhotos = hasProject && currentProject!.totalFiles > 0;
+
+    // 复制与全量备份都是「目标写任务」：同一时间只能有一个（协议 §16）。
+    // 分析任务不阻止复制（§3.1），导入也不阻止；只有另一个目标写任务互斥。
+    final targetWriteBusy = blockingJobs.any(
+      (job) => job.type == BirdJobType.copy,
+    );
+    final targetWriteReason = targetWriteBusy
+        ? '已有复制/备份任务正在使用目标设备'
+        : null;
+
     final projectPipelineBusy =
         hasProject &&
         blockingJobs.any(
-          (job) => (job.type == BirdJobType.import || job.type == BirdJobType.analysis || job.type == BirdJobType.copy) && _belongsToProject(job, projectId),
+          (job) =>
+              (job.type == BirdJobType.import ||
+                  job.type == BirdJobType.analysis) &&
+              _belongsToProject(job, projectId),
         );
-    final projectActionReason = !hasProject
+    final analysisReason = !hasProject
         ? '当前没有可用批次'
         : !hasPhotos
         ? '当前批次没有可处理照片'
         : projectPipelineBusy
         ? '当前批次已有任务正在执行'
         : null;
-    final projectActionsEnabled = hasPhotos && !projectPipelineBusy;
+    final copyReason = !hasProject
+        ? '当前没有可用批次'
+        : !hasPhotos
+        ? '当前批次没有可处理照片'
+        : targetWriteReason;
+
+    final cardPresent = deviceStatus.card.inserted;
+    final fullBackupReason = !cardPresent
+        ? '未检测到相机存储卡'
+        : targetWriteReason;
 
     return [
       TaskHomeActionCapability(
@@ -95,13 +118,24 @@ abstract final class TaskHomeCapabilityResolver {
         description: descriptions[TaskType.importIndex]!,
         disabledReason: importReason,
       ),
-      for (final type in const [TaskType.aiAnalysis, TaskType.copy])
-        TaskHomeActionCapability(
-          type: type,
-          enabled: projectActionsEnabled,
-          description: descriptions[type]!,
-          disabledReason: projectActionReason,
-        ),
+      TaskHomeActionCapability(
+        type: TaskType.aiAnalysis,
+        enabled: hasPhotos && !projectPipelineBusy,
+        description: descriptions[TaskType.aiAnalysis]!,
+        disabledReason: analysisReason,
+      ),
+      TaskHomeActionCapability(
+        type: TaskType.copy,
+        enabled: hasPhotos && !targetWriteBusy,
+        description: descriptions[TaskType.copy]!,
+        disabledReason: copyReason,
+      ),
+      TaskHomeActionCapability(
+        type: TaskType.fullBackup,
+        enabled: cardPresent && !targetWriteBusy,
+        description: descriptions[TaskType.fullBackup]!,
+        disabledReason: fullBackupReason,
+      ),
       TaskHomeActionCapability(
         type: TaskType.sync,
         enabled: hasPendingOperations,

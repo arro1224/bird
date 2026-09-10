@@ -143,6 +143,7 @@ class TaskDetailPage extends StatelessWidget {
       TaskType.importIndex => const ['读取照片', '建立索引', '生成缩略图', '准备分析'],
       TaskType.aiAnalysis => const ['读取批次', 'AI 识别分析', '质量评分', '生成结果'],
       TaskType.copy => const ['确认复制范围', '复制照片', '校验文件', '生成报告'],
+      TaskType.fullBackup => const ['扫描摄影资料', '复制文件', '校验文件', '生成报告'],
       TaskType.sync => const ['准备同步', '同步结果', '校验差异', '完成同步'],
     };
     final position = _workflowPosition(task);
@@ -274,6 +275,7 @@ class TaskDetailPage extends StatelessWidget {
               TaskType.importIndex => '演示完成导入',
               TaskType.aiAnalysis => '演示完成 AI 分析',
               TaskType.copy => '演示完成复制',
+              TaskType.fullBackup => '演示完成备份',
               TaskType.sync => '',
             },
             enabled

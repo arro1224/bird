@@ -410,6 +410,8 @@ class TaskHomePage extends StatelessWidget {
     ),
     title: Text(
       task.type.label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
       style: const TextStyle(
         color: AppColors.forestDeep,
         fontWeight: FontWeight.w700,
@@ -502,6 +504,7 @@ class TaskHomePage extends StatelessWidget {
     TaskType.importIndex => Icons.sd_card_outlined,
     TaskType.aiAnalysis => Icons.image_search_outlined,
     TaskType.copy => Icons.copy_all_outlined,
+    TaskType.fullBackup => Icons.backup_outlined,
     TaskType.sync => Icons.sync_rounded,
   };
 

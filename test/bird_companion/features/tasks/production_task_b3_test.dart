@@ -188,6 +188,7 @@ class _B3ApiClient extends ApiClient {
     String path, {
     Object? data,
     String? idempotencyKey,
+    Map<String, String>? headers,
   }) async {
     lastPath = path;
     lastData = data;

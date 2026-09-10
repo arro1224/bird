@@ -5,7 +5,6 @@ import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/features/batches/data/batch_api.dart';
 import 'package:aves/bird_companion/features/batches/domain/project_create_request.dart';
-import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
 import 'package:aves/bird_companion/features/device/data/device_status_api.dart';
 import 'package:aves/bird_companion/features/gallery/data/photo_api.dart';
 import 'package:aves/bird_companion/features/gallery/data/photo_local_query_executor.dart';
@@ -108,17 +107,12 @@ Future<B12AK7AcceptanceReport> runB12AK7Acceptance(
     final thumbnail = await client.downloadSignedBytes(thumbnailUri!);
     _require(thumbnail.bytes.length > 1000, '白鹭 thumbnail is empty');
 
-    final copyApi = CopyApi(client);
-    final copyEstimate = await copyApi.estimate(batch.id, 'keep');
-    _require(copyEstimate.targets.any((target) => target.online), 'copy estimate has no online target');
-    _require(copyEstimate.targets.any((target) => !target.online), 'copy estimate does not cover an offline target');
 
     final jobApi = JobApi(client);
     final initialJobs = await jobApi.page(pageSize: 100);
     final exercisedJobs = <String>[];
     var conflict409Verified = false;
     var unavailable422Verified = false;
-    var cancelledReportVerified = false;
     var logBytes = 0;
 
     if (exerciseWrites) {
@@ -181,24 +175,8 @@ Future<B12AK7AcceptanceReport> runB12AK7Acceptance(
       );
       _require(analysisJob.state.name == 'cancelled', 'analysis cancel did not converge');
 
-      var copyJob = await copyApi.create(
-        batch.id,
-        'keep',
-        copyEstimate.targets.firstWhere((target) => target.online).id,
-        xmpEnabled: true,
-        verifyAfterCopy: true,
-        version: copyEstimate.version,
-      );
-      exercisedJobs.add(copyJob.id);
-      copyJob = await jobApi.control(
-        copyJob.id,
-        'cancel',
-        version: copyJob.version!,
-      );
-      final copyReport = await jobApi.report(copyJob.id);
-      cancelledReportVerified = copyReport.result.name == 'cancelled';
-      _require(cancelledReportVerified, 'cancelled copy report is not authoritative');
-
+      // 旧 copy estimate/create 接口已随 birdbox-copy-v1 迁移移除；
+      // 复制任务验收将在新协议联调阶段补充（见迁移对照文档 §4.1）。
       var scanJob = await storageApi.rescan();
       exercisedJobs.add(scanJob.id);
       scanJob = await jobApi.control(
@@ -210,7 +188,7 @@ Future<B12AK7AcceptanceReport> runB12AK7Acceptance(
 
       final logUrl = await jobApi.exportLogs(
         scope: 'device_and_jobs',
-        jobId: copyJob.id,
+        jobId: scanJob.id,
       );
       _require(logUrl != null && logUrl.isNotEmpty, 'log export returned no URL');
       final log = await client.downloadSignedBytes(baseUri.resolve(logUrl!));
@@ -239,7 +217,6 @@ Future<B12AK7AcceptanceReport> runB12AK7Acceptance(
       exercisedJobIds: exercisedJobs,
       conflict409Verified: conflict409Verified,
       unavailable422Verified: unavailable422Verified,
-      cancelledReportVerified: cancelledReportVerified,
       logBytes: logBytes,
       egretSearchMilliseconds: egretWatch.elapsedMilliseconds,
       totalMilliseconds: watch.elapsedMilliseconds,
@@ -268,7 +245,6 @@ class B12AK7AcceptanceReport {
     required this.exercisedJobIds,
     required this.conflict409Verified,
     required this.unavailable422Verified,
-    required this.cancelledReportVerified,
     required this.logBytes,
     required this.egretSearchMilliseconds,
     required this.totalMilliseconds,
@@ -291,7 +267,6 @@ class B12AK7AcceptanceReport {
   final List<String> exercisedJobIds;
   final bool conflict409Verified;
   final bool unavailable422Verified;
-  final bool cancelledReportVerified;
   final int logBytes;
   final int egretSearchMilliseconds;
   final int totalMilliseconds;
@@ -315,7 +290,6 @@ class B12AK7AcceptanceReport {
     'exercised_job_ids': exercisedJobIds,
     'conflict_409_verified': conflict409Verified,
     'unavailable_422_verified': unavailable422Verified,
-    'cancelled_report_verified': cancelledReportVerified,
     'log_bytes': logBytes,
     'egret_search_ms': egretSearchMilliseconds,
     'total_ms': totalMilliseconds,

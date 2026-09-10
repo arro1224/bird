@@ -17,9 +17,8 @@ enum BirdPhotoSortOrder {
 }
 
 enum BirdCopyMode {
-  keptOnly('只复制已保留'),
-  all('复制全部'),
-  dualTrack('双轨复制');
+  keptAssets('只复制已保留'),
+  batchAllAssets('复制全部');
 
   const BirdCopyMode(this.label);
   final String label;
@@ -66,12 +65,12 @@ class BirdSettingsController extends ChangeNotifier {
   BirdPhotoSortOrder sortOrder = BirdPhotoSortOrder.newest;
   bool birdPhotosOnly = true;
   BirdDefaultPhotoFilter defaultPhotoFilter = BirdDefaultPhotoFilter.all;
-  BirdCopyMode copyMode = BirdCopyMode.keptOnly;
-  String xmpStrategy = '生成同名 XMP（推荐）';
-  bool verifyCopies = true;
+  BirdCopyMode copyMode = BirdCopyMode.keptAssets;
+  bool reviewExportEnabled = true;
+  bool embedReviewMetadata = true;
   bool lowBatteryReminder = true;
   bool autoOpenReport = false;
-  String selectedStorageId = 'removable-e';
+  Map<String, String> batchTargetPreferences = const {};
   String selectedDeviceId = 'k7-current';
   bool technicalDetailsExpanded = false;
   bool searchingDevices = false;
@@ -112,12 +111,12 @@ class BirdSettingsController extends ChangeNotifier {
     () => copyMode = value,
     resource: AppDataResource.copyPreferences,
   );
-  void setXmpStrategy(String value) => _set(
-    () => xmpStrategy = value,
+  void setReviewExportEnabled(bool value) => _set(
+    () => reviewExportEnabled = value,
     resource: AppDataResource.copyPreferences,
   );
-  void setVerifyCopies(bool value) => _set(
-    () => verifyCopies = value,
+  void setEmbedReviewMetadata(bool value) => _set(
+    () => embedReviewMetadata = value,
     resource: AppDataResource.copyPreferences,
   );
   void setLowBatteryReminder(bool value) => _set(
@@ -128,11 +127,27 @@ class BirdSettingsController extends ChangeNotifier {
     () => autoOpenReport = value,
     resource: AppDataResource.copyPreferences,
   );
-  void setStorageTarget(String value) => _set(
-    () => selectedStorageId = value,
-    resource: AppDataResource.copyPreferences,
-  );
   void setDevice(String value) => _set(() => selectedDeviceId = value);
+
+  /// 同批次上次成功目标设备（batchId → media_id），仅用于复制流程预选。
+  String? targetPreferenceFor(String batchId) {
+    final id = batchId.trim();
+    if (id.isEmpty) return null;
+    final value = batchTargetPreferences[id]?.trim();
+    return value == null || value.isEmpty ? null : value;
+  }
+
+  void rememberCopyTarget(String batchId, String mediaId) {
+    final id = batchId.trim();
+    if (id.isEmpty || mediaId.trim().isEmpty) return;
+    _set(
+      () => batchTargetPreferences = {
+        ...batchTargetPreferences,
+        id: mediaId.trim(),
+      },
+      resource: AppDataResource.copyPreferences,
+    );
+  }
   void toggleTechnicalDetails() => _set(() => technicalDetailsExpanded = !technicalDetailsExpanded);
   void beginDeviceSearch() => _set(() => searchingDevices = true);
 
@@ -197,13 +212,13 @@ class BirdSettingsController extends ChangeNotifier {
     );
     copyMode = BirdCopyMode.values.firstWhere(
       (value) => value.name == snapshot.copyMode,
-      orElse: () => BirdCopyMode.keptOnly,
+      orElse: () => BirdCopyMode.keptAssets,
     );
-    xmpStrategy = snapshot.xmpStrategy;
-    verifyCopies = snapshot.verifyCopies;
+    reviewExportEnabled = snapshot.reviewExportEnabled;
+    embedReviewMetadata = snapshot.embedReviewMetadata;
     lowBatteryReminder = snapshot.lowBatteryReminder;
     autoOpenReport = snapshot.autoOpenReport;
-    selectedStorageId = snapshot.selectedStorageId;
+    batchTargetPreferences = snapshot.batchTargetPreferences;
   }
 
   BirdSettingsSnapshot _snapshot() => BirdSettingsSnapshot(
@@ -216,10 +231,10 @@ class BirdSettingsController extends ChangeNotifier {
     birdPhotosOnly: birdPhotosOnly,
     defaultPhotoFilter: defaultPhotoFilter.name,
     copyMode: copyMode.name,
-    xmpStrategy: xmpStrategy,
-    verifyCopies: verifyCopies,
+    reviewExportEnabled: reviewExportEnabled,
+    embedReviewMetadata: embedReviewMetadata,
     lowBatteryReminder: lowBatteryReminder,
     autoOpenReport: autoOpenReport,
-    selectedStorageId: selectedStorageId,
+    batchTargetPreferences: batchTargetPreferences,
   );
 }

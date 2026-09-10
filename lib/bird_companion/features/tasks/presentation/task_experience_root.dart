@@ -134,8 +134,14 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
           if (mounted) {
             await Navigator.of(context).pushNamed<void>(
               BirdRoutes.copyConfirmation,
-              arguments: batchId,
+              arguments: CopyConfirmationArgs(batchId),
             );
+            await controller.refreshFromBox();
+          }
+          return;
+        case TaskType.fullBackup:
+          if (mounted) {
+            await Navigator.of(context).pushNamed<void>(BirdRoutes.fullBackup);
             await controller.refreshFromBox();
           }
           return;

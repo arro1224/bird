@@ -70,10 +70,10 @@ void main() {
         _for(busy, TaskType.aiAnalysis).disabledReason,
         '当前批次已有任务正在执行',
       );
-      expect(
-        _for(busy, TaskType.copy).disabledReason,
-        '当前批次已有任务正在执行',
-      );
+      // §3.1：分析任务不阻止复制。
+      expect(_for(busy, TaskType.copy).enabled, isTrue);
+      // 有相机卡且无目标写任务时，全量备份可用。
+      expect(_for(busy, TaskType.fullBackup).enabled, isTrue);
 
       final pendingSync = _capabilities(
         currentProject: _project,
@@ -207,8 +207,13 @@ class _CapabilityController extends TaskExperienceController {
     TaskHomeActionCapability(
       type: TaskType.copy,
       enabled: false,
-      description: '确认范围和目标硬盘',
+      description: '确认范围和目标设备',
       disabledReason: '当前没有可用批次',
+    ),
+    TaskHomeActionCapability(
+      type: TaskType.fullBackup,
+      enabled: true,
+      description: '备份源设备全部摄影资料',
     ),
     TaskHomeActionCapability(
       type: TaskType.sync,

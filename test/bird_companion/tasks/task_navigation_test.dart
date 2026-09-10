@@ -58,7 +58,7 @@ void main() {
       ),
     );
 
-    final copyAction = find.descendant(of: find.byType(GridView), matching: find.text('复制'));
+    final copyAction = find.descendant(of: find.byType(GridView), matching: find.text('复制照片'));
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -260));
     await tester.pumpAndSettle();
     await tester.tap(copyAction);
@@ -185,7 +185,7 @@ void main() {
     await tester.pump();
     expect(find.byKey(const Key('settings-showcase-page')), findsOneWidget);
     expect(
-      find.descendant(of: find.byKey(const Key('device-current-work-task')), matching: find.text('复制')),
+      find.descendant(of: find.byKey(const Key('device-current-work-task')), matching: find.text('复制照片')),
       findsOneWidget,
     );
     await tester.tap(
@@ -515,7 +515,8 @@ void main() {
       ),
     );
 
-    expect(find.text('复制'), findsOneWidget);
+    // 摘要卡标题与复制时间线步骤共用「复制照片」标签。
+    expect(find.text('复制照片'), findsWidgets);
     expect(find.text('目标硬盘连接中断'), findsOneWidget);
     expect(find.textContaining('盒子任务可能仍在运行'), findsNothing);
     expect(find.textContaining('正在重新连接盒子'), findsNothing);

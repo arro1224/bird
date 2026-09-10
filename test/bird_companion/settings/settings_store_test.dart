@@ -12,7 +12,7 @@ void main() {
 
       controller.setGridColumns(5);
       controller.setThumbnailSize(BirdThumbnailSize.large);
-      controller.setCopyMode(BirdCopyMode.dualTrack);
+      controller.setCopyMode(BirdCopyMode.batchAllAssets);
       controller.setDefaultPhotoFilter(
         BirdDefaultPhotoFilter.pendingReview,
       );
@@ -25,7 +25,7 @@ void main() {
 
       expect(restored.gridColumns, 5);
       expect(restored.thumbnailSize, BirdThumbnailSize.large);
-      expect(restored.copyMode, BirdCopyMode.dualTrack);
+      expect(restored.copyMode, BirdCopyMode.batchAllAssets);
       expect(
         restored.defaultPhotoFilter,
         BirdDefaultPhotoFilter.pendingReview,
@@ -53,12 +53,12 @@ void main() {
     expect(store.snapshot.gridColumns, 5);
 
     final copyChange = bus.changes.first;
-    controller.setVerifyCopies(false);
+    controller.setReviewExportEnabled(false);
     expect(
       (await copyChange).resources,
       {AppDataResource.copyPreferences},
     );
-    expect(store.snapshot.verifyCopies, isFalse);
+    expect(store.snapshot.reviewExportEnabled, isFalse);
   });
 
   test('default gallery sort persists before its change event is published', () async {
@@ -80,10 +80,30 @@ void main() {
     );
     expect(store.snapshot.sortOrder, 'confidenceDescending');
   });
+
+  test('legacy dual track preference migrates to batch-all copy scope', () async {
+    final store = _MemorySettingsStore.withJson({
+      'copy_mode': 'dualTrack',
+      'xmp_strategy': '生成同名 XMP（推荐）',
+      'selected_storage_id': 'removable-e',
+    });
+    final controller = BirdSettingsController(store: store);
+    addTearDown(controller.dispose);
+
+    expect(controller.copyMode, BirdCopyMode.batchAllAssets);
+    expect(controller.reviewExportEnabled, isTrue);
+    // 旧全局默认目标盘直接丢弃，不映射到新设备（迁移对照文档 §5-E）。
+    expect(store.snapshot.batchTargetPreferences, isEmpty);
+  });
 }
 
 class _MemorySettingsStore implements SettingsStore {
-  BirdSettingsSnapshot snapshot = const BirdSettingsSnapshot();
+  _MemorySettingsStore() : snapshot = const BirdSettingsSnapshot();
+
+  _MemorySettingsStore.withJson(Map<String, dynamic> json)
+    : snapshot = BirdSettingsSnapshot.fromJson(json);
+
+  BirdSettingsSnapshot snapshot;
 
   @override
   BirdSettingsSnapshot read() => snapshot;

@@ -15,6 +15,9 @@ class CopyEntryDecision {
 
 /// Revalidates the album shortcut against the same box-authoritative project
 /// and running-job facts used by the task home before copy navigation.
+///
+/// 分析任务不阻止复制（迁移对照文档 §3.1）；只有另一个「目标写任务」
+/// （复制/备份）才会互斥。
 CopyEntryDecision resolveCurrentCopyEntry({
   required String displayedBatchId,
   required BatchSummary? currentProject,
@@ -31,11 +34,14 @@ CopyEntryDecision resolveCurrentCopyEntry({
     return const CopyEntryDecision.blocked('当前批次没有可复制的照片');
   }
 
-  final pipelineBusy = jobs.any(
-    (job) => _blocksNewWork(job) && (job.type == BirdJobType.import || job.type == BirdJobType.analysis || job.type == BirdJobType.copy) && _belongsToProject(job, currentId),
+  final targetWriteBusy = jobs.any(
+    (job) =>
+        _blocksNewWork(job) &&
+        job.type == BirdJobType.copy &&
+        _belongsToProject(job, currentId),
   );
-  if (pipelineBusy) {
-    return const CopyEntryDecision.blocked('当前批次已有任务正在执行');
+  if (targetWriteBusy) {
+    return const CopyEntryDecision.blocked('已有复制/备份任务正在使用目标设备');
   }
   return CopyEntryDecision.allowed(currentId);
 }

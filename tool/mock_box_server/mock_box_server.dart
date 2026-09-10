@@ -437,6 +437,19 @@ class MockBoxServer {
       await _createCopyJob(request, copyCreate.group(1)!);
       return;
     }
+    // birdbox-copy-v1 endpoints (拍鸟盒子_复制全量备份与多存储设备三端协议).
+    if (method == 'GET' && path == '/api/v1/storage/devices') {
+      await _serveStorageDevices(request);
+      return;
+    }
+    if (method == 'POST' && path == '/api/v1/copy-jobs/preview') {
+      await _serveCopyJobPreview(request);
+      return;
+    }
+    if (method == 'POST' && path == '/api/v1/copy-jobs') {
+      await _createCopyV1Job(request);
+      return;
+    }
 
     final importJob = RegExp(r'^/api/v1/projects/([^/]+)/imports$').firstMatch(path);
     if (method == 'POST' && importJob != null) {
@@ -640,6 +653,164 @@ class MockBoxServer {
     await _json(request, HttpStatus.accepted, job);
     await _emitJob(job);
   }
+
+  Future<void> _serveStorageDevices(HttpRequest request) async {
+    await _json(request, HttpStatus.ok, {
+      'devices': [
+        {
+          'media_id': 'media_2d6dee77bb5ecc73e3d34787',
+          'display_name': '相机卡（读卡器）',
+          'kind': 'card_reader',
+          'kind_confidence': 'high',
+          'detail': '双逻辑槽位读卡器 · 119.2 GB · EXFAT',
+          'capacity_bytes': 128000000000,
+          'free_bytes': 96400000000,
+          'filesystem': 'exfat',
+          'label': '',
+          'role_state': 'available',
+          'can_be_source': true,
+          'can_be_target': false,
+          'target_block_reasons': ['当前任务源设备'],
+          'identity_confidence': 'stable_uuid',
+          'last_seen_at': _clock().toIso8601String(),
+        },
+        {
+          'media_id': 'media_7f9a76e6c97690b61aedf6fd',
+          'display_name': 'U 盘 Ee',
+          'kind': 'usb_flash',
+          'kind_confidence': 'medium',
+          'detail': 'SanDisk Ultra USB 3.0 · 28.7 GB · EXFAT',
+          'capacity_bytes': 30765203456,
+          'free_bytes': 30500000000,
+          'filesystem': 'exfat',
+          'label': 'Ee',
+          'role_state': 'available',
+          'can_be_source': false,
+          'can_be_target': true,
+          'target_block_reasons': <String>[],
+          'identity_confidence': 'stable_uuid',
+          'last_seen_at': _clock().toIso8601String(),
+        },
+      ],
+    });
+  }
+
+  Future<void> _serveCopyJobPreview(HttpRequest request) async {
+    final body = await _requestJson(request);
+    final scope = body['scope']?.toString();
+    if (!const {
+      'selected_assets',
+      'kept_assets',
+      'batch_all_assets',
+      'media_full_backup',
+    }.contains(scope)) {
+      await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_SCOPE_INVALID');
+      return;
+    }
+    if (body['conflict_strategy'] == null) {
+      await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_CONFLICT_STRATEGY_REQUIRED');
+      return;
+    }
+    final logical = switch (scope) {
+      'kept_assets' => 34,
+      'batch_all_assets' => 120,
+      'media_full_backup' => 148,
+      _ => (body['selection_id']?.toString().length ?? 4) % 9 + 2,
+    };
+    final files = scope == 'media_full_backup' ? logical * 2 : logical * 2 - 1;
+    await _json(request, HttpStatus.ok, {
+      'preview_token': 'preview_mock_${_clock().millisecondsSinceEpoch}',
+      'expires_at': _clock().add(const Duration(minutes: 15)).toIso8601String(),
+      'source': _mockCameraDevice(),
+      'target': _mockUsbDevice(),
+      'logical_photo_count': logical,
+      'actual_file_count': files,
+      'total_bytes': files * 24 * 1024 * 1024,
+      'raw_count': logical,
+      'jpeg_count': logical - 1,
+      'video_count': scope == 'media_full_backup' ? 6 : 0,
+      'companion_count': scope == 'media_full_backup' ? 14 : 2,
+      'estimated_date_directories': 2,
+      'conflict_count': 3,
+      'target_free_bytes': 30500000000,
+      'safety_reserve_bytes': 1538260172,
+      'unsupported_count': scope == 'media_full_backup' ? 3 : 0,
+      'missing_count': 1,
+    });
+  }
+
+  Future<void> _createCopyV1Job(HttpRequest request) async {
+    final body = await _requestJson(request);
+    if (body['conflict_strategy'] == null) {
+      await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_CONFLICT_STRATEGY_REQUIRED');
+      return;
+    }
+    if (body['preview_token'] == null || body['scope'] == null) {
+      await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_PREVIEW_EXPIRED');
+      return;
+    }
+    final projectId = body['batch_id']?.toString();
+    final job = _newJob(
+      'copy',
+      projectId,
+      workflowStage: 'copying',
+    );
+    await _json(request, HttpStatus.accepted, {
+      'copy_job_id': job['job_id'],
+      'state': job['job_state'],
+      'event_seq': 0,
+      'created_at': job['created_at'],
+    });
+    await _emitJob(job);
+  }
+
+  Map<String, dynamic> _mockCameraDevice() => {
+    'media_id': 'media_2d6dee77bb5ecc73e3d34787',
+    'display_name': '相机卡（读卡器）',
+    'kind': 'card_reader',
+    'kind_confidence': 'high',
+    'detail': '双逻辑槽位读卡器 · 119.2 GB · EXFAT',
+    'capacity_bytes': 128000000000,
+    'free_bytes': 96400000000,
+    'filesystem': 'exfat',
+    'label': '',
+    'role_state': 'available',
+    'can_be_source': true,
+    'can_be_target': false,
+    'target_block_reasons': ['当前任务源设备'],
+    'identity_confidence': 'stable_uuid',
+  };
+
+  Map<String, dynamic> _mockUsbDevice() => {
+    'media_id': 'media_7f9a76e6c97690b61aedf6fd',
+    'display_name': 'U 盘 Ee',
+    'kind': 'usb_flash',
+    'kind_confidence': 'medium',
+    'detail': 'SanDisk Ultra USB 3.0 · 28.7 GB · EXFAT',
+    'capacity_bytes': 30765203456,
+    'free_bytes': 30500000000,
+    'filesystem': 'exfat',
+    'label': 'Ee',
+    'role_state': 'available',
+    'can_be_source': false,
+    'can_be_target': true,
+    'target_block_reasons': <String>[],
+    'identity_confidence': 'stable_uuid',
+  };
+
+  Future<void> _copyV1Error(
+    HttpRequest request,
+    int status,
+    String code,
+  ) => _json(
+    request,
+    status,
+    {
+      'error_code': code,
+      'error_message': 'The copy request does not match birdbox-copy-v1.',
+    },
+    envelope: false,
+  );
 
   Future<void> _createProject(HttpRequest request) async {
     final body = await _requestJson(request);

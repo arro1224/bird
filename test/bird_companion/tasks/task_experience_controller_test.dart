@@ -27,7 +27,7 @@ void main() {
       );
       expect(
         controller.tasks.map((task) => task.type.label),
-        ['导入/索引', 'AI分析', '复制', '同步'],
+        ['导入/索引', 'AI分析', '复制照片', '同步'],
       );
       expect(
         controller.tasks.map((task) => task.state),

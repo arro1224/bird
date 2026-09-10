@@ -96,6 +96,7 @@ class _DetailApiClient extends ApiClient {
     String path, {
     Object? data,
     String? idempotencyKey,
+    Map<String, String>? headers,
   }) async {
     postCalls++;
     return const {

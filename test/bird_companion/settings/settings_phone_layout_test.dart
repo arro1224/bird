@@ -41,7 +41,7 @@ void main() {
       tester,
       CopyBackupSettingsPage(controller: controller),
     );
-    _expectInFirstScreen(tester, find.byKey(const Key('copy-save')));
+    _expectInFirstScreen(tester, find.text('默认复制范围'));
   });
 
   testWidgets('approved support page endings are visible on first phone screen', (

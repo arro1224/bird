@@ -12,19 +12,19 @@ void main() {
 
     expect(controller.gridColumns, 4);
     expect(controller.sortOrder, BirdPhotoSortOrder.newest);
-    expect(controller.copyMode, BirdCopyMode.keptOnly);
-    expect(controller.selectedStorageId, 'removable-e');
+    expect(controller.copyMode, BirdCopyMode.keptAssets);
+    expect(controller.reviewExportEnabled, isTrue);
 
     controller
       ..setGridColumns(5)
       ..setSortOrder(BirdPhotoSortOrder.recommendedFirst)
-      ..setCopyMode(BirdCopyMode.dualTrack)
-      ..setStorageTarget('local');
+      ..setCopyMode(BirdCopyMode.batchAllAssets)
+      ..setReviewExportEnabled(false);
 
     expect(controller.gridColumns, 5);
     expect(controller.sortOrder, BirdPhotoSortOrder.recommendedFirst);
-    expect(controller.copyMode, BirdCopyMode.dualTrack);
-    expect(controller.selectedStorageId, 'local');
+    expect(controller.copyMode, BirdCopyMode.batchAllAssets);
+    expect(controller.reviewExportEnabled, isFalse);
   });
 
   test('default photo sorts match the gallery sort protocol', () {

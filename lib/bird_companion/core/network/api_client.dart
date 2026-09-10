@@ -125,11 +125,21 @@ class ApiClient {
     reportAuthenticationFailure: false,
   );
 
-  Future<Map<String, dynamic>> post(String path, {Object? data, String? idempotencyKey}) => _request(
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? data,
+    String? idempotencyKey,
+    Map<String, String>? headers,
+  }) => _request(
     () => _dio.post<Map<String, dynamic>>(
       path,
       data: data,
-      options: Options(headers: {'X-Idempotency-Key': idempotencyKey ?? _newRequestId()}),
+      options: Options(
+        headers: {
+          'X-Idempotency-Key': idempotencyKey ?? _newRequestId(),
+          ...?headers,
+        },
+      ),
     ),
   );
 

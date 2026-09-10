@@ -1,12 +1,13 @@
 enum TaskRunState { queued, running, paused, failed, completed, cancelled }
 
-enum TaskType { importIndex, aiAnalysis, copy, sync }
+enum TaskType { importIndex, aiAnalysis, copy, fullBackup, sync }
 
 extension TaskTypeLabel on TaskType {
   String get label => switch (this) {
     TaskType.importIndex => '导入/索引',
     TaskType.aiAnalysis => 'AI分析',
-    TaskType.copy => '复制',
+    TaskType.copy => '复制照片',
+    TaskType.fullBackup => '全量备份',
     TaskType.sync => '同步',
   };
 }

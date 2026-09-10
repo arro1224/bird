@@ -34,6 +34,7 @@ class _RecordingApiClient extends ApiClient {
     String value, {
     Object? data,
     String? idempotencyKey,
+    Map<String, String>? headers,
   }) async {
     path = value;
     payload = data;

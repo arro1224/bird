@@ -176,7 +176,7 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
                         ),
                         _HomeItem(
                           key: const Key('showcase-storage-target'),
-                          title: '默认目标位置',
+                          title: '存储设备',
                           icon: Icons.storage_rounded,
                           onTap: () => _open(_SettingsPage.storageTarget),
                         ),

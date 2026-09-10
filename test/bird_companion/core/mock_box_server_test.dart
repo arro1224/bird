@@ -9,6 +9,7 @@ import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/features/batches/data/batch_api.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/gallery/data/photo_api.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/review/data/review_api.dart';
@@ -212,46 +213,59 @@ void main() {
     expect(updated.photo.summary.keepState, 'featured');
   });
 
-  test('复制估算、完整创建请求、任务进度和权威报告形成闭环', () async {
+  test('copy-v1 设备、预检、创建、任务进度和权威报告形成闭环', () async {
     final copyApi = CopyApi(client);
     final jobApi = JobApi(client);
-    final estimate = await copyApi.estimate('mock-batch-current', 'keep');
+    final devices = await copyApi.devices();
 
-    expect(estimate.targets, isNotEmpty);
-    expect(estimate.targets.first.online, isTrue);
-    expect(estimate.version, 0);
+    expect(devices, isNotEmpty);
+    final source = devices.firstWhere((device) => device.canBeSource);
+    final target = devices.firstWhere((device) => device.canBeTarget);
+    expect(target.mediaId, isNotEmpty);
+    expect(target.presentationName, 'U 盘 Ee');
 
-    final job = await copyApi.create(
-      'mock-batch-current',
-      'keep',
-      estimate.targets.first.id,
-      xmpEnabled: true,
-      verifyAfterCopy: true,
-      version: estimate.version,
+    final draft = CopyRequestDraft(
+      batchId: 'mock-batch-current',
+      scope: CopyScope.keptAssets,
+      sourceMediaId: source.mediaId,
+      targetMediaId: target.mediaId,
+      conflictStrategy: ConflictStrategy.skip,
+      reviewExport: const ReviewExportConfig(
+        enabled: true,
+        writeXmp: true,
+        writeCsv: true,
+        embedIntoSupportedCopy: true,
+      ),
     );
-    expect(job.sourceProjectId, 'mock-batch-current');
-    expect(job.type.name, 'copy');
+    final preview = await copyApi.preview(draft);
+    expect(preview.logicalPhotoCount, 34);
+    expect(preview.previewToken, isNotEmpty);
+    expect(preview.hasEnoughSpace, isTrue);
 
-    await server.completeJob(job.id);
-    final completed = await jobApi.detail(job.id);
-    final report = await jobApi.report(job.id);
+    final summary = await copyApi.createJob(draft, preview.previewToken);
+    expect(summary.copyJobId, startsWith('job-copy-'));
+    expect(summary.state, isNotEmpty);
+
+    await server.completeJob(summary.copyJobId);
+    final completed = await jobApi.detail(summary.copyJobId);
+    final report = await jobApi.report(summary.copyJobId);
     final events = EventClient();
     final detailCubit = JobDetailCubit(
       JobRepositoryImpl(jobApi),
       events,
-      job.id,
+      summary.copyJobId,
     );
     addTearDown(detailCubit.close);
     addTearDown(events.dispose);
     await detailCubit.load();
 
     expect(completed.state.name, 'completed');
-    expect(report.jobId, job.id);
+    expect(report.jobId, summary.copyJobId);
     expect(report.successCount, report.totalCount);
     expect(report.failedCount, 0);
-    expect(detailCubit.state.report?.jobId, job.id);
+    expect(detailCubit.state.report?.jobId, summary.copyJobId);
 
-    await server.failJob(job.id, failedCount: 1);
+    await server.failJob(summary.copyJobId, failedCount: 1);
     await detailCubit.load();
     expect(detailCubit.state.failures, hasLength(1));
     expect(
@@ -263,6 +277,23 @@ void main() {
     expect(detailCubit.state.job?.state.name, 'completed');
     expect(detailCubit.state.report?.skippedCount, 1);
     expect(detailCubit.state.failures, isEmpty);
+  });
+
+  test('copy-v1 缺失同名策略时拒绝预检', () async {
+    final copyApi = CopyApi(client);
+    final devices = await copyApi.devices();
+
+    final draft = CopyRequestDraft(
+      batchId: 'mock-batch-current',
+      scope: CopyScope.keptAssets,
+      sourceMediaId: devices.firstWhere((device) => device.canBeSource).mediaId,
+      targetMediaId: devices.firstWhere((device) => device.canBeTarget).mediaId,
+      reviewExport: const ReviewExportConfig.disabled(),
+    );
+    await expectLater(
+      copyApi.preview(draft),
+      throwsA(isA<ApiException>()),
+    );
   });
 
   test('日志导出会下载非空文件并保留本地路径', () async {

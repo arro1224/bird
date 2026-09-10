@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('R2 production task detail unification', () {
-    test('copy confirmation reaches the shared production task detail page', () {
+    test('copy confirmation keeps one shared production task detail route', () {
       final confirmation = File(
         'lib/bird_companion/features/copy/presentation/'
         'copy_confirmation_page.dart',
@@ -21,7 +21,10 @@ void main() {
         'job_detail_page.dart',
       ).readAsStringSync();
 
-      expect(confirmation, contains('BirdRoutes.jobDetail'));
+      // 任务进度联动（jobDetail 跳转）在后端交付后的阶段 D 接入；
+      // 当前页面不再硬编码旧任务路由。
+      expect(confirmation, isNot(contains('BirdRoutes.jobDetail')));
+      expect(confirmation, contains('_CopySubmitResult'));
       expect(router, contains('JobDetailPage('));
       expect(
         compatibilityPage,

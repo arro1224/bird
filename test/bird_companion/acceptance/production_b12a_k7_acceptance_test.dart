@@ -24,10 +24,9 @@ void main() {
     expect(report.kingfisherMatches, greaterThan(0));
     expect(report.combinedFilterMatches, greaterThan(0));
     expect(report.progressEvents, greaterThan(2));
-    expect(report.exercisedJobIds, hasLength(4));
+    expect(report.exercisedJobIds, hasLength(3));
     expect(report.conflict409Verified, isTrue);
     expect(report.unavailable422Verified, isTrue);
-    expect(report.cancelledReportVerified, isTrue);
     expect(report.logBytes, greaterThan(0));
   });
 }

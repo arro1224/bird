@@ -27,7 +27,7 @@ void main() {
       expect(decision.reason, '当前批次没有可复制的照片');
     });
 
-    test('blocks copy while the current project import is running', () {
+    test('allows copy while the current project import or analysis is running', () {
       final decision = resolveCurrentCopyEntry(
         displayedBatchId: 'project-new',
         currentProject: _batch('project-new', totalFiles: 60),
@@ -38,11 +38,36 @@ void main() {
             state: BirdJobState.running,
             sourceProjectId: 'project-new',
           ),
+          BirdJobStatus(
+            id: 'job-analysis-1',
+            type: BirdJobType.analysis,
+            state: BirdJobState.running,
+            sourceProjectId: 'project-new',
+          ),
+        ],
+      );
+
+      // 分析/导入不阻止复制（迁移对照文档 §3.1）。
+      expect(decision.enabled, isTrue);
+      expect(decision.batchId, 'project-new');
+    });
+
+    test('blocks copy while another target-write job is using the target device', () {
+      final decision = resolveCurrentCopyEntry(
+        displayedBatchId: 'project-new',
+        currentProject: _batch('project-new', totalFiles: 60),
+        jobs: const [
+          BirdJobStatus(
+            id: 'job-copy-1',
+            type: BirdJobType.copy,
+            state: BirdJobState.running,
+            sourceProjectId: 'project-new',
+          ),
         ],
       );
 
       expect(decision.enabled, isFalse);
-      expect(decision.reason, '当前批次已有任务正在执行');
+      expect(decision.reason, '已有复制/备份任务正在使用目标设备');
     });
 
     test('allows the authoritative idle project with photos', () {

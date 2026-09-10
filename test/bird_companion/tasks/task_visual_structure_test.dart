@@ -31,7 +31,7 @@ void main() {
     expect(find.text('任务列表'), findsOneWidget);
     expect(find.text('导入/索引'), findsWidgets);
     expect(find.text('AI分析'), findsWidgets);
-    expect(find.text('复制'), findsWidgets);
+    expect(find.text('复制照片'), findsWidgets);
     expect(find.text('同步'), findsWidgets);
     expect(find.text('2,384 / 3,672 张'), findsOneWidget);
     expect(find.text('65%'), findsWidgets);

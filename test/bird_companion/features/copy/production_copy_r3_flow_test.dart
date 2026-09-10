@@ -1,204 +1,172 @@
 import 'dart:io';
 
-import 'package:aves/bird_companion/core/models/job_models.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
-import 'package:aves/bird_companion/features/copy/presentation/copy_confirmation_cubit.dart';
-import 'package:aves/bird_companion/features/copy/presentation/copy_confirmation_page.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:aves/bird_companion/features/copy/presentation/copy_config_cubit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('R3 production copy flow', () {
-    testWidgets(
-      'step 2 and step 3 preserve one cubit state and submit a fresh version',
-      (tester) async {
-        tester.view.devicePixelRatio = 1;
-        tester.view.physicalSize = const Size(430, 980);
-        addTearDown(tester.view.resetDevicePixelRatio);
-        addTearDown(tester.view.resetPhysicalSize);
-
-        final repository = _CopyRepository();
-        final cubit = CopyConfirmationCubit(
-          repository,
-          'project-1',
-          null,
-          'keep',
-          'target-1',
-          true,
-          true,
-        );
-        addTearDown(cubit.close);
-        await cubit.load();
-        cubit.selectTarget('target-2');
-        await cubit.load('all');
-        String? submittedJobId;
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: BlocProvider.value(
-              value: cubit,
-              child: CopyConfirmationFlow(
-                batchId: 'project-1',
-                lowBatteryPercent: 12,
-                onSubmitted: (jobId) => submittedJobId = jobId,
-              ),
-            ),
-          ),
-        );
-
-        expect(find.byKey(const Key('copy-content-step')), findsOneWidget);
-        expect(find.text('步骤 2 / 3 · 选择复制内容'), findsOneWidget);
-        expect(find.text('预计使用：238.7 GB'), findsNWidgets(2));
-
-        await tester.tap(find.byKey(const Key('copy-xmp-toggle')));
-        await tester.pump();
-        expect(cubit.state.xmpEnabled, isFalse);
-
-        await tester.tap(find.byKey(const Key('copy-content-next')));
-        await tester.pumpAndSettle();
-
-        expect(
-          find.byKey(const Key('copy-final-confirmation-step')),
-          findsOneWidget,
-        );
-        expect(find.text('步骤 3 / 3 · 最后确认'), findsOneWidget);
-        expect(find.text('2,012 张'), findsOneWidget);
-        expect(find.text('238.7 GB'), findsOneWidget);
-        expect(find.text('未开启'), findsOneWidget);
-        expect(find.text('任务开始后由盒子计算'), findsOneWidget);
-        expect(find.text('开启'), findsOneWidget);
-        expect(find.byKey(const Key('copy-low-battery-warning')), findsOneWidget);
-
-        await tester.tap(find.byKey(const Key('copy-return-to-edit')));
-        await tester.pumpAndSettle();
-
-        expect(find.byKey(const Key('copy-content-step')), findsOneWidget);
-        expect(cubit.state.mode, 'all');
-        expect(cubit.state.targetId, 'target-2');
-        expect(cubit.state.xmpEnabled, isFalse);
-
-        await tester.tap(find.byKey(const Key('copy-content-next')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('copy-final-submit')));
-        await tester.pumpAndSettle();
-
-        expect(repository.estimateCalls, 3);
-        expect(repository.createdMode, 'all');
-        expect(repository.createdTargetId, 'target-2');
-        expect(repository.createdXmpEnabled, isFalse);
-        expect(repository.createdVerifyAfterCopy, isTrue);
-        expect(repository.createdVersion, 7);
-        expect(submittedJobId, 'job-copy-r3');
-      },
-    );
-
-    testWidgets('system back from final confirmation returns to editing', (
-      tester,
-    ) async {
+  group('R3 copy flow gating (birdbox-copy-v1)', () {
+    test('initialize preselects a source and the same-batch target preference', () async {
       final repository = _CopyRepository();
-      final cubit = CopyConfirmationCubit(repository, 'project-1');
+      final cubit = CopyConfigCubit(
+        repository,
+        batchId: 'batch-1',
+        scope: CopyScope.keptAssets,
+        preferredTargetMediaId: 'media_target_2',
+      );
       addTearDown(cubit.close);
-      await cubit.load();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: BlocProvider.value(
-            value: cubit,
-            child: const CopyConfirmationFlow(
-              batchId: 'project-1',
-              onSubmitted: _ignoreSubmitted,
-            ),
-          ),
-        ),
-      );
+      await cubit.initialize();
 
-      await tester.tap(find.byKey(const Key('copy-content-next')));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('copy-final-confirmation-step')),
-        findsOneWidget,
-      );
-
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('copy-content-step')), findsOneWidget);
+      expect(cubit.state.sourceMediaId, 'media_source_1');
+      expect(cubit.state.targetMediaId, 'media_target_2');
+      expect(cubit.state.loadingDevices, isFalse);
     });
 
-    testWidgets('an unavailable target keeps final submission disabled', (
-      tester,
-    ) async {
-      const unavailable = CopyConfirmationState(
-        mode: 'all',
-        targetId: 'offline',
-        estimate: CopyEstimate(
-          mode: 'all',
-          fileCount: 100,
-          requiredBytes: 10 * 1024 * 1024,
-          pendingCount: 0,
-          version: 3,
-          targets: [
-            StorageTarget(
-              id: 'offline',
-              name: 'USB',
-              freeBytes: 100 * 1024 * 1024,
-              totalBytes: 200 * 1024 * 1024,
-              online: false,
-            ),
-          ],
-        ),
-      );
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CopyFinalConfirmationStep(
-            state: unavailable,
-            onBack: () {},
-            onSubmit: () {},
-          ),
-        ),
-      );
-
-      final submit = tester.widget<FilledButton>(
-        find.byKey(const Key('copy-final-submit')),
-      );
-      expect(submit.onPressed, isNull);
-      expect(find.textContaining('空间不足或已断开'), findsOneWidget);
-    });
-
-    testWidgets('both production steps fit a 360 by 800 viewport', (
-      tester,
-    ) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(360, 800);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      addTearDown(tester.view.resetPhysicalSize);
+    test('offline preferred target is not auto-replaced by another disk', () async {
       final repository = _CopyRepository();
-      final cubit = CopyConfirmationCubit(repository, 'project-1');
+      final cubit = CopyConfigCubit(
+        repository,
+        batchId: 'batch-1',
+        scope: CopyScope.keptAssets,
+        preferredTargetMediaId: 'media_target_offline',
+      );
       addTearDown(cubit.close);
-      await cubit.load();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: BlocProvider.value(
-            value: cubit,
-            child: const CopyConfirmationFlow(
-              batchId: 'project-1',
-              onSubmitted: _ignoreSubmitted,
-            ),
-          ),
-        ),
-      );
+      await cubit.initialize();
 
-      expect(tester.takeException(), isNull);
-      await tester.tap(find.byKey(const Key('copy-content-next')));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      expect(
-        find.byKey(const Key('copy-final-confirmation-step')),
-        findsOneWidget,
-      );
+      expect(cubit.state.targetMediaId, isNull);
+      expect(cubit.state.preferredTargetMediaId, 'media_target_offline');
     });
 
-    test('production page uses two steps and replacement navigation', () {
+    test('the same device cannot be source and target at once', () async {
+      final repository = _CopyRepository();
+      final cubit = CopyConfigCubit(
+        repository,
+        batchId: 'batch-1',
+        scope: CopyScope.keptAssets,
+      );
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      // 只能作源的设备不能选为目标。
+      cubit.selectTarget('media_source_1');
+      expect(cubit.state.targetMediaId, isNull);
+
+      // 先选为目标，再选为源：最后选的角色生效，目标被清除。
+      cubit.selectTarget('media_target_2');
+      expect(cubit.state.targetMediaId, 'media_target_2');
+      cubit.selectSource('media_target_2');
+      expect(cubit.state.sourceMediaId, 'media_target_2');
+      expect(cubit.state.targetMediaId, isNull);
+
+      // 反过来：先选为源，再选为目标，源被清除。
+      cubit.selectSource('media_target_2');
+      expect(cubit.state.sourceMediaId, 'media_target_2');
+      cubit.selectTarget('media_target_2');
+      expect(cubit.state.sourceMediaId, isNull);
+      expect(cubit.state.targetMediaId, 'media_target_2');
+    });
+
+    test('preview stays blocked until the conflict strategy is chosen', () async {
+      final repository = _CopyRepository();
+      final cubit = CopyConfigCubit(
+        repository,
+        batchId: 'batch-1',
+        scope: CopyScope.keptAssets,
+      );
+      addTearDown(cubit.close);
+      await cubit.initialize();
+      cubit.selectTarget('media_target_1');
+
+      expect(cubit.state.canFetchPreview, isFalse);
+      expect(cubit.state.submissionBlockReason, '请选择同名文件处理策略');
+
+      cubit.setConflictStrategy(ConflictStrategy.skip);
+      expect(cubit.state.canFetchPreview, isTrue);
+      expect(cubit.state.submissionBlockReason, '请先获取预检');
+
+      final ok = await cubit.fetchPreview();
+      expect(ok, isTrue);
+      expect(cubit.state.preview, isNotNull);
+    });
+
+    test('submit never creates a job without an explicit conflict strategy', () async {
+      final repository = _CopyRepository();
+      final cubit = CopyConfigCubit(
+        repository,
+        batchId: 'batch-1',
+        scope: CopyScope.keptAssets,
+      );
+      addTearDown(cubit.close);
+      await cubit.initialize();
+      cubit.selectTarget('media_target_1');
+      await cubit.fetchPreview();
+
+      final submitted = await cubit.submit();
+      expect(submitted, isFalse);
+      expect(repository.createCalls, 0);
+      expect(cubit.state.submitted, isFalse);
+    });
+
+    test('submit re-runs the preview and creates the job with the fresh token', () async {
+      final repository = _CopyRepository();
+      final cubit = CopyConfigCubit(
+        repository,
+        batchId: 'batch-1',
+        scope: CopyScope.keptAssets,
+      );
+      addTearDown(cubit.close);
+      await cubit.initialize();
+      cubit.selectTarget('media_target_1');
+      cubit.setConflictStrategy(ConflictStrategy.keepBoth);
+      await cubit.fetchPreview();
+
+      final submitted = await cubit.submit();
+      expect(submitted, isTrue);
+      expect(repository.previewCalls, 2);
+      expect(repository.createCalls, 1);
+      expect(repository.createdDraft?.conflictStrategy, ConflictStrategy.keepBoth);
+      expect(repository.createdDraft?.targetMediaId, 'media_target_1');
+      expect(cubit.state.submitted, isTrue);
+      expect(cubit.state.createdJob?.copyJobId, 'copy_job_r3');
+    });
+
+    test('a double submit creates only one job', () async {
+      final repository = _CopyRepository();
+      final cubit = CopyConfigCubit(
+        repository,
+        batchId: 'batch-1',
+        scope: CopyScope.batchAllAssets,
+      );
+      addTearDown(cubit.close);
+      await cubit.initialize();
+      cubit.selectTarget('media_target_1');
+      cubit.setConflictStrategy(ConflictStrategy.overwrite);
+      await cubit.fetchPreview();
+
+      final first = cubit.submit();
+      final duplicate = cubit.submit();
+      await duplicate;
+      await first;
+      expect(repository.createCalls, 1);
+    });
+
+    test('full backup scope requires no batch id', () async {
+      final repository = _CopyRepository();
+      final cubit = CopyConfigCubit(
+        repository,
+        batchId: null,
+        scope: CopyScope.mediaFullBackup,
+      );
+      addTearDown(cubit.close);
+      await cubit.initialize();
+
+      expect(cubit.state.fullBackup, isTrue);
+      expect(cubit.state.sourceMediaId, 'media_source_1');
+      expect(cubit.state.batchId, isNull);
+    });
+
+    test('production page keeps the two-step flow and protocol gating', () {
       final source = File(
         'lib/bird_companion/features/copy/presentation/'
         'copy_confirmation_page.dart',
@@ -206,70 +174,144 @@ void main() {
 
       expect(source, contains('CopyContentStep('));
       expect(source, contains('CopyFinalConfirmationStep('));
-      expect(source, contains('pushReplacementNamed('));
-      expect(source, contains('context.read<CopyConfirmationCubit>().submit'));
+      expect(source, contains('conflictStrategy'));
+      expect(source, contains('fetchPreview'));
       expect(source, isNot(contains('CopyConfirmDialog(')));
-      expect(source, contains('任务开始后由盒子计算'));
+      expect(source, isNot(contains('双轨')));
     });
   });
 }
 
-void _ignoreSubmitted(String _) {}
+const _sourceDevice = StorageDeviceSummary(
+  mediaId: 'media_source_1',
+  displayName: '相机卡',
+  kind: 'card_reader',
+  kindConfidence: 'high',
+  detail: '双槽读卡器 · 119.2 GB · EXFAT',
+  capacityBytes: 128000000000,
+  freeBytes: 96400000000,
+  filesystem: 'exfat',
+  label: '',
+  roleState: 'available',
+  canBeSource: true,
+  canBeTarget: false,
+  targetBlockReasons: ['当前任务源设备'],
+  identityConfidence: 'stable_uuid',
+);
+
+const _target1 = StorageDeviceSummary(
+  mediaId: 'media_target_1',
+  displayName: 'U 盘 Ee',
+  kind: 'usb_flash',
+  kindConfidence: 'medium',
+  detail: 'SanDisk · 28.7 GB · EXFAT',
+  capacityBytes: 30765203456,
+  freeBytes: 30500000000,
+  filesystem: 'exfat',
+  label: 'Ee',
+  roleState: 'available',
+  canBeSource: false,
+  canBeTarget: true,
+  targetBlockReasons: [],
+  identityConfidence: 'stable_uuid',
+);
+
+const _target2 = StorageDeviceSummary(
+  mediaId: 'media_target_2',
+  displayName: '移动固态硬盘',
+  kind: 'external_ssd',
+  kindConfidence: 'high',
+  detail: 'Samsung T7 · 2 TB · EXFAT',
+  capacityBytes: 2000000000000,
+  freeBytes: 1280000000000,
+  filesystem: 'exfat',
+  label: 'T7',
+  roleState: 'available',
+  canBeSource: true,
+  canBeTarget: true,
+  targetBlockReasons: [],
+  identityConfidence: 'stable_uuid',
+);
+
+const _offlineTarget = StorageDeviceSummary(
+  mediaId: 'media_target_offline',
+  displayName: 'USB 存储设备（类型未确认）',
+  kind: 'unknown',
+  kindConfidence: 'low',
+  detail: '无卷标 · 8 GB · FAT32',
+  capacityBytes: 8000000000,
+  freeBytes: 3000000000,
+  filesystem: 'fat32',
+  label: '',
+  roleState: 'removed',
+  canBeSource: false,
+  canBeTarget: false,
+  targetBlockReasons: ['设备已拔出或身份已变化'],
+  identityConfidence: 'degraded',
+);
 
 class _CopyRepository implements CopyRepository {
-  int estimateCalls = 0;
-  String? createdMode;
-  String? createdTargetId;
-  bool? createdXmpEnabled;
-  bool? createdVerifyAfterCopy;
-  int? createdVersion;
+  int previewCalls = 0;
+  int createCalls = 0;
+  CopyRequestDraft? createdDraft;
 
   @override
-  Future<CopyEstimate> estimate(String batchId, String mode) async {
-    estimateCalls += 1;
-    return CopyEstimate(
-      mode: mode,
-      fileCount: 2012,
-      requiredBytes: (238.7 * 1024 * 1024 * 1024).round(),
-      pendingCount: 12,
-      version: 7,
-      targets: const [
-        StorageTarget(
-          id: 'target-1',
-          name: 'Samsung T7 Shield',
-          freeBytes: 1200 * 1024 * 1024 * 1024,
-          totalBytes: 2000 * 1024 * 1024 * 1024,
-          online: true,
-        ),
-        StorageTarget(
-          id: 'target-2',
-          name: 'Backup SSD',
-          freeBytes: 900 * 1024 * 1024 * 1024,
-          totalBytes: 1000 * 1024 * 1024 * 1024,
-          online: true,
-        ),
-      ],
-    );
-  }
+  Future<List<StorageDeviceSummary>> devices() async =>
+      const [_sourceDevice, _target1, _target2, _offlineTarget];
 
   @override
-  Future<BirdJobStatus> create(
+  Future<CopySelectionSnapshot> createSelection(
     String batchId,
-    String mode,
-    String targetId, {
-    required bool xmpEnabled,
-    required bool verifyAfterCopy,
-    required int version,
-  }) async {
-    createdMode = mode;
-    createdTargetId = targetId;
-    createdXmpEnabled = xmpEnabled;
-    createdVerifyAfterCopy = verifyAfterCopy;
-    createdVersion = version;
-    return const BirdJobStatus(
-      id: 'job-copy-r3',
-      type: BirdJobType.copy,
-      state: BirdJobState.queued,
+    List<String> assetIds, {
+    required int clientRevision,
+  }) async => CopySelectionSnapshot(
+    selectionId: 'sel_mock_1',
+    assetCount: assetIds.length,
+  );
+
+  @override
+  Future<CopyPreview> preview(CopyRequestDraft draft) async {
+    previewCalls += 1;
+    final target = const [_target1, _target2, _offlineTarget]
+        .firstWhere((device) => device.mediaId == draft.targetMediaId);
+    return CopyPreview(
+      previewToken: 'preview_mock_$previewCalls',
+      expiresAt: DateTime.now().add(const Duration(minutes: 10)),
+      source: _sourceDevice,
+      target: target,
+      logicalPhotoCount: 34,
+      actualFileCount: 67,
+      totalBytes: 1024 * 1024 * 1024,
+      rawCount: 34,
+      jpegCount: 33,
+      videoCount: 0,
+      companionCount: 2,
+      estimatedDateDirectories: 2,
+      conflictCount: 3,
+      targetFreeBytes: target.freeBytes,
+      safetyReserveBytes: 1 << 30,
+      missingCount: 1,
     );
   }
+
+  @override
+  Future<CopyJobSummary> createJob(
+    CopyRequestDraft draft,
+    String previewToken,
+  ) async {
+    createCalls += 1;
+    createdDraft = draft;
+    return const CopyJobSummary(
+      copyJobId: 'copy_job_r3',
+      state: 'queued',
+      eventSeq: 0,
+    );
+  }
+
+  @override
+  Future<BatchTargetPreference?> lastSuccessfulTarget(String batchId) async =>
+      null;
+
+  @override
+  Future<void> setDeviceAlias(String mediaId, String alias) async {}
 }

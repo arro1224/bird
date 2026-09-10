@@ -12,6 +12,7 @@ class SelectionActionBar extends StatefulWidget {
     required this.onRemoveTags,
     required this.onClear,
     this.failedCount = 0,
+    this.onCopy,
   });
 
   final int count;
@@ -21,6 +22,9 @@ class SelectionActionBar extends StatefulWidget {
   final VoidCallback onRemoveTags;
   final VoidCallback onClear;
   final int failedCount;
+
+  /// 相册多选「复制所选」：创建不可变选择快照后进入复制配置页（§3.2）。
+  final VoidCallback? onCopy;
 
   @override
   State<SelectionActionBar> createState() => _SelectionActionBarState();
@@ -62,14 +66,20 @@ class _SelectionActionBarState extends State<SelectionActionBar> {
                     padding: EdgeInsets.zero,
                     primary: false,
                     physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
+                    crossAxisCount: 3,
                     mainAxisSpacing: AppSpacing.xs,
                     crossAxisSpacing: AppSpacing.xs,
-                    childAspectRatio: 3.4,
+                    childAspectRatio: 2.6,
                     children: [
                       _Action(icon: Icons.check_rounded, label: '确认保留', subtitle: '保留选中的照片', color: AppColors.keep, selected: _pendingAction == 'keep', onTap: widget.busy ? null : () => _choose('keep')),
                       _Action(icon: Icons.close_rounded, label: '确认弃选', subtitle: '排除选中的照片', color: AppColors.danger, selected: _pendingAction == 'discard', onTap: widget.busy ? null : () => _choose('discard')),
                       _Action(icon: Icons.new_label_outlined, label: '添加标签', subtitle: '批量添加或修改标签', onTap: widget.busy ? null : widget.onAddTags),
+                      _Action(
+                        icon: Icons.copy_all_outlined,
+                        label: '复制所选',
+                        subtitle: '复制选中的照片',
+                        onTap: widget.busy ? null : widget.onCopy,
+                      ),
                       _MoreAction(
                         busy: widget.busy,
                         onSelected: (value) {

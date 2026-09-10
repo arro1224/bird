@@ -1,8 +1,6 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
-import 'package:aves/bird_companion/features/settings/presentation/bird_settings_asset_catalog.dart';
 import 'package:aves/bird_companion/features/settings/presentation/bird_settings_controller.dart';
-import 'package:aves/bird_companion/features/settings/presentation/pages/storage_target_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_card.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_row.dart';
@@ -10,6 +8,10 @@ import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_sheet.dart';
 import 'package:flutter/material.dart';
 
+/// 复制与备份设置（迁移对照文档 §3.7）。
+///
+/// v1 正式模式固定强校验，不提供「完整性校验」开关；不再有跨批次全局默认
+/// 目标盘；XMP 策略合并为「随副本保存审阅信息」总开关 + 「支持时写入副本」。
 class CopyBackupSettingsPage extends StatelessWidget {
   const CopyBackupSettingsPage({super.key, required this.controller});
 
@@ -33,9 +35,9 @@ class CopyBackupSettingsPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('默认复制方式', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                Text('默认复制范围', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: AppSpacing.xxs),
-                const Text('复制任务的默认选项', style: TextStyle(color: AppColors.mutedInk)),
+                const Text('仅作为新任务的初始选项，最终确认页不可跳过', style: TextStyle(color: AppColors.mutedInk)),
                 const SizedBox(height: AppSpacing.md),
                 SegmentedButton<BirdCopyMode>(
                   showSelectedIcon: false,
@@ -47,42 +49,22 @@ class CopyBackupSettingsPage extends StatelessWidget {
                 const SizedBox(height: AppSpacing.md),
                 const Divider(height: 1),
                 BirdSettingsRow(
-                  title: 'XMP / 后期标记策略',
-                  subtitle: '保存审阅结果的 XMP 与标记',
+                  title: '随副本保存审阅信息',
+                  subtitle: '向目标盘输出 XMP 与审阅 CSV',
                   titleFontSize: 16,
-                  trailing: BirdSettingsDropdownFrame(
-                    width: 174,
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        isExpanded: true,
-                        value: controller.xmpStrategy,
-                        items: const [
-                          DropdownMenuItem(
-                            value: '生成同名 XMP（推荐）',
-                            child: Text('生成同名 XMP（推荐）', style: TextStyle(fontSize: 14)),
-                          ),
-                          DropdownMenuItem(
-                            value: '写入照片元数据',
-                            child: Text('写入照片元数据', style: TextStyle(fontSize: 14)),
-                          ),
-                          DropdownMenuItem(
-                            value: '不导出标记',
-                            child: Text('不导出标记', style: TextStyle(fontSize: 14)),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) controller.setXmpStrategy(value);
-                        },
-                      ),
-                    ),
-                  ),
+                  trailing: Switch(value: controller.reviewExportEnabled, onChanged: controller.setReviewExportEnabled),
                   minHeight: 60,
                 ),
                 BirdSettingsRow(
-                  title: '复制完成后校验文件完整性',
-                  subtitle: '校验复制的文件是否完整可读',
+                  title: '支持时写入副本',
+                  subtitle: '向 JPEG/HEIF/TIFF 副本嵌入标准字段；RAW 只写 sidecar，永不修改相机卡',
                   titleFontSize: 16,
-                  trailing: Switch(value: controller.verifyCopies, onChanged: controller.setVerifyCopies),
+                  trailing: Switch(
+                    value: controller.embedReviewMetadata,
+                    onChanged: controller.reviewExportEnabled
+                        ? controller.setEmbedReviewMetadata
+                        : null,
+                  ),
                   minHeight: 60,
                 ),
                 BirdSettingsRow(
@@ -102,7 +84,7 @@ class CopyBackupSettingsPage extends StatelessWidget {
                 BirdSettingsRow(
                   key: const Key('copy-naming-policy'),
                   title: '命名与目录规则',
-                  subtitle: '当前由盒子按原文件名和项目目录管理',
+                  subtitle: '目标盘按 BirdBox/年/月/日 保存原文件名',
                   titleFontSize: 16,
                   showDivider: false,
                   trailing: const Icon(
@@ -115,65 +97,25 @@ class CopyBackupSettingsPage extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: AppSpacing.xl),
-          const BirdSettingsSectionLabel('默认目标位置'),
-          BirdSettingsCard(
-            padding: EdgeInsets.zero,
-            child: InkWell(
-              key: const Key('copy-target'),
-              onTap: () => _openStorageTarget(context),
-              borderRadius: BorderRadius.circular(AppSpacing.radiusMedium),
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: Row(
-                  children: [
-                    const SizedBox.square(
-                      dimension: 52,
-                      child: Center(
-                        child: BirdSettingsAssetIcon(
-                          BirdSettingsAssetCatalog.storageHealthy,
-                          label: '存储目标',
-                          size: 36,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(_targetName(controller.selectedStorageId), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                          const SizedBox(height: AppSpacing.xxs),
-                          Text(_targetCapacity(controller.selectedStorageId), style: const TextStyle(color: AppColors.mutedInk)),
-                        ],
-                      ),
-                    ),
-                    const BirdChevron(),
-                  ],
+          const SizedBox(height: AppSpacing.lg),
+          const BirdSettingsCard(
+            child: Row(
+              children: [
+                Icon(Icons.verified_outlined, color: AppColors.forestPrimary),
+                SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'v1 复制正式模式固定开启文件校验，不提供关闭选项。目标设备选择在每次任务中单独确认。',
+                    style: TextStyle(color: AppColors.mutedInk, fontSize: 12.5, height: 1.5),
+                  ),
                 ),
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          BirdSettingsPrimaryButton(
-            key: const Key('copy-save'),
-            label: '保存备份设置',
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('备份设置已保存')),
+              ],
             ),
           ),
         ],
       ),
     ),
   );
-
-  Future<void> _openStorageTarget(BuildContext context) async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => StorageTargetPage(controller: controller),
-      ),
-    );
-  }
 
   Future<void> _showNamingPolicy(BuildContext context) => showBirdSettingsSheet<void>(
     context: context,
@@ -190,18 +132,18 @@ class CopyBackupSettingsPage extends StatelessWidget {
           Text('复制时不修改相机生成的文件名，避免与原始素材失去对应关系。', style: TextStyle(color: AppColors.mutedInk, height: 1.5)),
           SizedBox(height: AppSpacing.md),
           Text(
-            '按项目组织目录',
+            '固定目录规则',
             style: TextStyle(color: AppColors.forestDeep, fontSize: 17, fontWeight: FontWeight.w800),
           ),
           SizedBox(height: AppSpacing.xs),
-          Text('盒子会使用项目名称和日期建立目录，例如：\n崇明东滩_2025-07-16 / 原片', style: TextStyle(color: AppColors.mutedInk, height: 1.5)),
+          Text('目标盘写入 BirdBox/年/月/日/原始文件名，日期取自拍摄时间。', style: TextStyle(color: AppColors.mutedInk, height: 1.5)),
           SizedBox(height: AppSpacing.md),
           Text(
             '协议限制',
             style: TextStyle(color: AppColors.forestDeep, fontSize: 17, fontWeight: FontWeight.w800),
           ),
           SizedBox(height: AppSpacing.xs),
-          Text('BirdBox v1 暂不支持自定义重命名模板。', style: TextStyle(color: AppColors.mutedInk, height: 1.5)),
+          Text('BirdBox v1 不支持自定义重命名模板，不修改原扩展名大小写。', style: TextStyle(color: AppColors.mutedInk, height: 1.5)),
         ],
       ),
     ),
@@ -210,16 +152,4 @@ class CopyBackupSettingsPage extends StatelessWidget {
       onPressed: () => Navigator.pop(context),
     ),
   );
-
-  String _targetName(String id) => switch (id) {
-    't7' => 'Samsung T7 Shield',
-    'local' => '本机存储',
-    _ => '移动硬盘（E:）',
-  };
-
-  String _targetCapacity(String id) => switch (id) {
-    't7' => '剩余 1.20 TB / 共 2.00 TB',
-    'local' => '剩余 118 GB / 共 256 GB',
-    _ => '剩余 1.82 TB / 共 2.00 TB',
-  };
 }

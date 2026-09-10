@@ -19,6 +19,7 @@ import 'package:aves/bird_companion/features/batches/presentation/batch_list_cub
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_repository_impl.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/device/data/device_repository_impl.dart';
 import 'package:aves/bird_companion/features/device/data/device_status_api.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_api.dart';
@@ -404,28 +405,36 @@ void main() {
     await server.completeJob(analysis.id, emitEvent: false);
     await controller.refreshFromBox();
 
-    final estimate = await controller.copyRepository.estimate(
-      projectId,
-      'all',
+    final devices = await controller.copyRepository.devices();
+    final source = devices.firstWhere((device) => device.canBeSource);
+    final target = devices.firstWhere((device) => device.canBeTarget);
+    final draft = CopyRequestDraft(
+      batchId: projectId,
+      scope: CopyScope.batchAllAssets,
+      sourceMediaId: source.mediaId,
+      targetMediaId: target.mediaId,
+      conflictStrategy: ConflictStrategy.skip,
+      reviewExport: const ReviewExportConfig(
+        enabled: true,
+        writeXmp: true,
+        writeCsv: true,
+        embedIntoSupportedCopy: true,
+      ),
     );
-    final target = estimate.targets.firstWhere((item) => item.online);
-    final copy = await controller.copyRepository.create(
-      projectId,
-      'all',
-      target.id,
-      xmpEnabled: true,
-      verifyAfterCopy: true,
-      version: estimate.version,
+    final preview = await controller.copyRepository.preview(draft);
+    final copy = await controller.copyRepository.createJob(
+      draft,
+      preview.previewToken,
     );
     await controller.refreshFromBox();
 
     final navigation = controller.copyCompletedJobs.first;
-    await server.completeJob(copy.id, emitEvent: false);
+    await server.completeJob(copy.copyJobId, emitEvent: false);
     await controller.refreshFromBox();
 
     expect(
       await navigation.timeout(const Duration(seconds: 2)),
-      copy.id,
+      copy.copyJobId,
     );
   });
 

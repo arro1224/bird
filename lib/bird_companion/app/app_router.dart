@@ -41,6 +41,7 @@ abstract final class BirdRoutes {
   static const comparisonReview = '/comparison-review';
   static const photoDetail = '/photo-detail';
   static const copyConfirmation = '/copy-confirmation';
+  static const fullBackup = '/full-backup';
   static const jobDetail = '/job-detail';
   static const jobCenter = '/job-center';
   static const batches = '/batches';
@@ -146,7 +147,12 @@ abstract final class BirdAppRouter {
               );
       case BirdRoutes.copyConfirmation:
         final id = _copyBatchId(settings.arguments);
-        page = id == null ? _invalid('复制确认', '缺少拍摄记录') : CopyConfirmationPage(batchId: id);
+        page = id == null ? _invalid('复制确认', '缺少拍摄记录') : CopyConfirmationPage.fromArgs(args: settings.arguments);
+      case BirdRoutes.fullBackup:
+        page = const CopyConfirmationPage(
+          batchId: null,
+          initialScope: 'media_full_backup',
+        );
       case BirdRoutes.jobDetail:
         final args = settings.arguments;
         final id = _clean(

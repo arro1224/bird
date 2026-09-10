@@ -5,32 +5,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('saving backup settings stays on the copy settings page', (
+  testWidgets('copy settings changes persist immediately on the controller', (
     tester,
   ) async {
     final controller = BirdSettingsController();
     addTearDown(controller.dispose);
-    final observer = _RouteObserver();
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
-        navigatorObservers: [observer],
         home: CopyBackupSettingsPage(controller: controller),
       ),
     );
 
+    await tester.tap(find.text('复制全部'));
+    await tester.pump();
+    expect(controller.copyMode, BirdCopyMode.batchAllAssets);
+
     await tester.scrollUntilVisible(
-      find.byKey(const Key('copy-save')),
+      find.byKey(const Key('copy-naming-policy')),
       400,
       scrollable: find.byType(Scrollable).first,
     );
-    final pushesBeforeSave = observer.pushCount;
-    await tester.tap(find.byKey(const Key('copy-save')));
+    await tester.tap(find.byType(Switch).first);
     await tester.pump();
-
-    expect(observer.pushCount, pushesBeforeSave);
-    expect(find.byType(CopyBackupSettingsPage), findsOneWidget);
-    expect(find.text('备份设置已保存'), findsOneWidget);
+    expect(controller.reviewExportEnabled, isFalse);
   });
 
   testWidgets('copy settings use readable phone typography', (tester) async {
@@ -43,13 +41,15 @@ void main() {
       ),
     );
 
-    final xmpTitle = tester.widget<Text>(find.text('XMP / 后期标记策略'));
-    final xmpSubtitle = tester.widget<Text>(find.text('保存审阅结果的 XMP 与标记'));
-    expect(xmpTitle.style?.fontSize, greaterThanOrEqualTo(16));
-    expect(xmpSubtitle.style?.fontSize, greaterThanOrEqualTo(14));
+    final exportTitle = tester.widget<Text>(find.text('随副本保存审阅信息'));
+    final exportSubtitle = tester.widget<Text>(find.text('向目标盘输出 XMP 与审阅 CSV'));
+    expect(exportTitle.style?.fontSize, greaterThanOrEqualTo(16));
+    expect(exportSubtitle.style?.fontSize, greaterThanOrEqualTo(14));
   });
 
-  testWidgets('copy settings retain mode and selected storage target', (tester) async {
+  testWidgets('review export off disables the embed-into-copy switch', (
+    tester,
+  ) async {
     final controller = BirdSettingsController();
     addTearDown(controller.dispose);
     await tester.pumpWidget(
@@ -59,40 +59,15 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('双轨复制'));
-    await tester.pump();
-    expect(controller.copyMode, BirdCopyMode.dualTrack);
-
     await tester.scrollUntilVisible(
-      find.byKey(const Key('copy-target')),
+      find.byKey(const Key('copy-naming-policy')),
       400,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.byKey(const Key('copy-target')));
-    await tester.pumpAndSettle();
-    expect(find.text('选择目标位置'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('storage-local')));
+    await tester.tap(find.byType(Switch).first);
     await tester.pump();
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('storage-confirm')),
-      400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('设为默认目标位置'));
-    await tester.pumpAndSettle();
 
-    expect(controller.selectedStorageId, 'local');
-    expect(find.text('本机存储'), findsOneWidget);
+    final embed = tester.widget<Switch>(find.byType(Switch).at(1));
+    expect(embed.onChanged, isNull);
   });
-}
-
-class _RouteObserver extends NavigatorObserver {
-  int pushCount = 0;
-
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    pushCount += 1;
-    super.didPush(route, previousRoute);
-  }
 }

@@ -30,6 +30,7 @@ class _RecordingApiClient extends ApiClient {
     String path, {
     Object? data,
     String? idempotencyKey,
+    Map<String, String>? headers,
   }) async {
     this.path = path;
     this.data = data;

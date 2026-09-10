@@ -140,6 +140,9 @@ class _TaskTabNavigator extends StatelessWidget {
       case TaskType.copy:
         _openCopy(context);
         return;
+      case TaskType.fullBackup:
+        _openCopy(context);
+        return;
       case TaskType.sync:
         _openDetail(context, taskId: 'demo-sync-completed');
         return;
@@ -223,6 +226,12 @@ class _TaskTabNavigator extends StatelessWidget {
         );
         return;
       case TaskType.copy:
+        Navigator.of(context).pushAndRemoveUntil<void>(
+          _resultRoute(),
+          (route) => route.isFirst,
+        );
+        return;
+      case TaskType.fullBackup:
         Navigator.of(context).pushAndRemoveUntil<void>(
           _resultRoute(),
           (route) => route.isFirst,

@@ -120,7 +120,9 @@ void main() {
         scrollable: _pageScrollable(),
       );
       expect(tester.takeException(), isNull);
-      await tester.tap(failedTask);
+      // 1.5x 下最后一项可能只露出一部分；点击其可见区域而非中心点。
+      final visibleTap = tester.getTopLeft(failedTask) + const Offset(30, 20);
+      await tester.tapAt(visibleTap);
 
       expect(openedTaskId, 'demo-copy-failed');
     });
