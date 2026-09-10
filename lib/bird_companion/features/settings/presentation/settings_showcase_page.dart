@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/app_shell.dart';
+import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
+import 'package:aves/bird_companion/features/connection/presentation/connection_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/adapters/device_overview_adapter.dart';
 import 'package:aves/bird_companion/features/settings/presentation/bird_settings_controller.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/copy_backup_settings_page.dart';
@@ -40,14 +42,8 @@ class SettingsShowcasePage extends StatefulWidget {
     this.onOpenCurrentTask,
     this.settingsController,
   }) : assert(
-         (currentBatchTitle == null &&
-                 currentBatchSummary == null &&
-                 currentTaskTitle == null &&
-                 currentTaskSummary == null) ||
-             (currentBatchTitle != null &&
-                 currentBatchSummary != null &&
-                 currentTaskTitle != null &&
-                 currentTaskSummary != null),
+         (currentBatchTitle == null && currentBatchSummary == null && currentTaskTitle == null && currentTaskSummary == null) ||
+             (currentBatchTitle != null && currentBatchSummary != null && currentTaskTitle != null && currentTaskSummary != null),
          'Current batch and task summaries must be injected together.',
        );
 
@@ -68,8 +64,7 @@ class SettingsShowcasePage extends StatefulWidget {
 }
 
 class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
-  late final BirdSettingsController _controller =
-      widget.settingsController ?? BirdSettingsController();
+  late final BirdSettingsController _controller = widget.settingsController ?? BirdSettingsController();
   late final bool _ownsController = widget.settingsController == null;
   int _selectedNavigationIndex = 2;
 
@@ -120,11 +115,7 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
                       sectionKey: const Key('device-section-connection'),
                       title: '设备与连接',
                       items: [
-                        if (context
-                                .dependOnInheritedWidgetOfExactType<
-                                  BirdCompanionScope
-                                >() !=
-                            null)
+                        if (context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>() != null)
                           _HomeItem(
                             key: const Key('showcase-network-settings'),
                             title: '网络设置',
@@ -249,8 +240,7 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
   );
 
   Widget _buildDeviceCard(BuildContext context) {
-    final scope = context
-        .dependOnInheritedWidgetOfExactType<BirdCompanionScope>();
+    final scope = context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>();
     final dependencies = scope?.dependencies;
     final session = widget.deviceSession ?? dependencies?.deviceSessionCubit;
     final status = widget.deviceStatus;
@@ -294,8 +284,7 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
           taskTitle: widget.currentTaskTitle ?? '演示任务',
           taskSummary: widget.currentTaskSummary ?? 'AI 分析 · 65%',
           isDemo: isDemo,
-          onOpenBatch:
-              widget.onOpenCurrentBatch ?? () => _showMessage('演示批次详情'),
+          onOpenBatch: widget.onOpenCurrentBatch ?? () => _showMessage('演示批次详情'),
           onOpenTask: widget.onOpenCurrentTask ?? () => _showMessage('演示任务详情'),
         ),
       ],
@@ -406,14 +395,7 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
   }
 
   Widget _buildPage(BuildContext context, _SettingsPage page) => switch (page) {
-    _SettingsPage.deviceManagement => DeviceManagementPage(
-      controller: _controller,
-      onOpenDetails: () => Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => DeviceDetailsPage(controller: _controller),
-        ),
-      ),
-    ),
+    _SettingsPage.deviceManagement => _buildDeviceManagementPage(context),
     _SettingsPage.deviceDetails => DeviceDetailsPage(controller: _controller),
     _SettingsPage.display => DisplaySettingsPage(controller: _controller),
     _SettingsPage.photos => PhotoSettingsPage(controller: _controller),
@@ -421,13 +403,32 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     _SettingsPage.storageTarget => StorageTargetPage(controller: _controller),
     _SettingsPage.networkSettings => NetworkSettingsPage(
       repository: BirdCompanionScope.of(context).provisioningRepository,
-      onProvisioningCompleted:
-          BirdCompanionScope.of(context).completeProvisioning,
+      onProvisioningCompleted: BirdCompanionScope.of(context).completeProvisioning,
     ),
     _SettingsPage.networkDiagnostics => const NetworkDiagnosticsPage(),
     _SettingsPage.systemLogs => const SystemLogsPage(),
     _SettingsPage.help => const HelpCenterPage(),
   };
+
+  Widget _buildDeviceManagementPage(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>();
+    final dependencies = scope?.dependencies;
+    if (dependencies != null) {
+      return ConnectionPage(
+        entryMode: ConnectionEntryMode.addOrSwitch,
+        provisioningRepository: dependencies.provisioningRepository,
+        onProvisioningCompleted: dependencies.completeProvisioning,
+      );
+    }
+    return DeviceManagementPage(
+      controller: _controller,
+      onOpenDetails: () => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => DeviceDetailsPage(controller: _controller),
+        ),
+      ),
+    );
+  }
 }
 
 class _LiveDeviceCard extends StatelessWidget {
@@ -602,33 +603,29 @@ class SettingsDeviceCard extends StatelessWidget {
   bool get _isConnecting => overview.isBusy;
 
   VoidCallback get _primaryAction => switch (overview.primaryAction) {
-    DeviceOverviewPrimaryAction.reconnect => onReconnect,
+    DeviceOverviewPrimaryAction.connect || DeviceOverviewPrimaryAction.reconnect => onReconnect,
     DeviceOverviewPrimaryAction.details => onOpenDetails,
   };
 
   String get _primaryActionLabel => switch (overview.primaryAction) {
+    DeviceOverviewPrimaryAction.connect => '连接设备',
     DeviceOverviewPrimaryAction.reconnect => '重新连接',
     DeviceOverviewPrimaryAction.details => '设备详情',
   };
 
-  static IconData _statusIcon(DeviceOverviewConnectionKind kind) =>
-      switch (kind) {
-        DeviceOverviewConnectionKind.connected => Icons.wifi_rounded,
-        DeviceOverviewConnectionKind.connecting ||
-        DeviceOverviewConnectionKind.reconnecting => Icons.sync_rounded,
-        DeviceOverviewConnectionKind.incompatible =>
-          Icons.error_outline_rounded,
-        DeviceOverviewConnectionKind.disconnected => Icons.wifi_off_rounded,
-      };
+  static IconData _statusIcon(DeviceOverviewConnectionKind kind) => switch (kind) {
+    DeviceOverviewConnectionKind.connected => Icons.wifi_rounded,
+    DeviceOverviewConnectionKind.connecting || DeviceOverviewConnectionKind.reconnecting => Icons.sync_rounded,
+    DeviceOverviewConnectionKind.incompatible => Icons.error_outline_rounded,
+    DeviceOverviewConnectionKind.disconnected => Icons.wifi_off_rounded,
+  };
 
-  static Color _statusColor(DeviceOverviewConnectionKind kind) =>
-      switch (kind) {
-        DeviceOverviewConnectionKind.connected => AppColors.forestPrimary,
-        DeviceOverviewConnectionKind.connecting ||
-        DeviceOverviewConnectionKind.reconnecting => AppColors.warning,
-        DeviceOverviewConnectionKind.incompatible => AppColors.danger,
-        DeviceOverviewConnectionKind.disconnected => AppColors.mutedInk,
-      };
+  static Color _statusColor(DeviceOverviewConnectionKind kind) => switch (kind) {
+    DeviceOverviewConnectionKind.connected => AppColors.forestPrimary,
+    DeviceOverviewConnectionKind.connecting || DeviceOverviewConnectionKind.reconnecting => AppColors.warning,
+    DeviceOverviewConnectionKind.incompatible => AppColors.danger,
+    DeviceOverviewConnectionKind.disconnected => AppColors.mutedInk,
+  };
 }
 
 class _PageTitle extends StatelessWidget {

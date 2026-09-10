@@ -22,7 +22,7 @@ void main() {
               DeviceSessionPhase.disconnected,
               DeviceOverviewConnectionKind.disconnected,
               '未连接',
-              DeviceOverviewPrimaryAction.reconnect,
+              DeviceOverviewPrimaryAction.connect,
               false,
             ),
             (

@@ -96,6 +96,43 @@ final class BleFragmentCodec {
       payload: packet.sublist(BleProtocolConstants.fragmentHeaderLength),
     );
   }
+
+  /// Splits one characteristic read into its complete rc4 frames.
+  ///
+  /// Android BLE implementations may return several notifications/frames in
+  /// one read.  Each frame still carries its own 12-byte header, so decoding
+  /// the whole read as a single frame makes the first payload length appear
+  /// invalid.  Keep this parser strict: a read must contain one or more
+  /// complete frames and every frame is validated by [decode].
+  List<Uint8List> splitPackets(Uint8List bytes) {
+    if (bytes.isEmpty) {
+      _invalid('characteristic read returned no rc4 frames');
+    }
+
+    final packets = <Uint8List>[];
+    var offset = 0;
+    while (offset < bytes.length) {
+      final remaining = bytes.length - offset;
+      if (remaining < BleProtocolConstants.fragmentHeaderLength) {
+        _invalid('characteristic read ended in the middle of an rc4 header');
+      }
+      if (bytes[offset] != BleProtocolConstants.fragmentMagic[0] || bytes[offset + 1] != BleProtocolConstants.fragmentMagic[1]) {
+        _invalid('concatenated rc4 frame magic does not match');
+      }
+
+      final payloadLength = bytes[offset + 10] | (bytes[offset + 11] << 8);
+      final frameLength = BleProtocolConstants.fragmentHeaderLength + payloadLength;
+      if (frameLength > remaining) {
+        _invalid('characteristic read ended in the middle of an rc4 frame');
+      }
+
+      final packet = Uint8List.fromList(bytes.sublist(offset, offset + frameLength));
+      decode(packet);
+      packets.add(packet);
+      offset += frameLength;
+    }
+    return packets;
+  }
 }
 
 /// Reassembles interleaved and out-of-order rc4 messages.

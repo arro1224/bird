@@ -144,7 +144,7 @@ void main() {
 
     expect(find.text('未连接'), findsOneWidget);
     expect(find.text('未连接拍鸟盒子'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, '重新连接'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '连接设备'), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const Key('showcase-device-primary-action'))).height,
       greaterThanOrEqualTo(48),

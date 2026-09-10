@@ -34,6 +34,31 @@ void main() {
     expect(reassembler.pendingMessageCount, 0);
   });
 
+  test('splits two concatenated rc4 frames returned by one characteristic read', () {
+    final message = Uint8List.fromList(List<int>.filled(622, 7));
+    final frames = codec.fragment(message, messageId: 82, maximumFragmentBytes: 412);
+    final concatenated = Uint8List.fromList(<int>[...frames[0], ...frames[1]]);
+
+    expect(frames, hasLength(2));
+    expect(frames[0], hasLength(412));
+    expect(frames[1], hasLength(234));
+
+    final split = codec.splitPackets(concatenated);
+    expect(split, hasLength(2));
+    expect(split[0], frames[0]);
+    expect(split[1], frames[1]);
+
+    final reassembler = BleFragmentReassembler();
+    expect(reassembler.add(split[0]), isNull);
+    expect(reassembler.add(split[1]), message);
+  });
+
+  test('rejects an incomplete concatenated frame', () {
+    final frame = codec.fragment(Uint8List.fromList([1, 2, 3]), messageId: 1, maximumFragmentBytes: 20).single;
+
+    expect(() => codec.splitPackets(Uint8List.fromList(frame.sublist(0, frame.length - 1))), throwsA(_fragmentError));
+  });
+
   test('rejects conflicting duplicates, invalid indexes and inconsistent flags', () {
     final packets = codec.fragment(Uint8List.fromList(List<int>.filled(20, 1)), messageId: 9, maximumFragmentBytes: 20);
     final conflicting = Uint8List.fromList(packets.first)..[12] = 2;

@@ -145,9 +145,17 @@ void main() {
     addTearDown(dataSource.dispose);
     final advertisement = advertisementFromPlatform(_advertisement('device'));
     const fragments = BleFragmentCodec();
+    final deviceInfoFrames = fragments.fragment(
+      File('test/contracts/fixtures/ble-device-info.rc4.json').readAsBytesSync(),
+      messageId: 1,
+      maximumFragmentBytes: 412,
+    );
     platform.queueRead(
       BleProtocolConstants.deviceInfoCharacteristicUuid,
-      fragments.fragment(File('test/contracts/fixtures/ble-device-info.rc4.json').readAsBytesSync(), messageId: 1, maximumFragmentBytes: 52),
+      [
+        Uint8List.fromList(<int>[...deviceInfoFrames[0], ...deviceInfoFrames[1]]),
+        ...deviceInfoFrames.skip(2),
+      ],
     );
     platform.queueRead(
       BleProtocolConstants.networkStatusCharacteristicUuid,
@@ -294,6 +302,7 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
       ),
     );
   }
+
   void emitNotification(String characteristicUuid, Uint8List value) => _notifications.add({'characteristicUuid': characteristicUuid, 'value': value});
   void emitDisconnect() => _disconnects.add(const BleDisconnectEvent(reason: 'link_lost', gattStatus: 133, unexpected: true));
   void queueRead(String characteristicUuid, List<Uint8List> packets) => _reads[characteristicUuid] = List.of(packets);
@@ -312,6 +321,7 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   }) async {
     startedScanSessionId = scanSessionId;
   }
+
   @override
   Future<void> stopScan() async {}
   @override
