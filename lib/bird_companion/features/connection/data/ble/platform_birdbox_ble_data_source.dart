@@ -149,11 +149,11 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
     final diagnosticSuffix = scanErrorCode is int ? ' (Android scan error $scanErrorCode)' : '';
     return ProvisioningException(
       code: switch (error.code) {
-      'bluetooth_permission_denied' => ProvisioningErrorCode.bluetoothPermissionDenied,
-      'ble_link_not_encrypted' => ProvisioningErrorCode.authorizationRequired,
-      'invalid_request' || 'invalid_state' => ProvisioningErrorCode.invalidRequest,
-      'bluetooth_unavailable' => ProvisioningErrorCode.capabilityUnsupported,
-      _ => ProvisioningErrorCode.networkInternalError,
+        'bluetooth_permission_denied' => ProvisioningErrorCode.bluetoothPermissionDenied,
+        'ble_link_not_encrypted' => ProvisioningErrorCode.authorizationRequired,
+        'invalid_request' || 'invalid_state' => ProvisioningErrorCode.invalidRequest,
+        'bluetooth_unavailable' => ProvisioningErrorCode.capabilityUnsupported,
+        _ => ProvisioningErrorCode.networkInternalError,
       },
       retryable: error.code == 'gatt_busy' || error.code == 'gatt_operation_failed',
       diagnosticMessage: 'Android BLE platform error: ${error.code}$diagnosticSuffix',
@@ -354,9 +354,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       if (error.code == ProvisioningErrorCode.bluetoothPermissionDenied) {
         return BleScanEndReason.permissionDenied;
       }
-      if (error.code == ProvisioningErrorCode.capabilityUnsupported ||
-          diagnostic.environmentAfter.adapter == BleAdapterState.disabled ||
-          diagnostic.environmentAfter.adapter == BleAdapterState.unavailable) {
+      if (error.code == ProvisioningErrorCode.capabilityUnsupported || diagnostic.environmentAfter.adapter == BleAdapterState.disabled || diagnostic.environmentAfter.adapter == BleAdapterState.unavailable) {
         return BleScanEndReason.bluetoothUnavailable;
       }
     }
@@ -434,9 +432,11 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     _checkConnected();
     final reassembler = BleFragmentReassembler();
     for (var attempt = 0; attempt < BleProtocolConstants.maximumFragmentCount; attempt++) {
-      final packet = await _platform.readCharacteristic(characteristicUuid);
-      final message = reassembler.add(packet);
-      if (message != null) return message;
+      final rawRead = await _platform.readCharacteristic(characteristicUuid);
+      for (final packet in _fragmentCodec.splitPackets(rawRead)) {
+        final message = reassembler.add(packet);
+        if (message != null) return message;
+      }
     }
     reassembler.reset();
     throw const ProvisioningException(code: ProvisioningErrorCode.bleFragmentInvalid, retryable: false, diagnosticMessage: 'Characteristic read ended before all fragments arrived');

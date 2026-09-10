@@ -3,7 +3,7 @@ import 'package:aves/bird_companion/core/session/device_session.dart';
 
 enum DeviceOverviewConnectionKind { disconnected, connecting, reconnecting, connected, incompatible }
 
-enum DeviceOverviewPrimaryAction { reconnect, details }
+enum DeviceOverviewPrimaryAction { connect, reconnect, details }
 
 class DeviceOverviewViewModel {
   const DeviceOverviewViewModel({
@@ -52,7 +52,11 @@ abstract final class DeviceOverviewAdapter {
         DeviceOverviewConnectionKind.disconnected => '未连接',
       },
       metricsLabel: '$batteryText · $storageText 可用',
-      primaryAction: connectionKind == DeviceOverviewConnectionKind.connected ? DeviceOverviewPrimaryAction.details : DeviceOverviewPrimaryAction.reconnect,
+      primaryAction: connectionKind == DeviceOverviewConnectionKind.connected
+          ? DeviceOverviewPrimaryAction.details
+          : session.phase == DeviceSessionPhase.disconnected && session.device == null
+          ? DeviceOverviewPrimaryAction.connect
+          : DeviceOverviewPrimaryAction.reconnect,
     );
   }
 
