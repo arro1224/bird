@@ -329,6 +329,7 @@ class TaskDetailPage extends StatelessWidget {
     TaskType.copy => '查看复制结果',
     TaskType.sync => '查看同步摘要',
     TaskType.importIndex || TaskType.aiAnalysis => '查看任务结果',
+    TaskType.fullBackup => '查看备份结果',
   };
 
   Widget _actionButton(String label, VoidCallback? onPressed, {bool filled = true}) => SizedBox(

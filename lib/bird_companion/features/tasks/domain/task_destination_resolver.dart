@@ -29,7 +29,7 @@ abstract final class TaskDestinationResolver {
       TaskType.copy => const TaskDestination.copyResult(),
       // The current App has no persisted per-item SyncResult keyed by job ID.
       // Keep the main destination on authoritative task detail until it does.
-      TaskType.sync => const TaskDestination.detail(),
+      TaskType.fullBackup || TaskType.sync => const TaskDestination.detail(),
     };
   }
 
