@@ -14,6 +14,8 @@ class BatchSummary extends Equatable {
     required this.discardCount,
     required this.pendingCopyCount,
     required this.copyState,
+    this.state,
+    this.activeJobId,
     this.sceneCount = 0,
     this.burstGroupCount = 0,
     this.cover,
@@ -30,6 +32,8 @@ class BatchSummary extends Equatable {
   final int discardCount;
   final int pendingCopyCount;
   final String copyState;
+  final String? state;
+  final String? activeJobId;
   final int sceneCount;
   final int burstGroupCount;
   final PreviewRef? cover;
@@ -59,6 +63,8 @@ class BatchSummary extends Equatable {
       'pending_copy_count',
     ),
     copyState: json['copy_state']?.toString() ?? 'unknown',
+    state: _optionalString(json['state']),
+    activeJobId: _optionalString(json['active_job_id']),
     sceneCount: (json['scene_count'] as num?)?.toInt() ?? 0,
     burstGroupCount: (json['burst_group_count'] as num?)?.toInt() ?? 0,
     cover: json['cover'] is Map ? PreviewRef.fromJson(Map<String, dynamic>.from(json['cover'] as Map)) : null,
@@ -77,6 +83,8 @@ class BatchSummary extends Equatable {
     'discard_count': discardCount,
     'pending_copy_count': pendingCopyCount,
     'copy_state': copyState,
+    if (state != null) 'state': state,
+    if (activeJobId != null) 'active_job_id': activeJobId,
     'scene_count': sceneCount,
     'burst_group_count': burstGroupCount,
     if (cover != null) 'cover': cover!.toJson(),
@@ -86,6 +94,8 @@ class BatchSummary extends Equatable {
     int? reviewCount,
     int? keepCount,
     int? discardCount,
+    String? state,
+    String? activeJobId,
   }) => BatchSummary(
     id: id,
     name: name,
@@ -97,11 +107,18 @@ class BatchSummary extends Equatable {
     discardCount: discardCount ?? this.discardCount,
     pendingCopyCount: pendingCopyCount,
     copyState: copyState,
+    state: state ?? this.state,
+    activeJobId: activeJobId ?? this.activeJobId,
     sceneCount: sceneCount,
     burstGroupCount: burstGroupCount,
     cover: cover,
   );
 
   @override
-  List<Object?> get props => [id, name, createdAt, totalFiles, analyzedCount, reviewCount, keepCount, discardCount, pendingCopyCount, copyState, sceneCount, burstGroupCount, cover];
+  List<Object?> get props => [id, name, createdAt, totalFiles, analyzedCount, reviewCount, keepCount, discardCount, pendingCopyCount, copyState, state, activeJobId, sceneCount, burstGroupCount, cover];
+}
+
+String? _optionalString(Object? value) {
+  final normalized = value?.toString().trim();
+  return normalized == null || normalized.isEmpty ? null : normalized;
 }

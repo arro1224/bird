@@ -4,7 +4,10 @@ import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dar
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/models/batch_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
+import 'package:aves/bird_companion/features/batches/domain/batch_history_filter.dart';
+import 'package:aves/bird_companion/features/batches/domain/batch_page.dart';
 import 'package:aves/bird_companion/features/batches/domain/batch_repository.dart';
+import 'package:aves/bird_companion/features/gallery/domain/review_count_reducer.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class BatchListState {
@@ -28,13 +31,14 @@ class BatchListState {
     bool clearResume = false,
     bool clearCurrent = false,
     bool clearFilter = false,
+    bool clearNextCursor = false,
   }) => BatchListState(
     loading: loading ?? this.loading,
     loadingMore: loadingMore ?? this.loadingMore,
     items: items ?? this.items,
     current: clearCurrent ? null : current ?? this.current,
     filter: clearFilter ? null : filter ?? this.filter,
-    nextCursor: nextCursor ?? this.nextCursor,
+    nextCursor: clearNextCursor ? null : nextCursor ?? this.nextCursor,
     hasMore: hasMore ?? this.hasMore,
     error: clearError ? null : error ?? this.error,
     resumeId: clearResume ? null : resumeId ?? this.resumeId,
@@ -60,37 +64,52 @@ class BatchListCubit extends Cubit<BatchListState> {
   StreamSubscription<int>? _refreshSubscription;
   StreamSubscription<AppDataChange>? _dataSubscription;
   Timer? _authoritativeRefreshTimer;
+  final Map<String, _OptimisticReviewCounts> _optimisticReviewCounts = {};
   int _loadGeneration = 0;
 
   Future<void> load({String? filter}) async {
+    final filterChanged = filter != state.filter;
     final generation = ++_loadGeneration;
     emit(
       state.copyWith(
         loading: true,
         loadingMore: false,
+        items: filterChanged ? const [] : null,
         filter: filter,
+        hasMore: filterChanged ? false : null,
         clearFilter: filter == null,
+        clearNextCursor: filterChanged,
         clearError: true,
       ),
     );
     try {
-      final results = await Future.wait([
-        _repository.page(state: filter, sort: 'created_at_desc'),
+      final results = await Future.wait<Object?>([
+        _filteredPage(
+          filter: filter,
+          isCurrent: () => generation == _loadGeneration,
+        ),
         _repository.current(),
       ]);
       if (isClosed || generation != _loadGeneration) return;
-      final page = results[0] as dynamic;
-      final current = results[1] as BatchSummary?;
+      final page = results[0] as BatchPage;
+      final authoritativeItems = page.items;
+      final authoritativeCurrent = results[1] as BatchSummary?;
+      final reconciliation = _reconcileAuthoritativeCounts(
+        authoritativeItems,
+        authoritativeCurrent,
+      );
       emit(
         state.copyWith(
           loading: false,
-          items: page.items,
+          items: reconciliation.items,
           hasMore: page.hasMore,
           nextCursor: page.nextCursor,
-          current: current,
-          clearCurrent: current == null,
+          clearNextCursor: page.nextCursor == null,
+          current: reconciliation.current,
+          clearCurrent: reconciliation.current == null,
         ),
       );
+      if (reconciliation.retry) _scheduleAuthoritativeRefresh();
     } catch (error) {
       if (isClosed || generation != _loadGeneration) return;
       emit(state.copyWith(loading: false, error: error));
@@ -104,10 +123,10 @@ class BatchListCubit extends Cubit<BatchListState> {
     final filter = state.filter;
     emit(state.copyWith(loadingMore: true));
     try {
-      final page = await _repository.page(
-        state: filter,
-        sort: 'created_at_desc',
+      final page = await _filteredPage(
+        filter: filter,
         cursor: cursor,
+        isCurrent: () => generation == _loadGeneration,
       );
       if (isClosed || generation != _loadGeneration) return;
       final known = state.items.map((item) => item.id).toSet();
@@ -120,6 +139,7 @@ class BatchListCubit extends Cubit<BatchListState> {
           ],
           hasMore: page.hasMore,
           nextCursor: page.nextCursor,
+          clearNextCursor: page.nextCursor == null,
         ),
       );
     } catch (error) {
@@ -128,10 +148,73 @@ class BatchListCubit extends Cubit<BatchListState> {
     }
   }
 
+  Future<BatchPage> _filteredPage({
+    required String? filter,
+    String? cursor,
+    required bool Function() isCurrent,
+  }) async {
+    final localFilter = batchHistoryFilterFromValue(filter);
+    final serverState = batchHistoryFilterValue(localFilter);
+    final firstPage = await _repository.page(
+      state: serverState,
+      sort: 'created_at_desc',
+      cursor: cursor,
+    );
+    if (localFilter == BatchHistoryFilter.all) return firstPage;
+
+    final targetCount = firstPage.items.isEmpty ? 1 : firstPage.items.length;
+    final matches = <BatchSummary>[];
+    final knownIds = <String>{};
+    void collect(Iterable<BatchSummary> items) {
+      for (final item in items) {
+        final filterCandidate = _withOptimisticCountsForFilter(item);
+        if (knownIds.add(item.id) && matchesBatchHistoryFilter(filterCandidate, localFilter)) {
+          matches.add(item);
+        }
+      }
+    }
+
+    collect(firstPage.items);
+    var hasMore = firstPage.hasMore;
+    var nextCursor = firstPage.nextCursor;
+    final visitedCursors = <String>{?cursor};
+    if (nextCursor == null || !visitedCursors.add(nextCursor)) {
+      hasMore = false;
+    }
+
+    while (isCurrent() && hasMore && matches.length < targetCount) {
+      final page = await _repository.page(
+        state: serverState,
+        sort: 'created_at_desc',
+        cursor: nextCursor,
+      );
+      collect(page.items);
+      final returnedCursor = page.nextCursor;
+      hasMore = page.hasMore && returnedCursor != null && visitedCursors.add(returnedCursor);
+      nextCursor = returnedCursor;
+    }
+
+    return BatchPage(
+      items: matches,
+      hasMore: hasMore,
+      nextCursor: hasMore ? nextCursor : null,
+    );
+  }
+
   void _onDataChange(AppDataChange change) {
     ++_loadGeneration;
     if (change is ReviewDecisionChanged) {
-      _applyReviewDelta(change);
+      _applyReviewTransitions(
+        change.projectId,
+        [
+          ReviewStateTransition(
+            fileId: change.fileId,
+            before: change.beforeKeepState,
+            after: change.afterKeepState,
+          ),
+        ],
+        queued: change.queued,
+      );
       // A queued decision exists only on the phone. Reloading here would
       // return the last cached/box summary and overwrite the optimistic
       // counter delta. The sync acceptance event performs the authoritative
@@ -140,20 +223,64 @@ class BatchListCubit extends Cubit<BatchListState> {
         _authoritativeRefreshTimer?.cancel();
         return;
       }
+    } else if (change is BatchReviewDecisionChanged) {
+      _applyReviewTransitions(
+        change.projectId,
+        change.transitions,
+        queued: change.queued,
+      );
+      if (change.queued) {
+        _authoritativeRefreshTimer?.cancel();
+        return;
+      }
+    } else if (change.reason == 'offline_changes_synced') {
+      for (final entry in _optimisticReviewCounts.entries.toList()) {
+        _optimisticReviewCounts[entry.key] = entry.value.copyWith(
+          queued: false,
+          staleResponses: 0,
+        );
+      }
     }
     _scheduleAuthoritativeRefresh();
   }
 
-  void _applyReviewDelta(ReviewDecisionChanged change) {
-    final projectId = change.projectId;
+  void _applyReviewTransitions(
+    String? projectId,
+    Iterable<ReviewStateTransition> transitions, {
+    required bool queued,
+  }) {
     if (projectId == null || projectId.isEmpty) return;
-    final current = state.current?.id == projectId ? _withReviewDelta(state.current!, change) : state.current;
-    final items = state.items
+    final confirmed = transitions.toList(growable: false);
+    if (confirmed.isEmpty) return;
+    final source = state.current?.id == projectId ? state.current : state.items.where((item) => item.id == projectId).firstOrNull;
+    final current = state.current?.id == projectId ? _withReviewTransitions(state.current!, confirmed) : state.current;
+    final updatedItems = state.items
         .map(
-          (item) => item.id == projectId ? _withReviewDelta(item, change) : item,
+          (item) => item.id == projectId ? _withReviewTransitions(item, confirmed) : item,
         )
         .toList(growable: false);
+    final updated = current?.id == projectId ? current : updatedItems.where((item) => item.id == projectId).firstOrNull;
+    if (source != null && updated != null) {
+      _rememberOptimisticCounts(
+        projectId,
+        before: _countsOf(source),
+        after: _countsOf(updated),
+        queued: queued,
+      );
+    }
+    final activeFilter = batchHistoryFilterFromValue(state.filter);
+    final items = updatedItems.where((item) => matchesBatchHistoryFilter(item, activeFilter)).toList(growable: false);
     emit(state.copyWith(current: current, items: items));
+  }
+
+  BatchSummary _withOptimisticCountsForFilter(BatchSummary batch) {
+    final marker = _optimisticReviewCounts[batch.id];
+    if (marker == null) return batch;
+    final counts = _countsOf(batch);
+    if (counts == marker.expected || marker.staleValues.contains(counts)) {
+      return _withReviewCounts(batch, marker.expected);
+    }
+    return batch;
   }
 
   /// Replays the exact review changes made while the nested detail route was
@@ -167,11 +294,25 @@ class BatchListCubit extends Cubit<BatchListState> {
     if (isClosed) return;
     final matching = changes.where((change) => change.projectId == baseline.id).toList(growable: false);
     if (matching.isEmpty) return;
-    var reconciled = baseline;
-    for (final change in matching) {
-      reconciled = _withReviewDelta(reconciled, change);
-    }
-    final items = state.items.map((item) => item.id == baseline.id ? reconciled : item).toList(growable: false);
+    final reconciled = _withReviewTransitions(
+      baseline,
+      [
+        for (final change in matching)
+          ReviewStateTransition(
+            fileId: change.fileId,
+            before: change.beforeKeepState,
+            after: change.afterKeepState,
+          ),
+      ],
+    );
+    final activeFilter = batchHistoryFilterFromValue(state.filter);
+    final items = state.items.map((item) => item.id == baseline.id ? reconciled : item).where((item) => matchesBatchHistoryFilter(item, activeFilter)).toList(growable: false);
+    _rememberOptimisticCounts(
+      baseline.id,
+      before: _countsOf(baseline),
+      after: _countsOf(reconciled),
+      queued: matching.any((change) => change.queued),
+    );
     emit(
       state.copyWith(
         current: state.current?.id == baseline.id ? reconciled : state.current,
@@ -185,43 +326,103 @@ class BatchListCubit extends Cubit<BatchListState> {
     }
   }
 
-  BatchSummary _withReviewDelta(
+  BatchSummary _withReviewTransitions(
     BatchSummary batch,
-    ReviewDecisionChanged change,
+    Iterable<ReviewStateTransition> transitions,
   ) {
-    final before = _reviewBucket(change.beforeKeepState);
-    final after = _reviewBucket(change.afterKeepState);
-    if (before == after) return batch;
-    var pending = batch.reviewCount;
-    var keep = batch.keepCount;
-    var discard = batch.discardCount;
-
-    switch (before) {
-      case _ReviewBucket.pending:
-        pending = (pending - 1).clamp(0, pending).toInt();
-        break;
-      case _ReviewBucket.keep:
-        keep = (keep - 1).clamp(0, keep).toInt();
-        break;
-      case _ReviewBucket.discard:
-        discard = (discard - 1).clamp(0, discard).toInt();
-        break;
-    }
-    switch (after) {
-      case _ReviewBucket.pending:
-        pending += 1;
-        break;
-      case _ReviewBucket.keep:
-        keep += 1;
-        break;
-      case _ReviewBucket.discard:
-        discard += 1;
-        break;
-    }
+    final updated = applyReviewStateTransitions(
+      GalleryReviewCounts(
+        pending: batch.reviewCount,
+        kept: batch.keepCount,
+        discarded: batch.discardCount,
+      ),
+      transitions,
+    );
     return batch.copyWith(
-      reviewCount: pending,
-      keepCount: keep,
-      discardCount: discard,
+      reviewCount: updated.pending,
+      keepCount: updated.kept,
+      discardCount: updated.discarded,
+    );
+  }
+
+  void _rememberOptimisticCounts(
+    String projectId, {
+    required GalleryReviewCounts before,
+    required GalleryReviewCounts after,
+    required bool queued,
+  }) {
+    if (before == after) return;
+    final existing = _optimisticReviewCounts[projectId];
+    _optimisticReviewCounts[projectId] = _OptimisticReviewCounts(
+      staleValues: {
+        ...?existing?.staleValues,
+        before,
+      },
+      expected: after,
+      queued: existing?.queued == true || queued,
+    );
+  }
+
+  _AuthoritativeReviewReconciliation _reconcileAuthoritativeCounts(
+    List<BatchSummary> items,
+    BatchSummary? current,
+  ) {
+    var reconciledItems = items;
+    var reconciledCurrent = current;
+    var retry = false;
+
+    for (final entry in _optimisticReviewCounts.entries.toList()) {
+      final projectId = entry.key;
+      final marker = entry.value;
+      final authoritative = current?.id == projectId ? current : items.where((item) => item.id == projectId).firstOrNull;
+      if (authoritative == null) continue;
+      final counts = _countsOf(authoritative);
+
+      if (counts == marker.expected) {
+        reconciledItems = _replaceReviewCounts(
+          reconciledItems,
+          projectId,
+          marker.expected,
+        );
+        if (reconciledCurrent?.id == projectId) {
+          reconciledCurrent = _withReviewCounts(
+            reconciledCurrent!,
+            marker.expected,
+          );
+        }
+        _optimisticReviewCounts.remove(projectId);
+        continue;
+      }
+      if (!marker.staleValues.contains(counts)) {
+        // A different authoritative value means the box has advanced for
+        // another reason. Accept it rather than layering a stale local delta.
+        _optimisticReviewCounts.remove(projectId);
+        continue;
+      }
+
+      reconciledItems = _replaceReviewCounts(
+        reconciledItems,
+        projectId,
+        marker.expected,
+      );
+      if (reconciledCurrent?.id == projectId) {
+        reconciledCurrent = _withReviewCounts(
+          reconciledCurrent!,
+          marker.expected,
+        );
+      }
+      if (!marker.queued && marker.staleResponses < 2) {
+        retry = true;
+        _optimisticReviewCounts[projectId] = marker.copyWith(
+          staleResponses: marker.staleResponses + 1,
+        );
+      }
+    }
+
+    return _AuthoritativeReviewReconciliation(
+      items: reconciledItems,
+      current: reconciledCurrent,
+      retry: retry,
     );
   }
 
@@ -252,10 +453,63 @@ class BatchListCubit extends Cubit<BatchListState> {
   }
 }
 
-enum _ReviewBucket { pending, keep, discard }
+GalleryReviewCounts _countsOf(BatchSummary batch) => GalleryReviewCounts(
+  pending: batch.reviewCount,
+  kept: batch.keepCount,
+  discarded: batch.discardCount,
+);
 
-_ReviewBucket _reviewBucket(KeepState state) => switch (state) {
-  KeepState.pending => _ReviewBucket.pending,
-  KeepState.keep || KeepState.featured => _ReviewBucket.keep,
-  KeepState.discard => _ReviewBucket.discard,
-};
+BatchSummary _withReviewCounts(
+  BatchSummary batch,
+  GalleryReviewCounts counts,
+) => batch.copyWith(
+  reviewCount: counts.pending,
+  keepCount: counts.kept,
+  discardCount: counts.discarded,
+);
+
+List<BatchSummary> _replaceReviewCounts(
+  List<BatchSummary> items,
+  String projectId,
+  GalleryReviewCounts counts,
+) => items
+    .map(
+      (item) => item.id == projectId ? _withReviewCounts(item, counts) : item,
+    )
+    .toList(growable: false);
+
+class _OptimisticReviewCounts {
+  const _OptimisticReviewCounts({
+    required this.staleValues,
+    required this.expected,
+    required this.queued,
+    this.staleResponses = 0,
+  });
+
+  final Set<GalleryReviewCounts> staleValues;
+  final GalleryReviewCounts expected;
+  final bool queued;
+  final int staleResponses;
+
+  _OptimisticReviewCounts copyWith({
+    bool? queued,
+    int? staleResponses,
+  }) => _OptimisticReviewCounts(
+    staleValues: staleValues,
+    expected: expected,
+    queued: queued ?? this.queued,
+    staleResponses: staleResponses ?? this.staleResponses,
+  );
+}
+
+class _AuthoritativeReviewReconciliation {
+  const _AuthoritativeReviewReconciliation({
+    required this.items,
+    required this.current,
+    required this.retry,
+  });
+
+  final List<BatchSummary> items;
+  final BatchSummary? current;
+  final bool retry;
+}

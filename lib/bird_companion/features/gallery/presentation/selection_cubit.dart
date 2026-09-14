@@ -1,10 +1,19 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class BatchUndoAction {
-  const BatchUndoAction({required this.operation, required this.ids, this.value});
+  const BatchUndoAction({
+    required this.operation,
+    required this.ids,
+    this.value,
+    this.transitionFromOperation,
+  });
   final String operation;
   final List<String> ids;
   final Object? value;
+
+  /// The state currently applied to [ids] before this undo action runs.
+  /// Tags leave this null because they do not affect review counters.
+  final String? transitionFromOperation;
 }
 
 enum SelectionPhase { idle, selecting, submitting, partialFailure }
@@ -51,7 +60,10 @@ class SelectionCubit extends Cubit<SelectionState> {
       state.copyWith(
         ids: next,
         phase: next.isEmpty ? SelectionPhase.idle : SelectionPhase.selecting,
-        clearFailed: state.ids.isEmpty,
+        // Once the user changes the selection manually, the previous attempt
+        // no longer describes the selected set and its failure markers are
+        // stale. A direct retry does not call toggle(), so it keeps them.
+        clearFailed: true,
       ),
     );
   }
@@ -67,12 +79,16 @@ class SelectionCubit extends Cubit<SelectionState> {
   void complete({required List<String> succeededIds, required Map<String, String> failed}) {
     final attempted = {...state.ids};
     final failedIds = attempted.where(failed.containsKey).toSet();
-    final allFailed = attempted.isNotEmpty && succeededIds.isEmpty && failedIds.isNotEmpty;
+    final retryableFailures = {
+      for (final id in failedIds) id: failed[id]!,
+    };
     emit(
       state.copyWith(
-        ids: allFailed ? failedIds : const {},
-        phase: allFailed ? SelectionPhase.partialFailure : SelectionPhase.idle,
-        failed: failed,
+        // Successful items leave selection. Failed items remain selected so
+        // the existing action sheet can present a one-tap retry.
+        ids: failedIds,
+        phase: failedIds.isEmpty ? SelectionPhase.idle : SelectionPhase.partialFailure,
+        failed: retryableFailures,
       ),
     );
   }

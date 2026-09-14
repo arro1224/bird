@@ -24,6 +24,31 @@ extension KeepStateWireValue on KeepState {
   };
 }
 
+/// One confirmed photo review-state transition.
+///
+/// This App-internal value is shared by gallery counters and retained batch
+/// summaries. It does not change the frozen box API payload.
+class ReviewStateTransition extends Equatable {
+  const ReviewStateTransition({
+    required this.fileId,
+    required this.before,
+    required this.after,
+  });
+
+  final String fileId;
+  final KeepState before;
+  final KeepState after;
+
+  ReviewStateTransition reversed() => ReviewStateTransition(
+    fileId: fileId,
+    before: after,
+    after: before,
+  );
+
+  @override
+  List<Object> get props => [fileId, before, after];
+}
+
 class BirdGroup extends Equatable {
   const BirdGroup({
     required this.id,

@@ -46,6 +46,27 @@ class ReviewDecisionChanged extends AppDataChange {
   final bool queued;
 }
 
+/// App-internal aggregate emitted once for a confirmed batch review action.
+///
+/// Only transitions belonging to successful photo IDs are included. Keeping
+/// them together prevents a large selection from producing a refresh storm.
+class BatchReviewDecisionChanged extends AppDataChange {
+  const BatchReviewDecisionChanged({
+    required this.deviceId,
+    required this.projectId,
+    required this.transitions,
+    required this.queued,
+  }) : super(
+         const {AppDataResource.photos, AppDataResource.batches},
+         reason: 'batch_review_decision_changed',
+       );
+
+  final String deviceId;
+  final String projectId;
+  final List<ReviewStateTransition> transitions;
+  final bool queued;
+}
+
 /// App-internal signal that an analysis job has completed and the album root
 /// should wait for the corresponding project data to become readable.
 class AnalysisCompleted extends AppDataChange {

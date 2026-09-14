@@ -118,6 +118,107 @@ void main() {
     expect(repository.pageCalls, 1);
     expect(repository.currentCalls, 1);
   });
+
+  test('aggregate batch deltas update once and ignore stale summary reloads', () async {
+    final bus = AppDataChangeBus();
+    final repository = _BatchRepository(_batch(38, 16, 6));
+    final cubit = BatchListCubit(
+      repository,
+      null,
+      bus,
+      const Duration(milliseconds: 5),
+    );
+    addTearDown(cubit.close);
+    addTearDown(bus.dispose);
+    await cubit.load();
+
+    bus.publishChange(
+      const BatchReviewDecisionChanged(
+        deviceId: 'box-1',
+        projectId: 'project-1',
+        transitions: [
+          ReviewStateTransition(
+            fileId: 'photo-1',
+            before: KeepState.pending,
+            after: KeepState.keep,
+          ),
+          ReviewStateTransition(
+            fileId: 'photo-2',
+            before: KeepState.pending,
+            after: KeepState.keep,
+          ),
+        ],
+        queued: false,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(cubit.state.current?.reviewCount, 36);
+    expect(cubit.state.current?.keepCount, 18);
+    expect(cubit.state.current?.discardCount, 6);
+
+    // The repository still exposes 38/16. Automatic reconciliation must not
+    // flash the counters back to that stale snapshot.
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(repository.currentCalls, greaterThan(1));
+    expect(cubit.state.current?.reviewCount, 36);
+    expect(cubit.state.current?.keepCount, 18);
+
+    repository.batch = _batch(36, 18, 6);
+    bus.publish(
+      const {AppDataResource.batches},
+      reason: 'box_summary_advanced',
+    );
+    await _waitUntil(() => repository.currentCalls > 4);
+
+    expect(cubit.state.current?.reviewCount, 36);
+    expect(cubit.state.current?.keepCount, 18);
+    expect(cubit.state.items.single, cubit.state.current);
+  });
+
+  test('queued aggregate counts stay local until sync confirmation', () async {
+    final bus = AppDataChangeBus();
+    final repository = _BatchRepository(_batch(4, 2, 1));
+    final cubit = BatchListCubit(
+      repository,
+      null,
+      bus,
+      const Duration(milliseconds: 5),
+    );
+    addTearDown(cubit.close);
+    addTearDown(bus.dispose);
+    await cubit.load();
+
+    bus.publishChange(
+      const BatchReviewDecisionChanged(
+        deviceId: 'box-1',
+        projectId: 'project-1',
+        transitions: [
+          ReviewStateTransition(
+            fileId: 'photo-1',
+            before: KeepState.discard,
+            after: KeepState.pending,
+          ),
+        ],
+        queued: true,
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 15));
+
+    expect(cubit.state.current?.reviewCount, 5);
+    expect(cubit.state.current?.discardCount, 0);
+    expect(repository.currentCalls, 1);
+
+    repository.batch = _batch(5, 2, 0);
+    bus.publish(
+      const {AppDataResource.batches, AppDataResource.photos},
+      reason: 'offline_changes_synced',
+    );
+    await _waitUntil(() => repository.currentCalls == 2);
+
+    expect(cubit.state.current?.reviewCount, 5);
+    expect(cubit.state.current?.discardCount, 0);
+  });
 }
 
 class _BatchRepository implements BatchRepository {

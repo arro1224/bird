@@ -27,6 +27,93 @@ void main() {
     expect(cubit.state.current?.id, 'newer-project');
     expect(cubit.state.items.single.id, 'newer-project');
   });
+
+  test('switching filters clears rows from the previous selection while loading', () async {
+    final repository = _ControllableBatchRepository();
+    final cubit = BatchListCubit(repository);
+    addTearDown(cubit.close);
+
+    final initial = cubit.load();
+    repository.completePage(
+      0,
+      _page(_batch('completed-project', state: 'completed')),
+    );
+    repository.completeCurrent(
+      0,
+      _batch('completed-project', state: 'completed'),
+    );
+    await initial;
+    expect(cubit.state.items, isNotEmpty);
+
+    final filtered = cubit.load(filter: 'failed');
+    expect(cubit.state.loading, isTrue);
+    expect(cubit.state.filter, 'failed');
+    expect(cubit.state.items, isEmpty);
+
+    repository.completePage(
+      1,
+      _page(_batch('failed-project', state: 'failed')),
+    );
+    repository.completeCurrent(
+      1,
+      _batch('completed-project', state: 'completed'),
+    );
+    await filtered;
+
+    expect(cubit.state.loading, isFalse);
+    expect(cubit.state.items.single.id, 'failed-project');
+  });
+
+  test('rapidly switching all four filters keeps only the final response', () async {
+    final repository = _ControllableBatchRepository();
+    final cubit = BatchListCubit(repository);
+    addTearDown(cubit.close);
+
+    final all = cubit.load();
+    final inProgress = cubit.load(filter: 'in_progress');
+    final review = cubit.load(filter: 'review');
+    final failed = cubit.load(filter: 'failed');
+
+    repository.completePage(
+      3,
+      _page(_batch('failed-final', state: 'failed')),
+    );
+    repository.completeCurrent(
+      3,
+      _batch('current-project', state: 'ready_to_review'),
+    );
+    await failed;
+
+    repository.completePage(
+      2,
+      _page(_batch('review-stale', state: 'ready_to_review')),
+    );
+    repository.completeCurrent(
+      2,
+      _batch('current-project', state: 'ready_to_review'),
+    );
+    repository.completePage(
+      1,
+      _page(_batch('running-stale', state: 'analyzing')),
+    );
+    repository.completeCurrent(
+      1,
+      _batch('current-project', state: 'ready_to_review'),
+    );
+    repository.completePage(
+      0,
+      _page(_batch('all-stale', state: 'completed')),
+    );
+    repository.completeCurrent(
+      0,
+      _batch('current-project', state: 'ready_to_review'),
+    );
+    await Future.wait([all, inProgress, review]);
+
+    expect(cubit.state.filter, 'failed');
+    expect(cubit.state.items.map((item) => item.id), ['failed-final']);
+    expect(cubit.state.current?.id, 'current-project');
+  });
 }
 
 class _ControllableBatchRepository implements BatchRepository {
@@ -49,17 +136,15 @@ class _ControllableBatchRepository implements BatchRepository {
 
   void completePage(int index, BatchPage value) => _pages[index].complete(value);
 
-  void completeCurrent(int index, BatchSummary value) =>
-      _currents[index].complete(value);
+  void completeCurrent(int index, BatchSummary value) => _currents[index].complete(value);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-BatchPage _page(BatchSummary batch) =>
-    BatchPage(items: [batch], hasMore: false);
+BatchPage _page(BatchSummary batch) => BatchPage(items: [batch], hasMore: false);
 
-BatchSummary _batch(String id) => BatchSummary(
+BatchSummary _batch(String id, {String? state}) => BatchSummary(
   id: id,
   name: id,
   createdAt: DateTime.utc(2026, 9, 7),
@@ -70,4 +155,5 @@ BatchSummary _batch(String id) => BatchSummary(
   discardCount: 0,
   pendingCopyCount: 0,
   copyState: 'idle',
+  state: state,
 );

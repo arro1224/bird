@@ -378,14 +378,11 @@ class MockBoxServer {
       return;
     }
     if (method == 'GET' && path == '/api/v1/projects') {
-      await _json(request, HttpStatus.ok, {
-        'items': [
-          ..._createdProjects.values.toList().reversed,
-          _currentBatch(),
-          ..._historyBatches(),
-        ],
-        'has_more': false,
-      });
+      await _json(
+        request,
+        HttpStatus.ok,
+        _projectPage(request.uri.queryParameters),
+      );
       return;
     }
     if (method == 'GET' && path == '/api/v1/storage/cards/current/scan') {
@@ -833,6 +830,7 @@ class MockBoxServer {
       'project_id': id,
       'name': name,
       'created_at': _clock().toUtc().toIso8601String(),
+      'state': 'created',
       'total_files': 0,
       'analyzed_count': 0,
       'pending_review_count': 0,
@@ -1094,6 +1092,7 @@ class MockBoxServer {
       'project_id': 'mock-batch-current',
       'name': '2026.07.16 崇明东滩',
       'created_at': '2026-07-16T06:12:00Z',
+      'state': 'ready_to_review',
       'total_files': photoCount,
       'analyzed_count': _photos.where((photo) => photo['analysis_state'] == 'completed').length,
       'pending_review_count': _photos.where((photo) => photo['keep_state'] == 'pending').length,
@@ -1112,6 +1111,7 @@ class MockBoxServer {
       'project_id': 'mock-batch-history-01',
       'name': '杭州湾湿地',
       'created_at': '2026-07-10T06:30:00Z',
+      'state': 'completed',
       'total_files': 2184,
       'analyzed_count': 2184,
       'pending_review_count': 0,
@@ -1127,18 +1127,103 @@ class MockBoxServer {
       'project_id': 'mock-batch-history-02',
       'name': '鄱阳湖',
       'created_at': '2026-06-28T05:50:00Z',
+      'state': 'failed',
       'total_files': 5621,
       'analyzed_count': 5621,
       'pending_review_count': 0,
       'keep_count': 1812,
       'discard_count': 3809,
       'pending_copy_count': 0,
-      'copy_state': 'completed',
+      'copy_state': 'failed',
       'scene_count': 7,
       'burst_group_count': 143,
       'cover': _previewFor('egret.png', height: 1536),
     },
+    {
+      'project_id': 'mock-batch-history-03',
+      'name': '江苏盐城湿地',
+      'created_at': '2026-06-20T05:40:00Z',
+      'state': 'analyzing',
+      'total_files': 896,
+      'analyzed_count': 412,
+      'pending_review_count': 0,
+      'keep_count': 0,
+      'discard_count': 0,
+      'pending_copy_count': 0,
+      'copy_state': 'idle',
+      'scene_count': 3,
+      'burst_group_count': 32,
+      'cover': _previewFor('warbler.png', height: 1536),
+    },
   ];
+
+  Map<String, dynamic> _projectPage(Map<String, String> query) {
+    var items = <Map<String, dynamic>>[
+      ..._createdProjects.values.toList().reversed,
+      _currentBatch(),
+      ..._historyBatches(),
+    ];
+    final requestedState = query['state']?.trim().toLowerCase();
+    if (requestedState?.isNotEmpty == true) {
+      items = items.where((project) => _matchesProjectState(project, requestedState!)).toList(growable: false);
+    }
+    if (query['sort'] == 'created_at_desc') {
+      items = [...items]
+        ..sort(
+          (left, right) => right['created_at'].toString().compareTo(
+            left['created_at'].toString(),
+          ),
+        );
+    }
+    final pageSize = (int.tryParse(query['page_size'] ?? '') ?? 30).clamp(
+      1,
+      100,
+    );
+    final cursor = (int.tryParse(query['cursor'] ?? '') ?? 0).clamp(
+      0,
+      items.length,
+    );
+    final end = min(cursor + pageSize, items.length);
+    return {
+      'items': items.sublist(cursor, end),
+      'has_more': end < items.length,
+      if (end < items.length) 'next_cursor': '$end',
+    };
+  }
+
+  bool _matchesProjectState(
+    Map<String, dynamic> project,
+    String requestedState,
+  ) {
+    final state = _normalizeProjectState(project['state']);
+    final copyState = _normalizeProjectState(project['copy_state']);
+    const failedStates = {'failed', 'error', 'errored'};
+    const inProgressStates = {
+      'created',
+      'scanning',
+      'importing',
+      'analyzing',
+      'processing',
+      'running',
+      'resuming',
+    };
+    const reviewStates = {'ready_to_review', 'review', 'pending_review'};
+
+    return switch (_normalizeProjectState(requestedState)) {
+      'failed' => failedStates.contains(state) || failedStates.contains(copyState),
+      'in_progress' => inProgressStates.contains(state) || copyState == 'running',
+      'review' =>
+        reviewStates.contains(state) || (!failedStates.contains(state) && !failedStates.contains(copyState) && !inProgressStates.contains(state) && copyState != 'running' && ((project['pending_review_count'] as num?)?.toInt() ?? 0) > 0),
+      final value => state == value,
+    };
+  }
+
+  String _normalizeProjectState(Object? value) =>
+      value?.toString().trim().toLowerCase().replaceAll(
+        RegExp(r'[\s-]+'),
+        '_',
+      ) ??
+      '';
 
   Map<String, dynamic> _photoPage(Map<String, String> query) {
     var items = _photos.where((photo) => _matches(photo, query)).toList(growable: false);

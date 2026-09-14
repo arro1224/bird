@@ -12,6 +12,7 @@ import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/features/review/data/review_checkpoint_store.dart';
 import 'package:aves/bird_companion/features/settings/data/settings_store.dart';
+import 'package:aves/bird_companion/features/gallery/domain/review_count_reducer.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 PhotoQuery resolveInitialPhotoQuery({
@@ -44,6 +45,9 @@ class GalleryState {
     this.pendingOperationCount = 0,
     this.conflictOperationCount = 0,
     this.conflictFileIds = const [],
+    this.pendingCount,
+    this.keepCount,
+    this.discardCount,
     this.error,
     this.gridColumns = 3,
     this.showRatingOverlay = true,
@@ -61,6 +65,9 @@ class GalleryState {
   final int pendingOperationCount;
   final int conflictOperationCount;
   final List<String> conflictFileIds;
+  final int? pendingCount;
+  final int? keepCount;
+  final int? discardCount;
   final Object? error;
   final int gridColumns;
   final bool showRatingOverlay;
@@ -79,6 +86,9 @@ class GalleryState {
     int? pendingOperationCount,
     int? conflictOperationCount,
     List<String>? conflictFileIds,
+    int? pendingCount,
+    int? keepCount,
+    int? discardCount,
     Object? error,
     bool clearError = false,
     int? gridColumns,
@@ -98,6 +108,9 @@ class GalleryState {
     pendingOperationCount: pendingOperationCount ?? this.pendingOperationCount,
     conflictOperationCount: conflictOperationCount ?? this.conflictOperationCount,
     conflictFileIds: conflictFileIds ?? this.conflictFileIds,
+    pendingCount: pendingCount ?? this.pendingCount,
+    keepCount: keepCount ?? this.keepCount,
+    discardCount: discardCount ?? this.discardCount,
     error: clearError ? null : error ?? this.error,
     gridColumns: gridColumns ?? this.gridColumns,
     showRatingOverlay: showRatingOverlay ?? this.showRatingOverlay,
@@ -109,6 +122,18 @@ class GalleryState {
   );
 
   String? get firstConflictFileId => conflictFileIds.isEmpty ? null : conflictFileIds.first;
+
+  GalleryReviewCounts? get reviewCounts {
+    final pending = pendingCount;
+    final kept = keepCount;
+    final discarded = discardCount;
+    if (pending == null || kept == null || discarded == null) return null;
+    return GalleryReviewCounts(
+      pending: pending,
+      kept: kept,
+      discarded: discarded,
+    );
+  }
 }
 
 class GalleryCubit extends Cubit<GalleryState> {
@@ -170,6 +195,25 @@ class GalleryCubit extends Cubit<GalleryState> {
       preferredSort: preferences == null ? null : photoQuerySortFromPreference(preferences.sortOrder),
     );
     await refresh(query: restored);
+  }
+
+  /// Seeds the batch summary counters carried by the route into retained
+  /// gallery state. Subsequent photo refreshes deliberately preserve them.
+  void seedReviewCounts({
+    int? pendingCount,
+    int? keepCount,
+    int? discardCount,
+  }) {
+    if (isClosed || (pendingCount == null && keepCount == null && discardCount == null)) {
+      return;
+    }
+    emit(
+      state.copyWith(
+        pendingCount: pendingCount == null ? null : _nonNegative(pendingCount),
+        keepCount: keepCount == null ? null : _nonNegative(keepCount),
+        discardCount: discardCount == null ? null : _nonNegative(discardCount),
+      ),
+    );
   }
 
   void search(String value) {
@@ -276,14 +320,49 @@ class GalleryCubit extends Cubit<GalleryState> {
     final ids = succeededIds.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
     if (ids.isEmpty) return;
 
-    final wireValue = keepState.wireValue;
+    final previousById = {
+      for (final photo in state.items)
+        if (ids.contains(photo.id)) photo.id: KeepStateWireValue.fromWire(photo.keepState),
+    };
+    applyReviewTransitions([
+      for (final id in ids)
+        if (previousById[id] case final before?)
+          ReviewStateTransition(
+            fileId: id,
+            before: before,
+            after: keepState,
+          ),
+    ]);
+  }
+
+  /// Applies one confirmed transition set to both photos and header counters.
+  void applyReviewTransitions(
+    Iterable<ReviewStateTransition> transitions,
+  ) {
+    if (isClosed) return;
+    final byId = <String, ReviewStateTransition>{};
+    for (final transition in transitions) {
+      final id = transition.fileId.trim();
+      if (id.isEmpty) continue;
+      byId[id] = ReviewStateTransition(
+        fileId: id,
+        before: transition.before,
+        after: transition.after,
+      );
+    }
+    if (byId.isEmpty) return;
+
     var changed = false;
-    final patched = state.items.map((photo) {
-      if (!ids.contains(photo.id)) return photo;
-      changed = true;
-      return photo.copyWith(keepState: wireValue);
-    }).toList(growable: false);
-    if (!changed) return;
+    final patched = state.items
+        .map((photo) {
+          final transition = byId[photo.id];
+          if (transition == null) return photo;
+          final wireValue = transition.after.wireValue;
+          if (photo.keepState == wireValue) return photo;
+          changed = true;
+          return photo.copyWith(keepState: wireValue);
+        })
+        .toList(growable: false);
 
     final activeKeepState = state.query.keepState;
     final visible = activeKeepState == null
@@ -294,10 +373,19 @@ class GalleryCubit extends Cubit<GalleryState> {
               )
               .toList(growable: false);
     final removedCount = patched.length - visible.length;
-    final matchedCount = removedCount == 0
-        ? state.matchedCount
-        : (state.matchedCount - removedCount).clamp(0, state.matchedCount).toInt();
-    emit(state.copyWith(items: visible, matchedCount: matchedCount));
+    final matchedCount = removedCount == 0 ? state.matchedCount : (state.matchedCount - removedCount).clamp(0, state.matchedCount).toInt();
+    final currentCounts = state.reviewCounts;
+    final updatedCounts = currentCounts == null ? null : applyReviewStateTransitions(currentCounts, byId.values);
+    if (!changed && updatedCounts == currentCounts) return;
+    emit(
+      state.copyWith(
+        items: visible,
+        matchedCount: matchedCount,
+        pendingCount: updatedCounts?.pending,
+        keepCount: updatedCounts?.kept,
+        discardCount: updatedCounts?.discarded,
+      ),
+    );
   }
 
   void _onQueryProgress(int generation, PhotoQueryProgress progress) {
@@ -322,6 +410,22 @@ class GalleryCubit extends Cubit<GalleryState> {
     if (change.affects(AppDataResource.photoPreferences)) {
       _applyPhotoPreferences();
       return;
+    }
+    if (change is BatchReviewDecisionChanged) {
+      // The originating gallery already applied this aggregate atomically.
+      // The event exists to update retained batch summaries without causing a
+      // second photo reload on every batch action.
+      return;
+    }
+    if (change is ReviewDecisionChanged && change.projectId == batchId) {
+      applyReviewTransitions([
+        ReviewStateTransition(
+          fileId: change.fileId,
+          before: change.beforeKeepState,
+          after: change.afterKeepState,
+        ),
+      ]);
+      if (change.queued) return;
     }
     final repository = _repo;
     if (repository case final PhotoQueryExecutionRepository execution) {
@@ -445,6 +549,8 @@ class GalleryCubit extends Cubit<GalleryState> {
 int _settingsGridColumns(SettingsStore? store) => store?.read().gridColumns.clamp(2, 6) ?? 3;
 
 bool _settingsShowRatingOverlay(SettingsStore? store) => store?.read().showRatingOverlay ?? true;
+
+int _nonNegative(int value) => value < 0 ? 0 : value;
 
 PhotoQuery _applyDefaultFilter(PhotoQuery query, String preference) => switch (preference) {
   'pendingReview' when query.keepState == null => query.copyWith(keepState: 'pending'),

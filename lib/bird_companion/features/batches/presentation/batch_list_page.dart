@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
@@ -6,6 +8,7 @@ import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/core/widgets/empty_state.dart';
 import 'package:aves/bird_companion/core/widgets/bird_navigation.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
+import 'package:aves/bird_companion/features/batches/domain/batch_history_filter.dart';
 import 'package:aves/bird_companion/features/batches/presentation/batch_list_cubit.dart';
 import 'package:aves/bird_companion/features/batches/presentation/widgets/batch_filter_bar.dart';
 import 'package:aves/bird_companion/features/batches/presentation/widgets/batch_list_tile.dart';
@@ -81,7 +84,9 @@ class _ViewState extends State<_View> {
   @override
   Widget build(BuildContext context) => BlocBuilder<BatchListCubit, BatchListState>(
     builder: (context, state) {
-      if (state.loading && state.items.isEmpty) return const Center(child: CircularProgressIndicator());
+      if (state.loading && state.items.isEmpty && _showCurrent) {
+        return const Center(child: CircularProgressIndicator());
+      }
       if (state.error != null) return ErrorNotice(title: '暂时无法加载拍摄记录', message: '请检查盒子连接后重试。', onRetry: () => context.read<BatchListCubit>().load());
       return RefreshIndicator(
         onRefresh: () => context.read<BatchListCubit>().load(filter: state.filter),
@@ -110,7 +115,12 @@ class _ViewState extends State<_View> {
               if (widget.openMode != BatchOpenMode.gallery) const SizedBox(height: 24),
               _BatchModeSwitch(
                 showCurrent: _showCurrent,
-                onChanged: (value) => setState(() => _showCurrent = value),
+                onChanged: (value) {
+                  setState(() => _showCurrent = value);
+                  if (value && state.filter != null) {
+                    unawaited(context.read<BatchListCubit>().load());
+                  }
+                },
               ),
               const SizedBox(height: 24),
               if (_showCurrent) ...[
@@ -148,8 +158,16 @@ class _ViewState extends State<_View> {
                   onChanged: (value) => context.read<BatchListCubit>().load(filter: value),
                 ),
                 const SizedBox(height: 18),
-                if (state.items.isEmpty)
-                  const EmptyState(title: '暂无过去的拍摄记录', message: '已完成的拍摄会显示在这里。')
+                if (state.loading && state.items.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 32),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (state.items.isEmpty)
+                  EmptyState(
+                    title: _emptyHistoryCopy(state.filter).$1,
+                    message: _emptyHistoryCopy(state.filter).$2,
+                  )
                 else
                   for (final item in state.items)
                     Padding(
@@ -228,6 +246,13 @@ class _ViewState extends State<_View> {
     }
   }
 }
+
+(String, String) _emptyHistoryCopy(String? value) => switch (batchHistoryFilterFromValue(value)) {
+  BatchHistoryFilter.all => ('暂无过去的拍摄记录', '已完成的拍摄会显示在这里。'),
+  BatchHistoryFilter.inProgress => ('暂无进行中的拍摄记录', '导入、分析或复制中的拍摄会显示在这里。'),
+  BatchHistoryFilter.review => ('暂无待挑选拍摄记录', '可以开始挑选且仍有待确认照片的记录会显示在这里。'),
+  BatchHistoryFilter.failed => ('暂无异常拍摄记录', '项目处理或复制失败的记录会显示在这里。'),
+};
 
 class _BatchModeSwitch extends StatelessWidget {
   const _BatchModeSwitch({required this.showCurrent, required this.onChanged});

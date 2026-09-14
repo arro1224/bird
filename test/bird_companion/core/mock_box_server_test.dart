@@ -49,7 +49,7 @@ void main() {
 
     expect(currentBatch?.id, 'mock-batch-current');
     expect(currentBatch?.totalFiles, 1200);
-    expect(batches.items, hasLength(3));
+    expect(batches.items, hasLength(4));
     expect(page.items, hasLength(10));
     expect(page.hasMore, isTrue);
     expect(page.nextCursor, '10');
@@ -76,6 +76,62 @@ void main() {
     expect(response.statusCode, HttpStatus.ok);
     expect(response.headers.contentType?.mimeType, 'image/png');
     expect(bytes.length, greaterThan(1000));
+  });
+
+  test('项目列表按拍摄阶段筛选并保留全部记录', () async {
+    final api = BatchApi(client);
+
+    final all = await api.page(sort: 'created_at_desc');
+    final inProgress = await api.page(
+      state: 'in_progress',
+      sort: 'created_at_desc',
+    );
+    final review = await api.page(
+      state: 'review',
+      sort: 'created_at_desc',
+    );
+    final failed = await api.page(
+      state: 'failed',
+      sort: 'created_at_desc',
+    );
+
+    expect(all.items, hasLength(4));
+    expect(
+      inProgress.items.map((batch) => batch.id),
+      ['mock-batch-history-03'],
+    );
+    expect(inProgress.items.single.state, 'analyzing');
+    expect(review.items.map((batch) => batch.id), ['mock-batch-current']);
+    expect(review.items.single.state, 'ready_to_review');
+    expect(failed.items.map((batch) => batch.id), [
+      'mock-batch-history-02',
+    ]);
+    expect(failed.items.single.state, 'failed');
+    expect(
+      all.items.singleWhere((batch) => batch.id == 'mock-batch-history-01').state,
+      'completed',
+    );
+  });
+
+  test('批量保留照片后当前项目汇总立即返回新数量', () async {
+    final batchApi = BatchApi(client);
+    final photoApi = PhotoApi(client);
+    final before = await batchApi.current();
+
+    final outcome = await photoApi.batchOperation(
+      'mock-batch-current',
+      const ['photo-0005', 'photo-0006'],
+      'keep',
+      version: 1,
+    );
+    final after = await batchApi.current();
+    final reviewPage = await batchApi.page(state: 'review');
+
+    expect(outcome.succeededIds, ['photo-0005', 'photo-0006']);
+    expect(after?.pendingReviewCount, before!.pendingReviewCount - 2);
+    expect(after?.keepCount, before.keepCount + 2);
+    expect(reviewPage.items.single.pendingReviewCount, after?.pendingReviewCount);
+    expect(reviewPage.items.single.keepCount, after?.keepCount);
   });
 
   test('1200 张性能集使用游标分页时无重复、无丢项', () async {

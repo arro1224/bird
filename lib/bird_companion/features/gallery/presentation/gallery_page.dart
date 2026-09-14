@@ -76,19 +76,25 @@ class GalleryPage extends StatelessWidget {
       BlocProvider(
         create: (_) =>
             GalleryCubit(
-              BirdCompanionScope.of(context).photoRepository,
-              batchId,
-              BirdCompanionScope.of(context).refreshCoordinator,
-              BirdCompanionScope.of(context).dataChangeBus,
-              BirdCompanionScope.of(context).cache,
-              BirdCompanionScope.of(context).pendingOperationStore,
-              () => BirdCompanionScope.of(context).deviceSessionCubit.state.device?.id,
-              BirdCompanionScope.of(context).reviewCheckpointStore,
-              BirdCompanionScope.of(context).settingsStore,
-            )..restoreAndRefresh(
-              initialQuery,
-              restoreSavedView: restoreSavedView,
-            ),
+                BirdCompanionScope.of(context).photoRepository,
+                batchId,
+                BirdCompanionScope.of(context).refreshCoordinator,
+                BirdCompanionScope.of(context).dataChangeBus,
+                BirdCompanionScope.of(context).cache,
+                BirdCompanionScope.of(context).pendingOperationStore,
+                () => BirdCompanionScope.of(context).deviceSessionCubit.state.device?.id,
+                BirdCompanionScope.of(context).reviewCheckpointStore,
+                BirdCompanionScope.of(context).settingsStore,
+              )
+              ..seedReviewCounts(
+                pendingCount: pendingCount,
+                keepCount: keepCount,
+                discardCount: discardCount,
+              )
+              ..restoreAndRefresh(
+                initialQuery,
+                restoreSavedView: restoreSavedView,
+              ),
       ),
       BlocProvider(create: (_) => SelectionCubit()),
       if (rootMode)
@@ -106,9 +112,6 @@ class GalleryPage extends StatelessWidget {
       batchName: batchName,
       createdAt: createdAt,
       totalCount: totalCount,
-      pendingCount: pendingCount,
-      keepCount: keepCount,
-      discardCount: discardCount,
       rootMode: rootMode,
       reviewContext: reviewContext,
     ),
@@ -121,9 +124,6 @@ class _GalleryView extends StatelessWidget {
     this.batchName,
     this.createdAt,
     this.totalCount,
-    this.pendingCount,
-    this.keepCount,
-    this.discardCount,
     required this.rootMode,
     this.reviewContext,
   });
@@ -131,9 +131,6 @@ class _GalleryView extends StatelessWidget {
   final String? batchName;
   final DateTime? createdAt;
   final int? totalCount;
-  final int? pendingCount;
-  final int? keepCount;
-  final int? discardCount;
   final bool rootMode;
   final ReviewContext? reviewContext;
 
@@ -385,9 +382,6 @@ class _GalleryView extends StatelessWidget {
                                 batchName: batchName,
                                 createdAt: createdAt,
                                 totalCount: totalCount,
-                                pendingCount: pendingCount,
-                                keepCount: keepCount,
-                                discardCount: discardCount,
                                 reviewContext: _reviewContext,
                               ),
                             ),
@@ -644,10 +638,7 @@ class _SelectionActionOverlayState extends State<_SelectionActionOverlay> {
       final galleryState = context.read<GalleryCubit>().state;
       final discardedCount = galleryState.items
           .where(
-            (photo) =>
-                ids.contains(photo.id) &&
-                KeepStateWireValue.fromWire(photo.keepState) ==
-                    KeepState.discard,
+            (photo) => ids.contains(photo.id) && KeepStateWireValue.fromWire(photo.keepState) == KeepState.discard,
           )
           .length;
       if (!mounted) return;
@@ -683,9 +674,6 @@ class _GalleryHeader extends StatelessWidget {
     this.batchName,
     this.createdAt,
     this.totalCount,
-    this.pendingCount,
-    this.keepCount,
-    this.discardCount,
     required this.reviewContext,
   });
   final GalleryState state;
@@ -694,9 +682,6 @@ class _GalleryHeader extends StatelessWidget {
   final String? batchName;
   final DateTime? createdAt;
   final int? totalCount;
-  final int? pendingCount;
-  final int? keepCount;
-  final int? discardCount;
   final ReviewContext reviewContext;
 
   @override
@@ -737,8 +722,9 @@ class _GalleryHeader extends StatelessWidget {
               const SizedBox(height: 16),
               _QuickFilters(
                 query: state.query,
-                pendingCount: pendingCount,
-                keepCount: keepCount,
+                pendingCount: state.pendingCount,
+                keepCount: state.keepCount,
+                discardCount: state.discardCount,
                 offline: offline,
               ),
               const SizedBox(height: 18),
@@ -1216,12 +1202,14 @@ class _QuickFilters extends StatelessWidget {
     required this.query,
     this.pendingCount,
     this.keepCount,
+    this.discardCount,
     this.offline = false,
   });
 
   final PhotoQuery query;
   final int? pendingCount;
   final int? keepCount;
+  final int? discardCount;
   final bool offline;
 
   @override
@@ -1230,7 +1218,7 @@ class _QuickFilters extends StatelessWidget {
       ('全部', null, null, null, null),
       ('待确认', 'pending', offline ? null : pendingCount, offline ? null : AppColors.pending, offline ? null : Icons.circle),
       ('已保留', 'keep', offline ? null : keepCount, offline ? null : AppColors.brand, offline ? null : Icons.circle),
-      ('已弃选', 'discard', null, null, null),
+      ('已弃选', 'discard', offline ? null : discardCount, null, null),
       if (!offline) ('精选', 'featured', null, AppColors.amber, Icons.star_rounded),
     ];
     final selected = query.recommendedOnly ? '__ai__' : query.keepState;
@@ -1405,9 +1393,11 @@ class _FilterScanProgress extends StatelessWidget {
 Future<void> _batchAction(BuildContext context, String batchId, List<String> ids, String action) async {
   final selection = context.read<SelectionCubit>();
   final gallery = context.read<GalleryCubit>();
+  final dependencies = BirdCompanionScope.of(context);
+  final deviceId = dependencies.deviceSessionCubit.state.device?.id.trim();
   if (selection.state.submitting) return;
   final previousById = {
-    for (final photo in gallery.state.items.where((photo) => ids.contains(photo.id))) photo.id: photo.keepState ?? 'pending',
+    for (final photo in gallery.state.items.where((photo) => ids.contains(photo.id))) photo.id: KeepStateWireValue.fromWire(photo.keepState),
   };
   selection.begin();
   final outcome = await _batchOperationByPhotoVersion(
@@ -1418,19 +1408,43 @@ Future<void> _batchAction(BuildContext context, String batchId, List<String> ids
   );
   selection.complete(succeededIds: outcome.succeededIds, failed: outcome.failed);
   final keepState = _keepStateForOperation(action);
-  if (!gallery.isClosed && keepState != null) {
-    gallery.applyKeepState(outcome.succeededIds, keepState);
+  final transitions = keepState == null
+      ? const <ReviewStateTransition>[]
+      : [
+          for (final id in outcome.succeededIds)
+            ReviewStateTransition(
+              fileId: id,
+              before: previousById[id] ?? KeepState.pending,
+              after: keepState,
+            ),
+        ];
+  if (!gallery.isClosed && transitions.isNotEmpty) {
+    gallery.applyReviewTransitions(transitions);
   }
+  _publishBatchReviewChange(
+    dependencies.dataChangeBus,
+    deviceId: deviceId,
+    projectId: batchId,
+    transitions: transitions,
+    queued: outcome.queued,
+  );
   if (!outcome.queued) {
-    final grouped = <String, List<String>>{};
+    final grouped = <KeepState, List<String>>{};
     for (final id in outcome.succeededIds) {
-      final previous = previousById[id] ?? 'pending';
+      final previous = previousById[id] ?? KeepState.pending;
       grouped.putIfAbsent(previous, () => []).add(id);
     }
-    selection.setUndoActions([for (final entry in grouped.entries) BatchUndoAction(operation: entry.key, ids: entry.value)]);
+    selection.setUndoActions([
+      for (final entry in grouped.entries)
+        BatchUndoAction(
+          operation: entry.key.wireValue,
+          ids: entry.value,
+          transitionFromOperation: keepState?.wireValue,
+        ),
+    ]);
   }
+  if (!gallery.isClosed) await gallery.refresh();
   if (!context.mounted) return;
-  await gallery.refresh();
   if (outcome.queued) {
     BirdFeedback.queued(context, '修改已保存在手机上，重新连接后会自动更新');
   } else if (outcome.succeededIds.isEmpty) {
@@ -1541,11 +1555,15 @@ Future<void> _undoBatch(BuildContext context, String batchId) async {
   if (!context.mounted) return;
   final selection = context.read<SelectionCubit>();
   final gallery = context.read<GalleryCubit>();
+  final dependencies = BirdCompanionScope.of(context);
+  final deviceId = dependencies.deviceSessionCubit.state.device?.id.trim();
   final actions = selection.takeUndoActions();
   if (actions.isEmpty) return;
   selection.begin(preserveUndo: true);
   final failed = <String, String>{};
   final succeeded = <String>[];
+  final transitions = <ReviewStateTransition>[];
+  var queued = false;
   for (final action in actions) {
     final outcome = await _batchOperationByPhotoVersion(
       context,
@@ -1556,15 +1574,36 @@ Future<void> _undoBatch(BuildContext context, String batchId) async {
     );
     succeeded.addAll(outcome.succeededIds);
     failed.addAll(outcome.failed);
-    final keepState = _keepStateForOperation(action.operation);
-    if (!gallery.isClosed && keepState != null) {
-      gallery.applyKeepState(outcome.succeededIds, keepState);
+    queued = queued || outcome.queued;
+    final after = _keepStateForOperation(action.operation);
+    final before = _keepStateForOperation(action.transitionFromOperation ?? '');
+    if (after != null) {
+      transitions.addAll([
+        for (final id in outcome.succeededIds)
+          ReviewStateTransition(
+            fileId: id,
+            before: before ?? _visibleKeepState(gallery, id) ?? after,
+            after: after,
+          ),
+      ]);
     }
   }
+  if (!gallery.isClosed && transitions.isNotEmpty) {
+    gallery.applyReviewTransitions(transitions);
+  }
+  _publishBatchReviewChange(
+    dependencies.dataChangeBus,
+    deviceId: deviceId,
+    projectId: batchId,
+    transitions: transitions,
+    queued: queued,
+  );
   selection.complete(succeededIds: succeeded, failed: failed);
+  if (!gallery.isClosed) await gallery.refresh();
   if (!context.mounted) return;
-  await gallery.refresh();
-  if (failed.isEmpty) {
+  if (queued) {
+    BirdFeedback.queued(context, '撤销已保存在手机上，重新连接后会自动更新');
+  } else if (failed.isEmpty) {
     BirdFeedback.success(context, '已撤销最近一次批量操作');
   } else {
     BirdFeedback.error(
@@ -1572,6 +1611,34 @@ Future<void> _undoBatch(BuildContext context, String batchId) async {
       '已撤销 ${succeeded.length} 张，${failed.length} 张撤销失败',
     );
   }
+}
+
+KeepState? _visibleKeepState(GalleryCubit gallery, String fileId) {
+  for (final photo in gallery.state.items) {
+    if (photo.id == fileId) return KeepStateWireValue.fromWire(photo.keepState);
+  }
+  return null;
+}
+
+void _publishBatchReviewChange(
+  AppDataChangeBus dataChanges, {
+  required String? deviceId,
+  required String projectId,
+  required List<ReviewStateTransition> transitions,
+  required bool queued,
+}) {
+  final normalizedDeviceId = deviceId?.trim();
+  if (normalizedDeviceId == null || normalizedDeviceId.isEmpty || transitions.isEmpty) {
+    return;
+  }
+  dataChanges.publishChange(
+    BatchReviewDecisionChanged(
+      deviceId: normalizedDeviceId,
+      projectId: projectId,
+      transitions: List.unmodifiable(transitions),
+      queued: queued,
+    ),
+  );
 }
 
 KeepState? _keepStateForOperation(String operation) => switch (operation) {
