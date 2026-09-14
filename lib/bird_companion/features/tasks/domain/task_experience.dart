@@ -20,7 +20,9 @@ enum TaskAction { pause, resume, cancel, retry, skipFailed, exportLog }
 
 enum SdCardReadState { detected, scanning, missing, readFailed, empty }
 
-enum CopyMode { keep, all, dual }
+/// Demo 遗留复制模式。协议冻结后 `dual`（双轨复制）已按主协议 §5 删除；
+/// 生产复制流程使用 features/copy/domain/copy_models.dart 的 CopyScope。
+enum CopyMode { keep, all }
 
 class TaskHomeActionCapability {
   const TaskHomeActionCapability({

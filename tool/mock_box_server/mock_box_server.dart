@@ -743,7 +743,8 @@ class MockBoxServer {
       return;
     }
     if (body['preview_token'] == null || body['scope'] == null) {
-      await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_PREVIEW_EXPIRED');
+      // 协议 §15：COPY_PREVIEW_EXPIRED 为 409 可重试（非 422）。
+      await _copyV1Error(request, HttpStatus.conflict, 'COPY_PREVIEW_EXPIRED');
       return;
     }
     final projectId = body['batch_id']?.toString();
@@ -795,6 +796,7 @@ class MockBoxServer {
     'identity_confidence': 'stable_uuid',
   };
 
+  /// 协议 §13.1 错误包络：{"request_id","error":{code,message,details}}。
   Future<void> _copyV1Error(
     HttpRequest request,
     int status,
@@ -803,8 +805,12 @@ class MockBoxServer {
     request,
     status,
     {
-      'error_code': code,
-      'error_message': 'The copy request does not match birdbox-copy-v1.',
+      'request_id': 'req_${_clock().millisecondsSinceEpoch}',
+      'error': {
+        'code': code,
+        'message': 'The copy request does not match birdbox-copy-v1.',
+        'details': <String, dynamic>{},
+      },
     },
     envelope: false,
   );

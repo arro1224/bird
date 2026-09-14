@@ -130,18 +130,6 @@ class DemoTaskExperienceDataSource implements TaskExperienceDataSource {
       availableSpaceTb: 1.2,
       estimatedMinutes: 46,
     ),
-    CopyMode.dual => const CopyEstimate(
-      mode: CopyMode.dual,
-      totalPhotoCount: 3672,
-      keptCount: 2012,
-      pendingReviewCount: 12,
-      discardedCount: 1648,
-      photoCount: 3672,
-      spaceGb: 651.3,
-      targetName: 'Samsung T7 Shield',
-      availableSpaceTb: 1.2,
-      estimatedMinutes: 72,
-    ),
   };
 
   @override

@@ -95,6 +95,115 @@ abstract final class UserMessageMapper {
         }
       }
       return switch (error.code) {
+        // birdbox-copy-v1 协议错误码（主协议 §15）。后端 message 必须是普通
+        // 语言（如「目标 U 盘空间不足，还需要 12.4 GB」），直接作为正文展示。
+        'COPY_CONFLICT_STRATEGY_REQUIRED' => _copyMessage(
+          '未选择同名文件处理策略',
+          error,
+          '请返回选择跳过、覆盖或两份都保留后再创建任务。',
+        ),
+        'COPY_SOURCE_TARGET_SAME' => _copyMessage(
+          '源与目标不能是同一设备',
+          error,
+          '请为复制任务选择不同的源设备和目标设备。',
+        ),
+        'COPY_SOURCE_NOT_PRESENT' => _copyMessage(
+          '等待相机存储卡',
+          error,
+          '源设备当前不在线，请重新插入后重试。',
+          actionLabel: '重试',
+        ),
+        'COPY_TARGET_NOT_PRESENT' => _copyMessage(
+          '等待目标存储设备',
+          error,
+          '目标设备当前不在线，请重新插入同一设备后重试；不会自动更换其他设备。',
+          actionLabel: '重试',
+        ),
+        'COPY_MEDIA_ID_CHANGED' => _copyMessage(
+          '存储设备身份已变化',
+          error,
+          '当前设备与任务记录的设备不一致，请重新确认设备后再试。',
+        ),
+        'COPY_TARGET_BUSY' => _copyMessage(
+          '目标设备正被占用',
+          error,
+          '已有复制/备份任务正在使用目标设备，请稍后再试。',
+          actionLabel: '重试',
+        ),
+        'COPY_TARGET_READ_ONLY' => _copyMessage(
+          '目标设备不可写入',
+          error,
+          '目标设备硬件或文件系统为只读，请更换可写的目标设备。',
+        ),
+        'COPY_UNSUPPORTED_FILESYSTEM' => _copyMessage(
+          '文件系统不受支持',
+          error,
+          '目标设备的文件系统不受支持，请更换存储设备。',
+        ),
+        'COPY_INSUFFICIENT_SPACE' => _copyMessage(
+          '目标设备空间不足',
+          error,
+          error.message.trim().isEmpty ? '目标设备剩余空间不够，请更换目标盘或减少复制范围。' : error.message,
+          actionLabel: '重试',
+        ),
+        'COPY_SOURCE_CHANGED' => _copyMessage(
+          '源文件已变化',
+          error,
+          '源设备内容在任务期间发生变化，请重新获取预检后再试。',
+          actionLabel: '重试',
+        ),
+        'COPY_SOURCE_PATH_UNSAFE' => _copyMessage(
+          '源路径不安全',
+          error,
+          '源设备存在越界或非普通文件的路径，已停止复制。',
+        ),
+        'COPY_HASH_MISMATCH' => _copyMessage(
+          '副本校验失败',
+          error,
+          '复制后的文件校验不一致，该项已记为失败，可重试失败项。',
+          actionLabel: '重试',
+        ),
+        'COPY_DEVICE_REMOVED' => _copyMessage(
+          '存储设备已拔出',
+          error,
+          '复制期间设备被拔出。已完成的副本保持不变，请重新插入原设备后重试。',
+          actionLabel: '重试',
+        ),
+        'COPY_LEASE_EXPIRED' => _copyMessage(
+          '目标设备写入授权过期',
+          error,
+          '目标设备的写租约已过期，任务将重新排队，请稍后查看进度。',
+          actionLabel: '重试',
+        ),
+        'COPY_METADATA_WRITE_FAILED' => _copyMessage(
+          '审阅信息写入失败',
+          error,
+          'XMP/CSV 或副本元数据写入失败，原片副本不受影响，可重试失败项。',
+          actionLabel: '重试',
+        ),
+        'COPY_STATE_VERSION_CONFLICT' => _copyMessage(
+          '任务状态已更新',
+          error,
+          '盒子中的任务状态已经变化，请重新加载后再操作。',
+          actionLabel: '重新加载',
+        ),
+        'COPY_PREVIEW_EXPIRED' => _copyMessage(
+          '预检已过期',
+          error,
+          '复制预检已过期，请重新获取预检后再创建任务。',
+          actionLabel: '重新获取',
+        ),
+        'COPY_SELECTION_IMMUTABLE' => _copyMessage(
+          '选择快照不可修改',
+          error,
+          '复制选择快照创建后不可修改，请返回相册重新选择。',
+        ),
+        'COPY_SAFE_REMOVE_BUSY' => _copyMessage(
+          '设备仍有活动任务',
+          error,
+          '该设备正在被任务使用，请等待任务完成或取消后再安全移除。',
+          actionLabel: '重试',
+        ),
         'card_not_inserted' => const UserMessage(
           title: '未插入存储卡',
           message: '请插入存储卡后重试，或查看过去拍摄的照片。',
@@ -167,6 +276,27 @@ abstract final class UserMessageMapper {
       title: '操作未完成',
       message: '请检查与盒子的连接后重试。',
       actionLabel: '重试',
+    );
+  }
+
+  /// copy-v1 错误的统一组装：后端 message 必须是普通语言（§15），非空且不含
+  /// 内部细节时优先展示；否则退回 App 侧的固定说明文案。
+  static UserMessage _copyMessage(
+    String title,
+    ApiException error,
+    String fallbackMessage, {
+    String? actionLabel,
+  }) {
+    final normalized = error.message.trim();
+    final usable = normalized.isNotEmpty &&
+        !normalized.contains(RegExp(r'[/\\]')) &&
+        !normalized.contains('Exception') &&
+        !normalized.contains('http://') &&
+        !normalized.contains('https://');
+    return UserMessage(
+      title: title,
+      message: usable ? normalized : fallbackMessage,
+      actionLabel: actionLabel,
     );
   }
 

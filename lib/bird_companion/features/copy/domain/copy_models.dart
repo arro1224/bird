@@ -374,14 +374,16 @@ class CopyRequestDraft {
     reviewExport: reviewExport ?? this.reviewExport,
   );
 
-  /// 预检请求体（§13.4）。`batchId` 在全量备份时可省略。
+  /// 预检请求体（§13.4）。`batchId` 在全量备份时可省略；
+  /// 全量备份时省略 `pair_policy`（§6.2：白名单内全部原始摄影文件
+  /// 都必须包含，配对策略不生效）。
   Map<String, dynamic> toJson() => {
     if (batchId != null && batchId!.trim().isNotEmpty) 'batch_id': batchId!.trim(),
     'source_media_id': sourceMediaId,
     'target_media_id': targetMediaId,
     'scope': scope.wireValue,
     if (selectionId != null && selectionId!.trim().isNotEmpty) 'selection_id': selectionId!.trim(),
-    'pair_policy': pairPolicy.wireValue,
+    if (scope != CopyScope.mediaFullBackup) 'pair_policy': pairPolicy.wireValue,
     'conflict_strategy': conflictStrategy?.wireValue,
     'review_export': reviewExport.toJson(),
   };

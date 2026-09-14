@@ -370,7 +370,8 @@ void main() {
       ),
     );
 
-    expect(find.byKey(const Key('copy-mode-card')), findsNWidgets(3));
+    // 协议冻结后 dual（双轨复制）已删除，仅保留 keep/all 两种模式卡。
+    expect(find.byKey(const Key('copy-mode-card')), findsNWidgets(2));
     expect(find.byKey(const Key('copy-target-drive-icon')), findsOneWidget);
     expect(find.byKey(const Key('copy-recommended-badge')), findsOneWidget);
     expect(tester.getBottomRight(find.text('保存为默认策略')).dy, lessThan(800));

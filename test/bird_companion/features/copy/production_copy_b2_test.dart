@@ -155,6 +155,19 @@ void main() {
       );
       expect(draft.toJson().containsKey('selection_id'), isFalse);
     });
+
+    test('omits pair_policy for media_full_backup (§6.2 白名单全量备份不生效)', () {
+      const draft = CopyRequestDraft(
+        scope: CopyScope.mediaFullBackup,
+        sourceMediaId: 'media_src',
+        targetMediaId: 'media_dst',
+        pairPolicy: PairPolicy.both,
+        conflictStrategy: ConflictStrategy.skip,
+        reviewExport: ReviewExportConfig.disabled(),
+      );
+      expect(draft.toJson().containsKey('pair_policy'), isFalse);
+      expect(draft.toJson().containsKey('batch_id'), isFalse);
+    });
   });
 }
 

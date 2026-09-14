@@ -630,10 +630,18 @@ class _SelectionActionOverlayState extends State<_SelectionActionOverlay> {
     setState(() => _creatingSelection = true);
     try {
       final dependencies = BirdCompanionScope.of(context);
+      // §13.3 client_revision：客户端对所选照片的视图修订号，取选中照片的
+      // 最大 version，帮助后端识别过期选择；照片缺少版本信息时退回 0。
+      final clientRevision = context
+          .read<GalleryCubit>()
+          .state
+          .items
+          .where((photo) => ids.contains(photo.id))
+          .fold(0, (max, photo) => photo.version != null && photo.version! > max ? photo.version! : max);
       final snapshot = await dependencies.copyRepository.createSelection(
         widget.batchId,
         ids,
-        clientRevision: 0,
+        clientRevision: clientRevision,
       );
       final galleryState = context.read<GalleryCubit>().state;
       final discardedCount = galleryState.items

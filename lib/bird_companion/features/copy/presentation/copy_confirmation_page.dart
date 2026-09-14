@@ -653,6 +653,8 @@ class CopyFinalConfirmationStep extends StatelessWidget {
                     _SummaryRow(icon: Icons.videocam_outlined, label: '视频 / 伴随文件', value: '${_formatCount(preview.videoCount)} / ${_formatCount(preview.companionCount)}'),
                   ] else ...[
                     _SummaryRow(icon: Icons.camera_outlined, label: 'RAW / JPEG', value: '${_formatCount(preview.rawCount)} / ${_formatCount(preview.jpegCount)}'),
+                    // §3.4 必显项：RAW+JPEG 策略（全量备份不生效，§6.2）。
+                    _SummaryRow(icon: Icons.tune_rounded, label: 'RAW+JPEG 策略', value: state.pairPolicy.label),
                   ],
                   _SummaryRow(icon: Icons.shield_outlined, label: '同名文件处理', value: state.conflictStrategy?.label ?? '未选择'),
                   _SummaryRow(icon: Icons.description_outlined, label: '审阅信息', value: _reviewExportLabel(state)),

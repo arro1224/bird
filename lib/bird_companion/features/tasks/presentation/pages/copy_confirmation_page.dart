@@ -23,11 +23,7 @@ class CopyConfirmationPage extends StatelessWidget {
                 _row(
                   Icons.image_outlined,
                   '复制范围',
-                  controller.copyMode.name == 'keep'
-                      ? '仅保留照片'
-                      : controller.copyMode.name == 'all'
-                      ? '全部照片'
-                      : '双轨复制',
+                  controller.copyMode.name == 'keep' ? '仅保留照片' : '全部照片',
                 ),
                 _row(Icons.collections_outlined, '总照片数', _count(controller.copyEstimate.totalPhotoCount)),
                 _row(Icons.favorite_border_rounded, '已确认保留', _count(controller.copyEstimate.keptCount)),

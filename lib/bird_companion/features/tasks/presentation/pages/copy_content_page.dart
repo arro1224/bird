@@ -47,7 +47,8 @@ class CopyContentPage extends StatelessWidget {
                         '${_count(controller.copyEstimate.totalPhotoCount)} 张',
                         null,
                       ),
-                      _mode(CopyMode.dual, '双轨复制', '保留照片 + 完整备份', null),
+                      // 协议冻结结论：dual（双轨复制）必须删除（主协议 §5）；
+                      // 全量备份是独立的 media_full_backup 入口。
                     ],
                   ),
                 ),
