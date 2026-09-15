@@ -113,8 +113,16 @@ class ApiClient {
     _dio.options.headers.remove('Authorization');
   }
 
-  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? queryParameters}) => _request(
-    () => _dio.get<Map<String, dynamic>>(path, queryParameters: queryParameters),
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+  }) => _request(
+    () => _dio.get<Map<String, dynamic>>(
+      path,
+      queryParameters: queryParameters,
+      options: headers == null ? null : Options(headers: headers),
+    ),
   );
 
   Future<Map<String, dynamic>> getUri(Uri uri, {CancelToken? cancelToken}) => _request(
@@ -130,18 +138,24 @@ class ApiClient {
     Object? data,
     String? idempotencyKey,
     Map<String, String>? headers,
-  }) => _request(
-    () => _dio.post<Map<String, dynamic>>(
-      path,
-      data: data,
-      options: Options(
-        headers: {
-          'X-Idempotency-Key': idempotencyKey ?? _newRequestId(),
-          ...?headers,
-        },
+  }) {
+    final key = idempotencyKey ?? _newRequestId();
+    return _request(
+      () => _dio.post<Map<String, dynamic>>(
+        path,
+        data: data,
+        options: Options(
+          headers: {
+            // 现有业务接口使用 X- 前缀，copy rc3 使用标准头名。
+            // 同一次请求发送同一个值，兼容迁移期间的两套端点。
+            'X-Idempotency-Key': key,
+            'Idempotency-Key': key,
+            ...?headers,
+          },
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Future<Map<String, dynamic>> postUri(
     Uri uri, {

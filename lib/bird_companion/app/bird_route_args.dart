@@ -205,6 +205,7 @@ class CopyConfirmationArgs {
     this.selectionId,
     this.selectionPhotoCount,
     this.selectionDiscardedCount,
+    this.filter,
   });
 
   final String batchId;
@@ -212,6 +213,7 @@ class CopyConfirmationArgs {
   final String? selectionId;
   final int? selectionPhotoCount;
   final int? selectionDiscardedCount;
+  final Map<String, dynamic>? filter;
 }
 
 /// 摄影资料全量备份入口参数（§3.1：独立入口，不依赖当前批次）。

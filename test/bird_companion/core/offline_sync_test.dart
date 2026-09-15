@@ -432,6 +432,7 @@ class _RecordingApiClient extends ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
   }) async {
     getPaths.add(path);
     final fileId = path.split('/').last;

@@ -164,7 +164,10 @@ class _GalleryView extends StatelessWidget {
       }
       await Navigator.of(context).pushNamed<void>(
         BirdRoutes.copyConfirmation,
-        arguments: CopyConfirmationArgs(decision.batchId!),
+        arguments: CopyConfirmationArgs(
+          decision.batchId!,
+          filter: context.read<GalleryCubit>().state.query.toCopyFilterV1(),
+        ),
       );
     } catch (error) {
       if (!context.mounted) return;
@@ -293,7 +296,10 @@ class _GalleryView extends StatelessWidget {
                               } else if (value == 'copy') {
                                 Navigator.of(context).pushNamed(
                                   BirdRoutes.copyConfirmation,
-                                  arguments: CopyConfirmationArgs(batchId),
+                                  arguments: CopyConfirmationArgs(
+                                    batchId,
+                                    filter: context.read<GalleryCubit>().state.query.toCopyFilterV1(),
+                                  ),
                                 );
                               } else {
                                 showModalBottomSheet(
@@ -632,18 +638,18 @@ class _SelectionActionOverlayState extends State<_SelectionActionOverlay> {
       final dependencies = BirdCompanionScope.of(context);
       // §13.3 client_revision：客户端对所选照片的视图修订号，取选中照片的
       // 最大 version，帮助后端识别过期选择；照片缺少版本信息时退回 0。
-      final clientRevision = context
-          .read<GalleryCubit>()
-          .state
-          .items
-          .where((photo) => ids.contains(photo.id))
-          .fold(0, (max, photo) => photo.version != null && photo.version! > max ? photo.version! : max);
+      final galleryState = context.read<GalleryCubit>().state;
+      final selectedPhotos = galleryState.items.where((photo) => ids.contains(photo.id)).toList(growable: false);
+      final clientRevision = selectedPhotos.fold(
+        0,
+        (max, photo) => photo.version != null && photo.version! > max ? photo.version! : max,
+      );
+      final selectedAssetIds = selectedPhotos.map((photo) => photo.assetId ?? photo.id).toSet().toList(growable: false);
       final snapshot = await dependencies.copyRepository.createSelection(
         widget.batchId,
-        ids,
+        selectedAssetIds,
         clientRevision: clientRevision,
       );
-      final galleryState = context.read<GalleryCubit>().state;
       final discardedCount = galleryState.items
           .where(
             (photo) => ids.contains(photo.id) && KeepStateWireValue.fromWire(photo.keepState) == KeepState.discard,
@@ -658,6 +664,7 @@ class _SelectionActionOverlayState extends State<_SelectionActionOverlay> {
           selectionId: snapshot.selectionId,
           selectionPhotoCount: snapshot.assetCount,
           selectionDiscardedCount: discardedCount,
+          filter: galleryState.query.toCopyFilterV1(),
         ),
       );
       if (!mounted) return;

@@ -232,6 +232,83 @@ void main() {
     expect(dataSource.isConnected, isFalse);
     expect(platform.writes, isEmpty);
   });
+
+  test('open command bonds first and restores notifications after GATT reconnect', () async {
+    final platform = _FakeBlePlatform(bondSucceeds: true);
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+    await dataSource.connect(advertisementFromPlatform(_advertisement('device')));
+    await dataSource.subscribeRequiredNotifications();
+    const request = BleCommandRequest(
+      type: BleCommandType.getNetworkStatus,
+      requestId: '550e8400-e29b-41d4-a716-446655440000',
+      clientId: 'a870bcb1-d423-4d66-96f7-f809ce786543',
+    );
+
+    final responseFuture = dataSource.writeCommand(request);
+    await Future<void>.delayed(Duration.zero);
+    final responseJson = File(
+      'test/contracts/fixtures/ble-network-status.rc4.json',
+    ).readAsStringSync();
+    final packets = const BleFragmentCodec().fragment(
+      Uint8List.fromList(utf8.encode(responseJson)),
+      messageId: 11,
+      maximumFragmentBytes: 52,
+    );
+    for (final packet in packets) {
+      platform.emitNotification(
+        BleProtocolConstants.networkStatusCharacteristicUuid,
+        packet,
+      );
+    }
+    await responseFuture;
+
+    expect(platform.ensureBondedCalls, 1);
+    expect(platform.writes, isNotEmpty);
+    expect(
+      platform.subscribed,
+      containsAll(BleProtocolConstants.notifyCharacteristicUuids),
+    );
+  });
+
+  test('GATT security failure bonds and retries the same command once', () async {
+    final platform = _FakeBlePlatform(
+      encrypted: true,
+      bondSucceeds: true,
+      securityFailuresRemaining: 1,
+    );
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+    await dataSource.connect(advertisementFromPlatform(_advertisement('device')));
+    await dataSource.subscribeRequiredNotifications();
+    const request = BleCommandRequest(
+      type: BleCommandType.getNetworkStatus,
+      requestId: '550e8400-e29b-41d4-a716-446655440000',
+      clientId: 'a870bcb1-d423-4d66-96f7-f809ce786543',
+    );
+
+    final responseFuture = dataSource.writeCommand(request);
+    await Future<void>.delayed(Duration.zero);
+    final responseJson = File(
+      'test/contracts/fixtures/ble-network-status.rc4.json',
+    ).readAsStringSync();
+    final packets = const BleFragmentCodec().fragment(
+      Uint8List.fromList(utf8.encode(responseJson)),
+      messageId: 12,
+      maximumFragmentBytes: 52,
+    );
+    for (final packet in packets) {
+      platform.emitNotification(
+        BleProtocolConstants.networkStatusCharacteristicUuid,
+        packet,
+      );
+    }
+    await responseFuture;
+
+    expect(platform.ensureBondedCalls, 2);
+    expect(platform.securityFailuresRemaining, 0);
+    expect(platform.writes, isNotEmpty);
+  });
 }
 
 Map<String, dynamic> _advertisement(String suffix, {int? companyIdentifier, Uint8List? manufacturerPayload}) => {
@@ -254,12 +331,16 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   _FakeBlePlatform({
     this.negotiatedMtu = 23,
     this.encrypted = false,
+    this.bondSucceeds = false,
+    this.securityFailuresRemaining = 0,
     this.permissionGranted = true,
     this.adapterState = BleAdapterState.enabled,
   });
 
   final int negotiatedMtu;
-  final bool encrypted;
+  bool encrypted;
+  final bool bondSucceeds;
+  int securityFailuresRemaining;
   final bool permissionGranted;
   final BleAdapterState adapterState;
   final StreamController<Map<String, dynamic>> _scan = StreamController.broadcast();
@@ -271,6 +352,7 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   String? connectedHandle;
   int? requestedMtu;
   String? startedScanSessionId;
+  int ensureBondedCalls = 0;
 
   @override
   Stream<Map<String, dynamic>> get scanResults => _scan.stream;
@@ -351,7 +433,32 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   }
 
   @override
-  Future<void> writeWithResponse(String characteristicUuid, Uint8List value) async => writes.add(_Write(characteristicUuid, Uint8List.fromList(value)));
+  Future<void> writeWithResponse(
+    String characteristicUuid,
+    Uint8List value,
+  ) async {
+    if (securityFailuresRemaining > 0) {
+      securityFailuresRemaining -= 1;
+      encrypted = false;
+      throw const ProvisioningException(
+        code: ProvisioningErrorCode.authorizationRequired,
+        retryable: true,
+        diagnosticMessage: 'gattStatus=5',
+      );
+    }
+    writes.add(_Write(characteristicUuid, Uint8List.fromList(value)));
+  }
+
+  @override
+  Future<bool> ensureBonded() async {
+    ensureBondedCalls += 1;
+    if (bondSucceeds) {
+      encrypted = true;
+      return true;
+    }
+    return false;
+  }
+
   @override
   Future<bool> isLinkEncrypted() async => encrypted;
 

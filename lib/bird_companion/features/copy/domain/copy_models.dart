@@ -1,7 +1,7 @@
 /// Domain models for the frozen copy contract `birdbox-copy-v1`.
 ///
 /// Field names and semantics follow `拍鸟盒子_复制全量备份与多存储设备三端协议
-/// _v1.0-rc1_开发冻结版_2026-08-24.md`. The App never invents parallel enums
+/// _v1.0-rc3_开发对齐稿_2026-09-03.md`. The App never invents parallel enums
 /// or mock fields that are not part of the protocol.
 library;
 
@@ -10,6 +10,9 @@ import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 /// 复制范围（主协议 §5）。
 enum CopyScope {
   selectedAssets('selected_assets', '复制我选中的照片'),
+  filteredAssets('filtered_assets', '复制当前筛选结果'),
+  recognizedAssets('recognized_assets', '复制已识别照片'),
+  @Deprecated('rc3 已移除 kept_assets；仅用于读取旧草稿')
   keptAssets('kept_assets', '复制本批次已保留的照片'),
   batchAllAssets('batch_all_assets', '复制本批次全部照片'),
   mediaFullBackup('media_full_backup', '备份源设备全部摄影资料');
@@ -20,6 +23,8 @@ enum CopyScope {
 
   static CopyScope fromWire(String? value) => switch (value) {
     'selected_assets' => CopyScope.selectedAssets,
+    'filtered_assets' => CopyScope.filteredAssets,
+    'recognized_assets' => CopyScope.recognizedAssets,
     'kept_assets' => CopyScope.keptAssets,
     'batch_all_assets' => CopyScope.batchAllAssets,
     'media_full_backup' => CopyScope.mediaFullBackup,
@@ -75,11 +80,7 @@ class ReviewExportConfig {
     this.embedIntoSupportedCopy = true,
   });
 
-  const ReviewExportConfig.disabled()
-    : enabled = false,
-      writeXmp = false,
-      writeCsv = false,
-      embedIntoSupportedCopy = false;
+  const ReviewExportConfig.disabled() : enabled = false, writeXmp = false, writeCsv = false, embedIntoSupportedCopy = false;
 
   final bool enabled;
   final bool writeXmp;
@@ -105,12 +106,113 @@ class ReviewExportConfig {
     );
   }
 
-  Map<String, dynamic> toJson() => {
-    'enabled': enabled,
-    'write_xmp': writeXmp,
-    'write_csv': writeCsv,
-    'embed_into_supported_copy': embedIntoSupportedCopy,
-  };
+  /// rc3 只有一个总开关；写入方式固定为 safe_embed_first。
+  Map<String, dynamic> toJson() => {'enabled': enabled};
+}
+
+class CopyCapabilities {
+  const CopyCapabilities({
+    required this.revision,
+    required this.copyReady,
+    required this.supportedScopes,
+    required this.recognitionPolicyVersion,
+    this.missingRequirements = const [],
+  });
+
+  final String revision;
+  final bool copyReady;
+  final List<CopyScope> supportedScopes;
+  final String recognitionPolicyVersion;
+  final List<String> missingRequirements;
+
+  factory CopyCapabilities.fromJson(Map<String, dynamic> json) => CopyCapabilities(
+    revision: ProtocolValidation.requiredId(json, 'revision'),
+    copyReady: _requiredBool(json, 'copy_ready'),
+    supportedScopes: _stringList(json, 'supported_scopes').map(CopyScope.fromWire).toList(growable: false),
+    recognitionPolicyVersion: ProtocolValidation.requiredId(
+      json,
+      'recognition_policy_version',
+    ),
+    missingRequirements: _stringList(json, 'missing_requirements'),
+  );
+}
+
+class SourceBinding {
+  const SourceBinding({
+    required this.sourceMediaId,
+    required this.displayName,
+    required this.token,
+    required this.expiresAt,
+    required this.verifiedReadOnly,
+    this.batchId,
+  });
+
+  final String sourceMediaId;
+  final String displayName;
+  final String token;
+  final DateTime expiresAt;
+  final bool verifiedReadOnly;
+  final String? batchId;
+
+  factory SourceBinding.fromJson(Map<String, dynamic> json) => SourceBinding(
+    sourceMediaId: ProtocolValidation.requiredId(json, 'source_media_id'),
+    displayName: ProtocolValidation.requiredId(json, 'display_name'),
+    token: ProtocolValidation.requiredId(json, 'source_binding_token'),
+    expiresAt: _requiredDateTime(json, 'expires_at'),
+    verifiedReadOnly: _requiredBool(json, 'verified_read_only'),
+    batchId: json['batch_id']?.toString(),
+  );
+}
+
+class CopyPreferences {
+  const CopyPreferences({
+    required this.pairPolicy,
+    required this.version,
+    required this.origin,
+    this.updatedAt,
+  });
+
+  final PairPolicy pairPolicy;
+  final int version;
+  final String origin;
+  final DateTime? updatedAt;
+
+  factory CopyPreferences.fromJson(Map<String, dynamic> json) => CopyPreferences(
+    pairPolicy: PairPolicy.fromWire(json['pair_policy']?.toString()),
+    version: _requiredNonNegativeInt(json, 'preferences_version'),
+    origin: ProtocolValidation.requiredId(json, 'origin'),
+    updatedAt: ProtocolValidation.optionalDateTime(json, 'updated_at'),
+  );
+}
+
+class CopyScopeOption {
+  const CopyScopeOption({
+    required this.scope,
+    required this.available,
+    required this.countState,
+    required this.navigationAction,
+    this.logicalAssets,
+    this.unavailableReason,
+  });
+
+  final CopyScope scope;
+  final bool available;
+  final int? logicalAssets;
+  final String countState;
+  final String? unavailableReason;
+  final String navigationAction;
+
+  factory CopyScopeOption.fromJson(Map<String, dynamic> json) => CopyScopeOption(
+    scope: CopyScope.fromWire(json['scope']?.toString()),
+    available: _requiredBool(json, 'available'),
+    logicalAssets: json['logical_assets'] == null ? null : _requiredNonNegativeInt(json, 'logical_assets'),
+    countState: ProtocolValidation.requiredId(json, 'count_state'),
+    unavailableReason: json['unavailable_reason']?.toString(),
+    navigationAction: ProtocolValidation.requiredId(
+      json,
+      'navigation_action',
+    ),
+  );
 }
 
 /// 存储设备展示模型（主协议 §4.1）。
@@ -162,7 +264,7 @@ class StorageDeviceSummary {
   final DateTime? lastSeenAt;
   final String? userAlias;
 
-  bool get online => roleState != 'removed' && roleState != 'unavailable';
+  bool get online => roleState != 'removed' && roleState != 'unavailable' && roleState != 'offline';
   bool get identityStable => identityConfidence == 'stable_uuid';
 
   /// 展示名优先级：用户别名 > 服务端 display_name（§4.2 第 1 条）。
@@ -199,8 +301,8 @@ class StorageDeviceSummary {
       throw const ProtocolCompatibilityException('kind', '不是 birdbox-copy-v1 设备类型');
     }
     final roleState = ProtocolValidation.requiredId(json, 'role_state');
-    if (roleState != 'available' && roleState != 'removed' && roleState != 'unavailable') {
-      throw const ProtocolCompatibilityException('role_state', '不是 birdbox-copy-v1 设备角色状态');
+    if (roleState.trim().isEmpty) {
+      throw const ProtocolCompatibilityException('role_state', '不能为空');
     }
     return StorageDeviceSummary(
       mediaId: ProtocolValidation.requiredId(json, 'media_id'),
@@ -218,7 +320,7 @@ class StorageDeviceSummary {
       targetBlockReasons: _stringList(json, 'target_block_reasons'),
       identityConfidence: ProtocolValidation.requiredId(json, 'identity_confidence'),
       lastSeenAt: ProtocolValidation.optionalDateTime(json, 'last_seen_at'),
-      userAlias: json['user_alias']?.toString(),
+      userAlias: (json['alias'] ?? json['user_alias'])?.toString(),
     );
   }
 }
@@ -235,12 +337,14 @@ class CopySelectionSnapshot {
   final int assetCount;
   final DateTime? createdAt;
 
-  factory CopySelectionSnapshot.fromJson(Map<String, dynamic> json) =>
-      CopySelectionSnapshot(
-        selectionId: ProtocolValidation.requiredId(json, 'selection_id'),
-        assetCount: _requiredNonNegativeInt(json, 'asset_count'),
-        createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
-      );
+  factory CopySelectionSnapshot.fromJson(Map<String, dynamic> json) => CopySelectionSnapshot(
+    selectionId: ProtocolValidation.requiredId(json, 'selection_id'),
+    assetCount: _requiredNonNegativeInt(
+      json,
+      json.containsKey('count') ? 'count' : 'asset_count',
+    ),
+    createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
+  );
 }
 
 /// 复制预检结果（主协议 §10.1）。
@@ -338,6 +442,9 @@ class CopyRequestDraft {
     required this.sourceMediaId,
     required this.targetMediaId,
     required this.reviewExport,
+    this.sourceBindingToken,
+    this.expectedPreferencesVersion,
+    this.filter,
     this.batchId,
     this.selectionId,
     this.pairPolicy = PairPolicy.rawOnly,
@@ -348,7 +455,10 @@ class CopyRequestDraft {
   final CopyScope scope;
   final String? selectionId;
   final String sourceMediaId;
+  final String? sourceBindingToken;
   final String targetMediaId;
+  final int? expectedPreferencesVersion;
+  final Map<String, dynamic>? filter;
   final PairPolicy pairPolicy;
   final ConflictStrategy? conflictStrategy;
   final ReviewExportConfig reviewExport;
@@ -358,7 +468,10 @@ class CopyRequestDraft {
     CopyScope? scope,
     String? selectionId,
     String? sourceMediaId,
+    String? sourceBindingToken,
     String? targetMediaId,
+    int? expectedPreferencesVersion,
+    Map<String, dynamic>? filter,
     PairPolicy? pairPolicy,
     ConflictStrategy? conflictStrategy,
     ReviewExportConfig? reviewExport,
@@ -368,7 +481,10 @@ class CopyRequestDraft {
     scope: scope ?? this.scope,
     selectionId: clearSelectionId ? null : selectionId ?? this.selectionId,
     sourceMediaId: sourceMediaId ?? this.sourceMediaId,
+    sourceBindingToken: sourceBindingToken ?? this.sourceBindingToken,
     targetMediaId: targetMediaId ?? this.targetMediaId,
+    expectedPreferencesVersion: expectedPreferencesVersion ?? this.expectedPreferencesVersion,
+    filter: filter ?? this.filter,
     pairPolicy: pairPolicy ?? this.pairPolicy,
     conflictStrategy: conflictStrategy ?? this.conflictStrategy,
     reviewExport: reviewExport ?? this.reviewExport,
@@ -378,12 +494,14 @@ class CopyRequestDraft {
   /// 全量备份时省略 `pair_policy`（§6.2：白名单内全部原始摄影文件
   /// 都必须包含，配对策略不生效）。
   Map<String, dynamic> toJson() => {
-    if (batchId != null && batchId!.trim().isNotEmpty) 'batch_id': batchId!.trim(),
-    'source_media_id': sourceMediaId,
+    'batch_id': scope == CopyScope.mediaFullBackup ? null : batchId?.trim(),
+    'source_binding_token': sourceBindingToken ?? sourceMediaId,
     'target_media_id': targetMediaId,
     'scope': scope.wireValue,
-    if (selectionId != null && selectionId!.trim().isNotEmpty) 'selection_id': selectionId!.trim(),
-    if (scope != CopyScope.mediaFullBackup) 'pair_policy': pairPolicy.wireValue,
+    'selection_id': scope == CopyScope.selectedAssets ? selectionId?.trim() : null,
+    'filter': scope == CopyScope.filteredAssets ? filter : null,
+    'pair_policy': scope == CopyScope.mediaFullBackup ? null : pairPolicy.wireValue,
+    'expected_preferences_version': scope == CopyScope.mediaFullBackup ? null : expectedPreferencesVersion,
     'conflict_strategy': conflictStrategy?.wireValue,
     'review_export': reviewExport.toJson(),
   };
@@ -423,15 +541,14 @@ class BatchTargetPreference {
   final String lastSuccessfulTargetMediaId;
   final DateTime? updatedAt;
 
-  factory BatchTargetPreference.fromJson(Map<String, dynamic> json) =>
-      BatchTargetPreference(
-        batchId: ProtocolValidation.requiredId(json, 'batch_id'),
-        lastSuccessfulTargetMediaId: ProtocolValidation.requiredId(
-          json,
-          'last_successful_target_media_id',
-        ),
-        updatedAt: ProtocolValidation.optionalDateTime(json, 'updated_at'),
-      );
+  factory BatchTargetPreference.fromJson(Map<String, dynamic> json) => BatchTargetPreference(
+    batchId: ProtocolValidation.requiredId(json, 'batch_id'),
+    lastSuccessfulTargetMediaId: ProtocolValidation.requiredId(
+      json,
+      'last_successful_target_media_id',
+    ),
+    updatedAt: ProtocolValidation.optionalDateTime(json, 'updated_at'),
+  );
 }
 
 int _requiredNonNegativeInt(Map<String, dynamic> json, String key) {

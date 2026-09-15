@@ -29,6 +29,9 @@ abstract interface class BirdBoxBlePlatform {
   Future<Uint8List> readCharacteristic(String characteristicUuid);
   Future<void> setNotify(String characteristicUuid, {required bool enabled});
   Future<void> writeWithResponse(String characteristicUuid, Uint8List value);
+
+  /// Returns true when Android had to rebuild the GATT connection after Bond.
+  Future<bool> ensureBonded();
   Future<bool> isLinkEncrypted();
   Future<void> dispose();
 }
@@ -114,6 +117,9 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
   Future<void> writeWithResponse(String characteristicUuid, Uint8List value) => _invoke<void>('writeWithResponse', {'characteristicUuid': characteristicUuid, 'value': value});
 
   @override
+  Future<bool> ensureBonded() async => (await _invoke<bool>('ensureBonded')) ?? false;
+
+  @override
   Future<bool> isLinkEncrypted() async => (await _invoke<bool>('isLinkEncrypted')) ?? false;
 
   @override
@@ -145,18 +151,25 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
 
   static ProvisioningException _platformError(PlatformException error) {
     final details = error.details is Map ? Map<String, dynamic>.from(error.details as Map) : const <String, dynamic>{};
-    final scanErrorCode = details['androidScanErrorCode'];
-    final diagnosticSuffix = scanErrorCode is int ? ' (Android scan error $scanErrorCode)' : '';
+    final diagnosticFields = <String>[
+      'platformExceptionCode=${error.code}',
+      if (details['gattStatus'] != null) 'gattStatus=${details['gattStatus']}',
+      if (details['bondState'] != null) 'bondState=${details['bondState']}',
+      if (details['characteristicUuid'] != null) 'characteristicUuid=${details['characteristicUuid']}',
+      if (details['operationName'] != null) 'operation=${details['operationName']}',
+      if (details['androidScanErrorCode'] != null) 'Android scan error ${details['androidScanErrorCode']}',
+      if (details['scanSessionId'] != null) 'scanSession=${details['scanSessionId']}',
+    ];
     return ProvisioningException(
       code: switch (error.code) {
         'bluetooth_permission_denied' => ProvisioningErrorCode.bluetoothPermissionDenied,
-        'ble_link_not_encrypted' => ProvisioningErrorCode.authorizationRequired,
+        'ble_link_not_encrypted' || 'ble_bond_failed' || 'ble_bond_rejected' || 'ble_bond_timeout' => ProvisioningErrorCode.authorizationRequired,
         'invalid_request' || 'invalid_state' => ProvisioningErrorCode.invalidRequest,
         'bluetooth_unavailable' => ProvisioningErrorCode.capabilityUnsupported,
         _ => ProvisioningErrorCode.networkInternalError,
       },
-      retryable: error.code == 'gatt_busy' || error.code == 'gatt_operation_failed',
-      diagnosticMessage: 'Android BLE platform error: ${error.code}$diagnosticSuffix',
+      retryable: error.code == 'gatt_busy' || error.code == 'gatt_operation_failed' || error.code == 'ble_link_not_encrypted',
+      diagnosticMessage: 'Android BLE platform error: ${diagnosticFields.join(', ')}',
     );
   }
 }
@@ -465,9 +478,9 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     if (_pendingCommands.containsKey(request.requestId)) {
       throw const ProvisioningException(code: ProvisioningErrorCode.requestIdConflict, retryable: false);
     }
-    if ((request.writesWifiCredentials || request.payload.containsKey('authorization')) && !await _platform.isLinkEncrypted()) {
-      throw const ProvisioningException(code: ProvisioningErrorCode.authorizationRequired, retryable: false, diagnosticMessage: 'Sensitive BLE write requires a bonded encrypted link');
-    }
+    // Both rc4 command characteristics are encrypt-write. GATT connection and
+    // service discovery alone are not sufficient: establish Android Bond first.
+    await _ensureBondedForCommand(request);
 
     final message = _messageCodec.encodeRequest(request);
     List<Uint8List> packets = const [];
@@ -477,8 +490,15 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       final characteristicUuid = request.writesWifiCredentials ? BleProtocolConstants.wifiConfigCharacteristicUuid : BleProtocolConstants.provisioningCommandCharacteristicUuid;
       final maximumFragmentBytes = (_negotiatedMtu - 3).clamp(BleProtocolConstants.fragmentHeaderLength + 1, 514);
       packets = _fragmentCodec.fragment(message, messageId: _allocateMessageId(), maximumFragmentBytes: maximumFragmentBytes);
-      for (final packet in packets) {
-        await _platform.writeWithResponse(characteristicUuid, packet);
+      try {
+        await _writePackets(characteristicUuid, packets);
+      } on ProvisioningException catch (error) {
+        if (error.code != ProvisioningErrorCode.authorizationRequired) rethrow;
+        // Android status 5/12/15 may be the first evidence that the active link
+        // lost encryption. Recover Bond/GATT once and retry the exact request,
+        // preserving request_id and fragment message id.
+        await _ensureBondedForCommand(request);
+        await _writePackets(characteristicUuid, packets);
       }
       return await completer.future.timeout(
         BleProtocolConstants.commandResponseTimeout,
@@ -490,6 +510,38 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         packet.fillRange(0, packet.length, 0);
       }
       _pendingCommands.remove(request.requestId);
+    }
+  }
+
+  Future<void> _ensureBondedForCommand(BleCommandRequest request) async {
+    try {
+      final reconnected = await _platform.ensureBonded();
+      if (reconnected) {
+        _requiredNotificationsSubscribed = false;
+        await subscribeRequiredNotifications();
+      }
+      if (!await _platform.isLinkEncrypted()) {
+        throw const ProvisioningException(
+          code: ProvisioningErrorCode.authorizationRequired,
+          retryable: true,
+          diagnosticMessage: 'Android Bond completed but the active BLE link is not encrypted',
+        );
+      }
+    } on ProvisioningException catch (error) {
+      debugPrint(
+        'BIRDBOX_BLE_FAILURE operation=${request.type.wireValue} '
+        'requestId=${request.requestId} ${error.diagnosticMessage ?? error.code.wireValue}',
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> _writePackets(
+    String characteristicUuid,
+    List<Uint8List> packets,
+  ) async {
+    for (final packet in packets) {
+      await _platform.writeWithResponse(characteristicUuid, packet);
     }
   }
 

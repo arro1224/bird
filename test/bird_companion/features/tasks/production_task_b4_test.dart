@@ -163,6 +163,7 @@ class _B4ApiClient extends ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
   }) async {
     lastPath = path;
     return _reportJson()..['job_id'] = responseJobId;

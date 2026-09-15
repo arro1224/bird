@@ -28,7 +28,9 @@ import 'package:aves/bird_companion/features/connection/presentation/widgets/k7_
 import 'package:aves/bird_companion/features/connection/presentation/widgets/manual_address_form.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -209,6 +211,10 @@ class _BleConnectionView extends StatelessWidget {
         builder: (context, state) {
           final cubit = context.read<ProvisioningCubit>();
           final error = state.error == null ? null : UserMessageMapper.fromError(state.error!);
+          final developerDiagnostic = _developerBleDiagnostic(
+            state.error,
+            state.latestScanDiagnostic?.scanSessionId,
+          );
           final title = switch (state.phase) {
             ProvisioningPhase.trusted => '验证设备',
             ProvisioningPhase.pairingCode || ProvisioningPhase.authorizing => '设备配对',
@@ -240,6 +246,7 @@ class _BleConnectionView extends StatelessWidget {
               searching: state.phase == ProvisioningPhase.discovering,
               error: error,
               diagnosticId: state.latestScanDiagnostic?.scanSessionId,
+              developerDiagnostic: developerDiagnostic,
               onDiscover: cubit.discover,
               onSelectDevice: cubit.selectDevice,
               onRetry: cubit.retry,
@@ -353,6 +360,7 @@ class _BleDiscoveryView extends StatelessWidget {
     required this.searching,
     required this.error,
     required this.diagnosticId,
+    required this.developerDiagnostic,
     required this.onDiscover,
     required this.onSelectDevice,
     required this.onRetry,
@@ -362,6 +370,7 @@ class _BleDiscoveryView extends StatelessWidget {
   final bool searching;
   final UserMessage? error;
   final String? diagnosticId;
+  final String? developerDiagnostic;
   final Future<void> Function() onDiscover;
   final Future<void> Function(ProvisioningDevice) onSelectDevice;
   final Future<void> Function() onRetry;
@@ -412,6 +421,17 @@ class _BleDiscoveryView extends StatelessWidget {
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AppColors.inkMuted,
+          ),
+        ),
+      ],
+      if (developerDiagnostic != null) ...[
+        const SizedBox(height: AppSpacing.xs),
+        SelectableText(
+          developerDiagnostic!,
+          key: const Key('ble-developer-diagnostic'),
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: AppColors.danger,
           ),
         ),
       ],
@@ -488,6 +508,13 @@ class _BleDiscoveryView extends StatelessWidget {
       const _PrivacyNote(),
     ],
   );
+}
+
+String? _developerBleDiagnostic(Object? error, String? scanSessionId) {
+  if (!kDebugMode || error == null) return null;
+  final diagnostic = error is ProvisioningException ? error.diagnosticMessage ?? error.code.wireValue : error.runtimeType.toString();
+  final scan = scanSessionId == null ? '' : '；scanSession=$scanSessionId';
+  return '联调诊断：$diagnostic$scan';
 }
 
 class _TrustedDeviceView extends StatelessWidget {

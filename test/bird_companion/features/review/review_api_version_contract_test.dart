@@ -72,6 +72,7 @@ class _DetailApiClient extends ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
   }) async {
     getCalls++;
     if (getCalls == 1) {
@@ -139,6 +140,7 @@ class _LegacyDecisionApiClient extends ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
   }) async {
     getCalls++;
     return const {

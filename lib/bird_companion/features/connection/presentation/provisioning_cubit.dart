@@ -77,8 +77,10 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   StreamSubscription<ProvisioningDevice>? _discoverySubscription;
   StreamSubscription<BleScanDiagnosticSession>? _scanDiagnosticSubscription;
   var _lastAction = _ProvisioningAction.discover;
+  Object? _rootFailure;
 
   Future<void> discover() async {
+    _rootFailure = null;
     _lastAction = _ProvisioningAction.discover;
     await _discoverySubscription?.cancel();
     await _repository.stopDiscovery();
@@ -97,6 +99,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   }
 
   Future<void> selectDevice(ProvisioningDevice device) async {
+    _rootFailure = null;
     _lastAction = _ProvisioningAction.connect;
     await _discoverySubscription?.cancel();
     await _repository.stopDiscovery();
@@ -128,6 +131,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   Future<void> openPairing() async {
     if (isClosed || state.phase != ProvisioningPhase.trusted || state.deviceInfo == null) return;
     _lastAction = _ProvisioningAction.openPairing;
+    _rootFailure = null;
     emit(
       state.copyWith(
         phase: ProvisioningPhase.authorizing,
@@ -153,6 +157,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   Future<void> authorizePairing(String pairingCode) async {
     if (isClosed || state.phase != ProvisioningPhase.pairingCode || pairingCode.trim().isEmpty) return;
     _lastAction = _ProvisioningAction.authorizePairing;
+    _rootFailure = null;
     emit(
       state.copyWith(phase: ProvisioningPhase.authorizing, clearError: true),
     );
@@ -216,7 +221,12 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 
   void _onFailure(Object error, [StackTrace? stackTrace]) {
     if (isClosed) return;
-    emit(state.copyWith(phase: ProvisioningPhase.failure, error: error));
+    // Keep the first actionable root cause. A later disconnect/cancellation
+    // callback must not replace a GATT security or Bond failure with a generic
+    // "operation failed" message.
+    if (_rootFailure != null) return;
+    _rootFailure = error;
+    emit(state.copyWith(phase: ProvisioningPhase.failure, error: _rootFailure));
   }
 
   void _onScanDiagnostic(BleScanDiagnosticSession diagnostic) {
