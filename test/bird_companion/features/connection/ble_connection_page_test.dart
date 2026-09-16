@@ -1,5 +1,6 @@
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/network_provisioning_cubit.dart';
@@ -80,6 +81,47 @@ void main() {
     expect(find.textContaining('android'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+  });
+
+  testWidgets('BLE failure exposes the diagnostic JSON copy action', (
+    tester,
+  ) async {
+    final repository = FakeProvisioningRepository(
+      discoverError: const ProvisioningException(
+        code: ProvisioningErrorCode.networkInternalError,
+        retryable: true,
+        diagnosticMessage: 'test-only scan failure',
+      ),
+    );
+    addTearDown(repository.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ConnectionPage(provisioningRepository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    repository.emitScanDiagnostic(
+      BleScanDiagnosticSession(
+        scanSessionId: 'ble-trace-failure',
+        startedAt: DateTime.utc(2026, 9, 16, 1),
+        endedAt: DateTime.utc(2026, 9, 16, 1, 0, 1),
+        permissionBefore: BleScanPermissionState.granted,
+        permissionAfter: BleScanPermissionState.granted,
+        adapterBefore: BleAdapterState.enabled,
+        adapterAfter: BleAdapterState.enabled,
+        rawResultCount: 0,
+        acceptedCount: 0,
+        filteredCount: 0,
+        reasonCounts: const {},
+        endReason: BleScanEndReason.platformError,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('ble-copy-diagnostic-json')), findsOneWidget);
+    expect(find.text('复制诊断 JSON'), findsOneWidget);
   });
 
   testWidgets('BLE page provides and renders Direct AP provisioning', (tester) async {

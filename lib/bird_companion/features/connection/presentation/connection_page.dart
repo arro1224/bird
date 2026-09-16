@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
@@ -32,6 +33,7 @@ import 'package:aves/bird_companion/features/connection/domain/provisioning_erro
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class ConnectionPage extends StatelessWidget {
@@ -250,6 +252,12 @@ class _BleConnectionView extends StatelessWidget {
               onDiscover: cubit.discover,
               onSelectDevice: cubit.selectDevice,
               onRetry: cubit.retry,
+              onCopyDiagnostic: state.latestScanDiagnostic == null
+                  ? null
+                  : () => _copyBleDiagnostic(
+                      context,
+                      state.latestScanDiagnostic!.scanSessionId,
+                    ),
             ),
           };
           return _scaffold(context, title: '${titlePrefix ?? ''}$title', content: content);
@@ -352,6 +360,30 @@ class _BleConnectionView extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _copyBleDiagnostic(
+    BuildContext context,
+    String traceId,
+  ) async {
+    final dependencies = BirdCompanionScope.maybeOf(context);
+    if (dependencies == null) {
+      BirdFeedback.error(context, '当前环境无法读取诊断记录');
+      return;
+    }
+    final scanSessions = dependencies.bleScanDiagnosticStore.readAll().where((session) => session.scanSessionId == traceId).map((session) => session.toJson()).toList(growable: false);
+    final connectionEvents = dependencies.bleConnectionDiagnosticStore.readAll(traceId: traceId).reversed.map((event) => event.toJson()).toList(growable: false);
+    final output = const JsonEncoder.withIndent('  ').convert({
+      'schema_version': 1,
+      'generated_at': DateTime.now().toUtc().toIso8601String(),
+      'trace_id': traceId,
+      'scan_sessions': scanSessions,
+      'connection_events': connectionEvents,
+    });
+    await Clipboard.setData(ClipboardData(text: output));
+    if (context.mounted) {
+      BirdFeedback.success(context, '诊断 JSON 已复制，可直接回传给联调人员');
+    }
+  }
 }
 
 class _BleDiscoveryView extends StatelessWidget {
@@ -364,6 +396,7 @@ class _BleDiscoveryView extends StatelessWidget {
     required this.onDiscover,
     required this.onSelectDevice,
     required this.onRetry,
+    this.onCopyDiagnostic,
   });
 
   final List<ProvisioningDevice> devices;
@@ -374,6 +407,7 @@ class _BleDiscoveryView extends StatelessWidget {
   final Future<void> Function() onDiscover;
   final Future<void> Function(ProvisioningDevice) onSelectDevice;
   final Future<void> Function() onRetry;
+  final Future<void> Function()? onCopyDiagnostic;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -433,6 +467,16 @@ class _BleDiscoveryView extends StatelessWidget {
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AppColors.danger,
           ),
+        ),
+      ],
+      if (error != null && onCopyDiagnostic != null) ...[
+        const SizedBox(height: AppSpacing.sm),
+        BirdButton(
+          key: const Key('ble-copy-diagnostic-json'),
+          label: '复制诊断 JSON',
+          onPressed: onCopyDiagnostic,
+          icon: const Icon(Icons.copy_all_outlined),
+          variant: BirdButtonVariant.outlined,
         ),
       ],
       const SizedBox(height: AppSpacing.xl),

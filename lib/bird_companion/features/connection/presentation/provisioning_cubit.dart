@@ -189,10 +189,45 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   Future<void> retry() => switch (_lastAction) {
     _ProvisioningAction.discover => discover(),
     _ProvisioningAction.connect when state.selectedDevice != null => selectDevice(state.selectedDevice!),
-    _ProvisioningAction.openPairing => openPairing(),
-    _ProvisioningAction.authorizePairing => openPairing(),
+    _ProvisioningAction.openPairing || _ProvisioningAction.authorizePairing => _reconnectAndOpenPairing(),
     _ => discover(),
   };
+
+  Future<void> _reconnectAndOpenPairing() async {
+    final device = state.selectedDevice;
+    if (device == null) {
+      await discover();
+      return;
+    }
+    _rootFailure = null;
+    emit(
+      state.copyWith(
+        phase: ProvisioningPhase.connecting,
+        clearDeviceInfo: true,
+        clearPairingWindow: true,
+        clearError: true,
+      ),
+    );
+    try {
+      // A failed/timeout Bond may leave both Android and the vendor GATT stack
+      // in an uncertain state. A user retry always tears down that session and
+      // re-verifies Device Info before opening a fresh pairing window.
+      await _repository.disconnect();
+      if (isClosed) return;
+      final info = await _repository.connect(device);
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          phase: ProvisioningPhase.trusted,
+          deviceInfo: info,
+          clearError: true,
+        ),
+      );
+      await openPairing();
+    } catch (error) {
+      _onFailure(error);
+    }
+  }
 
   Future<void> reset() async {
     await _discoverySubscription?.cancel();
