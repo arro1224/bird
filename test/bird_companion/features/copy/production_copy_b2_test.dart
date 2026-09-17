@@ -1,4 +1,6 @@
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
+import 'package:aves/bird_companion/core/network/api_client.dart';
+import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -121,15 +123,36 @@ void main() {
       expect(job.copyJobId, 'copy_xyz');
       expect(job.eventSeq, 0);
     });
+
+    test('creates an rc3 selection through session, chunk and seal', () async {
+      final client = _SelectionApiClient();
+      final snapshot = await CopyApi(client).createSelection(
+        'batch_1',
+        ['asset_1', 'asset_2'],
+        clientRevision: 9,
+      );
+
+      expect(snapshot.selectionId, 'sel_1');
+      expect(snapshot.assetCount, 2);
+      expect(client.paths, [
+        '/api/v1/batches/batch_1/copy-assets',
+        '/api/v1/batches/batch_1/copy-selection-sessions',
+        '/api/v1/copy-selection-sessions/session_1/chunks',
+        '/api/v1/copy-selection-sessions/session_1/seal',
+      ]);
+      expect(client.posts.last, {'expected_unique_count': 2});
+    });
   });
 
   group('copy request draft', () {
     test('serializes the preview request body per §13.4', () {
       const draft = CopyRequestDraft(
         batchId: 'batch_1',
-        scope: CopyScope.keptAssets,
+        scope: CopyScope.recognizedAssets,
         sourceMediaId: 'media_src',
+        sourceBindingToken: 'src_binding',
         targetMediaId: 'media_dst',
+        expectedPreferencesVersion: 2,
         pairPolicy: PairPolicy.rawOnly,
         conflictStrategy: ConflictStrategy.keepBoth,
         reviewExport: ReviewExportConfig(
@@ -139,13 +162,15 @@ void main() {
           embedIntoSupportedCopy: true,
         ),
       );
-      expect(draft.toJson()['scope'], 'kept_assets');
+      expect(draft.toJson()['scope'], 'recognized_assets');
+      expect(draft.toJson()['source_binding_token'], 'src_binding');
+      expect(draft.toJson()['expected_preferences_version'], 2);
       expect(draft.toJson()['conflict_strategy'], 'keep_both');
       expect(draft.toJson()['pair_policy'], 'raw_only');
       expect((draft.toJson()['review_export'] as Map)['enabled'], isTrue);
     });
 
-    test('omits selection_id for batch scopes', () {
+    test('sends explicit null selection_id for non-selected rc3 scopes', () {
       const draft = CopyRequestDraft(
         batchId: 'batch_1',
         scope: CopyScope.batchAllAssets,
@@ -153,10 +178,10 @@ void main() {
         targetMediaId: 'media_dst',
         reviewExport: ReviewExportConfig.disabled(),
       );
-      expect(draft.toJson().containsKey('selection_id'), isFalse);
+      expect(draft.toJson()['selection_id'], isNull);
     });
 
-    test('omits pair_policy for media_full_backup (§6.2 白名单全量备份不生效)', () {
+    test('sends explicit null batch policy fields for media_full_backup', () {
       const draft = CopyRequestDraft(
         scope: CopyScope.mediaFullBackup,
         sourceMediaId: 'media_src',
@@ -165,10 +190,61 @@ void main() {
         conflictStrategy: ConflictStrategy.skip,
         reviewExport: ReviewExportConfig.disabled(),
       );
-      expect(draft.toJson().containsKey('pair_policy'), isFalse);
-      expect(draft.toJson().containsKey('batch_id'), isFalse);
+      expect(draft.toJson()['pair_policy'], isNull);
+      expect(draft.toJson()['batch_id'], isNull);
+      expect(draft.toJson()['expected_preferences_version'], isNull);
     });
   });
+}
+
+class _SelectionApiClient extends ApiClient {
+  final List<String> paths = [];
+  final List<Object?> posts = [];
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+  }) async {
+    paths.add(path);
+    return {
+      'batch_id': 'batch_1',
+      'manifest_revision': 4,
+      'items': const <Object>[],
+      'next_cursor': null,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? data,
+    String? idempotencyKey,
+    Map<String, String>? headers,
+  }) async {
+    paths.add(path);
+    posts.add(data);
+    if (path.endsWith('/copy-selection-sessions')) {
+      return {'session_id': 'session_1', 'state': 'open'};
+    }
+    if (path.endsWith('/chunks')) {
+      return {
+        'session_id': 'session_1',
+        'chunk_index': 0,
+        'accepted_count': 2,
+      };
+    }
+    return {
+      'selection_id': 'sel_1',
+      'batch_id': 'batch_1',
+      'count': 2,
+      'digest': List.filled(64, 'a').join(),
+      'client_revision': 9,
+      'manifest_revision': 4,
+      'sealed': true,
+    };
+  }
 }
 
 Map<String, dynamic> _deviceJson() => {

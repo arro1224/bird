@@ -24,17 +24,18 @@ class CopyConfirmationPage extends StatefulWidget {
     this.selectionId,
     this.selectionPhotoCount,
     this.selectionDiscardedCount,
+    this.filter,
   });
 
   /// 摄影资料全量备份为 null；批次复制为批次 id。
   final String? batchId;
 
-  /// wire 值：`kept_assets`/`batch_all_assets`/`selected_assets`/
-  /// `media_full_backup`；null 时按设置默认范围。
+  /// rc3 wire 值；null 时使用已识别照片这一稳定快捷范围。
   final String? initialScope;
   final String? selectionId;
   final int? selectionPhotoCount;
   final int? selectionDiscardedCount;
+  final Map<String, dynamic>? filter;
 
   factory CopyConfirmationPage.fromArgs({required Object? args}) {
     if (args is CopyConfirmationArgs) {
@@ -44,6 +45,7 @@ class CopyConfirmationPage extends StatefulWidget {
         selectionId: args.selectionId,
         selectionPhotoCount: args.selectionPhotoCount,
         selectionDiscardedCount: args.selectionDiscardedCount,
+        filter: args.filter,
       );
     }
     if (args is String) return CopyConfirmationPage(batchId: args);
@@ -82,22 +84,22 @@ class _CopyConfirmationPageState extends State<CopyConfirmationPage> {
           selectionId: widget.selectionId,
           selectionPhotoCount: widget.selectionPhotoCount,
           selectionDiscardedCount: widget.selectionDiscardedCount,
-          preferredTargetMediaId: widget.batchId == null
-              ? null
-              : preferences.batchTargetPreferences[widget.batchId!.trim()],
+          filter: widget.filter,
+          preferredTargetMediaId: widget.batchId == null ? null : preferences.batchTargetPreferences[widget.batchId!.trim()],
           onRememberTarget: widget.batchId == null
               ? null
               : (batchId, mediaId) => dependencies.settingsStore.write(
-                    dependencies.settingsStore.read().copyWith(
-                      batchTargetPreferences: {
-                        ...dependencies.settingsStore.read().batchTargetPreferences,
-                        batchId: mediaId,
-                      },
-                    ),
+                  dependencies.settingsStore.read().copyWith(
+                    batchTargetPreferences: {
+                      ...dependencies.settingsStore.read().batchTargetPreferences,
+                      batchId: mediaId,
+                    },
                   ),
+                ),
           dataChanges: dependencies.dataChangeBus,
-          initialReviewExportEnabled: preferences.reviewExportEnabled,
-          initialEmbedReviewMetadata: preferences.embedReviewMetadata,
+          // rc3 每次新任务默认关闭审阅导出，不能沿用旧 App 本地偏好。
+          initialReviewExportEnabled: false,
+          initialEmbedReviewMetadata: true,
         )..initialize();
       },
       child: FutureBuilder<DeviceStatus?>(
@@ -116,9 +118,7 @@ class _CopyConfirmationPageState extends State<CopyConfirmationPage> {
       return CopyScope.fromWire(wire);
     }
     final preferences = dependencies.settingsStore.read();
-    return preferences.copyMode == 'batchAllAssets'
-        ? CopyScope.batchAllAssets
-        : CopyScope.keptAssets;
+    return preferences.copyMode == 'batchAllAssets' ? CopyScope.batchAllAssets : CopyScope.recognizedAssets;
   }
 
   Future<DeviceStatus?> _readStatus(
@@ -156,9 +156,7 @@ class _CopySubmitResult extends StatelessWidget {
         Text('任务编号 $jobId'),
         const SizedBox(height: 10),
         Text(
-          fullBackup
-              ? '盒子将在后台完成摄影资料全量备份。任务进度与结果可在任务中心查看。'
-              : '盒子将按确认的范围复制照片。任务进度与结果可在任务中心查看。',
+          fullBackup ? '盒子将在后台完成摄影资料全量备份。任务进度与结果可在任务中心查看。' : '盒子将按确认的范围复制照片。任务进度与结果可在任务中心查看。',
           style: const TextStyle(height: 1.5),
         ),
       ],
@@ -196,8 +194,7 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> {
 
   @override
   Widget build(BuildContext context) => BlocConsumer<CopyConfigCubit, CopyConfigState>(
-    listenWhen: (before, after) =>
-        before.submitted != after.submitted || before.createdJob?.copyJobId != after.createdJob?.copyJobId,
+    listenWhen: (before, after) => before.submitted != after.submitted || before.createdJob?.copyJobId != after.createdJob?.copyJobId,
     listener: (context, state) {
       if (!state.submitted || state.createdJob == null) return;
       final submitted = widget.onSubmitted;
@@ -228,8 +225,7 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> {
           ? CopyContentStep(
               state: state,
               onBack: () => Navigator.maybePop(context),
-              onScopeSelected: (scope) =>
-                  context.read<CopyConfigCubit>().setScope(scope),
+              onScopeSelected: (scope) => context.read<CopyConfigCubit>().setScope(scope),
               onSourceSelected: context.read<CopyConfigCubit>().selectSource,
               onTargetSelected: context.read<CopyConfigCubit>().selectTarget,
               onPairPolicySelected: context.read<CopyConfigCubit>().setPairPolicy,
@@ -245,12 +241,8 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> {
           : CopyFinalConfirmationStep(
               state: state,
               lowBatteryPercent: widget.lowBatteryPercent,
-              onBack: state.loadingPreview || state.submitting
-                  ? null
-                  : () => setState(() => _step = _CopyFlowStep.content),
-              onRefreshPreview: state.submitting
-                  ? null
-                  : () => context.read<CopyConfigCubit>().fetchPreview(),
+              onBack: state.loadingPreview || state.submitting ? null : () => setState(() => _step = _CopyFlowStep.content),
+              onRefreshPreview: state.submitting ? null : () => context.read<CopyConfigCubit>().fetchPreview(),
               onSubmit: context.read<CopyConfigCubit>().submit,
             ),
     ),
@@ -264,7 +256,7 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> {
     final current = dependencies.settingsStore.read();
     final scopeValue = switch (state.scope) {
       CopyScope.batchAllAssets => 'batchAllAssets',
-      _ => 'keptAssets',
+      _ => 'recognizedAssets',
     };
     await dependencies.settingsStore.write(
       current.copyWith(
@@ -330,18 +322,6 @@ class CopyContentStep extends StatelessWidget {
               child: const Text('获取预检并继续'),
             ),
           ),
-          if (!fullBackup) ...[
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: OutlinedButton(
-                key: const Key('copy-save-defaults'),
-                onPressed: state.loadingDevices ? null : onSaveDefaults,
-                child: const Text('保存为默认策略'),
-              ),
-            ),
-          ],
         ],
       ),
       children: [
@@ -400,24 +380,34 @@ class CopyContentStep extends StatelessWidget {
     title: '复制范围',
     child: Column(
       children: [
-        CopyScopeCard(
-          scope: CopyScope.keptAssets,
-          title: '复制已保留',
-          subtitle: '仅复制本批次标记为保留的照片',
-          selected: state.scope == CopyScope.keptAssets,
-          recommended: true,
-          onTap: state.loadingDevices ? null : () => onScopeSelected(CopyScope.keptAssets),
-        ),
-        CopyScopeCard(
-          scope: CopyScope.batchAllAssets,
-          title: '复制本批次全部照片',
-          subtitle: '不做筛选，复制这次拍摄中的所有照片',
-          selected: state.scope == CopyScope.batchAllAssets,
-          onTap: state.loadingDevices ? null : () => onScopeSelected(CopyScope.batchAllAssets),
-        ),
+        for (final option in state.scopeOptions.where(
+          (item) => item.scope != CopyScope.selectedAssets && item.scope != CopyScope.mediaFullBackup,
+        ))
+          CopyScopeCard(
+            scope: option.scope,
+            title: option.scope.label,
+            subtitle: _scopeSubtitle(option),
+            selected: state.scope == option.scope,
+            recommended: option.scope == CopyScope.recognizedAssets,
+            onTap: state.loadingDevices || !option.available ? null : () => onScopeSelected(option.scope),
+          ),
       ],
     ),
   );
+
+  String _scopeSubtitle(CopyScopeOption option) {
+    if (!option.available) {
+      return switch (option.unavailableReason) {
+        'selection_required' => '请先在相册选择照片',
+        'filter_required' => '请先设置相册筛选条件',
+        'empty_scope' => '当前范围没有可复制照片',
+        _ => '当前不可用',
+      };
+    }
+    final count = option.logicalAssets;
+    final suffix = count == null ? '预检后显示数量' : '$count 张逻辑照片';
+    return '${option.scope.label} · $suffix';
+  }
 
   Widget _pairPolicySection(BuildContext context) => _SectionCard(
     title: 'RAW + JPEG 策略',
@@ -441,16 +431,13 @@ class CopyContentStep extends StatelessWidget {
       const _SectionTitle('源设备'),
       if (state.loadingDevices)
         const _LoadingPlaceholder()
-      else if (state.availableSources.isEmpty)
+      else if (state.sourceMediaId == null)
         const _EmptyDeviceHint('没有可用于复制的源设备')
       else
-        for (final device in state.availableSources)
-          StorageDeviceCard(
-            device: device,
-            role: '源设备',
-            selected: state.sourceMediaId == device.mediaId,
-            onTap: () => onSourceSelected(device.mediaId),
-          ),
+        _SectionCard(
+          title: '后端自动识别（只读）',
+          child: Text(state.sourceDisplayName ?? state.sourceMediaId!),
+        ),
       const SizedBox(height: 14),
       const _SectionTitle('目标设备'),
       if (state.loadingDevices)
@@ -482,10 +469,7 @@ class CopyContentStep extends StatelessWidget {
     final all = state.devices;
     return all
         .where(
-          (device) =>
-              (device.online && device.canBeTarget) ||
-              !device.online ||
-              device.targetBlockReasons.isNotEmpty,
+          (device) => (device.online && device.canBeTarget) || !device.online || device.targetBlockReasons.isNotEmpty,
         )
         .toList(growable: false);
   }
@@ -499,8 +483,7 @@ class CopyContentStep extends StatelessWidget {
     if (id == null || id.isEmpty) return false;
     final dependencies = BirdCompanionScope.maybeOf(context);
     if (dependencies == null) return false;
-    return dependencies.settingsStore.read().batchTargetPreferences[id] ==
-        mediaId;
+    return dependencies.settingsStore.read().batchTargetPreferences[id] == mediaId;
   }
 
   Widget _conflictSection(BuildContext context) => _SectionCard(
@@ -532,16 +515,11 @@ class CopyContentStep extends StatelessWidget {
           value: state.reviewExport.enabled,
           onChanged: state.loadingDevices ? null : onReviewExportChanged,
         ),
-        if (state.reviewExport.enabled) ...[
-          SwitchListTile(
-            key: const Key('copy-review-embed-toggle'),
-            contentPadding: EdgeInsets.zero,
-            title: const Text('支持时写入副本', style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: const Text('向 JPEG/HEIF/TIFF 副本嵌入标准字段；RAW 只写 sidecar'),
-            value: state.reviewExport.embedIntoSupportedCopy,
-            onChanged: onEmbedChanged,
+        if (state.reviewExport.enabled)
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('写入策略由盒子固定为 safe_embed_first。'),
           ),
-        ],
       ],
     ),
   );
@@ -549,9 +527,7 @@ class CopyContentStep extends StatelessWidget {
   Widget _previewHint(BuildContext context) => _SectionCard(
     title: '获取预检',
     child: Text(
-      state.canFetchPreview
-          ? '点击下方按钮获取复制预检：照片数、文件数、预计写入量与目标空间。'
-          : _previewRequirementText(),
+      state.canFetchPreview ? '点击下方按钮获取复制预检：照片数、文件数、预计写入量与目标空间。' : _previewRequirementText(),
       style: const TextStyle(color: AppColors.inkMuted, fontSize: 13, height: 1.5),
     ),
   );
@@ -638,7 +614,9 @@ class CopyFinalConfirmationStep extends StatelessWidget {
       ),
       children: [
         if (preview == null) ...[
-          const Card(child: SizedBox(height: 96, child: Center(child: CircularProgressIndicator()))),
+          const Card(
+            child: SizedBox(height: 96, child: Center(child: CircularProgressIndicator())),
+          ),
         ] else ...[
           Card(
             child: Padding(
@@ -734,7 +712,9 @@ class CopyFinalConfirmationStep extends StatelessWidget {
 
   static String _scopeLabel(CopyConfigState state) => switch (state.scope) {
     CopyScope.selectedAssets => '已选择 ${state.selectionPhotoCount ?? 0} 张',
-    CopyScope.keptAssets => '复制已保留',
+    CopyScope.keptAssets => '旧版已保留范围（rc3 不再使用）',
+    CopyScope.filteredAssets => '复制筛选结果',
+    CopyScope.recognizedAssets => '复制已识别',
     CopyScope.batchAllAssets => '复制本批次全部照片',
     CopyScope.mediaFullBackup => '摄影资料全量备份',
   };
@@ -742,9 +722,7 @@ class CopyFinalConfirmationStep extends StatelessWidget {
   static String _reviewExportLabel(CopyConfigState state) {
     final config = state.reviewExport;
     if (!config.enabled) return '不向目标盘导出审阅信息';
-    return config.embedIntoSupportedCopy
-        ? 'XMP + CSV，支持格式嵌入副本'
-        : 'XMP + CSV（不嵌入副本）';
+    return config.embedIntoSupportedCopy ? 'XMP + CSV，支持格式嵌入副本' : 'XMP + CSV（不嵌入副本）';
   }
 }
 
@@ -1080,9 +1058,7 @@ class _EmptyDeviceHint extends StatelessWidget {
   );
 }
 
-String _formatBytes(int bytes) => bytes >= 1024 * 1024 * 1024
-    ? '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB'
-    : '${(bytes / 1024 / 1024).toStringAsFixed(0)} MB';
+String _formatBytes(int bytes) => bytes >= 1024 * 1024 * 1024 ? '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB' : '${(bytes / 1024 / 1024).toStringAsFixed(0)} MB';
 
 String _formatCount(int value) => value.toString().replaceAllMapped(
   RegExp(r'(\d)(?=(\d{3})+$)'),

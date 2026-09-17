@@ -80,6 +80,39 @@ void main() {
         isEmpty,
       );
     });
+
+    test('rc3 copy filter contains every set-affecting field and no paging state', () {
+      const query = PhotoQuery(
+        cursor: 'page-3',
+        pageSize: 20,
+        sort: 'score_desc',
+        search: '白鹭',
+        tags: ['湿地'],
+        analysisState: 'processing',
+        recognitionState: 'uncertain',
+        recommendedOnly: true,
+      );
+
+      expect(query.toCopyFilterV1(), {
+        'filter_schema_version': 'gallery-filter-v1',
+        'search': '白鹭',
+        'species': null,
+        'min_score': null,
+        'min_confidence': null,
+        'tags': ['湿地'],
+        'keep_state': null,
+        'analysis_state': 'running',
+        'clarity_state': null,
+        'recognition_state': 'needs_review',
+        'recommended_only': true,
+        'group_id': null,
+        'scene_id': null,
+      });
+    });
+
+    test('rc3 copy filter is absent when the gallery has no restriction', () {
+      expect(const PhotoQuery().toCopyFilterV1(), isNull);
+    });
   });
 }
 

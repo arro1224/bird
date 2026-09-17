@@ -6,6 +6,24 @@ import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 /// 旧的 `estimate?mode=` / `POST /projects/{batchId}/copy` 已从协议中移除，
 /// App 不得再调用旧接口（迁移对照文档 §4.1）。
 abstract interface class CopyRepository {
+  Future<CopyCapabilities> capabilities();
+
+  /// 服务端自动判定源卡并签发短期绑定令牌，App 不允许手动选源。
+  Future<SourceBinding> source({String? batchId});
+
+  Future<CopyPreferences> preferences();
+
+  Future<CopyPreferences> savePreferences(
+    PairPolicy pairPolicy, {
+    required int expectedVersion,
+  });
+
+  Future<List<CopyScopeOption>> scopeOptions({
+    String? batchId,
+    String? selectionId,
+    Map<String, dynamic>? filter,
+  });
+
   /// GET storage/devices —— 实时设备列表，App 只认 `media_id`；
   /// 顶层可携带推荐目标设备（审计 P1-3）。
   Future<CopyDeviceList> devices();

@@ -25,6 +25,7 @@ import 'package:aves/bird_companion/features/connection/data/connection_api.dart
 import 'package:aves/bird_companion/features/connection/data/connection_repository_impl.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_scan_diagnostic_store.dart';
+import 'package:aves/bird_companion/features/connection/data/ble/ble_connection_diagnostic_store.dart';
 import 'package:aves/bird_companion/features/connection/data/device_discovery_source.dart';
 import 'package:aves/bird_companion/features/connection/data/health_api.dart';
 import 'package:aves/bird_companion/features/connection/data/mdns_device_discovery_source.dart';
@@ -97,6 +98,7 @@ class BirdCompanionDependencies {
     required this.mediaAssetCoordinator,
     required this.mediaAssetService,
     required this.bleScanDiagnosticStore,
+    required this.bleConnectionDiagnosticStore,
   });
 
   final ApiClient apiClient;
@@ -128,6 +130,7 @@ class BirdCompanionDependencies {
   final MediaAssetCoordinator mediaAssetCoordinator;
   final MediaAssetService mediaAssetService;
   final BleScanDiagnosticStore bleScanDiagnosticStore;
+  final BleConnectionDiagnosticStore bleConnectionDiagnosticStore;
 
   static Future<BirdCompanionDependencies> create({
     bool connectEnvironmentTestEndpoint = true,
@@ -144,6 +147,7 @@ class BirdCompanionDependencies {
     );
     final pairingApi = PairingApi(apiClient);
     final bleScanDiagnosticStore = BleScanDiagnosticStore(cache);
+    final bleConnectionDiagnosticStore = BleConnectionDiagnosticStore(cache);
     final connectionRepository = ConnectionRepositoryImpl(
       ConnectionApi(
         apiClient,
@@ -156,6 +160,7 @@ class BirdCompanionDependencies {
     final provisioningRepository = ProvisioningRepositoryImpl(
       ble: PlatformBirdBoxBleDataSource(
         diagnosticSink: bleScanDiagnosticStore,
+        connectionDiagnosticSink: bleConnectionDiagnosticStore,
       ),
       wifi: MethodChannelBirdBoxWifiPlatform(),
       dpp: MethodChannelBirdBoxDppPlatform(),
@@ -279,6 +284,7 @@ class BirdCompanionDependencies {
       mediaAssetCoordinator: mediaAssetCoordinator,
       mediaAssetService: mediaAssetService,
       bleScanDiagnosticStore: bleScanDiagnosticStore,
+      bleConnectionDiagnosticStore: bleConnectionDiagnosticStore,
     );
     dependencies.birdSyncService.start();
     const testBaseUrl = String.fromEnvironment('BIRD_TEST_BASE_URL');
@@ -335,6 +341,7 @@ class BirdCompanionDependencies {
     unawaited(dataChangeBus.dispose());
     unawaited(pendingOperationStore.dispose());
     unawaited(bleScanDiagnosticStore.dispose());
+    unawaited(bleConnectionDiagnosticStore.dispose());
     unawaited(cache.close());
   }
 }
@@ -355,8 +362,7 @@ class BirdCompanionScope extends InheritedWidget {
   }
 
   /// 独立预览/测试环境可能没有盒子会话，返回 null。
-  static BirdCompanionDependencies? maybeOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>()?.dependencies;
+  static BirdCompanionDependencies? maybeOf(BuildContext context) => context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>()?.dependencies;
 
   @override
   bool updateShouldNotify(BirdCompanionScope oldWidget) => dependencies != oldWidget.dependencies;

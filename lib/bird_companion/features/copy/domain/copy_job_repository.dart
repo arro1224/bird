@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 
 /// RC3 复制任务闭环仓库接口（§13.5/§13.6）。
 ///
@@ -6,7 +7,8 @@ import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 /// `production_copy_r3_flow_test.dart` 的 `_CopyRepository implements
 /// CopyRepository`）不应因新增任务闭环方法而破裂。
 abstract interface class CopyJobRepository {
-  /// GET copy-capabilities —— 能力声明；未部署/失败由调用方回退本地推导。
+  /// GET copy-capabilities —— 能力声明（copy_models.dart 的 rc3 模型）；
+  /// 未部署/失败由调用方回退本地推导。
   Future<CopyCapabilities> capabilities();
 
   /// GET copy-jobs —— 任务列表（契约未冻结，cursor 容错分页）。

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
@@ -28,8 +29,11 @@ import 'package:aves/bird_companion/features/connection/presentation/widgets/k7_
 import 'package:aves/bird_companion/features/connection/presentation/widgets/manual_address_form.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class ConnectionPage extends StatelessWidget {
@@ -209,6 +213,10 @@ class _BleConnectionView extends StatelessWidget {
         builder: (context, state) {
           final cubit = context.read<ProvisioningCubit>();
           final error = state.error == null ? null : UserMessageMapper.fromError(state.error!);
+          final developerDiagnostic = _developerBleDiagnostic(
+            state.error,
+            state.latestScanDiagnostic?.scanSessionId,
+          );
           final title = switch (state.phase) {
             ProvisioningPhase.trusted => '验证设备',
             ProvisioningPhase.pairingCode || ProvisioningPhase.authorizing => '设备配对',
@@ -240,9 +248,16 @@ class _BleConnectionView extends StatelessWidget {
               searching: state.phase == ProvisioningPhase.discovering,
               error: error,
               diagnosticId: state.latestScanDiagnostic?.scanSessionId,
+              developerDiagnostic: developerDiagnostic,
               onDiscover: cubit.discover,
               onSelectDevice: cubit.selectDevice,
               onRetry: cubit.retry,
+              onCopyDiagnostic: state.latestScanDiagnostic == null
+                  ? null
+                  : () => _copyBleDiagnostic(
+                      context,
+                      state.latestScanDiagnostic!.scanSessionId,
+                    ),
             ),
           };
           return _scaffold(context, title: '${titlePrefix ?? ''}$title', content: content);
@@ -345,6 +360,30 @@ class _BleConnectionView extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _copyBleDiagnostic(
+    BuildContext context,
+    String traceId,
+  ) async {
+    final dependencies = BirdCompanionScope.maybeOf(context);
+    if (dependencies == null) {
+      BirdFeedback.error(context, '当前环境无法读取诊断记录');
+      return;
+    }
+    final scanSessions = dependencies.bleScanDiagnosticStore.readAll().where((session) => session.scanSessionId == traceId).map((session) => session.toJson()).toList(growable: false);
+    final connectionEvents = dependencies.bleConnectionDiagnosticStore.readAll(traceId: traceId).reversed.map((event) => event.toJson()).toList(growable: false);
+    final output = const JsonEncoder.withIndent('  ').convert({
+      'schema_version': 1,
+      'generated_at': DateTime.now().toUtc().toIso8601String(),
+      'trace_id': traceId,
+      'scan_sessions': scanSessions,
+      'connection_events': connectionEvents,
+    });
+    await Clipboard.setData(ClipboardData(text: output));
+    if (context.mounted) {
+      BirdFeedback.success(context, '诊断 JSON 已复制，可直接回传给联调人员');
+    }
+  }
 }
 
 class _BleDiscoveryView extends StatelessWidget {
@@ -353,18 +392,22 @@ class _BleDiscoveryView extends StatelessWidget {
     required this.searching,
     required this.error,
     required this.diagnosticId,
+    required this.developerDiagnostic,
     required this.onDiscover,
     required this.onSelectDevice,
     required this.onRetry,
+    this.onCopyDiagnostic,
   });
 
   final List<ProvisioningDevice> devices;
   final bool searching;
   final UserMessage? error;
   final String? diagnosticId;
+  final String? developerDiagnostic;
   final Future<void> Function() onDiscover;
   final Future<void> Function(ProvisioningDevice) onSelectDevice;
   final Future<void> Function() onRetry;
+  final Future<void> Function()? onCopyDiagnostic;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -413,6 +456,27 @@ class _BleDiscoveryView extends StatelessWidget {
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AppColors.inkMuted,
           ),
+        ),
+      ],
+      if (developerDiagnostic != null) ...[
+        const SizedBox(height: AppSpacing.xs),
+        SelectableText(
+          developerDiagnostic!,
+          key: const Key('ble-developer-diagnostic'),
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: AppColors.danger,
+          ),
+        ),
+      ],
+      if (error != null && onCopyDiagnostic != null) ...[
+        const SizedBox(height: AppSpacing.sm),
+        BirdButton(
+          key: const Key('ble-copy-diagnostic-json'),
+          label: '复制诊断 JSON',
+          onPressed: onCopyDiagnostic,
+          icon: const Icon(Icons.copy_all_outlined),
+          variant: BirdButtonVariant.outlined,
         ),
       ],
       const SizedBox(height: AppSpacing.xl),
@@ -488,6 +552,13 @@ class _BleDiscoveryView extends StatelessWidget {
       const _PrivacyNote(),
     ],
   );
+}
+
+String? _developerBleDiagnostic(Object? error, String? scanSessionId) {
+  if (!kDebugMode || error == null) return null;
+  final diagnostic = error is ProvisioningException ? error.diagnosticMessage ?? error.code.wireValue : error.runtimeType.toString();
+  final scan = scanSessionId == null ? '' : '；scanSession=$scanSessionId';
+  return '联调诊断：$diagnostic$scan';
 }
 
 class _TrustedDeviceView extends StatelessWidget {

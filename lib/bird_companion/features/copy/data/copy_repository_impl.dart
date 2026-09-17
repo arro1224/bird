@@ -11,6 +11,32 @@ class CopyRepositoryImpl implements CopyRepository, CopyJobRepository {
   final CopyApi _api;
 
   @override
+  Future<CopyCapabilities> capabilities() => _api.capabilities();
+
+  @override
+  Future<SourceBinding> source({String? batchId}) => _api.source(batchId: batchId);
+
+  @override
+  Future<CopyPreferences> preferences() => _api.preferences();
+
+  @override
+  Future<CopyPreferences> savePreferences(
+    PairPolicy pairPolicy, {
+    required int expectedVersion,
+  }) => _api.savePreferences(pairPolicy, expectedVersion: expectedVersion);
+
+  @override
+  Future<List<CopyScopeOption>> scopeOptions({
+    String? batchId,
+    String? selectionId,
+    Map<String, dynamic>? filter,
+  }) => _api.scopeOptions(
+    batchId: batchId,
+    selectionId: selectionId,
+    filter: filter,
+  );
+
+  @override
   Future<CopyDeviceList> devices() => _api.devices();
 
   @override
@@ -41,11 +67,7 @@ class CopyRepositoryImpl implements CopyRepository, CopyJobRepository {
   }
 
   @override
-  Future<void> setDeviceAlias(String mediaId, String alias) =>
-      _api.setDeviceAlias(mediaId, alias);
-
-  @override
-  Future<CopyCapabilities> capabilities() => _api.capabilities();
+  Future<void> setDeviceAlias(String mediaId, String alias) => _api.setDeviceAlias(mediaId, alias);
 
   @override
   Future<CopyJobPage> listJobs({String? cursor}) => _api.listJobs(cursor: cursor);

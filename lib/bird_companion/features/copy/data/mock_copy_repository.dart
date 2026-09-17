@@ -11,7 +11,7 @@ import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 /// 后端交付 birdbox-copy-v1 前，[useMockCopyRepository] 为 true 时使用本实现。
 /// 所有字段与语义均为主协议字段，不创造临时枚举；设备数据取自协议 §22
 /// 已实机验证记录。联调时将开关置为 false 即可切换真实接口。
-const useMockCopyRepository = true;
+const useMockCopyRepository = false;
 
 /// RC3 任务闭环 mock：
 /// - 状态机用**惰性时间推进**（注入 [clock]，所有读写在调用时按相对时间
@@ -36,6 +36,69 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
   final Map<String, _MockCopyJob> _jobs = {};
   final Map<String, List<CopyJobItem>> _previewItems = {};
   final Set<String> _safeRemovedDevices = {};
+
+  @override
+  Future<CopyCapabilities> capabilities() async => const CopyCapabilities(
+    revision: '1.0-rc3',
+    copyReady: true,
+    supportedScopes: [
+      CopyScope.selectedAssets,
+      CopyScope.filteredAssets,
+      CopyScope.recognizedAssets,
+      CopyScope.batchAllAssets,
+      CopyScope.mediaFullBackup,
+    ],
+    recognitionPolicyVersion: 'recognized-assets-v1',
+  );
+
+  @override
+  Future<SourceBinding> source({String? batchId}) async => SourceBinding(
+    sourceMediaId: _cameraCard.mediaId,
+    displayName: _cameraCard.displayName,
+    token: 'src_mock_binding',
+    expiresAt: DateTime.now().add(const Duration(minutes: 2)),
+    verifiedReadOnly: true,
+    batchId: batchId,
+  );
+
+  @override
+  Future<CopyPreferences> preferences() async => const CopyPreferences(
+    pairPolicy: PairPolicy.rawOnly,
+    version: 1,
+    origin: 'factory_default',
+  );
+
+  @override
+  Future<CopyPreferences> savePreferences(
+    PairPolicy pairPolicy, {
+    required int expectedVersion,
+  }) async => CopyPreferences(
+    pairPolicy: pairPolicy,
+    version: expectedVersion + 1,
+    origin: 'user_saved',
+  );
+
+  @override
+  Future<List<CopyScopeOption>> scopeOptions({
+    String? batchId,
+    String? selectionId,
+    Map<String, dynamic>? filter,
+  }) async => [
+    for (final scope in const [
+      CopyScope.selectedAssets,
+      CopyScope.filteredAssets,
+      CopyScope.recognizedAssets,
+      CopyScope.batchAllAssets,
+      CopyScope.mediaFullBackup,
+    ])
+      CopyScopeOption(
+        scope: scope,
+        available: scope == CopyScope.mediaFullBackup || batchId != null,
+        logicalAssets: scope == CopyScope.mediaFullBackup ? null : 34,
+        countState: scope == CopyScope.mediaFullBackup ? 'requires_preview' : 'known',
+        navigationAction: 'none',
+      ),
+  ];
 
   static const _cameraCard = StorageDeviceSummary(
     mediaId: 'media_2d6dee77bb5ecc73e3d34787',
@@ -249,8 +312,7 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
   }
 
   @override
-  Future<BatchTargetPreference?> lastSuccessfulTarget(String batchId) async =>
-      null;
+  Future<BatchTargetPreference?> lastSuccessfulTarget(String batchId) async => null;
 
   @override
   Future<void> setDeviceAlias(String mediaId, String alias) async {
@@ -259,24 +321,8 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
   }
 
   // ---- RC3 任务闭环（§13.5/§13.6）----
-
-  @override
-  Future<CopyCapabilities> capabilities() async {
-    await _delay();
-    return CopyCapabilities(
-      supportedScopes: [
-        'selected_assets',
-        'kept_assets',
-        'batch_all_assets',
-        if (fullBackupAvailable) 'media_full_backup',
-      ],
-      storageReady: true,
-      copyReady: true,
-      // 镜像真实后端：审阅信息导出暂不可用，App 不提供该入口（迁移对照 §3.7）。
-      metadataExportReady: false,
-      features: const {},
-    );
-  }
+  // capabilities() 沿用上方 rc3 契约 mock（copy_models.dart 的 CopyCapabilities）；
+  // 全量备份不可用的负向路径由 _guardFullBackup 在 preview/createJob 拦截。
 
   @override
   Future<CopyJobPage> listJobs({String? cursor}) async {
@@ -648,6 +694,8 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
           missing: 0,
         );
       case CopyScope.keptAssets:
+      case CopyScope.recognizedAssets:
+      case CopyScope.filteredAssets:
         return const _MockStats(
           logical: 34,
           files: 67,
@@ -700,8 +748,7 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
 
   int _stableNumber(String seed) => seed.codeUnits.fold(0, (a, b) => a + b);
 
-  String _nextToken() =>
-      '${DateTime.now().microsecondsSinceEpoch}_${_random.nextInt(0xFFFFFF)}';
+  String _nextToken() => '${DateTime.now().microsecondsSinceEpoch}_${_random.nextInt(0xFFFFFF)}';
 
   Future<void> _delay() => Future<void>.delayed(const Duration(milliseconds: 260));
 }

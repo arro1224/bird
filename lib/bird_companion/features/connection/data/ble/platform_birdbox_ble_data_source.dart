@@ -5,6 +5,7 @@ import 'package:aves/bird_companion/features/connection/data/ble/birdbox_ble_dat
 import 'package:aves/bird_companion/features/connection/data/ble/ble_fragment_codec.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_message_codec.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_protocol_constants.dart';
+import 'package:aves/bird_companion/features/connection/domain/ble_connection_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
@@ -14,6 +15,7 @@ import 'package:flutter/services.dart';
 abstract interface class BirdBoxBlePlatform {
   Stream<Map<String, dynamic>> get scanResults;
   Stream<Map<String, dynamic>> get notifications;
+  Stream<Map<String, dynamic>> get diagnostics;
   Stream<BleDisconnectEvent> get disconnects;
 
   Future<BleScanEnvironment> readScanEnvironment();
@@ -23,12 +25,18 @@ abstract interface class BirdBoxBlePlatform {
     required String scanSessionId,
   });
   Future<void> stopScan();
-  Future<void> connect(String platformDeviceId);
+  Future<void> connect(
+    String platformDeviceId, {
+    required String traceId,
+  });
   Future<void> disconnect();
   Future<int> requestMtu(int mtu);
   Future<Uint8List> readCharacteristic(String characteristicUuid);
   Future<void> setNotify(String characteristicUuid, {required bool enabled});
   Future<void> writeWithResponse(String characteristicUuid, Uint8List value);
+
+  /// Returns true when Android had to rebuild the GATT connection after Bond.
+  Future<bool> ensureBonded({bool disconnectBeforeBond = false});
   Future<bool> isLinkEncrypted();
   Future<void> dispose();
 }
@@ -49,22 +57,27 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
     : _methodChannel = const MethodChannel(_methodChannelName),
       _scanResults = const EventChannel(_scanChannelName).receiveBroadcastStream().map(_eventMap).asBroadcastStream(),
       _notifications = const EventChannel(_notificationChannelName).receiveBroadcastStream().map(_eventMap).asBroadcastStream(),
+      _diagnostics = const EventChannel(_diagnosticChannelName).receiveBroadcastStream().map(_eventMap).asBroadcastStream(),
       _disconnects = const EventChannel(_disconnectChannelName).receiveBroadcastStream().map(_disconnectEvent).asBroadcastStream();
 
   static const _methodChannelName = 'bird_companion/birdbox_ble/methods';
   static const _scanChannelName = 'bird_companion/birdbox_ble/scan';
   static const _notificationChannelName = 'bird_companion/birdbox_ble/notifications';
+  static const _diagnosticChannelName = 'bird_companion/birdbox_ble/diagnostics';
   static const _disconnectChannelName = 'bird_companion/birdbox_ble/disconnects';
 
   final MethodChannel _methodChannel;
   final Stream<Map<String, dynamic>> _scanResults;
   final Stream<Map<String, dynamic>> _notifications;
+  final Stream<Map<String, dynamic>> _diagnostics;
   final Stream<BleDisconnectEvent> _disconnects;
 
   @override
   Stream<Map<String, dynamic>> get scanResults => _scanResults;
   @override
   Stream<Map<String, dynamic>> get notifications => _notifications;
+  @override
+  Stream<Map<String, dynamic>> get diagnostics => _diagnostics;
   @override
   Stream<BleDisconnectEvent> get disconnects => _disconnects;
 
@@ -92,7 +105,13 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
   Future<void> stopScan() => _invoke<void>('stopScan');
 
   @override
-  Future<void> connect(String platformDeviceId) => _invoke<void>('connect', {'deviceId': platformDeviceId});
+  Future<void> connect(
+    String platformDeviceId, {
+    required String traceId,
+  }) => _invoke<void>('connect', {
+    'deviceId': platformDeviceId,
+    'traceId': traceId,
+  });
 
   @override
   Future<void> disconnect() => _invoke<void>('disconnect');
@@ -112,6 +131,13 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
 
   @override
   Future<void> writeWithResponse(String characteristicUuid, Uint8List value) => _invoke<void>('writeWithResponse', {'characteristicUuid': characteristicUuid, 'value': value});
+
+  @override
+  Future<bool> ensureBonded({bool disconnectBeforeBond = false}) async =>
+      (await _invoke<bool>('ensureBonded', {
+        'disconnectBeforeBond': disconnectBeforeBond,
+      })) ??
+      false;
 
   @override
   Future<bool> isLinkEncrypted() async => (await _invoke<bool>('isLinkEncrypted')) ?? false;
@@ -145,18 +171,25 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
 
   static ProvisioningException _platformError(PlatformException error) {
     final details = error.details is Map ? Map<String, dynamic>.from(error.details as Map) : const <String, dynamic>{};
-    final scanErrorCode = details['androidScanErrorCode'];
-    final diagnosticSuffix = scanErrorCode is int ? ' (Android scan error $scanErrorCode)' : '';
+    final diagnosticFields = <String>[
+      'platformExceptionCode=${error.code}',
+      if (details['gattStatus'] != null) 'gattStatus=${details['gattStatus']}',
+      if (details['bondState'] != null) 'bondState=${details['bondState']}',
+      if (details['characteristicUuid'] != null) 'characteristicUuid=${details['characteristicUuid']}',
+      if (details['operationName'] != null) 'operation=${details['operationName']}',
+      if (details['androidScanErrorCode'] != null) 'Android scan error ${details['androidScanErrorCode']}',
+      if (details['scanSessionId'] != null) 'scanSession=${details['scanSessionId']}',
+    ];
     return ProvisioningException(
       code: switch (error.code) {
         'bluetooth_permission_denied' => ProvisioningErrorCode.bluetoothPermissionDenied,
-        'ble_link_not_encrypted' => ProvisioningErrorCode.authorizationRequired,
+        'ble_link_not_encrypted' || 'ble_bond_failed' || 'ble_bond_rejected' || 'ble_bond_timeout' => ProvisioningErrorCode.authorizationRequired,
         'invalid_request' || 'invalid_state' => ProvisioningErrorCode.invalidRequest,
         'bluetooth_unavailable' => ProvisioningErrorCode.capabilityUnsupported,
         _ => ProvisioningErrorCode.networkInternalError,
       },
-      retryable: error.code == 'gatt_busy' || error.code == 'gatt_operation_failed',
-      diagnosticMessage: 'Android BLE platform error: ${error.code}$diagnosticSuffix',
+      retryable: error.code == 'gatt_busy' || error.code == 'gatt_operation_failed' || error.code == 'ble_link_not_encrypted',
+      diagnosticMessage: 'Android BLE platform error: ${diagnosticFields.join(', ')}',
     );
   }
 }
@@ -165,6 +198,10 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   PlatformBirdBoxBleDataSource({
     BirdBoxBlePlatform? platform,
     this._diagnosticSink,
+    this._connectionDiagnosticSink,
+    this.disconnectGattBeforeBond = const bool.fromEnvironment(
+      'BIRD_BLE_DISCONNECT_BEFORE_BOND',
+    ),
     DateTime Function()? clock,
     this._scanSessionIdFactory,
   }) : _platform = platform ?? MethodChannelBirdBoxBlePlatform(),
@@ -173,10 +210,18 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
        _messageCodec = const BleMessageCodec() {
     _notificationSubscription = _platform.notifications.listen(_handleNotification, onError: _events.addError);
     _disconnectSubscription = _platform.disconnects.listen(_handleDisconnect, onError: _disconnects.addError);
+    _diagnosticSubscription = _platform.diagnostics.listen(
+      _handleNativeDiagnostic,
+      onError: (Object error) => debugPrint(
+        'BLE native diagnostic stream failed: ${error.runtimeType}',
+      ),
+    );
   }
 
   final BirdBoxBlePlatform _platform;
   final BleScanDiagnosticSink? _diagnosticSink;
+  final BleConnectionDiagnosticSink? _connectionDiagnosticSink;
+  final bool disconnectGattBeforeBond;
   final DateTime Function() _clock;
   final String Function()? _scanSessionIdFactory;
   final BleFragmentCodec _fragmentCodec;
@@ -189,6 +234,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
 
   late final StreamSubscription<Map<String, dynamic>> _notificationSubscription;
   late final StreamSubscription<BleDisconnectEvent> _disconnectSubscription;
+  late final StreamSubscription<Map<String, dynamic>> _diagnosticSubscription;
   StreamSubscription<Map<String, dynamic>>? _scanSubscription;
   StreamController<BirdBoxAdvertisement>? _scanController;
   _BleScanSessionBuilder? _activeScanDiagnostic;
@@ -199,6 +245,8 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   int _negotiatedMtu = 23;
   int _nextMessageId = 0;
   int _scanSessionSequence = 0;
+  String? _lastTraceId;
+  String? _activeTraceId;
 
   @override
   Stream<BirdBoxAdvertisement> scan({Duration? timeout}) {
@@ -209,6 +257,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       scanSessionId: _newScanSessionId(),
       startedAt: _clock(),
     );
+    _lastTraceId = scanDiagnostic.scanSessionId;
     late final StreamController<BirdBoxAdvertisement> controller;
     controller = StreamController<BirdBoxAdvertisement>(
       onListen: () async {
@@ -386,11 +435,27 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     if (platformDeviceId == null || platformDeviceId.isEmpty) {
       throw const ProvisioningProtocolException('platform_device_id', 'scan result cannot be connected');
     }
+    final traceId = _lastTraceId ?? _newScanSessionId();
+    _activeTraceId = traceId;
+    await _recordConnectionDiagnostic(
+      eventType: 'connect_requested',
+      operationName: 'connect',
+    );
     await stopScan();
-    await _platform.connect(platformDeviceId);
     try {
+      await _platform.connect(platformDeviceId, traceId: traceId);
       _negotiatedMtu = (await _platform.requestMtu(517)).clamp(23, 517);
-    } catch (_) {
+      await _recordConnectionDiagnostic(
+        eventType: 'connect_ready',
+        operationName: 'connect',
+        resultCode: 'success',
+      );
+    } catch (error) {
+      await _recordConnectionDiagnostic(
+        eventType: 'connect_failed',
+        operationName: 'connect',
+        resultCode: _resultCode(error),
+      );
       await _platform.disconnect();
       rethrow;
     }
@@ -453,6 +518,11 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       rethrow;
     }
     _requiredNotificationsSubscribed = true;
+    await _recordConnectionDiagnostic(
+      eventType: 'notifications_ready',
+      operationName: 'restore_notifications',
+      resultCode: 'success',
+    );
   }
 
   @override
@@ -465,8 +535,23 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     if (_pendingCommands.containsKey(request.requestId)) {
       throw const ProvisioningException(code: ProvisioningErrorCode.requestIdConflict, retryable: false);
     }
-    if ((request.writesWifiCredentials || request.payload.containsKey('authorization')) && !await _platform.isLinkEncrypted()) {
-      throw const ProvisioningException(code: ProvisioningErrorCode.authorizationRequired, retryable: false, diagnosticMessage: 'Sensitive BLE write requires a bonded encrypted link');
+    // Both rc4 command characteristics are encrypt-write. GATT connection and
+    // service discovery alone are not sufficient: establish Android Bond first.
+    await _recordConnectionDiagnostic(
+      eventType: 'command_started',
+      operationName: 'write_command',
+      commandType: request.type.wireValue,
+    );
+    try {
+      await _ensureBondedForCommand(request);
+    } catch (error) {
+      await _recordConnectionDiagnostic(
+        eventType: 'command_failed',
+        operationName: 'write_command',
+        commandType: request.type.wireValue,
+        resultCode: _resultCode(error),
+      );
+      rethrow;
     }
 
     final message = _messageCodec.encodeRequest(request);
@@ -477,19 +562,99 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       final characteristicUuid = request.writesWifiCredentials ? BleProtocolConstants.wifiConfigCharacteristicUuid : BleProtocolConstants.provisioningCommandCharacteristicUuid;
       final maximumFragmentBytes = (_negotiatedMtu - 3).clamp(BleProtocolConstants.fragmentHeaderLength + 1, 514);
       packets = _fragmentCodec.fragment(message, messageId: _allocateMessageId(), maximumFragmentBytes: maximumFragmentBytes);
-      for (final packet in packets) {
-        await _platform.writeWithResponse(characteristicUuid, packet);
+      try {
+        await _writePackets(characteristicUuid, packets);
+      } on ProvisioningException catch (error) {
+        if (error.code != ProvisioningErrorCode.authorizationRequired) rethrow;
+        // Android status 5/12/15 may be the first evidence that the active link
+        // lost encryption. Recover Bond/GATT once and retry the exact request,
+        // preserving request_id and fragment message id.
+        await _ensureBondedForCommand(request);
+        await _writePackets(characteristicUuid, packets);
       }
-      return await completer.future.timeout(
+      final response = await completer.future.timeout(
         BleProtocolConstants.commandResponseTimeout,
         onTimeout: () => throw const ProvisioningException(code: ProvisioningErrorCode.networkInternalError, retryable: true, diagnosticMessage: 'BLE command response timed out'),
       );
+      await _recordConnectionDiagnostic(
+        eventType: 'command_succeeded',
+        operationName: 'write_command',
+        commandType: request.type.wireValue,
+        resultCode: 'success',
+      );
+      return response;
+    } catch (error) {
+      await _recordConnectionDiagnostic(
+        eventType: 'command_failed',
+        operationName: 'write_command',
+        commandType: request.type.wireValue,
+        resultCode: _resultCode(error),
+      );
+      rethrow;
     } finally {
       message.fillRange(0, message.length, 0);
       for (final packet in packets) {
         packet.fillRange(0, packet.length, 0);
       }
       _pendingCommands.remove(request.requestId);
+    }
+  }
+
+  Future<void> _ensureBondedForCommand(BleCommandRequest request) async {
+    try {
+      await _recordConnectionDiagnostic(
+        eventType: 'bond_phase_changed',
+        operationName: 'bond',
+        commandType: request.type.wireValue,
+        resultCode: 'requesting',
+      );
+      final reconnected = await _platform.ensureBonded(
+        disconnectBeforeBond: disconnectGattBeforeBond,
+      );
+      if (reconnected) {
+        _requiredNotificationsSubscribed = false;
+        await _recordConnectionDiagnostic(
+          eventType: 'bond_phase_changed',
+          operationName: 'restore_notifications',
+          commandType: request.type.wireValue,
+          resultCode: 'restoring_notifications',
+        );
+        await subscribeRequiredNotifications();
+      }
+      if (!await _platform.isLinkEncrypted()) {
+        throw const ProvisioningException(
+          code: ProvisioningErrorCode.authorizationRequired,
+          retryable: true,
+          diagnosticMessage: 'Android Bond completed but the active BLE link is not encrypted',
+        );
+      }
+      await _recordConnectionDiagnostic(
+        eventType: 'bond_phase_changed',
+        operationName: 'bond',
+        commandType: request.type.wireValue,
+        resultCode: 'ready_to_write',
+      );
+    } on ProvisioningException catch (error) {
+      await _recordConnectionDiagnostic(
+        eventType: 'bond_phase_changed',
+        operationName: 'bond',
+        commandType: request.type.wireValue,
+        resultCode: 'failed:${error.code.wireValue}',
+      );
+      debugPrint(
+        'BIRDBOX_BLE_FAILURE operation=${request.type.wireValue} '
+        'requestId=${request.requestId} ${error.diagnosticMessage ?? error.code.wireValue}',
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> _writePackets(
+    String characteristicUuid,
+    List<Uint8List> packets,
+  ) async {
+    for (final packet in packets) {
+      await _platform.writeWithResponse(characteristicUuid, packet);
     }
   }
 
@@ -541,6 +706,14 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
 
   void _handleDisconnect([BleDisconnectEvent? event]) {
     if (!_connected) return;
+    unawaited(
+      _recordConnectionDiagnostic(
+        eventType: 'disconnected',
+        operationName: 'disconnect',
+        gattStatus: event?.gattStatus,
+        resultCode: event?.reason ?? 'unknown',
+      ),
+    );
     _markDisconnected(event?.reason ?? 'unknown');
     _disconnects.add(null);
   }
@@ -575,6 +748,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     _markDisconnected();
     await _notificationSubscription.cancel();
     await _disconnectSubscription.cancel();
+    await _diagnosticSubscription.cancel();
     await _platform.dispose();
     await _events.close();
     await _disconnects.close();
@@ -591,6 +765,57 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   }
 
   static ProvisioningException _permissionDenied() => const ProvisioningException(code: ProvisioningErrorCode.bluetoothPermissionDenied, retryable: false);
+
+  void _handleNativeDiagnostic(Map<String, dynamic> value) {
+    try {
+      final event = BleConnectionDiagnosticEvent.fromPlatform(value);
+      _activeTraceId ??= event.traceId;
+      unawaited(_persistConnectionDiagnostic(event));
+    } catch (error) {
+      debugPrint('BLE native diagnostic event rejected: ${error.runtimeType}');
+    }
+  }
+
+  Future<void> _recordConnectionDiagnostic({
+    required String eventType,
+    String? operationName,
+    int? gattStatus,
+    String? commandType,
+    String? resultCode,
+  }) async {
+    final traceId = _activeTraceId ?? _lastTraceId;
+    if (traceId == null) return;
+    await _persistConnectionDiagnostic(
+      BleConnectionDiagnosticEvent(
+        traceId: traceId,
+        occurredAt: _clock().toUtc(),
+        eventType: eventType,
+        source: 'dart',
+        operationName: operationName,
+        gattStatus: gattStatus,
+        commandType: commandType,
+        resultCode: resultCode,
+      ),
+    );
+  }
+
+  Future<void> _persistConnectionDiagnostic(
+    BleConnectionDiagnosticEvent event,
+  ) async {
+    debugPrint('BLE_CONNECTION_DIAGNOSTIC ${jsonEncode(event.toJson())}');
+    try {
+      await _connectionDiagnosticSink?.record(event);
+    } catch (error) {
+      debugPrint(
+        'BLE connection diagnostic persistence failed: ${error.runtimeType}',
+      );
+    }
+  }
+
+  static String _resultCode(Object error) => switch (error) {
+    ProvisioningException() => error.code.wireValue,
+    _ => error.runtimeType.toString(),
+  };
 }
 
 final class _BleScanSessionBuilder {

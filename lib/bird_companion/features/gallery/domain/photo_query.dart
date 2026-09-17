@@ -69,6 +69,50 @@ class PhotoQuery {
     if (sceneId?.isNotEmpty == true) 'scene_id': sceneId,
   };
 
+  /// rc3 复制协议使用的完整筛选快照。分页、排序和游标不影响集合，
+  /// 因此不进入该对象；没有任何限制条件时返回 null。
+  Map<String, dynamic>? toCopyFilterV1() {
+    String? text(String? value) {
+      final normalized = value?.trim();
+      return normalized == null || normalized.isEmpty ? null : normalized;
+    }
+
+    final normalizedAnalysis = switch (analysisState) {
+      'queued' => 'pending',
+      'processing' || 'analyzing' => 'running',
+      'done' => 'completed',
+      'error' => 'failed',
+      final value => text(value),
+    };
+    final normalizedRecognition = switch (recognitionState) {
+      'uncertain' => 'needs_review',
+      'unrecognized' => 'unknown',
+      'matched' => 'recognized',
+      final value => text(value),
+    };
+    final filter = <String, dynamic>{
+      'filter_schema_version': 'gallery-filter-v1',
+      'search': text(search),
+      'species': text(species),
+      'min_score': minScore,
+      'min_confidence': minConfidence,
+      'tags': tags.map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toList(growable: false),
+      'keep_state': text(keepState),
+      'analysis_state': normalizedAnalysis,
+      'clarity_state': text(clarityState),
+      'recognition_state': normalizedRecognition,
+      'recommended_only': recommendedOnly,
+      'group_id': text(groupId),
+      'scene_id': text(sceneId),
+    };
+    final restrictive = filter.entries.any((entry) {
+      if (entry.key == 'filter_schema_version') return false;
+      final value = entry.value;
+      return value == true || (value is String && value.isNotEmpty) || (value is List && value.isNotEmpty) || value is num;
+    });
+    return restrictive ? filter : null;
+  }
+
   Map<String, dynamic> get parameters => {
     'page_size': pageSize,
     'sort': sort,

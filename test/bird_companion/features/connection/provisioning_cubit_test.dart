@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/presentation/provisioning_cubit.dart';
 import 'fakes/fake_provisioning_repository.dart';
@@ -131,6 +132,45 @@ void main() {
 
       expect(cubit.state.latestScanDiagnostic, same(diagnostic));
       expect(cubit.state.phase, ProvisioningPhase.idle);
+    });
+
+    test('pairing retry rebuilds the BLE session before opening a new window', () async {
+      final repository = FakeProvisioningRepository(
+        devices: [_compactDevice()],
+        deviceInfo: _deviceInfo(),
+        pairingWindow: const PairingWindow(
+          mode: PairingCodeMode.sessionRandom,
+          codeExpiresIn: Duration(minutes: 2),
+          attemptsRemaining: 3,
+        ),
+        openPairingError: const ProvisioningException(
+          code: ProvisioningErrorCode.authorizationRequired,
+          retryable: true,
+          diagnosticMessage: 'platformExceptionCode=ble_bond_timeout',
+        ),
+      );
+      final cubit = ProvisioningCubit(repository);
+      addTearDown(cubit.close);
+
+      await cubit.discover();
+      await Future<void>.delayed(Duration.zero);
+      await cubit.selectDevice(_compactDevice());
+      await cubit.openPairing();
+      expect(cubit.state.phase, ProvisioningPhase.failure);
+
+      repository.openPairingError = null;
+      repository.calls.clear();
+      await cubit.retry();
+
+      expect(cubit.state.phase, ProvisioningPhase.pairingCode);
+      expect(
+        repository.calls,
+        [
+          'disconnect',
+          'connect:scan-1',
+          'openPairing',
+        ],
+      );
     });
   });
 }

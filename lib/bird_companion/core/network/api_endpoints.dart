@@ -38,15 +38,23 @@ abstract final class ApiEndpoints {
   static const jobReport = '/api/v1/jobs/{jobId}/report';
   static const jobDelete = '/api/v1/jobs/{jobId}';
   static const logExport = '/api/v1/logs/export';
-  // birdbox-copy-v1 copy/backup extension (拍鸟盒子_复制全量备份与多存储设备
-  // 三端协议_v1.0-rc1). Compose it separately so the immutable birdbox-v1@1.0.0
+  // birdbox-copy-v1 copy/backup extension (v1.0-rc3). Compose it separately so the immutable birdbox-v1@1.0.0
   // endpoint inventory remains exactly frozen.
   static const storageDevices = '$apiV1Prefix/storage/devices';
+  static const storageSource = '$apiV1Prefix/storage/source';
+  static const copyCapabilities = '$apiV1Prefix/copy-capabilities';
+  static const copyPreferences = '$apiV1Prefix/copy-preferences';
+  static const copyScopeOptions = '$apiV1Prefix/copy-scope-options';
+  static const batchCopyAssets = '$apiV1Prefix/batches/{batchId}/copy-assets';
   static const storageDeviceAlias = '$apiV1Prefix/storage/devices/{mediaId}/alias';
   static const storageDeviceSafeRemove = '$apiV1Prefix/storage/devices/{mediaId}/safe-remove';
   static const copySelections = '$apiV1Prefix/batches/{batchId}/copy-selections';
+  static const copySelectionSessions = '$apiV1Prefix/batches/{batchId}/copy-selection-sessions';
+  static const copySelectionSessionChunks = '$apiV1Prefix/copy-selection-sessions/{sessionId}/chunks';
+  static const copySelectionSessionSeal = '$apiV1Prefix/copy-selection-sessions/{sessionId}/seal';
   static const copySelectionDetail = '$apiV1Prefix/copy-selections/{selectionId}';
   static const copyJobPreview = '$apiV1Prefix/copy-jobs/preview';
+  static const copyPreviewDetail = '$apiV1Prefix/copy-previews/{previewId}';
   static const copyJobs = '$apiV1Prefix/copy-jobs';
   static const copyJobDetail = '$apiV1Prefix/copy-jobs/{copyJobId}';
   static const copyJobItems = '$apiV1Prefix/copy-jobs/{copyJobId}/items';
@@ -54,5 +62,4 @@ abstract final class ApiEndpoints {
   static const copyJobReport = '$apiV1Prefix/copy-jobs/{copyJobId}/report';
   static const copyJobAction = '$apiV1Prefix/copy-jobs/{copyJobId}/actions/{action}';
   static const copyPreviewItems = '$apiV1Prefix/copy-previews/{previewId}/items';
-  static const copyCapabilities = '$apiV1Prefix/copy-capabilities';
 }

@@ -77,8 +77,10 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   StreamSubscription<ProvisioningDevice>? _discoverySubscription;
   StreamSubscription<BleScanDiagnosticSession>? _scanDiagnosticSubscription;
   var _lastAction = _ProvisioningAction.discover;
+  Object? _rootFailure;
 
   Future<void> discover() async {
+    _rootFailure = null;
     _lastAction = _ProvisioningAction.discover;
     await _discoverySubscription?.cancel();
     await _repository.stopDiscovery();
@@ -97,6 +99,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   }
 
   Future<void> selectDevice(ProvisioningDevice device) async {
+    _rootFailure = null;
     _lastAction = _ProvisioningAction.connect;
     await _discoverySubscription?.cancel();
     await _repository.stopDiscovery();
@@ -128,6 +131,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   Future<void> openPairing() async {
     if (isClosed || state.phase != ProvisioningPhase.trusted || state.deviceInfo == null) return;
     _lastAction = _ProvisioningAction.openPairing;
+    _rootFailure = null;
     emit(
       state.copyWith(
         phase: ProvisioningPhase.authorizing,
@@ -153,6 +157,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   Future<void> authorizePairing(String pairingCode) async {
     if (isClosed || state.phase != ProvisioningPhase.pairingCode || pairingCode.trim().isEmpty) return;
     _lastAction = _ProvisioningAction.authorizePairing;
+    _rootFailure = null;
     emit(
       state.copyWith(phase: ProvisioningPhase.authorizing, clearError: true),
     );
@@ -184,10 +189,45 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   Future<void> retry() => switch (_lastAction) {
     _ProvisioningAction.discover => discover(),
     _ProvisioningAction.connect when state.selectedDevice != null => selectDevice(state.selectedDevice!),
-    _ProvisioningAction.openPairing => openPairing(),
-    _ProvisioningAction.authorizePairing => openPairing(),
+    _ProvisioningAction.openPairing || _ProvisioningAction.authorizePairing => _reconnectAndOpenPairing(),
     _ => discover(),
   };
+
+  Future<void> _reconnectAndOpenPairing() async {
+    final device = state.selectedDevice;
+    if (device == null) {
+      await discover();
+      return;
+    }
+    _rootFailure = null;
+    emit(
+      state.copyWith(
+        phase: ProvisioningPhase.connecting,
+        clearDeviceInfo: true,
+        clearPairingWindow: true,
+        clearError: true,
+      ),
+    );
+    try {
+      // A failed/timeout Bond may leave both Android and the vendor GATT stack
+      // in an uncertain state. A user retry always tears down that session and
+      // re-verifies Device Info before opening a fresh pairing window.
+      await _repository.disconnect();
+      if (isClosed) return;
+      final info = await _repository.connect(device);
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          phase: ProvisioningPhase.trusted,
+          deviceInfo: info,
+          clearError: true,
+        ),
+      );
+      await openPairing();
+    } catch (error) {
+      _onFailure(error);
+    }
+  }
 
   Future<void> reset() async {
     await _discoverySubscription?.cancel();
@@ -216,7 +256,12 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 
   void _onFailure(Object error, [StackTrace? stackTrace]) {
     if (isClosed) return;
-    emit(state.copyWith(phase: ProvisioningPhase.failure, error: error));
+    // Keep the first actionable root cause. A later disconnect/cancellation
+    // callback must not replace a GATT security or Bond failure with a generic
+    // "operation failed" message.
+    if (_rootFailure != null) return;
+    _rootFailure = error;
+    emit(state.copyWith(phase: ProvisioningPhase.failure, error: _rootFailure));
   }
 
   void _onScanDiagnostic(BleScanDiagnosticSession diagnostic) {

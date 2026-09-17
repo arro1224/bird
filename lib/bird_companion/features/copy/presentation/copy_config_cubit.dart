@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -10,17 +11,18 @@ class CopyConfigState {
     this.selectionId,
     this.selectionPhotoCount,
     this.selectionDiscardedCount,
+    this.filter,
     this.preferredTargetMediaId,
     this.pairPolicy = PairPolicy.rawOnly,
     this.sourceMediaId,
+    this.sourceBindingToken,
+    this.sourceDisplayName,
+    this.preferencesVersion,
+    this.scopeOptions = const [],
+    this.copyReady = false,
     this.targetMediaId,
     this.conflictStrategy,
-    this.reviewExport = const ReviewExportConfig(
-      enabled: true,
-      writeXmp: true,
-      writeCsv: true,
-      embedIntoSupportedCopy: true,
-    ),
+    this.reviewExport = const ReviewExportConfig.disabled(),
     this.devices = const [],
     this.loadingDevices = true,
     this.devicesError,
@@ -37,9 +39,15 @@ class CopyConfigState {
   final String? selectionId;
   final int? selectionPhotoCount;
   final int? selectionDiscardedCount;
+  final Map<String, dynamic>? filter;
   final String? preferredTargetMediaId;
   final PairPolicy pairPolicy;
   final String? sourceMediaId;
+  final String? sourceBindingToken;
+  final String? sourceDisplayName;
+  final int? preferencesVersion;
+  final List<CopyScopeOption> scopeOptions;
+  final bool copyReady;
   final String? targetMediaId;
   final ConflictStrategy? conflictStrategy;
   final ReviewExportConfig reviewExport;
@@ -56,8 +64,7 @@ class CopyConfigState {
   bool get fullBackup => scope == CopyScope.mediaFullBackup;
 
   /// selected_assets 与全量备份的范围由入口固定，页面不展示范围列表（§3.3）。
-  bool get scopeFixed =>
-      scope == CopyScope.selectedAssets || scope == CopyScope.mediaFullBackup;
+  bool get scopeFixed => scope == CopyScope.selectedAssets || scope == CopyScope.mediaFullBackup;
 
   StorageDeviceSummary? get sourceDevice => _device(sourceMediaId);
   StorageDeviceSummary? get targetDevice => _device(targetMediaId);
@@ -67,23 +74,31 @@ class CopyConfigState {
     return devices.where((device) => device.mediaId == id).firstOrNull;
   }
 
-  List<StorageDeviceSummary> get availableSources => devices
-      .where((device) => device.online && device.canBeSource)
-      .toList(growable: false);
+  List<StorageDeviceSummary> get availableSources => devices.where((device) => device.online && device.canBeSource).toList(growable: false);
 
   List<StorageDeviceSummary> get availableTargets => devices
-      .where((device) => device.online && device.canBeTarget)
+      .where(
+        (device) => device.online && device.canBeTarget && device.mediaId != sourceMediaId,
+      )
       .toList(growable: false);
+
+  CopyScopeOption? get currentScopeOption => scopeOptions.where((option) => option.scope == scope).firstOrNull;
 
   bool get canFetchPreview =>
       !loadingDevices &&
       devices.isNotEmpty &&
+      copyReady &&
       sourceMediaId != null &&
+      sourceBindingToken != null &&
       targetMediaId != null &&
       conflictStrategy != null &&
+      (currentScopeOption?.available ?? false) &&
+      (fullBackup || preferencesVersion != null) &&
+      (scope != CopyScope.filteredAssets || filter != null) &&
       (scope != CopyScope.selectedAssets || selectionId != null);
 
   String? get submissionBlockReason {
+    if (!(currentScopeOption?.available ?? false)) return '当前复制范围不可用';
     if (conflictStrategy == null) return '请选择同名文件处理策略';
     final source = sourceDevice;
     final target = targetDevice;
@@ -102,7 +117,10 @@ class CopyConfigState {
     scope: scope,
     selectionId: selectionId,
     sourceMediaId: sourceMediaId!,
+    sourceBindingToken: sourceBindingToken,
     targetMediaId: targetMediaId!,
+    expectedPreferencesVersion: preferencesVersion,
+    filter: filter,
     pairPolicy: pairPolicy,
     conflictStrategy: conflictStrategy,
     reviewExport: reviewExport,
@@ -114,9 +132,15 @@ class CopyConfigState {
     String? selectionId,
     int? selectionPhotoCount,
     int? selectionDiscardedCount,
+    Map<String, dynamic>? filter,
     String? preferredTargetMediaId,
     PairPolicy? pairPolicy,
     String? sourceMediaId,
+    String? sourceBindingToken,
+    String? sourceDisplayName,
+    int? preferencesVersion,
+    List<CopyScopeOption>? scopeOptions,
+    bool? copyReady,
     String? targetMediaId,
     ConflictStrategy? conflictStrategy,
     ReviewExportConfig? reviewExport,
@@ -139,18 +163,18 @@ class CopyConfigState {
     scope: scope ?? this.scope,
     batchId: batchId ?? this.batchId,
     selectionId: clearSelectionId ? null : selectionId ?? this.selectionId,
-    selectionPhotoCount:
-        clearSelectionId ? null : selectionPhotoCount ?? this.selectionPhotoCount,
-    selectionDiscardedCount:
-        clearSelectionId ? null : selectionDiscardedCount ?? this.selectionDiscardedCount,
+    selectionPhotoCount: clearSelectionId ? null : selectionPhotoCount ?? this.selectionPhotoCount,
+    selectionDiscardedCount: clearSelectionId ? null : selectionDiscardedCount ?? this.selectionDiscardedCount,
+    filter: filter ?? this.filter,
     preferredTargetMediaId: preferredTargetMediaId ?? this.preferredTargetMediaId,
     pairPolicy: pairPolicy ?? this.pairPolicy,
-    sourceMediaId: clearSourceMediaId
-        ? null
-        : sourceMediaId ?? this.sourceMediaId,
-    targetMediaId: clearTargetMediaId
-        ? null
-        : targetMediaId ?? this.targetMediaId,
+    sourceMediaId: clearSourceMediaId ? null : sourceMediaId ?? this.sourceMediaId,
+    sourceBindingToken: sourceBindingToken ?? this.sourceBindingToken,
+    sourceDisplayName: sourceDisplayName ?? this.sourceDisplayName,
+    preferencesVersion: preferencesVersion ?? this.preferencesVersion,
+    scopeOptions: scopeOptions ?? this.scopeOptions,
+    copyReady: copyReady ?? this.copyReady,
+    targetMediaId: clearTargetMediaId ? null : targetMediaId ?? this.targetMediaId,
     conflictStrategy: conflictStrategy ?? this.conflictStrategy,
     reviewExport: reviewExport ?? this.reviewExport,
     devices: devices ?? this.devices,
@@ -177,11 +201,12 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     this.selectionId,
     this.selectionPhotoCount,
     this.selectionDiscardedCount,
+    this.filter,
     this.preferredTargetMediaId,
     this.onRememberTarget,
     this.dataChanges,
     this.initialPairPolicy = PairPolicy.rawOnly,
-    this.initialReviewExportEnabled = true,
+    this.initialReviewExportEnabled = false,
     this.initialEmbedReviewMetadata = true,
   }) : super(
          CopyConfigState(
@@ -190,6 +215,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
            selectionId: selectionId,
            selectionPhotoCount: selectionPhotoCount,
            selectionDiscardedCount: selectionDiscardedCount,
+           filter: filter,
            preferredTargetMediaId: preferredTargetMediaId,
            pairPolicy: initialPairPolicy,
            reviewExport: ReviewExportConfig(
@@ -207,6 +233,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   final String? selectionId;
   final int? selectionPhotoCount;
   final int? selectionDiscardedCount;
+  final Map<String, dynamic>? filter;
 
   /// 同批次上次成功目标（§4.4），仅当该设备当前在线且可作为目标时预选。
   final String? preferredTargetMediaId;
@@ -222,20 +249,33 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   Future<void> initialize() async {
     final generation = ++_loadGeneration;
     try {
-      final devices = (await _repository.devices()).devices;
+      final capabilities = await _repository.capabilities();
+      if (!capabilities.copyReady || capabilities.revision != '1.0-rc3') {
+        throw StateError(
+          '盒子复制能力尚未就绪：${capabilities.missingRequirements.join('、')}',
+        );
+      }
+      final results = await Future.wait<Object>([
+        _repository.devices(),
+        _repository.source(batchId: batchId),
+        if (scope != CopyScope.mediaFullBackup) _repository.preferences(),
+        _repository.scopeOptions(
+          batchId: batchId,
+          selectionId: selectionId,
+          filter: filter,
+        ),
+      ]);
+      final devices = (results[0] as CopyDeviceList).devices;
+      final sourceBinding = results[1] as SourceBinding;
+      final preferences = scope == CopyScope.mediaFullBackup ? null : results[2] as CopyPreferences;
+      final scopeOptions = results.last as List<CopyScopeOption>;
       if (isClosed || generation != _loadGeneration) return;
-      final source = devices
-          .where((device) => device.online && device.canBeSource)
-          .firstOrNull;
       String? targetId;
       final preferred = preferredTargetMediaId;
       if (preferred != null && preferred.isNotEmpty) {
         final match = devices
             .where(
-              (device) =>
-                  device.mediaId == preferred &&
-                  device.online &&
-                  device.canBeTarget,
+              (device) => device.mediaId == preferred && device.online && device.canBeTarget,
             )
             .firstOrNull;
         if (match != null) targetId = match.mediaId;
@@ -244,7 +284,13 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
         state.copyWith(
           devices: devices,
           loadingDevices: false,
-          sourceMediaId: source?.mediaId,
+          copyReady: true,
+          sourceMediaId: sourceBinding.sourceMediaId,
+          sourceBindingToken: sourceBinding.token,
+          sourceDisplayName: sourceBinding.displayName,
+          preferencesVersion: preferences?.version,
+          pairPolicy: preferences?.pairPolicy,
+          scopeOptions: scopeOptions,
           targetMediaId: targetId,
         ),
       );
@@ -255,27 +301,17 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   }
 
   void selectSource(String mediaId) {
-    final device = state._device(mediaId);
-    if (device == null || !device.online || !device.canBeSource) return;
-    emit(
-      state.copyWith(
-        sourceMediaId: mediaId,
-        // 同一设备不能同时作为源与目标（§1.3）。
-        clearTargetMediaId: state.targetMediaId == mediaId,
-        clearPreview: true,
-        clearError: true,
-      ),
-    );
+    // rc3 源设备由后端自动判定并通过 source_binding_token 固定。
   }
 
   void selectTarget(String mediaId) {
     final device = state._device(mediaId);
-    if (device == null || !device.online || !device.canBeTarget) return;
+    if (device == null || !device.online || !device.canBeTarget || mediaId == state.sourceMediaId) {
+      return;
+    }
     emit(
       state.copyWith(
         targetMediaId: mediaId,
-        // 同一设备不能同时作为源与目标（§1.3）。
-        clearSourceMediaId: state.sourceMediaId == mediaId,
         clearPreview: true,
         clearError: true,
       ),
@@ -287,17 +323,40 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     emit(
       state.copyWith(
         scope: value,
-        // 切换范围后必须重新创建选择快照。
-        clearSelectionId: true,
+        // rc3 仅要求丢弃旧预检；选择快照和筛选上下文应保留，
+        // 以便用户切回对应范围时仍能准确恢复。
         clearPreview: true,
         clearError: true,
       ),
     );
   }
 
-  void setPairPolicy(PairPolicy value) => emit(
-    state.copyWith(pairPolicy: value, clearPreview: true, clearError: true),
-  );
+  Future<void> setPairPolicy(PairPolicy value) async {
+    if (value == state.pairPolicy || state.fullBackup) return;
+    final version = state.preferencesVersion;
+    if (version == null) return;
+    emit(
+      state.copyWith(pairPolicy: value, clearPreview: true, clearError: true),
+    );
+    try {
+      final saved = await _repository.savePreferences(
+        value,
+        expectedVersion: version,
+      );
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          pairPolicy: saved.pairPolicy,
+          preferencesVersion: saved.version,
+          clearPreview: true,
+          clearError: true,
+        ),
+      );
+    } catch (error) {
+      if (isClosed) return;
+      emit(state.copyWith(error: error, clearPreview: true));
+    }
+  }
 
   void setConflictStrategy(ConflictStrategy value) => emit(
     state.copyWith(conflictStrategy: value, clearError: true),
@@ -338,6 +397,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     final generation = ++_loadGeneration;
     emit(state.copyWith(loadingPreview: true, clearError: true));
     try {
+      await _refreshSourceBinding();
       final preview = await _repository.preview(state.draft);
       if (isClosed || generation != _loadGeneration) return false;
       emit(state.copyWith(loadingPreview: false, preview: preview));
@@ -356,6 +416,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     final generation = ++_loadGeneration;
     emit(state.copyWith(submitting: true, clearError: true));
     try {
+      await _refreshSourceBinding();
       // 容量与设备状态可能在用户停留期间变化：创建前必须用新预检验证。
       final refreshed = await _repository.preview(state.draft);
       if (isClosed || generation != _loadGeneration) return false;
@@ -393,5 +454,17 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
       emit(state.copyWith(submitting: false, error: error));
       return false;
     }
+  }
+
+  Future<void> _refreshSourceBinding() async {
+    final binding = await _repository.source(batchId: state.batchId);
+    if (isClosed) return;
+    emit(
+      state.copyWith(
+        sourceMediaId: binding.sourceMediaId,
+        sourceBindingToken: binding.token,
+        sourceDisplayName: binding.displayName,
+      ),
+    );
   }
 }

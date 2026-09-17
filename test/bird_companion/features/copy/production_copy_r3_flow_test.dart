@@ -13,7 +13,7 @@ void main() {
       final cubit = CopyConfigCubit(
         repository,
         batchId: 'batch-1',
-        scope: CopyScope.keptAssets,
+        scope: CopyScope.recognizedAssets,
         preferredTargetMediaId: 'media_target_2',
       );
       addTearDown(cubit.close);
@@ -29,7 +29,7 @@ void main() {
       final cubit = CopyConfigCubit(
         repository,
         batchId: 'batch-1',
-        scope: CopyScope.keptAssets,
+        scope: CopyScope.recognizedAssets,
         preferredTargetMediaId: 'media_target_offline',
       );
       addTearDown(cubit.close);
@@ -39,12 +39,12 @@ void main() {
       expect(cubit.state.preferredTargetMediaId, 'media_target_offline');
     });
 
-    test('the same device cannot be source and target at once', () async {
+    test('rc3 source is server-bound and cannot be changed by the App', () async {
       final repository = _CopyRepository();
       final cubit = CopyConfigCubit(
         repository,
         batchId: 'batch-1',
-        scope: CopyScope.keptAssets,
+        scope: CopyScope.recognizedAssets,
       );
       addTearDown(cubit.close);
       await cubit.initialize();
@@ -53,18 +53,11 @@ void main() {
       cubit.selectTarget('media_source_1');
       expect(cubit.state.targetMediaId, isNull);
 
-      // 先选为目标，再选为源：最后选的角色生效，目标被清除。
+      // 目标仍可选择，但旧的手动选源入口不得改变服务器绑定的源卡。
       cubit.selectTarget('media_target_2');
       expect(cubit.state.targetMediaId, 'media_target_2');
       cubit.selectSource('media_target_2');
-      expect(cubit.state.sourceMediaId, 'media_target_2');
-      expect(cubit.state.targetMediaId, isNull);
-
-      // 反过来：先选为源，再选为目标，源被清除。
-      cubit.selectSource('media_target_2');
-      expect(cubit.state.sourceMediaId, 'media_target_2');
-      cubit.selectTarget('media_target_2');
-      expect(cubit.state.sourceMediaId, isNull);
+      expect(cubit.state.sourceMediaId, 'media_source_1');
       expect(cubit.state.targetMediaId, 'media_target_2');
     });
 
@@ -73,7 +66,7 @@ void main() {
       final cubit = CopyConfigCubit(
         repository,
         batchId: 'batch-1',
-        scope: CopyScope.keptAssets,
+        scope: CopyScope.recognizedAssets,
       );
       addTearDown(cubit.close);
       await cubit.initialize();
@@ -96,7 +89,7 @@ void main() {
       final cubit = CopyConfigCubit(
         repository,
         batchId: 'batch-1',
-        scope: CopyScope.keptAssets,
+        scope: CopyScope.recognizedAssets,
       );
       addTearDown(cubit.close);
       await cubit.initialize();
@@ -114,7 +107,7 @@ void main() {
       final cubit = CopyConfigCubit(
         repository,
         batchId: 'batch-1',
-        scope: CopyScope.keptAssets,
+        scope: CopyScope.recognizedAssets,
       );
       addTearDown(cubit.close);
       await cubit.initialize();
@@ -257,6 +250,69 @@ class _CopyRepository implements CopyRepository {
   CopyRequestDraft? createdDraft;
 
   @override
+  Future<CopyCapabilities> capabilities() async => const CopyCapabilities(
+    revision: '1.0-rc3',
+    copyReady: true,
+    supportedScopes: [
+      CopyScope.selectedAssets,
+      CopyScope.filteredAssets,
+      CopyScope.recognizedAssets,
+      CopyScope.batchAllAssets,
+      CopyScope.mediaFullBackup,
+    ],
+    recognitionPolicyVersion: 'recognized-assets-v1',
+  );
+
+  @override
+  Future<SourceBinding> source({String? batchId}) async => SourceBinding(
+    sourceMediaId: _sourceDevice.mediaId,
+    displayName: _sourceDevice.displayName,
+    token: 'src_test_binding',
+    expiresAt: DateTime.now().add(const Duration(minutes: 2)),
+    verifiedReadOnly: true,
+    batchId: batchId,
+  );
+
+  @override
+  Future<CopyPreferences> preferences() async => const CopyPreferences(
+    pairPolicy: PairPolicy.rawOnly,
+    version: 1,
+    origin: 'factory_default',
+  );
+
+  @override
+  Future<CopyPreferences> savePreferences(
+    PairPolicy pairPolicy, {
+    required int expectedVersion,
+  }) async => CopyPreferences(
+    pairPolicy: pairPolicy,
+    version: expectedVersion + 1,
+    origin: 'user_saved',
+  );
+
+  @override
+  Future<List<CopyScopeOption>> scopeOptions({
+    String? batchId,
+    String? selectionId,
+    Map<String, dynamic>? filter,
+  }) async => [
+    for (final scope in const [
+      CopyScope.selectedAssets,
+      CopyScope.filteredAssets,
+      CopyScope.recognizedAssets,
+      CopyScope.batchAllAssets,
+      CopyScope.mediaFullBackup,
+    ])
+      CopyScopeOption(
+        scope: scope,
+        available: true,
+        logicalAssets: 34,
+        countState: 'known',
+        navigationAction: 'none',
+      ),
+  ];
+
+  @override
   Future<CopyDeviceList> devices() async =>
       const CopyDeviceList(devices: [_sourceDevice, _target1, _target2, _offlineTarget]);
 
@@ -273,8 +329,7 @@ class _CopyRepository implements CopyRepository {
   @override
   Future<CopyPreview> preview(CopyRequestDraft draft) async {
     previewCalls += 1;
-    final target = const [_target1, _target2, _offlineTarget]
-        .firstWhere((device) => device.mediaId == draft.targetMediaId);
+    final target = const [_target1, _target2, _offlineTarget].firstWhere((device) => device.mediaId == draft.targetMediaId);
     return CopyPreview(
       previewToken: 'preview_mock_$previewCalls',
       expiresAt: DateTime.now().add(const Duration(minutes: 10)),
@@ -310,8 +365,7 @@ class _CopyRepository implements CopyRepository {
   }
 
   @override
-  Future<BatchTargetPreference?> lastSuccessfulTarget(String batchId) async =>
-      null;
+  Future<BatchTargetPreference?> lastSuccessfulTarget(String batchId) async => null;
 
   @override
   Future<void> setDeviceAlias(String mediaId, String alias) async {}

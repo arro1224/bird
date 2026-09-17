@@ -7,53 +7,12 @@
 ///   仅 `CopyJobDetail.copyJobId` 等无法降级的身份字段除外）；
 /// - 未知枚举保留原始 wire 值展示，不崩溃；`allowed_actions`
 ///   中的未知动作直接丢弃（迁移对照 §3.5：只渲染可识别的按钮）。
+///
+/// 能力声明模型（CopyCapabilities）沿用 copy_models.dart 的 rc3 严格版本。
 library;
 
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
-
-/// `copy-capabilities` 能力声明（已知字段：
-/// supported_scopes/storage_ready/copy_ready/metadata_export_ready/features）。
-class CopyCapabilities {
-  const CopyCapabilities({
-    required this.supportedScopes,
-    required this.storageReady,
-    required this.copyReady,
-    required this.metadataExportReady,
-    required this.features,
-  });
-
-  /// 支持的复制范围 wire 值；缺失时解析为空（保守隐藏全量备份）。
-  final List<String> supportedScopes;
-  final bool storageReady;
-  final bool copyReady;
-  final bool metadataExportReady;
-  final Map<String, bool> features;
-
-  bool get supportsFullBackup => supportedScopes.contains('media_full_backup');
-
-  factory CopyCapabilities.fromJson(Map<String, dynamic> json) {
-    final rawScopes = json['supported_scopes'];
-    final scopes = rawScopes is List
-        ? rawScopes.map((value) => value.toString()).toList(growable: false)
-        : const <String>[];
-    final rawFeatures = json['features'];
-    final features = <String, bool>{};
-    if (rawFeatures is Map) {
-      rawFeatures.forEach((key, value) {
-        features[key.toString()] =
-            value is bool ? value : value.toString() == 'true';
-      });
-    }
-    return CopyCapabilities(
-      supportedScopes: List.unmodifiable(scopes),
-      storageReady: _bool(json, 'storage_ready', fallback: true),
-      copyReady: _bool(json, 'copy_ready', fallback: true),
-      metadataExportReady: _bool(json, 'metadata_export_ready', fallback: false),
-      features: Map.unmodifiable(features),
-    );
-  }
-}
 
 /// 复制任务状态机（§12）。常量类而非 enum：未知 wire 值保留原始字符串。
 class CopyJobState {

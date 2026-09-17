@@ -256,6 +256,7 @@ class PhotoSummary extends Equatable {
     required this.format,
     required this.preview,
     required this.analysisState,
+    this.assetId,
     this.recognition,
     this.rating,
     this.groupId,
@@ -269,6 +270,7 @@ class PhotoSummary extends Equatable {
   });
 
   final String id;
+  final String? assetId;
   final String filename;
   final String format;
   final PreviewRef preview;
@@ -288,6 +290,7 @@ class PhotoSummary extends Equatable {
 
   factory PhotoSummary.fromJson(Map<String, dynamic> json) => PhotoSummary(
     id: ProtocolValidation.requiredId(json, 'file_id'),
+    assetId: json.stringOrNull('asset_id'),
     filename: json.stringOrNull('filename') ?? '',
     format: json.stringOrNull('format') ?? '',
     preview: PreviewRef.fromJson(json),
@@ -306,6 +309,7 @@ class PhotoSummary extends Equatable {
 
   Map<String, dynamic> toJson() => {
     'file_id': id,
+    if (assetId != null) 'asset_id': assetId,
     'filename': filename,
     'format': format,
     ...preview.toJson(),
@@ -328,6 +332,7 @@ class PhotoSummary extends Equatable {
   /// never wait for a later gallery reload to reflect a successful action.
   PhotoSummary copyWith({String? keepState}) => PhotoSummary(
     id: id,
+    assetId: assetId,
     filename: filename,
     format: format,
     preview: preview,
@@ -347,6 +352,7 @@ class PhotoSummary extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    assetId,
     filename,
     format,
     preview,

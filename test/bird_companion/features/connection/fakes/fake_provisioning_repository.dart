@@ -60,7 +60,7 @@ final class FakeProvisioningRepository implements ProvisioningRepository, DppAva
   final PairingWindow? pairingWindow;
   final Object? discoverError;
   final Object? connectError;
-  final Object? openPairingError;
+  Object? openPairingError;
   final Object? authorizeError;
   ProvisioningNetworkStatus? networkStatus;
   final CommandAccepted? startDirectApResult;
