@@ -6,7 +6,6 @@ import 'package:aves/bird_companion/core/files/log_download_service.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
-import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/features/batches/data/batch_api.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
@@ -14,8 +13,6 @@ import 'package:aves/bird_companion/features/gallery/data/photo_api.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/review/data/review_api.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_api.dart';
-import 'package:aves/bird_companion/features/jobs/data/job_repository_impl.dart';
-import 'package:aves/bird_companion/features/jobs/presentation/job_detail_cubit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../tool/mock_box_server/mock_box_server.dart';
@@ -269,9 +266,8 @@ void main() {
     expect(updated.photo.summary.keepState, 'featured');
   });
 
-  test('copy-v1 设备、预检、创建、任务进度和权威报告形成闭环', () async {
+  test('copy-v1 设备、预检与明细形成闭环（RC3 任务闭环在下方独立测试）', () async {
     final copyApi = CopyApi(client);
-    final jobApi = JobApi(client);
     final devices = (await copyApi.devices()).devices;
 
     expect(devices, isNotEmpty);
@@ -298,41 +294,114 @@ void main() {
     expect(preview.previewToken, isNotEmpty);
     expect(preview.hasEnoughSpace, isTrue);
 
-    final summary = await copyApi.createJob(draft, preview.previewToken);
-    expect(summary.copyJobId, startsWith('job-copy-'));
-    expect(summary.state, isNotEmpty);
+    // 预检明细可分页（§10.2），冲突项带 skip 决策。
+    final itemPage = await copyApi.previewItems(preview.previewToken);
+    expect(itemPage.items, hasLength(20));
+    expect(itemPage.hasMore, isTrue);
+    expect(itemPage.items.map((item) => item.conflictDecision), contains('skip'));
+  });
 
-    await server.completeJob(summary.copyJobId);
-    final completed = await jobApi.detail(summary.copyJobId);
-    final report = await jobApi.report(summary.copyJobId);
-    final events = EventClient();
-    final detailCubit = JobDetailCubit(
-      JobRepositoryImpl(jobApi),
-      events,
-      summary.copyJobId,
+  test('RC3 复制任务闭环：capabilities/预检拒绝全量备份/创建→轮询部分完成/动作版本冲突/安全移除', () async {
+    // 用可变 clock 驱动 mock 服务器状态机（真实后端语义：读时按相对时间推进）。
+    var now = DateTime(2026, 9, 17, 10);
+    final clocked = MockBoxServer(
+      photoCount: 1200,
+      assetDirectory: Directory('tool/mock_box_server/assets'),
+      logRequests: false,
+      clock: () => now,
     );
-    addTearDown(detailCubit.close);
-    addTearDown(events.dispose);
-    await detailCubit.load();
+    final clockedUri = await clocked.start();
+    addTearDown(clocked.close);
+    final copyApi = CopyApi(ApiClient()..configure(clockedUri));
 
-    expect(completed.state.name, 'completed');
-    expect(report.jobId, summary.copyJobId);
-    expect(report.successCount, report.totalCount);
-    expect(report.failedCount, 0);
-    expect(detailCubit.state.report?.jobId, summary.copyJobId);
+    // capabilities（rc3 契约）。
+    final capabilities = await copyApi.capabilities();
+    expect(capabilities.revision, '1.0-rc3');
+    expect(capabilities.copyReady, isTrue);
+    expect(capabilities.supportedScopes, contains(CopyScope.mediaFullBackup));
 
-    await server.failJob(summary.copyJobId, failedCount: 1);
-    await detailCubit.load();
-    expect(detailCubit.state.failures, hasLength(1));
-    expect(
-      detailCubit.state.job?.availableActions,
-      contains('skip_failed'),
+    const draft = CopyRequestDraft(
+      batchId: 'mock-batch-current',
+      scope: CopyScope.keptAssets,
+      sourceMediaId: 'media_2d6dee77bb5ecc73e3d34787',
+      targetMediaId: 'media_7f9a76e6c97690b61aedf6fd',
+      conflictStrategy: ConflictStrategy.skip,
+      reviewExport: ReviewExportConfig.disabled(),
     );
 
-    await detailCubit.control('skip_failed');
-    expect(detailCubit.state.job?.state.name, 'completed');
-    expect(detailCubit.state.report?.skippedCount, 1);
-    expect(detailCubit.state.failures, isEmpty);
+    // 预检拒绝全量备份（镜像真实后端 P0-2）。
+    await expectLater(
+      copyApi.preview(
+        CopyRequestDraft(
+          batchId: 'mock-batch-current',
+          scope: CopyScope.mediaFullBackup,
+          sourceMediaId: draft.sourceMediaId,
+          targetMediaId: draft.targetMediaId,
+          conflictStrategy: ConflictStrategy.skip,
+          reviewExport: const ReviewExportConfig.disabled(),
+        ),
+      ),
+      throwsA(
+        isA<ApiException>()
+            .having((error) => error.code, 'code', 'COPY_SCOPE_UNSUPPORTED')
+            .having((error) => error.statusCode, 'status', 422),
+      ),
+    );
+
+    // 创建任务并轮询到部分完成。
+    final summary = await copyApi.createJob(draft, 'unused_token_for_mock');
+    expect(summary.copyJobId, startsWith('copy_job_'));
+
+    final queued = await copyApi.getJob(summary.copyJobId);
+    expect(queued.state.wire, 'queued');
+    expect(queued.stats!.totalFiles, 2);
+
+    now = now.add(const Duration(seconds: 3));
+    final running = await copyApi.getJob(summary.copyJobId);
+    expect(running.state.wire, 'running');
+    expect(running.allowedActions.map((action) => action.wire), containsAll(['pause', 'cancel']));
+
+    // 进行中的任务占用源设备：安全移除被拒（§4.5）。
+    final busySource = await copyApi.safeRemoveDevice(draft.sourceMediaId, role: 'source');
+    expect(busySource.safeToRemove, isFalse);
+
+    // 版本不符的动作 → 409 COPY_STATE_VERSION_CONFLICT。
+    await expectLater(
+      copyApi.jobAction(summary.copyJobId, 'pause', expectedStateVersion: running.stateVersion + 7),
+      throwsA(
+        isA<ApiException>().having(
+          (error) => error.code,
+          'code',
+          'COPY_STATE_VERSION_CONFLICT',
+        ),
+      ),
+    );
+
+    now = now.add(const Duration(seconds: 10));
+    final done = await copyApi.getJob(summary.copyJobId);
+    expect(done.state.wire, 'completed_with_errors');
+    expect(done.stats!.copiedFiles, 1);
+    expect(done.stats!.failedFiles, 1);
+
+    // 失败项过滤 + 事件增量 + 终态报告。
+    final failedItems = await copyApi.jobItems(summary.copyJobId, state: 'failed');
+    expect(failedItems.items, hasLength(1));
+    final events = await copyApi.jobEvents(summary.copyJobId);
+    expect(events.events.map((event) => event.type), contains('item_failed'));
+    final incremental = await copyApi.jobEvents(summary.copyJobId, afterSeq: 1);
+    expect(incremental.events.map((event) => event.seq), everyElement(greaterThan(1)));
+    final report = await copyApi.jobReport(summary.copyJobId);
+    expect(report.isPartialSuccess, isTrue);
+    expect(report.failedFiles, 1);
+
+    // 终态后目标设备空闲：安全移除放行（保持期 60s）。
+    final freeTarget = await copyApi.safeRemoveDevice(
+      draft.targetMediaId,
+      role: 'target',
+      expectedCopyJobId: summary.copyJobId,
+    );
+    expect(freeTarget.safeToRemove, isTrue);
+    expect(freeTarget.keepUntil, isNotNull);
   });
 
   test('copy-v1 缺失同名策略时拒绝预检', () async {

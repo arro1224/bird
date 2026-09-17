@@ -80,6 +80,7 @@ void main() {
       batchRepository: batches,
       jobRepository: jobs,
       copyRepository: CopyRepositoryImpl(CopyApi(apiClient)),
+      copyJobRepository: CopyRepositoryImpl(CopyApi(apiClient)),
       eventClient: eventClient,
       deviceSessionCubit: session,
       pendingOperationStore: pendingOperations,
@@ -389,7 +390,7 @@ void main() {
     );
   });
 
-  test('copy completion emits the real job id for report navigation', () async {
+  test('RC3 copy 任务不进通用任务中心，但复制任务列表立即可查（审计 P0-3）', () async {
     final projectId = await controller.startImportBatch('report-navigation');
     final importId = controller.currentJobId!;
     await server.completeJob(importId, emitEvent: false);
@@ -428,14 +429,14 @@ void main() {
     );
     await controller.refreshFromBox();
 
-    final navigation = controller.copyCompletedJobs.first;
-    await server.completeJob(copy.copyJobId, emitEvent: false);
-    await controller.refreshFromBox();
+    // 通用任务中心不含 RC3 copy_jobs_v1 任务（独立表，阶段 D 实施计划 §2.1）。
+    expect(controller.jobs.any((job) => job.id == copy.copyJobId), isFalse);
 
-    expect(
-      await navigation.timeout(const Duration(seconds: 2)),
-      copy.copyJobId,
-    );
+    // 复制任务列表立即可查到该任务（queued）。
+    final page = await controller.copyJobRepository!.listJobs();
+    final listed = page.items.firstWhere((item) => item.copyJobId == copy.copyJobId);
+    expect(listed.state.wire, 'queued');
+    expect(listed.scopeWire, 'batch_all_assets');
   });
 
   test('polls running jobs while events are unavailable and stops after WS', () async {

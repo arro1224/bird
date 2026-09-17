@@ -13,7 +13,7 @@ import 'package:flutter/material.dart';
 
 /// 复制任务列表页（RC3，审计 P0-3）。
 ///
-/// 通用 `/api/v1/jobs` 任务中心不含 copy_jobs_v1 任务，不能复用，
+/// 通用任务中心不含 copy_jobs_v1 任务，不能复用，
 /// 故独立成页（阶段 D 实施计划 §2.1）。
 class CopyJobListPage extends StatefulWidget {
   const CopyJobListPage({super.key, this.repository});

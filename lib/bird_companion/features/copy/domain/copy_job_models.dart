@@ -473,6 +473,19 @@ class CopyJobItem {
       conflictDecision: _string(json, 'conflict_decision'),
     );
   }
+
+  CopyJobItem copyWith({CopyItemState? state}) => CopyJobItem(
+    copyItemId: copyItemId,
+    assetId: assetId,
+    sourceMediaId: sourceMediaId,
+    sourceRelativePath: sourceRelativePath,
+    sourceSize: sourceSize,
+    sourceMtimeNs: sourceMtimeNs,
+    targetRelativeDirectory: targetRelativeDirectory,
+    targetFilename: targetFilename,
+    state: state ?? this.state,
+    conflictDecision: conflictDecision,
+  );
 }
 
 /// 分页容器基形：{items, has_more, next_cursor}。

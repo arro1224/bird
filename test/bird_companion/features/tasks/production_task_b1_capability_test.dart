@@ -1,6 +1,7 @@
 import 'package:aves/bird_companion/core/models/batch_models.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/job_models.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/storage/domain/card_scan_result.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_home_capability_resolver.dart';
@@ -99,6 +100,56 @@ void main() {
         [TaskType.importIndex, TaskType.aiAnalysis, TaskType.copy],
       );
     });
+
+    test('RC3 remote capabilities merge in three states', () {
+      // 一态：remote == null（获取失败/未部署）→ 完全回退本地推导。
+      expect(_resolve(remote: null), containsAll([TaskType.copy, TaskType.fullBackup]));
+
+      // 二态：copyReady=false → 复制与全量备份都置灰。
+      const notReady = CopyCapabilities(
+        revision: '1.0-rc3',
+        copyReady: false,
+        supportedScopes: [
+          CopyScope.selectedAssets,
+          CopyScope.batchAllAssets,
+          CopyScope.mediaFullBackup,
+        ],
+        recognitionPolicyVersion: 'recognized-assets-v1',
+      );
+      expect(_resolve(remote: notReady), [TaskType.importIndex, TaskType.aiAnalysis]);
+
+      // 三态：支持范围不含全量备份 → 只隐藏全量备份入口。
+      const noFullBackup = CopyCapabilities(
+        revision: '1.0-rc3',
+        copyReady: true,
+        supportedScopes: [CopyScope.selectedAssets, CopyScope.batchAllAssets],
+        recognitionPolicyVersion: 'recognized-assets-v1',
+      );
+      expect(_resolve(remote: noFullBackup), [TaskType.importIndex, TaskType.aiAnalysis, TaskType.copy]);
+    });
+
+    test('RC3 disabled reasons surface remote gating', () {
+      const notReady = CopyCapabilities(
+        revision: '1.0-rc3',
+        copyReady: false,
+        supportedScopes: [CopyScope.selectedAssets],
+        recognitionPolicyVersion: 'recognized-assets-v1',
+      );
+      final capabilities = TaskHomeCapabilityResolver.resolveCapabilities(
+        connected: true,
+        authorityReady: true,
+        deviceStatus: _status,
+        currentProject: _project,
+        currentScan: const CardScanResult(state: CardScanState.detected, cardId: 'card-1'),
+        jobs: const [],
+        hasPendingOperations: false,
+        remote: notReady,
+      );
+      final copy = capabilities.firstWhere((c) => c.type == TaskType.copy);
+      final fullBackup = capabilities.firstWhere((c) => c.type == TaskType.fullBackup);
+      expect(copy.disabledReason, '盒子复制功能暂不可用');
+      expect(fullBackup.disabledReason, '盒子复制功能暂不可用');
+    });
   });
 }
 
@@ -113,6 +164,7 @@ List<TaskType> _resolve({
     cardId: 'card-1',
     photoCount: 24,
   ),
+  CopyCapabilities? remote,
 }) => TaskHomeCapabilityResolver.resolve(
   connected: connected,
   authorityReady: authorityReady,
@@ -121,6 +173,7 @@ List<TaskType> _resolve({
   currentScan: currentScan,
   jobs: jobs,
   hasPendingOperations: hasPendingOperations,
+  remote: remote,
 );
 
 final _status = DeviceStatus(

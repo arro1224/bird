@@ -1085,6 +1085,7 @@ class MockBoxServer {
             }
           }
           job['running_active_ms'] = 0;
+          job['item_start_ms'] = 0;
           _copyJobTransition(job, 'running', now, '已开始重试失败项');
           job['running_last_tick'] = now.toIso8601String();
         }
@@ -1220,20 +1221,29 @@ class MockBoxServer {
 
   /// 惰性推进：queued(1.2s) → acquiring_target(1.2s) → running（文件项串行
   /// 1.8s/个，第 2 项校验失败）→ completed_with_errors，总计约 6.4s。
+  /// 循环追赶直到该时刻不再有可推进的转移（读大幅跳跃时一次追平）。
   void _advanceCopyJob(Map<String, dynamic> job, DateTime now) {
+    var progressed = true;
+    while (progressed && !_copyJobIsTerminal(job['state'] as String)) {
+      progressed = _advanceCopyJobOnce(job, now);
+    }
+  }
+
+  bool _advanceCopyJobOnce(Map<String, dynamic> job, DateTime now) {
     final state = job['state'] as String;
-    if (_copyJobIsTerminal(state)) return;
     final phaseStart = DateTime.parse(job['phase_started_at'] as String);
     switch (state) {
       case 'queued':
-        if (now.difference(phaseStart) >= const Duration(milliseconds: 1200)) {
-          _copyJobTransition(job, 'acquiring_target', now, '正在获取目标盘');
-        }
+        final due = phaseStart.add(const Duration(milliseconds: 1200));
+        if (now.isBefore(due)) return false;
+        _copyJobTransitionTimed(job, 'acquiring_target', due, '正在获取目标盘');
+        return true;
       case 'acquiring_target':
-        if (now.difference(phaseStart) >= const Duration(milliseconds: 1200)) {
-          _copyJobTransition(job, 'running', now, '开始复制文件');
-          job['running_last_tick'] = now.toIso8601String();
-        }
+        final due = phaseStart.add(const Duration(milliseconds: 1200));
+        if (now.isBefore(due)) return false;
+        _copyJobTransitionTimed(job, 'running', due, '开始复制文件');
+        job['running_last_tick'] = due.toIso8601String();
+        return true;
       case 'running':
         final lastTick = job['running_last_tick'] as String?;
         job['running_active_ms'] =
@@ -1241,86 +1251,96 @@ class MockBoxServer {
             (lastTick == null ? 0 : now.difference(DateTime.parse(lastTick)).inMilliseconds);
         job['running_last_tick'] = now.toIso8601String();
         _advanceCopyJobItems(job);
-        if (job['state'] == 'running' &&
-            (job['items'] as List<Map<String, dynamic>>).every((item) => const {
-              'copied',
-              'failed',
-              'skipped_conflict',
-              'not_applicable',
-            }.contains(item['state']))) {
-          _copyJobTransition(job, 'completed_with_errors', now, '任务部分完成：1 个文件失败');
+        if ((job['items'] as List<Map<String, dynamic>>).every((item) => const {
+          'copied',
+          'failed',
+          'skipped_conflict',
+          'not_applicable',
+        }.contains(item['state']))) {
+          _copyJobTransitionTimed(job, 'completed_with_errors', now, '任务部分完成：1 个文件失败');
+          return true;
         }
+        return false;
       case 'pause_requested':
-        if (now.difference(phaseStart) >= const Duration(milliseconds: 800)) {
-          job['state'] = 'paused';
-          job['state_version'] = (job['state_version'] as int) + 1;
-          job['phase_started_at'] = now.toIso8601String();
-          final events = job['events'] as List<Map<String, dynamic>>;
-          job['event_seq'] = (job['event_seq'] as int) + 1;
-          events.add({
-            'seq': job['event_seq'],
-            'type': 'state_changed',
-            'message': '任务已暂停',
-            'created_at': now.toIso8601String(),
-          });
-        }
+        final due = phaseStart.add(const Duration(milliseconds: 800));
+        if (now.isBefore(due)) return false;
+        _copyJobTransitionTimed(job, 'paused', due, '任务已暂停');
+        return true;
       case 'cancel_requested':
-        if (now.difference(phaseStart) >= const Duration(milliseconds: 800)) {
-          job['state'] = 'cancelled';
-          job['state_version'] = (job['state_version'] as int) + 1;
-          job['phase_started_at'] = now.toIso8601String();
-          job['finished_at'] = now.toIso8601String();
-          final events = job['events'] as List<Map<String, dynamic>>;
-          job['event_seq'] = (job['event_seq'] as int) + 1;
-          events.add({
-            'seq': job['event_seq'],
-            'type': 'state_changed',
-            'message': '任务已取消，已完成的副本不会删除',
-            'created_at': now.toIso8601String(),
-          });
-        }
+        final due = phaseStart.add(const Duration(milliseconds: 800));
+        if (now.isBefore(due)) return false;
+        _copyJobTransitionTimed(job, 'cancelled', due, '任务已取消，已完成的副本不会删除');
+        return true;
       default:
-        break;
+        return false;
     }
+  }
+
+  /// 时间驱动的转移：phaseStart 回溯到「本应发生的时刻」。
+  void _copyJobTransitionTimed(
+    Map<String, dynamic> job,
+    String next,
+    DateTime at,
+    String message,
+  ) {
+    job['state'] = next;
+    job['state_version'] = (job['state_version'] as int) + 1;
+    job['phase_started_at'] = at.toIso8601String();
+    if (next == 'running' && job['started_at'] == null) job['started_at'] = at.toIso8601String();
+    if (_copyJobIsTerminal(next)) job['finished_at'] = at.toIso8601String();
+    final events = job['events'] as List<Map<String, dynamic>>;
+    job['event_seq'] = (job['event_seq'] as int) + 1;
+    events.add({
+      'seq': job['event_seq'],
+      'type': 'state_changed',
+      'message': message,
+      'created_at': at.toIso8601String(),
+    });
   }
 
   void _advanceCopyJobItems(Map<String, dynamic> job) {
     final activeMs = job['running_active_ms'] as int;
-    var busy = false;
-    for (final item in job['items'] as List<Map<String, dynamic>>) {
-      switch (item['state'] as String) {
-        case 'pending':
-          if (!busy) {
-            item['state'] = 'copying';
-            item['entered_at_ms'] = activeMs;
-            busy = true;
-          }
-        case 'copying':
-          busy = true;
-          if (activeMs - (item['entered_at_ms'] as int) >= 1200) {
-            item['state'] = 'verifying';
-            item['entered_at_ms'] = activeMs;
-          }
-        case 'verifying':
-          busy = true;
-          if (activeMs - (item['entered_at_ms'] as int) >= 600) {
-            final willFail = item['will_fail'] == true;
-            item['state'] = willFail ? 'failed' : 'copied';
-            final events = job['events'] as List<Map<String, dynamic>>;
-            job['event_seq'] = (job['event_seq'] as int) + 1;
-            events.add({
-              'seq': job['event_seq'],
-              'type': willFail ? 'item_failed' : 'item_copied',
-              'message': willFail
-                  ? '文件 ${item['target_filename']} 校验失败（COPY_HASH_MISMATCH）'
-                  : '文件 ${item['target_filename']} 已复制并通过校验',
-              'created_at': _clock().toIso8601String(),
-            });
-          }
-        default:
-          break;
+    var itemStartMs = job['item_start_ms'] as int? ?? 0;
+    var progressed = true;
+    while (progressed) {
+      progressed = false;
+      for (final item in job['items'] as List<Map<String, dynamic>>) {
+        switch (item['state'] as String) {
+          case 'pending':
+            if (activeMs >= itemStartMs) {
+              item['state'] = 'copying';
+              item['entered_at_ms'] = itemStartMs;
+              progressed = true;
+            }
+          case 'copying':
+            if (activeMs >= (item['entered_at_ms'] as int) + 1200) {
+              item['state'] = 'verifying';
+              item['entered_at_ms'] = (item['entered_at_ms'] as int) + 1200;
+              progressed = true;
+            }
+          case 'verifying':
+            if (activeMs >= (item['entered_at_ms'] as int) + 600) {
+              final willFail = item['will_fail'] == true;
+              item['state'] = willFail ? 'failed' : 'copied';
+              itemStartMs = (item['entered_at_ms'] as int) + 600;
+              job['item_start_ms'] = itemStartMs;
+              final events = job['events'] as List<Map<String, dynamic>>;
+              job['event_seq'] = (job['event_seq'] as int) + 1;
+              events.add({
+                'seq': job['event_seq'],
+                'type': willFail ? 'item_failed' : 'item_copied',
+                'message': willFail
+                    ? '文件 ${item['target_filename']} 校验失败（COPY_HASH_MISMATCH）'
+                    : '文件 ${item['target_filename']} 已复制并通过校验',
+                'created_at': _clock().toIso8601String(),
+              });
+              progressed = true;
+            }
+          default:
+            break;
+        }
+        if (progressed) break; // 串行：同一时刻只推进一个文件项
       }
-      if (busy) break; // 串行：当前文件占用时后续文件不再推进
     }
   }
 

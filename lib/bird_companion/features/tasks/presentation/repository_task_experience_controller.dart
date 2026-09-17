@@ -91,6 +91,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
 
   /// RC3 能力声明来源；null 时不做远端门控（完全回退本地推导）。
   final CopyJobRepository? _copyJobRepository;
+  CopyJobRepository? get copyJobRepository => _copyJobRepository;
   CopyCapabilities? _remoteCopyCapabilities;
   final EventClient _eventClient;
   final DeviceSessionCubit _deviceSessionCubit;

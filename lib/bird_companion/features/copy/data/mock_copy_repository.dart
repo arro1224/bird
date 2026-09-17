@@ -364,13 +364,15 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
     final job = _requireJob(copyJobId);
     var items = job.items;
     if (state != null && state.isNotEmpty) {
-      items = items.where((item) => item.state.wire == state).toList(growable: false);
+      items = items.where((entry) => entry.state.wire == state).toList(growable: false);
     }
     final offset = int.tryParse(cursor ?? '') ?? 0;
     final page = items.skip(offset).take(_pageSize).toList(growable: false);
     final hasMore = offset + page.length < items.length;
     return CopyJobItemPage(
-      items: List.unmodifiable(page),
+      items: List.unmodifiable(
+        page.map((entry) => entry.item.copyWith(state: entry.state)),
+      ),
       hasMore: hasMore,
       nextCursor: hasMore ? '${offset + page.length}' : null,
     );
@@ -767,7 +769,7 @@ class _MockCopyJob {
     required this.selectionId,
     required this.sourceMediaId,
     required this.targetMediaId,
-  }) {
+  }) : phaseStart = createdAt {
     _emit('job_created', '复制任务已创建');
   }
 
@@ -784,12 +786,16 @@ class _MockCopyJob {
   int eventSeq = 0;
   DateTime? startedAt;
   DateTime? finishedAt;
-  DateTime phaseStart = DateTime.now(); // 由首次 advance 修正
-  bool _phaseStartInitialized = false;
+
+  /// queued 阶段起点 = 创建时刻；时间驱动的转移会把它回溯到本应发生的时刻。
+  DateTime phaseStart;
 
   /// running 阶段的活跃毫秒数（排除暂停时间），驱动文件项推进。
   int _activeRunningMs = 0;
   DateTime? _runningTick;
+
+  /// 下一个待复制文件项的调度起点（running 活跃毫秒刻度）。
+  int _nextItemStartMs = 0;
 
   late final List<_MockCopyItemState> items = [
     _MockCopyItemState(
@@ -818,13 +824,17 @@ class _MockCopyJob {
   final List<CopyJobEvent> events = [];
 
   void _emit(String type, String message) {
+    _emitAt(DateTime.now(), type, message);
+  }
+
+  void _emitAt(DateTime at, String type, String message) {
     eventSeq++;
     events.add(
       CopyJobEvent(
         seq: eventSeq,
         type: type,
         message: message,
-        createdAt: DateTime.now(),
+        createdAt: at,
       ),
     );
   }
@@ -833,10 +843,20 @@ class _MockCopyJob {
     state = next;
     stateVersion++;
     phaseStart = now;
-    _phaseStartInitialized = true;
     if (next == CopyJobState.running && startedAt == null) startedAt = now;
     if (next.isTerminal) finishedAt = now;
     _emit('state_changed', message);
+  }
+
+  /// 时间驱动的转移：phaseStart 回溯到「本应发生的时刻」，使大幅时间跳跃
+  /// 的读也能追上真实状态（与真实后端语义一致）。
+  void _transitionTimed(CopyJobState next, DateTime at, String message) {
+    state = next;
+    stateVersion++;
+    phaseStart = at;
+    if (next == CopyJobState.running && startedAt == null) startedAt = at;
+    if (next.isTerminal) finishedAt = at;
+    _emitAt(at, 'state_changed', message);
   }
 
   void resume(DateTime now) {
@@ -854,54 +874,57 @@ class _MockCopyJob {
     transition(CopyJobState.running, now, '已开始重试失败项');
     _runningTick = now;
     _activeRunningMs = 0;
+    _nextItemStartMs = 0;
   }
 
-  /// 惰性推进：按当前状态与相对时间推进状态机与文件项。
+  /// 惰性推进：按当前状态与相对时间**循环追赶**状态机与文件项，
+  /// 直到该时刻不再有可推进的转移（读大幅跳跃时一次追平）。
   void advance(DateTime now) {
-    if (!_phaseStartInitialized) {
-      phaseStart = now;
-      _phaseStartInitialized = true;
-    }
     if (state.isTerminal) return;
+    var progressed = true;
+    while (progressed && !state.isTerminal) {
+      progressed = _advanceOnce(now);
+    }
+  }
 
+  bool _advanceOnce(DateTime now) {
     switch (state) {
       case CopyJobState.queued:
-        if (now.difference(phaseStart) >= const Duration(milliseconds: 1200)) {
-          transition(CopyJobState.acquiringTarget, now, '正在获取目标盘');
-        }
+        final due = phaseStart.add(const Duration(milliseconds: 1200));
+        if (now.isBefore(due)) return false;
+        _transitionTimed(CopyJobState.acquiringTarget, due, '正在获取目标盘');
+        return true;
       case CopyJobState.acquiringTarget:
-        if (now.difference(phaseStart) >= const Duration(milliseconds: 1200)) {
-          transition(CopyJobState.running, now, '开始复制文件');
-          _runningTick = now;
-        }
+        final due = phaseStart.add(const Duration(milliseconds: 1200));
+        if (now.isBefore(due)) return false;
+        _transitionTimed(CopyJobState.running, due, '开始复制文件');
+        _runningTick = due;
+        return true;
       case CopyJobState.running:
         _activeRunningMs += now.difference(_runningTick ?? now).inMilliseconds;
         _runningTick = now;
         _advanceItems();
-        if (state == CopyJobState.running && items.every(_itemTerminal)) {
-          transition(
+        if (items.every(_itemTerminal)) {
+          _transitionTimed(
             CopyJobState.completedWithErrors,
             now,
             '任务部分完成：${items.where((item) => item.state == CopyItemState.failed).length} 个文件失败',
           );
+          return true;
         }
+        return false;
       case CopyJobState.pauseRequested:
-        if (now.difference(phaseStart) >= const Duration(milliseconds: 800)) {
-          state = CopyJobState.paused;
-          stateVersion++;
-          phaseStart = now;
-          _emit('state_changed', '任务已暂停');
-        }
+        final due = phaseStart.add(const Duration(milliseconds: 800));
+        if (now.isBefore(due)) return false;
+        _transitionTimed(CopyJobState.paused, due, '任务已暂停');
+        return true;
       case CopyJobState.cancelRequested:
-        if (now.difference(phaseStart) >= const Duration(milliseconds: 800)) {
-          state = CopyJobState.cancelled;
-          stateVersion++;
-          phaseStart = now;
-          finishedAt = now;
-          _emit('state_changed', '任务已取消，已完成的副本不会删除');
-        }
+        final due = phaseStart.add(const Duration(milliseconds: 800));
+        if (now.isBefore(due)) return false;
+        _transitionTimed(CopyJobState.cancelled, due, '任务已取消，已完成的副本不会删除');
+        return true;
       default:
-        break;
+        return false;
     }
   }
 
@@ -913,48 +936,57 @@ class _MockCopyJob {
     _ => false,
   };
 
-  /// 文件项串行推进：同一时刻只有一个文件在复制/校验（§12 文件项状态机）。
+  /// 文件项串行推进（§12）：同一时刻只有一个文件在复制/校验。
+  /// 用 [_nextItemStartMs] 调度游标锚定每项的开始时刻，
+  /// 大幅时间追平时也能按真实节奏推完全部状态。
   void _advanceItems() {
-    var busy = false;
-    for (final item in items) {
-      switch (item.state) {
-        case CopyItemState.pending:
-          if (!busy) {
-            item.state = CopyItemState.copying;
-            item.enteredAtMs = _activeRunningMs;
-            busy = true;
-          }
-        case CopyItemState.copying:
-          busy = true;
-          if (_activeRunningMs - item.enteredAtMs >= 1200) {
-            item.state = CopyItemState.verifying;
-            item.enteredAtMs = _activeRunningMs;
-          }
-        case CopyItemState.verifying:
-          busy = true;
-          if (_activeRunningMs - item.enteredAtMs >= 600) {
-            item.state = item.willFail ? CopyItemState.failed : CopyItemState.copied;
-            _emit(
-              item.willFail ? 'item_failed' : 'item_copied',
-              item.willFail
-                  ? '文件 ${item.item.targetFilename} 校验失败（COPY_HASH_MISMATCH）'
-                  : '文件 ${item.item.targetFilename} 已复制并通过校验',
-            );
-          }
-        default:
-          break;
+    var progressed = true;
+    while (progressed) {
+      progressed = false;
+      for (final item in items) {
+        switch (item.state) {
+          case CopyItemState.pending:
+            if (_activeRunningMs >= _nextItemStartMs) {
+              item.state = CopyItemState.copying;
+              item.enteredAtMs = _nextItemStartMs;
+              progressed = true;
+            }
+          case CopyItemState.copying:
+            if (_activeRunningMs >= item.enteredAtMs + 1200) {
+              item.state = CopyItemState.verifying;
+              item.enteredAtMs += 1200;
+              progressed = true;
+            }
+          case CopyItemState.verifying:
+            if (_activeRunningMs >= item.enteredAtMs + 600) {
+              item.state = item.willFail ? CopyItemState.failed : CopyItemState.copied;
+              _nextItemStartMs = item.enteredAtMs + 600;
+              _emit(
+                item.willFail ? 'item_failed' : 'item_copied',
+                item.willFail
+                    ? '文件 ${item.item.targetFilename} 校验失败（COPY_HASH_MISMATCH）'
+                    : '文件 ${item.item.targetFilename} 已复制并通过校验',
+              );
+              progressed = true;
+            }
+          default:
+            break;
+        }
+        if (progressed) break; // 串行：同一时刻只推进一个文件项
       }
-      if (busy) break; // 串行：当前文件占用时后续文件不再推进
     }
   }
 }
 
 class _MockCopyItemState {
-  _MockCopyItemState({required this.item, required this.willFail});
+  _MockCopyItemState({required this.item, required this.willFail})
+    : state = item.state;
 
   CopyJobItem item;
   final bool willFail;
-  CopyItemState state = CopyItemState.pending;
+
+  /// 文件项当前状态；写入时同步回内部 [item]（jobItems 暴露内部模型）。
+  CopyItemState state;
   int enteredAtMs = 0;
 }
 
