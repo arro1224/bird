@@ -204,6 +204,17 @@ abstract final class UserMessageMapper {
           '该设备正在被任务使用，请等待任务完成或取消后再安全移除。',
           actionLabel: '重试',
         ),
+        // RC3 能力门控两码（联调 01 文档 §二）：能力声明负向值 + 预检范围拒绝。
+        'COPY_SCOPE_UNSUPPORTED' => _copyMessage(
+          '当前盒子不支持全量备份',
+          error,
+          '本盒子固件暂未开放全量备份，请使用“复制照片”按批次或按选择复制。',
+        ),
+        'METADATA_EXPORT_UNAVAILABLE' => _copyMessage(
+          '审阅信息导出暂不可用',
+          error,
+          '盒子暂时无法导出审阅信息，照片副本本身不受影响。',
+        ),
         'card_not_inserted' => const UserMessage(
           title: '未插入存储卡',
           message: '请插入存储卡后重试，或查看过去拍摄的照片。',

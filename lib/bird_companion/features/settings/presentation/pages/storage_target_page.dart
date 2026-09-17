@@ -23,6 +23,9 @@ class StorageTargetPage extends StatefulWidget {
 
 class _StorageTargetPageState extends State<StorageTargetPage> {
   List<StorageDeviceSummary>? _devices;
+
+  /// 顶层推荐目标（§4.4 容错字段，审计 P1-3）；仅作展示预选，非默认盘。
+  String? _recommendedTargetMediaId;
   Object? _error;
 
   @override
@@ -43,8 +46,13 @@ class _StorageTargetPageState extends State<StorageTargetPage> {
       _error = null;
     });
     try {
-      final devices = await dependencies.copyRepository.devices();
-      if (mounted) setState(() => _devices = devices);
+      final result = await dependencies.copyRepository.devices();
+      if (mounted) {
+        setState(() {
+          _devices = result.devices;
+          _recommendedTargetMediaId = result.recommendedTargetMediaId;
+        });
+      }
     } catch (error) {
       if (mounted) setState(() => _error = error);
     }
@@ -97,6 +105,9 @@ class _StorageTargetPageState extends State<StorageTargetPage> {
                 _DeviceRow(
                   key: Key('storage-device-${device.mediaId}'),
                   device: device,
+                  recommended:
+                      _recommendedTargetMediaId != null &&
+                      device.mediaId == _recommendedTargetMediaId,
                   onRename: () => _renameDevice(device),
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -177,10 +188,18 @@ class _StorageTargetPageState extends State<StorageTargetPage> {
 }
 
 class _DeviceRow extends StatelessWidget {
-  const _DeviceRow({super.key, required this.device, required this.onRename});
+  const _DeviceRow({
+    super.key,
+    required this.device,
+    required this.onRename,
+    this.recommended = false,
+  });
 
   final StorageDeviceSummary device;
   final VoidCallback onRename;
+
+  /// 顶层推荐目标（§4.4）：仅提示上次成功目标，可修改的预选而非默认盘。
+  final bool recommended;
 
   @override
   Widget build(BuildContext context) {
@@ -226,6 +245,10 @@ class _DeviceRow extends StatelessWidget {
                             if (!device.identityStable) ...[
                               const SizedBox(width: 6),
                               const _Badge('身份不稳定', AppColors.pending, AppColors.amberLight),
+                            ],
+                            if (recommended) ...[
+                              const SizedBox(width: 6),
+                              const _Badge('上次成功目标', AppColors.success, AppColors.forestSoft),
                             ],
                           ],
                         ),

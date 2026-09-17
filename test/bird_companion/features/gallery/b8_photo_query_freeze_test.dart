@@ -148,6 +148,7 @@ class _PagedRecordingApiClient extends ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
   }) async {
     final query = Map<String, dynamic>.from(queryParameters ?? const {});
     requests.add(_RecordedGet(path, query));

@@ -272,7 +272,7 @@ void main() {
   test('copy-v1 设备、预检、创建、任务进度和权威报告形成闭环', () async {
     final copyApi = CopyApi(client);
     final jobApi = JobApi(client);
-    final devices = await copyApi.devices();
+    final devices = (await copyApi.devices()).devices;
 
     expect(devices, isNotEmpty);
     final source = devices.firstWhere((device) => device.canBeSource);
@@ -337,7 +337,7 @@ void main() {
 
   test('copy-v1 缺失同名策略时拒绝预检', () async {
     final copyApi = CopyApi(client);
-    final devices = await copyApi.devices();
+    final devices = (await copyApi.devices()).devices;
 
     final draft = CopyRequestDraft(
       batchId: 'mock-batch-current',

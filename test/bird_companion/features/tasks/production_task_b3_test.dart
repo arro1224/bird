@@ -163,6 +163,7 @@ class _B3ApiClient extends ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
   }) async {
     lastPath = path;
     if (path.endsWith('/failures')) {

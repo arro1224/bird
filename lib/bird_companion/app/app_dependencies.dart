@@ -51,6 +51,7 @@ import 'package:aves/bird_companion/features/review/domain/review_repository.dar
 import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_repository_impl.dart';
 import 'package:aves/bird_companion/features/copy/data/mock_copy_repository.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_job_repository.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_api.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_repository_impl.dart';
@@ -82,6 +83,7 @@ class BirdCompanionDependencies {
     required this.reviewRepository,
     required this.reviewCheckpointStore,
     required this.copyRepository,
+    required this.copyJobRepository,
     required this.jobRepository,
     required this.storageRepository,
     required this.deviceSessionCubit,
@@ -112,6 +114,7 @@ class BirdCompanionDependencies {
   final ReviewRepository reviewRepository;
   final ReviewCheckpointStore reviewCheckpointStore;
   final CopyRepository copyRepository;
+  final CopyJobRepository copyJobRepository;
   final JobRepository jobRepository;
   final StorageRepository storageRepository;
   final DeviceSessionCubit deviceSessionCubit;
@@ -225,6 +228,18 @@ class BirdCompanionDependencies {
       activeDeviceId,
       dataChangeBus,
     );
+    // 复制功能：mock/真实共用同一实例实现 CopyRepository + CopyJobRepository。
+    final CopyRepository copyRepositoryImpl;
+    final CopyJobRepository copyJobRepositoryImpl;
+    if (useMockCopyRepository) {
+      final mock = MockCopyRepository();
+      copyRepositoryImpl = mock;
+      copyJobRepositoryImpl = mock;
+    } else {
+      final real = CopyRepositoryImpl(CopyApi(apiClient));
+      copyRepositoryImpl = real;
+      copyJobRepositoryImpl = real;
+    }
     final dependencies = BirdCompanionDependencies._(
       apiClient: apiClient,
       eventClient: eventClient,
@@ -248,9 +263,9 @@ class BirdCompanionDependencies {
       reviewRepository: reviewRepository,
       reviewCheckpointStore: ReviewCheckpointStore(cache),
       // 后端交付 birdbox-copy-v1 后将开关置 false 即切真实接口（迁移对照文档 §7）。
-      copyRepository: useMockCopyRepository
-          ? MockCopyRepository()
-          : CopyRepositoryImpl(CopyApi(apiClient)),
+      // 任务闭环（RC3）与创建流程共用同一实例（阶段 D 实施计划 §3）。
+      copyRepository: copyRepositoryImpl,
+      copyJobRepository: copyJobRepositoryImpl,
       jobRepository: JobRepositoryImpl(JobApi(apiClient)),
       storageRepository: StorageRepositoryImpl(StorageApi(apiClient)),
       deviceSessionCubit: deviceSessionCubit,

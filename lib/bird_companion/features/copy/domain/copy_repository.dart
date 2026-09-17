@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 
 /// 复制功能仓库接口（主协议 birdbox-copy-v1 第 13 节）。
@@ -5,8 +6,9 @@ import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 /// 旧的 `estimate?mode=` / `POST /projects/{batchId}/copy` 已从协议中移除，
 /// App 不得再调用旧接口（迁移对照文档 §4.1）。
 abstract interface class CopyRepository {
-  /// GET storage/devices —— 实时设备列表，App 只认 `media_id`。
-  Future<List<StorageDeviceSummary>> devices();
+  /// GET storage/devices —— 实时设备列表，App 只认 `media_id`；
+  /// 顶层可携带推荐目标设备（审计 P1-3）。
+  Future<CopyDeviceList> devices();
 
   /// POST batches/{batchId}/copy-selections —— 创建不可变选择快照。
   Future<CopySelectionSnapshot> createSelection(

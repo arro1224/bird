@@ -1,13 +1,17 @@
 import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_job_repository.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 
-class CopyRepositoryImpl implements CopyRepository {
+/// 真实后端实现：任务闭环方法直接转发 `CopyApi`（容错模型），
+/// 设备/创建流程沿用 `CopyRepository`（发送端严格解析）。
+class CopyRepositoryImpl implements CopyRepository, CopyJobRepository {
   CopyRepositoryImpl(this._api);
   final CopyApi _api;
 
   @override
-  Future<List<StorageDeviceSummary>> devices() => _api.devices();
+  Future<CopyDeviceList> devices() => _api.devices();
 
   @override
   Future<CopySelectionSnapshot> createSelection(
@@ -39,4 +43,49 @@ class CopyRepositoryImpl implements CopyRepository {
   @override
   Future<void> setDeviceAlias(String mediaId, String alias) =>
       _api.setDeviceAlias(mediaId, alias);
+
+  @override
+  Future<CopyCapabilities> capabilities() => _api.capabilities();
+
+  @override
+  Future<CopyJobPage> listJobs({String? cursor}) => _api.listJobs(cursor: cursor);
+
+  @override
+  Future<CopyJobDetail> getJob(String copyJobId) => _api.getJob(copyJobId);
+
+  @override
+  Future<CopyJobItemPage> jobItems(
+    String copyJobId, {
+    String? cursor,
+    String? state,
+  }) => _api.jobItems(copyJobId, cursor: cursor, state: state);
+
+  @override
+  Future<CopyJobEventPage> jobEvents(String copyJobId, {int? afterSeq}) =>
+      _api.jobEvents(copyJobId, afterSeq: afterSeq);
+
+  @override
+  Future<CopyReport> jobReport(String copyJobId) => _api.jobReport(copyJobId);
+
+  @override
+  Future<CopyJobDetail?> jobAction(
+    String copyJobId,
+    String actionWire, {
+    required int expectedStateVersion,
+  }) => _api.jobAction(copyJobId, actionWire, expectedStateVersion: expectedStateVersion);
+
+  @override
+  Future<CopyJobItemPage> previewItems(String previewId, {String? cursor}) =>
+      _api.previewItems(previewId, cursor: cursor);
+
+  @override
+  Future<SafeRemoveResult> safeRemoveDevice(
+    String mediaId, {
+    required String role,
+    String? expectedCopyJobId,
+  }) => _api.safeRemoveDevice(
+    mediaId,
+    role: role,
+    expectedCopyJobId: expectedCopyJobId,
+  );
 }

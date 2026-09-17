@@ -113,8 +113,16 @@ class ApiClient {
     _dio.options.headers.remove('Authorization');
   }
 
-  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? queryParameters}) => _request(
-    () => _dio.get<Map<String, dynamic>>(path, queryParameters: queryParameters),
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+  }) => _request(
+    () => _dio.get<Map<String, dynamic>>(
+      path,
+      queryParameters: queryParameters,
+      options: headers == null ? null : Options(headers: headers),
+    ),
   );
 
   Future<Map<String, dynamic>> getUri(Uri uri, {CancelToken? cancelToken}) => _request(

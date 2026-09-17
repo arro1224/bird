@@ -53,4 +53,6 @@ abstract final class ApiEndpoints {
   static const copyJobEvents = '$apiV1Prefix/copy-jobs/{copyJobId}/events';
   static const copyJobReport = '$apiV1Prefix/copy-jobs/{copyJobId}/report';
   static const copyJobAction = '$apiV1Prefix/copy-jobs/{copyJobId}/actions/{action}';
+  static const copyPreviewItems = '$apiV1Prefix/copy-previews/{previewId}/items';
+  static const copyCapabilities = '$apiV1Prefix/copy-capabilities';
 }

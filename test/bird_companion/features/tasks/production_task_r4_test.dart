@@ -214,6 +214,7 @@ class _PagingApiClient extends ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
   }) async {
     queries.add(queryParameters ?? const {});
     if (path.endsWith('/failures')) {

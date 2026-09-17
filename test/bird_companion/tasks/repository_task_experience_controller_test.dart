@@ -405,7 +405,7 @@ void main() {
     await server.completeJob(analysis.id, emitEvent: false);
     await controller.refreshFromBox();
 
-    final devices = await controller.copyRepository.devices();
+    final devices = (await controller.copyRepository.devices()).devices;
     final source = devices.firstWhere((device) => device.canBeSource);
     final target = devices.firstWhere((device) => device.canBeTarget);
     final draft = CopyRequestDraft(

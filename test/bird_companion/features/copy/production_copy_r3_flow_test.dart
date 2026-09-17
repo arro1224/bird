@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_config_cubit.dart';
@@ -256,8 +257,8 @@ class _CopyRepository implements CopyRepository {
   CopyRequestDraft? createdDraft;
 
   @override
-  Future<List<StorageDeviceSummary>> devices() async =>
-      const [_sourceDevice, _target1, _target2, _offlineTarget];
+  Future<CopyDeviceList> devices() async =>
+      const CopyDeviceList(devices: [_sourceDevice, _target1, _target2, _offlineTarget]);
 
   @override
   Future<CopySelectionSnapshot> createSelection(

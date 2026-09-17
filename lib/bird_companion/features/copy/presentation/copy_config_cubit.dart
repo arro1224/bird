@@ -222,7 +222,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   Future<void> initialize() async {
     final generation = ++_loadGeneration;
     try {
-      final devices = await _repository.devices();
+      final devices = (await _repository.devices()).devices;
       if (isClosed || generation != _loadGeneration) return;
       final source = devices
           .where((device) => device.online && device.canBeSource)
