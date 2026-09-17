@@ -82,4 +82,42 @@ void main() {
     expect(find.text('附近的盒子'), findsOneWidget);
     expect(find.text('BirdBox-route'), findsOneWidget);
   });
+
+  testWidgets('settings device route also opens BLE discovery when repository is available', (tester) async {
+    final repository = FakeProvisioningRepository(
+      devices: [
+        ProvisioningDevice(
+          scanId: 'scan-settings-route',
+          advertisement: BirdBoxAdvertisement(
+            localName: 'BirdBox-settings',
+            serviceUuids: const [],
+            rssi: -48,
+          ),
+        ),
+      ],
+    );
+    addTearDown(repository.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        onGenerateRoute: (settings) => BirdAppRouter.onGenerateRoute(
+          settings,
+          provisioningRepository: repository,
+        ),
+        home: Builder(
+          builder: (context) => FilledButton(
+            onPressed: () => Navigator.of(context).pushNamed(BirdRoutes.settingsDeviceManagement),
+            child: const Text('settings'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('settings'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('附近的盒子'), findsOneWidget);
+    expect(find.text('BirdBox-settings'), findsOneWidget);
+  });
 }
