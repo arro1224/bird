@@ -31,18 +31,18 @@ class CopyJobDetailPage extends StatefulWidget {
 class _CopyJobDetailPageState extends State<CopyJobDetailPage> {
   CopyJobDetailCubit? _cubit;
 
-  CopyJobDetailCubit _cubitOf(BuildContext context) {
-    if (_cubit != null) return _cubit!;
-    final repository =
-        widget.repository ?? BirdCompanionScope.maybeOf(context)?.copyJobRepository;
-    return _cubit = CopyJobDetailCubit(repository!, copyJobId: widget.copyJobId);
-  }
-
   @override
-  Widget build(BuildContext context) => BlocProvider<CopyJobDetailCubit>(
-    create: _cubitOf,
-    child: const _CopyJobDetailView(),
-  );
+  Widget build(BuildContext context) {
+    // repository 必须在页面自己的 build 里解析：create 回调内调用
+    // BirdCompanionScope.maybeOf 会触发 dependOnInheritedWidget，
+    // 属于 provider 禁止的 "listen during create" 生命周期（真机红屏）。
+    final repository =
+        widget.repository ?? BirdCompanionScope.maybeOf(context)!.copyJobRepository;
+    return BlocProvider<CopyJobDetailCubit>(
+      create: (_) => _cubit ??= CopyJobDetailCubit(repository, copyJobId: widget.copyJobId),
+      child: const _CopyJobDetailView(),
+    );
+  }
 }
 
 class _CopyJobDetailView extends StatefulWidget {

@@ -31,7 +31,9 @@ class _StorageTargetPageState extends State<StorageTargetPage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    // maybeOf 走 dependOnInheritedWidget（listen），不能在 initState 同步段执行，
+    // 推迟到首帧后（与 copy_job_list_page 同一写法）。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   Future<void> _load() async {
