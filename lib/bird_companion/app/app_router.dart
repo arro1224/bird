@@ -7,6 +7,8 @@ import 'package:aves/bird_companion/features/connection/presentation/connection_
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_confirmation_page.dart';
+import 'package:aves/bird_companion/features/copy/presentation/pages/copy_job_detail_page.dart';
+import 'package:aves/bird_companion/features/copy/presentation/copy_job_list_page.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_page.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/scene_list_page.dart';
@@ -42,6 +44,8 @@ abstract final class BirdRoutes {
   static const photoDetail = '/photo-detail';
   static const copyConfirmation = '/copy-confirmation';
   static const fullBackup = '/full-backup';
+  static const copyJobs = '/copy-jobs';
+  static const copyJobDetail = '/copy-job-detail';
   static const jobDetail = '/job-detail';
   static const jobCenter = '/job-center';
   static const batches = '/batches';
@@ -153,6 +157,20 @@ abstract final class BirdAppRouter {
           batchId: null,
           initialScope: 'media_full_backup',
         );
+      case BirdRoutes.copyJobs:
+        page = const CopyJobListPage();
+      case BirdRoutes.copyJobDetail:
+        final args = settings.arguments;
+        final id = _clean(
+          args is CopyJobDetailArgs
+              ? args.copyJobId
+              : args is String
+              ? args
+              : null,
+        );
+        page = id == null
+            ? _invalid('复制任务详情', '缺少任务编号')
+            : CopyJobDetailPage(copyJobId: id);
       case BirdRoutes.jobDetail:
         final args = settings.arguments;
         final id = _clean(

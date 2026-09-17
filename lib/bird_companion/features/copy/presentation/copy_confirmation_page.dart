@@ -1,10 +1,12 @@
 import 'package:aves/bird_companion/app/app_dependencies.dart';
+import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_config_cubit.dart';
+import 'package:aves/bird_companion/features/copy/presentation/widgets/copy_preview_items_sheet.dart';
 import 'package:aves/bird_companion/features/copy/presentation/widgets/copy_scope_card.dart';
 import 'package:aves/bird_companion/features/copy/presentation/widgets/storage_device_card.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_nature_background.dart';
@@ -138,7 +140,7 @@ class _CopyConfirmationPageState extends State<CopyConfirmationPage> {
   }
 }
 
-/// 成功提交后的反馈。后端交付后在此接入「查看任务进度」跳转（阶段 D）。
+/// 成功提交后的反馈：主按钮「查看任务进度」跳 RC3 任务详情（阶段 D）。
 class _CopySubmitResult extends StatelessWidget {
   const _CopySubmitResult({required this.batchId, required this.jobId, required this.fullBackup});
 
@@ -156,16 +158,23 @@ class _CopySubmitResult extends StatelessWidget {
         Text('任务编号 $jobId'),
         const SizedBox(height: 10),
         Text(
-          fullBackup ? '盒子将在后台完成摄影资料全量备份。任务进度与结果可在任务中心查看。' : '盒子将按确认的范围复制照片。任务进度与结果可在任务中心查看。',
+          fullBackup
+              ? '盒子将在后台完成摄影资料全量备份。可在任务详情页查看实时进度与结果。'
+              : '盒子将按确认的范围复制照片。可在任务详情页查看实时进度与结果。',
           style: const TextStyle(height: 1.5),
         ),
       ],
     ),
     actions: [
-      FilledButton(
+      TextButton(
         key: const Key('copy-submit-result-close'),
         onPressed: () => Navigator.of(context).pop(),
-        child: const Text('完成'),
+        child: const Text('返回'),
+      ),
+      FilledButton(
+        key: const Key('copy-submit-result-open-progress'),
+        onPressed: () => Navigator.of(context).pop(true),
+        child: const Text('查看任务进度'),
       ),
     ],
   );
@@ -202,7 +211,8 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> {
         submitted(state.createdJob!.copyJobId);
         return;
       }
-      showDialog<void>(
+      // 主按钮 → 任务详情，返回后关闭复制页；否则直接关闭复制页（阶段 D）。
+      showDialog<bool>(
         context: context,
         barrierDismissible: false,
         builder: (_) => _CopySubmitResult(
@@ -210,7 +220,14 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> {
           jobId: state.createdJob!.copyJobId,
           fullBackup: state.fullBackup,
         ),
-      ).then((_) {
+      ).then((openProgress) async {
+        if (!mounted) return;
+        if (openProgress == true) {
+          await Navigator.of(context).pushNamed(
+            BirdRoutes.copyJobDetail,
+            arguments: CopyJobDetailArgs(state.createdJob!.copyJobId),
+          );
+        }
         if (mounted) Navigator.of(context).pop();
       });
     },
@@ -645,6 +662,24 @@ class CopyFinalConfirmationStep extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('copy-preview-items-open'),
+              onPressed: () {
+                final repository = BirdCompanionScope.maybeOf(context)?.copyJobRepository;
+                if (repository == null) return;
+                showCopyPreviewItemsSheet(
+                  context,
+                  repository: repository,
+                  previewToken: preview.previewToken,
+                  summaryFileCount: preview.actualFileCount,
+                );
+              },
+              icon: const Icon(Icons.list_alt_rounded, size: 18),
+              label: Text('查看预检明细（${_formatCount(preview.actualFileCount)} 个文件）'),
             ),
           ),
           const SizedBox(height: 12),

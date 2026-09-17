@@ -227,6 +227,12 @@ class JobDetailArgs {
   final String? sourceBatchId;
 }
 
+/// RC3 复制任务详情页参数（阶段 D）。
+class CopyJobDetailArgs {
+  const CopyJobDetailArgs(this.copyJobId);
+  final String copyJobId;
+}
+
 class ComparisonReviewArgs {
   const ComparisonReviewArgs({
     required this.groupId,
