@@ -109,6 +109,9 @@ class _StorageTargetPageState extends State<StorageTargetPage> {
                       _recommendedTargetMediaId != null &&
                       device.mediaId == _recommendedTargetMediaId,
                   onRename: () => _renameDevice(device),
+                  onSafeRemove: device.online && device.canBeTarget
+                      ? () => _safeRemoveDevice(device)
+                      : null,
                 ),
                 const SizedBox(height: AppSpacing.md),
               ],
@@ -138,6 +141,54 @@ class _StorageTargetPageState extends State<StorageTargetPage> {
       ),
     ),
   );
+
+  /// RC3 安全移除（§4.5）：确认后请求盒子校验，安全则提示可拔出（保持期 60s）。
+  Future<void> _safeRemoveDevice(StorageDeviceSummary device) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('安全移除设备'),
+        content: Text(
+          '盒子会先确认没有任务在写入「${device.presentationName}」，'
+          '确认安全后即可拔出。要继续吗？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('再想想'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('安全移除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final result = await BirdCompanionScope.of(context).copyJobRepository.safeRemoveDevice(
+        device.mediaId,
+        role: 'target',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.safeToRemove
+                ? '现在可以拔出「${device.presentationName}」（保持期 60 秒）'
+                : result.reason ?? '暂时不能移除该设备',
+          ),
+        ),
+      );
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      final message = UserMessageMapper.fromError(error);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${message.title}：${message.message}')),
+      );
+    }
+  }
 
   Future<void> _renameDevice(StorageDeviceSummary device) async {
     final controller = TextEditingController(text: device.userAlias ?? device.label);
@@ -193,6 +244,7 @@ class _DeviceRow extends StatelessWidget {
     required this.device,
     required this.onRename,
     this.recommended = false,
+    this.onSafeRemove,
   });
 
   final StorageDeviceSummary device;
@@ -200,6 +252,9 @@ class _DeviceRow extends StatelessWidget {
 
   /// 顶层推荐目标（§4.4）：仅提示上次成功目标，可修改的预选而非默认盘。
   final bool recommended;
+
+  /// RC3 安全移除（§4.5）：仅在线且可作为目标的设备提供。
+  final VoidCallback? onSafeRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -288,6 +343,18 @@ class _DeviceRow extends StatelessWidget {
                   Text(online ? '在线' : '已拔出', style: TextStyle(fontSize: 12, color: online ? AppColors.success : AppColors.mutedInk)),
                 ],
               ),
+              if (onSafeRemove != null) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    key: Key('storage-safe-remove-${device.mediaId}'),
+                    onPressed: onSafeRemove,
+                    icon: const Icon(Icons.usb_outlined, size: 16),
+                    label: const Text('安全移除'),
+                  ),
+                ),
+              ],
               const SizedBox(height: AppSpacing.xs),
               ClipRRect(
                 borderRadius: BorderRadius.circular(99),

@@ -52,6 +52,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       batchRepository: dependencies.batchRepository,
       jobRepository: dependencies.jobRepository,
       copyRepository: dependencies.copyRepository,
+      copyJobRepository: dependencies.copyJobRepository,
       eventClient: dependencies.eventClient,
       deviceSessionCubit: dependencies.deviceSessionCubit,
       pendingOperationStore: dependencies.pendingOperationStore,
@@ -109,7 +110,15 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       onOpenSdCard: _openSdCard,
       onOpenTask: _openTask,
       onStartTask: _startTask,
+      onOpenCopyJobs: _openCopyJobs,
     );
+  }
+
+  /// RC3 复制任务列表（独立于通用任务中心，不含 copy_jobs_v1 任务）。
+  Future<void> _openCopyJobs() async {
+    await Navigator.of(context).pushNamed<void>(BirdRoutes.copyJobs);
+    // 详情页可能已执行取消/重试等动作，返回后刷新任务首页。
+    await _controller?.refreshFromBox();
   }
 
   Future<void> _startTask(TaskType type) async {

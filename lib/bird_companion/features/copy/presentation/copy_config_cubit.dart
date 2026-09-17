@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
+import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
@@ -26,6 +27,7 @@ class CopyConfigState {
     this.devices = const [],
     this.loadingDevices = true,
     this.devicesError,
+    this.scopeUnavailable = false,
     this.preview,
     this.loadingPreview = false,
     this.submitting = false,
@@ -54,6 +56,10 @@ class CopyConfigState {
   final List<StorageDeviceSummary> devices;
   final bool loadingDevices;
   final Object? devicesError;
+
+  /// 预检返回 COPY_SCOPE_UNSUPPORTED（当前盒子不支持该范围，如全量备份）：
+  /// 页面渲染琥珀提示并禁止提交（01 文档 §二 P0-2）。
+  final bool scopeUnavailable;
   final CopyPreview? preview;
   final bool loadingPreview;
   final bool submitting;
@@ -98,6 +104,7 @@ class CopyConfigState {
       (scope != CopyScope.selectedAssets || selectionId != null);
 
   String? get submissionBlockReason {
+    if (scopeUnavailable) return '当前盒子不支持全量备份，本次不会创建任务';
     if (!(currentScopeOption?.available ?? false)) return '当前复制范围不可用';
     if (conflictStrategy == null) return '请选择同名文件处理策略';
     final source = sourceDevice;
@@ -148,6 +155,8 @@ class CopyConfigState {
     bool? loadingDevices,
     Object? devicesError,
     bool clearDevicesError = false,
+    bool? scopeUnavailable,
+    bool clearScopeUnavailable = false,
     CopyPreview? preview,
     bool clearPreview = false,
     bool clearSourceMediaId = false,
@@ -180,6 +189,7 @@ class CopyConfigState {
     devices: devices ?? this.devices,
     loadingDevices: loadingDevices ?? this.loadingDevices,
     devicesError: clearDevicesError ? null : devicesError ?? this.devicesError,
+    scopeUnavailable: clearScopeUnavailable ? false : scopeUnavailable ?? this.scopeUnavailable,
     preview: clearPreview ? null : preview ?? this.preview,
     loadingPreview: loadingPreview ?? this.loadingPreview,
     submitting: submitting ?? this.submitting,
@@ -326,6 +336,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
         // rc3 仅要求丢弃旧预检；选择快照和筛选上下文应保留，
         // 以便用户切回对应范围时仍能准确恢复。
         clearPreview: true,
+        clearScopeUnavailable: true,
         clearError: true,
       ),
     );
@@ -395,7 +406,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     if (isClosed || state.loadingPreview || state.submitting) return false;
     if (!state.canFetchPreview) return false;
     final generation = ++_loadGeneration;
-    emit(state.copyWith(loadingPreview: true, clearError: true));
+    emit(state.copyWith(loadingPreview: true, clearError: true, clearScopeUnavailable: true));
     try {
       await _refreshSourceBinding();
       final preview = await _repository.preview(state.draft);
@@ -404,7 +415,16 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
       return true;
     } catch (error) {
       if (isClosed || generation != _loadGeneration) return false;
-      emit(state.copyWith(loadingPreview: false, error: error));
+      // RC3 能力门控：盒子声明支持但预检拒绝全量备份（01 文档 §二 P0-2）——
+      // 不得进入创建流程，置 scopeUnavailable 供页面渲染琥珀提示并禁提交。
+      final scopeUnsupported = error is ApiException && error.code == 'COPY_SCOPE_UNSUPPORTED';
+      emit(
+        state.copyWith(
+          loadingPreview: false,
+          error: error,
+          scopeUnavailable: scopeUnsupported ? true : null,
+        ),
+      );
       return false;
     }
   }

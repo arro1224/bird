@@ -13,6 +13,7 @@ class TaskHomePage extends StatelessWidget {
     this.onOpenSdCard,
     this.onOpenTask,
     this.onStartTask,
+    this.onOpenCopyJobs,
   });
 
   final TaskExperienceController controller;
@@ -20,6 +21,7 @@ class TaskHomePage extends StatelessWidget {
   final VoidCallback? onOpenSdCard;
   final ValueChanged<String>? onOpenTask;
   final ValueChanged<TaskType>? onStartTask;
+  final VoidCallback? onOpenCopyJobs;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -51,7 +53,18 @@ class TaskHomePage extends StatelessWidget {
                       const TaskSectionTitle('下一步'),
                       _actionGrid(context),
                       const SizedBox(height: 12),
-                      const TaskSectionTitle('任务列表'),
+                      Row(
+                        children: [
+                          const Expanded(child: TaskSectionTitle('任务列表')),
+                          if (onOpenCopyJobs != null)
+                            TextButton.icon(
+                              key: const Key('task-home-open-copy-jobs'),
+                              onPressed: onOpenCopyJobs,
+                              icon: const Icon(Icons.content_copy_outlined, size: 16),
+                              label: const Text('复制任务'),
+                            ),
+                        ],
+                      ),
                       TaskGroupFilter(
                         selected: controller.selectedGroup,
                         onSelected: controller.selectGroup,

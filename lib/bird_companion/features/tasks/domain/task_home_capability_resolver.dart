@@ -1,11 +1,16 @@
 import 'package:aves/bird_companion/core/models/batch_models.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/job_models.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/storage/domain/card_scan_result.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 
 /// Computes task-home entries exclusively from the frozen birdbox-v1 reads
 /// and the device-scoped local pending queue.
+///
+/// [remote] 为盒子 `copy-capabilities` 声明（RC3 能力门控）：
+/// - null（获取失败/端点未部署）→ 完全回退本地推导，不劣化现状；
+/// - 有值时严格遵循（copyReady / supported_scopes）。
 abstract final class TaskHomeCapabilityResolver {
   static List<TaskType> resolve({
     required bool connected,
@@ -15,6 +20,7 @@ abstract final class TaskHomeCapabilityResolver {
     required CardScanResult? currentScan,
     required Iterable<BirdJobStatus> jobs,
     required bool hasPendingOperations,
+    CopyCapabilities? remote,
   }) {
     return resolveCapabilities(
       connected: connected,
@@ -24,6 +30,7 @@ abstract final class TaskHomeCapabilityResolver {
       currentScan: currentScan,
       jobs: jobs,
       hasPendingOperations: hasPendingOperations,
+      remote: remote,
     ).where((capability) => capability.enabled).map((capability) => capability.type).toList(growable: false);
   }
 
@@ -35,6 +42,7 @@ abstract final class TaskHomeCapabilityResolver {
     required CardScanResult? currentScan,
     required Iterable<BirdJobStatus> jobs,
     required bool hasPendingOperations,
+    CopyCapabilities? remote,
   }) {
     const descriptions = {
       TaskType.importIndex: '读取存储卡并建立批次',
@@ -100,15 +108,24 @@ abstract final class TaskHomeCapabilityResolver {
         : projectPipelineBusy
         ? '当前批次已有任务正在执行'
         : null;
+
+    final cardPresent = deviceStatus.card.inserted;
+    final remoteCopyReady = remote == null || remote.copyReady;
+    final remoteFullBackupSupported =
+        remote == null || remote.supportedScopes.contains(CopyScope.mediaFullBackup);
     final copyReason = !hasProject
         ? '当前没有可用批次'
         : !hasPhotos
         ? '当前批次没有可处理照片'
+        : !remoteCopyReady
+        ? '盒子复制功能暂不可用'
         : targetWriteReason;
-
-    final cardPresent = deviceStatus.card.inserted;
     final fullBackupReason = !cardPresent
         ? '未检测到相机存储卡'
+        : !remoteCopyReady
+        ? '盒子复制功能暂不可用'
+        : !remoteFullBackupSupported
+        ? '当前盒子不支持全量备份'
         : targetWriteReason;
 
     return [
@@ -126,13 +143,13 @@ abstract final class TaskHomeCapabilityResolver {
       ),
       TaskHomeActionCapability(
         type: TaskType.copy,
-        enabled: hasPhotos && !targetWriteBusy,
+        enabled: hasPhotos && !targetWriteBusy && remoteCopyReady,
         description: descriptions[TaskType.copy]!,
         disabledReason: copyReason,
       ),
       TaskHomeActionCapability(
         type: TaskType.fullBackup,
-        enabled: cardPresent && !targetWriteBusy,
+        enabled: cardPresent && !targetWriteBusy && remoteCopyReady && remoteFullBackupSupported,
         description: descriptions[TaskType.fullBackup]!,
         disabledReason: fullBackupReason,
       ),

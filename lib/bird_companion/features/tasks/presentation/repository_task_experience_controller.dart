@@ -12,6 +12,8 @@ import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/features/batches/domain/batch_repository.dart';
 import 'package:aves/bird_companion/features/batches/domain/project_create_request.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_job_repository.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 import 'package:aves/bird_companion/features/device/domain/device_repository.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_create_requests.dart';
@@ -35,6 +37,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     required BatchRepository batchRepository,
     required JobRepository jobRepository,
     required CopyRepository copyRepository,
+    CopyJobRepository? copyJobRepository,
     required EventClient eventClient,
     required DeviceSessionCubit deviceSessionCubit,
     required PendingOperationStore pendingOperationStore,
@@ -46,6 +49,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
          batchRepository: batchRepository,
          jobRepository: jobRepository,
          copyRepository: copyRepository,
+         copyJobRepository: copyJobRepository,
          eventClient: eventClient,
          deviceSessionCubit: deviceSessionCubit,
          pendingOperationStore: pendingOperationStore,
@@ -59,6 +63,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     required this._batchRepository,
     required this._jobRepository,
     required this.copyRepository,
+    required this._copyJobRepository,
     required this._eventClient,
     required this._deviceSessionCubit,
     required this._pendingOperationStore,
@@ -83,6 +88,10 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   final BatchRepository _batchRepository;
   final JobRepository _jobRepository;
   final CopyRepository copyRepository;
+
+  /// RC3 能力声明来源；null 时不做远端门控（完全回退本地推导）。
+  final CopyJobRepository? _copyJobRepository;
+  CopyCapabilities? _remoteCopyCapabilities;
   final EventClient _eventClient;
   final DeviceSessionCubit _deviceSessionCubit;
   final PendingOperationStore _pendingOperationStore;
@@ -140,6 +149,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       currentScan: _currentScan,
       jobs: _jobs.values,
       hasPendingOperations: hasPendingOperations,
+      remote: _remoteCopyCapabilities,
     );
   }
 
@@ -199,6 +209,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       if (includeScan) {
         _applyScan(results[3]! as CardScanResult);
       }
+      await _fetchCopyCapabilities();
       await _createAnalysisForCompletedImports();
       _authorityReady = true;
       _recomputeExecutableTaskTypes();
@@ -539,6 +550,19 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     }
   }
 
+  /// RC3：单独拉取 copy-capabilities（**不进** refreshFromBox 的 Future.wait——
+  /// 那里用 results[0..3] 数值索引）。失败静默吞掉并回退本地推导，
+  /// 绝不置 _authorityReady=false。
+  Future<void> _fetchCopyCapabilities() async {
+    final repository = _copyJobRepository;
+    if (repository == null) return;
+    try {
+      _remoteCopyCapabilities = await repository.capabilities();
+    } catch (_) {
+      _remoteCopyCapabilities = null;
+    }
+  }
+
   Future<void> _createAnalysisForCompletedImports() async {
     for (final job in List<BirdJobStatus>.of(_jobs.values)) {
       if (job.type == BirdJobType.analysis && job.sourceProjectId != null) {
@@ -668,6 +692,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       currentScan: _currentScan,
       jobs: _jobs.values,
       hasPendingOperations: hasPendingOperations,
+      remote: _remoteCopyCapabilities,
     );
     if (listEquals(executableTaskTypes, next)) return;
     replaceExecutableTaskTypes(next);

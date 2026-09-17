@@ -1039,6 +1039,35 @@ class _StateMessages extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
+      // RC3 能力门控：预检 COPY_SCOPE_UNSUPPORTED（01 文档 §二 P0-2），
+      // 不得进入创建流程；琥珀提示而非错误红字。
+      if (state.scopeUnavailable) ...[
+        const SizedBox(height: 8),
+        Container(
+          key: const Key('copy-scope-unavailable-notice'),
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.amberLight,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.warning.withValues(alpha: .4)),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 22),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '当前盒子不支持全量备份，本次不会创建任务。'
+                  '可以使用「复制照片」按批次或按选择复制。',
+                  style: TextStyle(fontSize: 13, height: 1.35),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
       if (state.devicesError != null) ...[
         const SizedBox(height: 8),
         Text(
@@ -1046,7 +1075,7 @@ class _StateMessages extends StatelessWidget {
           style: const TextStyle(color: AppColors.danger, fontSize: 12.5),
         ),
       ],
-      if (state.error != null) ...[
+      if (state.error != null && !state.scopeUnavailable) ...[
         const SizedBox(height: 8),
         Text(
           _errorText(state.error!),
