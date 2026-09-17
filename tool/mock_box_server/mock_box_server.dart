@@ -61,6 +61,11 @@ class MockBoxServer {
   final Map<String, List<Map<String, dynamic>>> _history = {};
   final Map<String, Map<String, dynamic>> _createdProjects = {};
   final Map<String, Map<String, dynamic>> _jobs = {};
+  // birdbox-copy-v1 RC3 任务闭环内存态（§13.5/§13.6）：copy 任务不进通用
+  // /api/v1/jobs 表（审计 P0-3），独立存储、惰性时间推进。
+  final Map<String, Map<String, dynamic>> _copyJobsV1 = {};
+  final Map<String, List<Map<String, dynamic>>> _previewItemsByToken = {};
+  final Map<String, String> _safeRemovedDevicesV1 = {};
   final Map<String, _CachedHttpResponse> _idempotentResponses = {};
   final Map<String, Completer<_CachedHttpResponse>> _idempotentInFlight = {};
   final Map<HttpRequest, String> _idempotencyByRequest = {};
@@ -447,6 +452,56 @@ class MockBoxServer {
       await _createCopyV1Job(request);
       return;
     }
+    // RC3 任务闭环（§13.5/§13.6）。
+    if (method == 'GET' && path == '/api/v1/copy-capabilities') {
+      await _serveCopyCapabilities(request);
+      return;
+    }
+    if (method == 'GET' && path == '/api/v1/copy-jobs') {
+      await _serveCopyJobList(request);
+      return;
+    }
+    final copyPreviewItems = RegExp(
+      r'^/api/v1/copy-previews/([^/]+)/items$',
+    ).firstMatch(path);
+    if (method == 'GET' && copyPreviewItems != null) {
+      await _serveCopyPreviewItems(request, copyPreviewItems.group(1)!);
+      return;
+    }
+    final copyJobItems = RegExp(r'^/api/v1/copy-jobs/([^/]+)/items$').firstMatch(path);
+    if (method == 'GET' && copyJobItems != null) {
+      await _serveCopyJobItems(request, copyJobItems.group(1)!);
+      return;
+    }
+    final copyJobEvents = RegExp(r'^/api/v1/copy-jobs/([^/]+)/events$').firstMatch(path);
+    if (method == 'GET' && copyJobEvents != null) {
+      await _serveCopyJobEvents(request, copyJobEvents.group(1)!);
+      return;
+    }
+    final copyJobReport = RegExp(r'^/api/v1/copy-jobs/([^/]+)/report$').firstMatch(path);
+    if (method == 'GET' && copyJobReport != null) {
+      await _serveCopyJobReport(request, copyJobReport.group(1)!);
+      return;
+    }
+    final copyJobAction = RegExp(
+      r'^/api/v1/copy-jobs/([^/]+)/actions/([^/]+)$',
+    ).firstMatch(path);
+    if (method == 'POST' && copyJobAction != null) {
+      await _copyJobActionV1(request, copyJobAction.group(1)!, copyJobAction.group(2)!);
+      return;
+    }
+    final safeRemove = RegExp(
+      r'^/api/v1/storage/devices/([^/]+)/safe-remove$',
+    ).firstMatch(path);
+    if (method == 'POST' && safeRemove != null) {
+      await _serveSafeRemove(request, safeRemove.group(1)!);
+      return;
+    }
+    final copyJobDetailV1 = RegExp(r'^/api/v1/copy-jobs/([^/]+)$').firstMatch(path);
+    if (method == 'GET' && copyJobDetailV1 != null) {
+      await _serveCopyJobDetail(request, copyJobDetailV1.group(1)!);
+      return;
+    }
 
     final importJob = RegExp(r'^/api/v1/projects/([^/]+)/imports$').firstMatch(path);
     if (method == 'POST' && importJob != null) {
@@ -697,11 +752,18 @@ class MockBoxServer {
     final scope = body['scope']?.toString();
     if (!const {
       'selected_assets',
+      'filtered_assets',
+      'recognized_assets',
       'kept_assets',
       'batch_all_assets',
       'media_full_backup',
     }.contains(scope)) {
       await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_SCOPE_INVALID');
+      return;
+    }
+    // 镜像真实后端（联调 01 §二 P0-2）：全量备份未开放，预检直接拒绝。
+    if (scope == 'media_full_backup') {
+      await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_SCOPE_UNSUPPORTED');
       return;
     }
     if (body['conflict_strategy'] == null) {
@@ -711,12 +773,27 @@ class MockBoxServer {
     final logical = switch (scope) {
       'kept_assets' => 34,
       'batch_all_assets' => 120,
-      'media_full_backup' => 148,
+      'filtered_assets' => 21,
+      'recognized_assets' => 47,
       _ => (body['selection_id']?.toString().length ?? 4) % 9 + 2,
     };
-    final files = scope == 'media_full_backup' ? logical * 2 : logical * 2 - 1;
+    final files = logical * 2 - 1;
+    final previewToken = 'preview_mock_${_clock().millisecondsSinceEpoch}';
+    _previewItemsByToken[previewToken] = [
+      for (var i = 0; i < files; i++)
+        {
+          'copy_item_id': 'item_${i.toString().padLeft(4, '0')}',
+          'source_relative_path': 'DCIM/100MSDCF/DSC0${5000 + i}',
+          'source_size': 28 * 1024 * 1024,
+          'source_mtime_ns': 1726000000000000000 + i * 1000000000,
+          'target_relative_directory': '20260901',
+          'target_filename': 'DSC0${5000 + i}${i.isEven ? '.ARW' : '.JPG'}',
+          'state': 'pending',
+          if (i < 3) 'conflict_decision': 'skip',
+        },
+    ];
     await _json(request, HttpStatus.ok, {
-      'preview_token': 'preview_mock_${_clock().millisecondsSinceEpoch}',
+      'preview_token': previewToken,
       'expires_at': _clock().add(const Duration(minutes: 15)).toIso8601String(),
       'source': _mockCameraDevice(),
       'target': _mockUsbDevice(),
@@ -725,13 +802,13 @@ class MockBoxServer {
       'total_bytes': files * 24 * 1024 * 1024,
       'raw_count': logical,
       'jpeg_count': logical - 1,
-      'video_count': scope == 'media_full_backup' ? 6 : 0,
-      'companion_count': scope == 'media_full_backup' ? 14 : 2,
+      'video_count': 0,
+      'companion_count': 2,
       'estimated_date_directories': 2,
       'conflict_count': 3,
       'target_free_bytes': 30500000000,
       'safety_reserve_bytes': 1538260172,
-      'unsupported_count': scope == 'media_full_backup' ? 3 : 0,
+      'unsupported_count': 0,
       'missing_count': 1,
     });
   }
@@ -742,24 +819,51 @@ class MockBoxServer {
       await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_CONFLICT_STRATEGY_REQUIRED');
       return;
     }
-    if (body['preview_token'] == null || body['scope'] == null) {
+    final previewToken = body['preview_token']?.toString();
+    if (previewToken == null || body['scope'] == null) {
       // 协议 §15：COPY_PREVIEW_EXPIRED 为 409 可重试（非 422）。
       await _copyV1Error(request, HttpStatus.conflict, 'COPY_PREVIEW_EXPIRED');
       return;
     }
-    final projectId = body['batch_id']?.toString();
-    final job = _newJob(
-      'copy',
-      projectId,
-      workflowStage: 'copying',
-    );
+    // RC3 任务固定 2 个文件项（第 2 项校验失败），演示「部分完成 + 失败项重试」。
+    final now = _clock();
+    final jobId = 'copy_job_${now.millisecondsSinceEpoch}';
+    final job = <String, dynamic>{
+      'copy_job_id': jobId,
+      'state': 'queued',
+      'state_version': 1,
+      'event_seq': 1,
+      'scope': body['scope']?.toString(),
+      'batch_id': body['batch_id']?.toString(),
+      'selection_id': body['selection_id']?.toString(),
+      'created_at': now.toIso8601String(),
+      'started_at': null,
+      'finished_at': null,
+      'phase_started_at': now.toIso8601String(),
+      'running_active_ms': 0,
+      'running_last_tick': null,
+      'source_device': _mockCameraDevice(),
+      'target_device': _mockUsbDevice(),
+      'items': <Map<String, dynamic>>[
+        _copyJobItemWire('copy_item_0001', 'DSC05001.ARW', willFail: false),
+        _copyJobItemWire('copy_item_0002', 'DSC05002.JPG', willFail: true),
+      ],
+      'events': <Map<String, dynamic>>[
+        {
+          'seq': 1,
+          'type': 'job_created',
+          'message': '复制任务已创建',
+          'created_at': now.toIso8601String(),
+        },
+      ],
+    };
+    _copyJobsV1[jobId] = job;
     await _json(request, HttpStatus.accepted, {
-      'copy_job_id': job['job_id'],
-      'state': job['job_state'],
-      'event_seq': 0,
+      'copy_job_id': jobId,
+      'state': job['state'],
+      'event_seq': job['event_seq'],
       'created_at': job['created_at'],
     });
-    await _emitJob(job);
   }
 
   Map<String, dynamic> _mockCameraDevice() => {
@@ -814,6 +918,421 @@ class MockBoxServer {
     },
     envelope: false,
   );
+
+  // ---- RC3 任务闭环（§13.5/§13.6，惰性时间推进，与 MockCopyRepository 同节奏）----
+
+  Map<String, dynamic> _copyJobItemWire(
+    String id,
+    String filename, {
+    required bool willFail,
+  }) => {
+    'copy_item_id': id,
+    'source_relative_path': 'DCIM/100MSDCF/${filename.replaceAll(RegExp(r'\.\w+$'), '')}',
+    'source_size': 28 * 1024 * 1024,
+    'source_mtime_ns': 1726000000000000000,
+    'target_relative_directory': '20260901',
+    'target_filename': filename,
+    'state': 'pending',
+    'will_fail': willFail,
+  };
+
+  Future<void> _serveCopyCapabilities(HttpRequest request) async {
+    await _json(request, HttpStatus.ok, {
+      'revision': '1.0-rc3',
+      'copy_ready': true,
+      'supported_scopes': [
+        'selected_assets',
+        'filtered_assets',
+        'recognized_assets',
+        'batch_all_assets',
+        'media_full_backup',
+      ],
+      'recognition_policy_version': 'recognized-assets-v1',
+      'missing_requirements': <String>[],
+    });
+  }
+
+  Future<void> _serveCopyJobList(HttpRequest request) async {
+    final jobs = _copyJobsV1.values.toList()
+      ..sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
+    await _json(request, HttpStatus.ok, {
+      'items': [
+        for (final job in jobs) _copyJobListEntry(job),
+      ],
+      'has_more': false,
+    });
+  }
+
+  Map<String, dynamic> _copyJobListEntry(Map<String, dynamic> job) => {
+    'copy_job_id': job['copy_job_id'],
+    'state': job['state'],
+    'scope': job['scope'],
+    'stats': _copyJobStatsWire(job),
+    'created_at': job['created_at'],
+  };
+
+  Future<void> _serveCopyJobDetail(HttpRequest request, String copyJobId) async {
+    final job = _requireCopyJobV1(request, copyJobId);
+    if (job == null) return;
+    await _json(request, HttpStatus.ok, _copyJobDetailWire(job));
+  }
+
+  Future<void> _serveCopyJobItems(HttpRequest request, String copyJobId) async {
+    final job = _requireCopyJobV1(request, copyJobId);
+    if (job == null) return;
+    final state = request.uri.queryParameters['state'];
+    var items = (job['items'] as List<Map<String, dynamic>>).toList();
+    if (state != null && state.isNotEmpty) {
+      items = items.where((item) => item['state'] == state).toList();
+    }
+    final cursor = int.tryParse(request.uri.queryParameters['cursor'] ?? '') ?? 0;
+    final page = items.skip(cursor).take(20).toList();
+    final hasMore = cursor + page.length < items.length;
+    await _json(request, HttpStatus.ok, {
+      'items': [for (final item in page) _copyItemPublicWire(item)],
+      'has_more': hasMore,
+      if (hasMore) 'next_cursor': '${cursor + page.length}',
+    });
+  }
+
+  Future<void> _serveCopyPreviewItems(HttpRequest request, String previewId) async {
+    final items = _previewItemsByToken[previewId];
+    if (items == null) {
+      await _copyV1Error(request, HttpStatus.notFound, 'COPY_PREVIEW_EXPIRED');
+      return;
+    }
+    final cursor = int.tryParse(request.uri.queryParameters['cursor'] ?? '') ?? 0;
+    final page = items.skip(cursor).take(20).toList();
+    final hasMore = cursor + page.length < items.length;
+    await _json(request, HttpStatus.ok, {
+      'items': page,
+      'has_more': hasMore,
+      if (hasMore) 'next_cursor': '${cursor + page.length}',
+    });
+  }
+
+  Future<void> _serveCopyJobEvents(HttpRequest request, String copyJobId) async {
+    final job = _requireCopyJobV1(request, copyJobId);
+    if (job == null) return;
+    final afterSeq = int.tryParse(request.uri.queryParameters['after_seq'] ?? '') ?? 0;
+    final events = (job['events'] as List<Map<String, dynamic>>)
+        .where((event) => (event['seq'] as int) > afterSeq)
+        .toList();
+    await _json(request, HttpStatus.ok, {'events': events, 'has_more': false});
+  }
+
+  Future<void> _serveCopyJobReport(HttpRequest request, String copyJobId) async {
+    final job = _requireCopyJobV1(request, copyJobId);
+    if (job == null) return;
+    if (!_copyJobIsTerminal(job['state'] as String)) {
+      await _copyV1Error(request, HttpStatus.conflict, 'COPY_REPORT_NOT_READY');
+      return;
+    }
+    final stats = _copyJobStatsWire(job);
+    await _json(request, HttpStatus.ok, {
+      'copy_job_id': job['copy_job_id'],
+      'selection_id': job['selection_id'],
+      'actual_file_count': stats['total_files'],
+      'copied_files': stats['copied_files'],
+      'failed_files': stats['failed_files'],
+      'skipped_files': stats['skipped_files'],
+      'not_applicable_files': stats['not_applicable_files'],
+      'total_bytes': stats['total_bytes'],
+      'copied_bytes': stats['copied_bytes'],
+      'elapsed_seconds': stats['elapsed_seconds'],
+      'bytes_per_second': stats['bytes_per_second'],
+      'source_device': job['source_device'],
+      'target_device': job['target_device'],
+      'generated_at': _clock().toIso8601String(),
+    });
+  }
+
+  Future<void> _copyJobActionV1(
+    HttpRequest request,
+    String copyJobId,
+    String action,
+  ) async {
+    final job = _requireCopyJobV1(request, copyJobId);
+    if (job == null) return;
+    final body = await _requestJson(request);
+    final expected = body['expected_state_version'];
+    if (expected is! int || expected != job['state_version']) {
+      await _copyV1Error(request, HttpStatus.conflict, 'COPY_STATE_VERSION_CONFLICT');
+      return;
+    }
+    final now = _clock();
+    final state = job['state'] as String;
+    switch (action) {
+      case 'pause':
+        if (state == 'running' || state == 'acquiring_target') {
+          _copyJobTransition(job, 'pause_requested', now, '已请求暂停，当前文件完成后暂停');
+        }
+      case 'resume':
+        if (state == 'paused') {
+          _copyJobTransition(job, 'running', now, '任务已继续');
+          job['running_last_tick'] = now.toIso8601String();
+        }
+      case 'cancel':
+        if (!_copyJobIsTerminal(state)) {
+          _copyJobTransition(job, 'cancel_requested', now, '已请求取消，已完成的副本不会删除');
+        }
+      case 'retry_failed':
+        if (state == 'failed' || state == 'completed_with_errors') {
+          for (final item in job['items'] as List<Map<String, dynamic>>) {
+            if (item['state'] == 'failed') {
+              item['state'] = 'pending';
+              item['entered_at_ms'] = 0;
+            }
+          }
+          job['running_active_ms'] = 0;
+          _copyJobTransition(job, 'running', now, '已开始重试失败项');
+          job['running_last_tick'] = now.toIso8601String();
+        }
+      case 'safe_remove_source' || 'safe_remove_target':
+        // App 走 safe-remove 端点；动作路由仅做版本校验兜底。
+        break;
+      default:
+        await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_ACTION_UNSUPPORTED');
+        return;
+    }
+    await _json(request, HttpStatus.ok, {'copy_job': _copyJobDetailWire(job)});
+  }
+
+  Future<void> _serveSafeRemove(HttpRequest request, String mediaId) async {
+    final body = await _requestJson(request);
+    final role = body['role']?.toString() ?? 'target';
+    // 有进行中的任务占用该设备时不得拔出（§4.5 安全移除条件）。
+    final busy = _copyJobsV1.values.any((job) {
+      if (_copyJobIsTerminal(job['state'] as String)) return false;
+      final source = (job['source_device'] as Map<String, dynamic>)['media_id'];
+      final target = (job['target_device'] as Map<String, dynamic>)['media_id'];
+      return source == mediaId || target == mediaId;
+    });
+    if (busy) {
+      await _json(request, HttpStatus.ok, {
+        'safe_to_remove': false,
+        'reason': '有复制任务正在使用该设备，任务结束后再移除',
+      });
+      return;
+    }
+    _safeRemovedDevicesV1[mediaId] = role;
+    await _json(request, HttpStatus.ok, {
+      'safe_to_remove': true,
+      'keep_until': _clock().add(const Duration(seconds: 60)).toIso8601String(),
+    });
+  }
+
+  Map<String, dynamic>? _requireCopyJobV1(HttpRequest request, String copyJobId) {
+    final job = _copyJobsV1[copyJobId];
+    if (job == null) {
+      _copyV1Error(request, HttpStatus.notFound, 'COPY_JOB_NOT_FOUND');
+      return null;
+    }
+    _advanceCopyJob(job, _clock());
+    return job;
+  }
+
+  Map<String, dynamic> _copyJobDetailWire(Map<String, dynamic> job) => {
+    'copy_job_id': job['copy_job_id'],
+    'state': job['state'],
+    'state_version': job['state_version'],
+    'event_seq': job['event_seq'],
+    'scope': job['scope'],
+    'batch_id': job['batch_id'],
+    'selection_id': job['selection_id'],
+    'stats': _copyJobStatsWire(job),
+    'source_device': job['source_device'],
+    'target_device': job['target_device'],
+    'allowed_actions': _copyJobAllowedActions(job['state'] as String)
+        .map((action) => action)
+        .toList(growable: false),
+    'created_at': job['created_at'],
+    'started_at': job['started_at'],
+    'finished_at': job['finished_at'],
+  };
+
+  List<String> _copyJobAllowedActions(String state) => switch (state) {
+    'running' || 'acquiring_target' => ['pause', 'cancel'],
+    'paused' => ['resume', 'cancel'],
+    'pause_requested' || 'cancel_requested' => <String>[],
+    'failed' || 'completed_with_errors' => ['retry_failed'],
+    'cancelled' || 'completed' => ['safe_remove_target'],
+    _ => ['cancel'],
+  };
+
+  Map<String, dynamic> _copyJobStatsWire(Map<String, dynamic> job) {
+    var copied = 0;
+    var failed = 0;
+    for (final item in job['items'] as List<Map<String, dynamic>>) {
+      if (item['state'] == 'copied') copied++;
+      if (item['state'] == 'failed') failed++;
+    }
+    final total = (job['items'] as List).length;
+    const itemBytes = 28 * 1024 * 1024;
+    final state = job['state'] as String;
+    final startedAt = job['started_at'] as String?;
+    final now = _clock();
+    return {
+      'total_files': total,
+      'copied_files': copied,
+      'failed_files': failed,
+      'skipped_files': 0,
+      'not_applicable_files': 0,
+      'total_bytes': total * itemBytes,
+      'copied_bytes': copied * itemBytes,
+      'elapsed_seconds': startedAt == null ? null : now.difference(DateTime.parse(startedAt)).inSeconds,
+      'eta_seconds': _copyJobIsTerminal(state) || total == 0 ? null : max(total - copied - failed, 1) * 2,
+      'bytes_per_second': state == 'running' ? itemBytes ~/ 2 : null,
+      'current_file': state == 'running'
+          ? (job['items'] as List<Map<String, dynamic>>)
+              .firstWhere(
+                (item) => item['state'] == 'copying' || item['state'] == 'verifying',
+                orElse: () => (job['items'] as List<Map<String, dynamic>>).first,
+              )['target_filename']
+          : null,
+      'progress_percent': total == 0 ? null : (copied + failed) / total,
+    };
+  }
+
+  bool _copyJobIsTerminal(String state) =>
+      state == 'completed' || state == 'completed_with_errors' || state == 'cancelled' || state == 'failed';
+
+  void _copyJobTransition(
+    Map<String, dynamic> job,
+    String next,
+    DateTime now,
+    String message,
+  ) {
+    job['state'] = next;
+    job['state_version'] = (job['state_version'] as int) + 1;
+    job['phase_started_at'] = now.toIso8601String();
+    if (next == 'running' && job['started_at'] == null) job['started_at'] = now.toIso8601String();
+    if (_copyJobIsTerminal(next)) job['finished_at'] = now.toIso8601String();
+    final events = job['events'] as List<Map<String, dynamic>>;
+    job['event_seq'] = (job['event_seq'] as int) + 1;
+    events.add({
+      'seq': job['event_seq'],
+      'type': 'state_changed',
+      'message': message,
+      'created_at': now.toIso8601String(),
+    });
+  }
+
+  /// 惰性推进：queued(1.2s) → acquiring_target(1.2s) → running（文件项串行
+  /// 1.8s/个，第 2 项校验失败）→ completed_with_errors，总计约 6.4s。
+  void _advanceCopyJob(Map<String, dynamic> job, DateTime now) {
+    final state = job['state'] as String;
+    if (_copyJobIsTerminal(state)) return;
+    final phaseStart = DateTime.parse(job['phase_started_at'] as String);
+    switch (state) {
+      case 'queued':
+        if (now.difference(phaseStart) >= const Duration(milliseconds: 1200)) {
+          _copyJobTransition(job, 'acquiring_target', now, '正在获取目标盘');
+        }
+      case 'acquiring_target':
+        if (now.difference(phaseStart) >= const Duration(milliseconds: 1200)) {
+          _copyJobTransition(job, 'running', now, '开始复制文件');
+          job['running_last_tick'] = now.toIso8601String();
+        }
+      case 'running':
+        final lastTick = job['running_last_tick'] as String?;
+        job['running_active_ms'] =
+            (job['running_active_ms'] as int) +
+            (lastTick == null ? 0 : now.difference(DateTime.parse(lastTick)).inMilliseconds);
+        job['running_last_tick'] = now.toIso8601String();
+        _advanceCopyJobItems(job);
+        if (job['state'] == 'running' &&
+            (job['items'] as List<Map<String, dynamic>>).every((item) => const {
+              'copied',
+              'failed',
+              'skipped_conflict',
+              'not_applicable',
+            }.contains(item['state']))) {
+          _copyJobTransition(job, 'completed_with_errors', now, '任务部分完成：1 个文件失败');
+        }
+      case 'pause_requested':
+        if (now.difference(phaseStart) >= const Duration(milliseconds: 800)) {
+          job['state'] = 'paused';
+          job['state_version'] = (job['state_version'] as int) + 1;
+          job['phase_started_at'] = now.toIso8601String();
+          final events = job['events'] as List<Map<String, dynamic>>;
+          job['event_seq'] = (job['event_seq'] as int) + 1;
+          events.add({
+            'seq': job['event_seq'],
+            'type': 'state_changed',
+            'message': '任务已暂停',
+            'created_at': now.toIso8601String(),
+          });
+        }
+      case 'cancel_requested':
+        if (now.difference(phaseStart) >= const Duration(milliseconds: 800)) {
+          job['state'] = 'cancelled';
+          job['state_version'] = (job['state_version'] as int) + 1;
+          job['phase_started_at'] = now.toIso8601String();
+          job['finished_at'] = now.toIso8601String();
+          final events = job['events'] as List<Map<String, dynamic>>;
+          job['event_seq'] = (job['event_seq'] as int) + 1;
+          events.add({
+            'seq': job['event_seq'],
+            'type': 'state_changed',
+            'message': '任务已取消，已完成的副本不会删除',
+            'created_at': now.toIso8601String(),
+          });
+        }
+      default:
+        break;
+    }
+  }
+
+  void _advanceCopyJobItems(Map<String, dynamic> job) {
+    final activeMs = job['running_active_ms'] as int;
+    var busy = false;
+    for (final item in job['items'] as List<Map<String, dynamic>>) {
+      switch (item['state'] as String) {
+        case 'pending':
+          if (!busy) {
+            item['state'] = 'copying';
+            item['entered_at_ms'] = activeMs;
+            busy = true;
+          }
+        case 'copying':
+          busy = true;
+          if (activeMs - (item['entered_at_ms'] as int) >= 1200) {
+            item['state'] = 'verifying';
+            item['entered_at_ms'] = activeMs;
+          }
+        case 'verifying':
+          busy = true;
+          if (activeMs - (item['entered_at_ms'] as int) >= 600) {
+            final willFail = item['will_fail'] == true;
+            item['state'] = willFail ? 'failed' : 'copied';
+            final events = job['events'] as List<Map<String, dynamic>>;
+            job['event_seq'] = (job['event_seq'] as int) + 1;
+            events.add({
+              'seq': job['event_seq'],
+              'type': willFail ? 'item_failed' : 'item_copied',
+              'message': willFail
+                  ? '文件 ${item['target_filename']} 校验失败（COPY_HASH_MISMATCH）'
+                  : '文件 ${item['target_filename']} 已复制并通过校验',
+              'created_at': _clock().toIso8601String(),
+            });
+          }
+        default:
+          break;
+      }
+      if (busy) break; // 串行：当前文件占用时后续文件不再推进
+    }
+  }
+
+  Map<String, dynamic> _copyItemPublicWire(Map<String, dynamic> item) => {
+    'copy_item_id': item['copy_item_id'],
+    'source_relative_path': item['source_relative_path'],
+    'source_size': item['source_size'],
+    'source_mtime_ns': item['source_mtime_ns'],
+    'target_relative_directory': item['target_relative_directory'],
+    'target_filename': item['target_filename'],
+    'state': item['state'],
+  };
 
   Future<void> _createProject(HttpRequest request) async {
     final body = await _requestJson(request);

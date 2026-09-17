@@ -11,7 +11,7 @@ import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 /// 后端交付 birdbox-copy-v1 前，[useMockCopyRepository] 为 true 时使用本实现。
 /// 所有字段与语义均为主协议字段，不创造临时枚举；设备数据取自协议 §22
 /// 已实机验证记录。联调时将开关置为 false 即可切换真实接口。
-const useMockCopyRepository = false;
+const useMockCopyRepository = true;
 
 /// RC3 任务闭环 mock：
 /// - 状态机用**惰性时间推进**（注入 [clock]，所有读写在调用时按相对时间
