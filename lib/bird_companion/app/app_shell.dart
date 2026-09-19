@@ -200,7 +200,12 @@ class _TabNavigator extends StatelessWidget {
     valueListenable: selectedTab,
     builder: (context, selected, _) => NavigatorPopHandler<Object?>(
       enabled: selected == index,
-      onPopWithResult: (result) => navigatorKey.currentState?.pop(result),
+      // 仅当内层 Navigator 有根路由之外的页面时才转发 pop；tab 根页面按返回
+      // 若直接 pop 会弹掉唯一路由，导致 _history 为空、下次 build 断言红屏。
+      onPopWithResult: (result) {
+        final navigator = navigatorKey.currentState;
+        if (navigator != null && navigator.canPop()) navigator.pop(result);
+      },
       child: Navigator(
         key: navigatorKey,
         observers: [
