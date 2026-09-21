@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "release_gate": "rc4-hf-ble-04",
+  "captured_at": "REQUIRED_ISO_8601_TIMESTAMP",
+  "final_result": "pending",
+  "ble03_evidence_file": "rc4-hf-ble-03-evidence.template.json",
+  "candidate": {
+    "package_id": "deckers.thibault.aves.bird",
+    "build_mode": "release",
+    "signed": false,
+    "signature_verified": false,
+    "git_commit": "REQUIRED_40_CHAR_GIT_SHA",
+    "version_name": "1.14.8",
+    "version_code": 172,
+    "build_time": "REQUIRED_ISO_8601_TIMESTAMP",
+    "apk_sha256": "REQUIRED_RELEASE_APK_SHA256",
+    "certificate_sha256": "REQUIRED_APPROVED_CERTIFICATE_SHA256",
+    "scan_permission_policy": "REQUIRED_never_for_location_OR_full_scan"
+  },
+  "release_approval": {
+    "status": "pending",
+    "reviewer": "REQUIRED_RELEASE_REVIEWER",
+    "evidence_file": "REQUIRED_RELEASE_APPROVAL_FILE"
+  },
+  "rollback": {
+    "tested": false,
+    "evidence_file": "REQUIRED_ROLLBACK_EVIDENCE_FILE"
+  }
+}

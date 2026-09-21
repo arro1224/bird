@@ -11,7 +11,9 @@ final class BleScanDiagnosticStore implements BleScanDiagnosticSink {
     this.maximumSessions = 100,
   });
 
-  static const cacheKey = 'diagnostics:ble_scan_sessions:v1';
+  static const cacheKey = 'diagnostics:ble_scan_sessions:v3';
+  static const v2CacheKey = 'diagnostics:ble_scan_sessions:v2';
+  static const legacyCacheKey = 'diagnostics:ble_scan_sessions:v1';
 
   final LocalCache _cache;
   final int maximumSessions;
@@ -20,11 +22,8 @@ final class BleScanDiagnosticStore implements BleScanDiagnosticSink {
   Stream<BleScanDiagnosticSession> get records => _records.stream;
 
   List<BleScanDiagnosticSession> readAll() {
-    final stored = _cache.read<List<dynamic>>(cacheKey) ?? const [];
-    return stored
-        .whereType<Map>()
-        .map((value) => BleScanDiagnosticSession.fromJson(Map<String, dynamic>.from(value)))
-        .toList(growable: false);
+    final stored = _cache.read<List<dynamic>>(cacheKey) ?? _cache.read<List<dynamic>>(v2CacheKey) ?? _cache.read<List<dynamic>>(legacyCacheKey) ?? const [];
+    return stored.whereType<Map>().map((value) => BleScanDiagnosticSession.fromJson(Map<String, dynamic>.from(value))).toList(growable: false);
   }
 
   @override
@@ -41,12 +40,16 @@ final class BleScanDiagnosticStore implements BleScanDiagnosticSink {
   }
 
   String exportJson() => const JsonEncoder.withIndent('  ').convert({
-    'schema_version': 1,
+    'schema_version': 3,
     'generated_at': DateTime.now().toUtc().toIso8601String(),
     'sessions': readAll().map((session) => session.toJson()).toList(growable: false),
   });
 
-  Future<void> clear() => _cache.remove(cacheKey);
+  Future<void> clear() => Future.wait([
+    _cache.remove(cacheKey),
+    _cache.remove(v2CacheKey),
+    _cache.remove(legacyCacheKey),
+  ]);
 
   Future<void> dispose() => _records.close();
 }

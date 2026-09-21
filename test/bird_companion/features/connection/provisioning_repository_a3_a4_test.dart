@@ -86,6 +86,47 @@ void main() {
         ),
       );
     });
+
+    test('does not stack a repository retry on the BLE security retry', () async {
+      harness.ble.queueError(
+        BleCommandType.openPairing,
+        const ProvisioningException(
+          code: ProvisioningErrorCode.bleEncryptedRetryFailed,
+          retryable: true,
+          diagnosticMessage: 'simulated exhausted encrypted retry',
+        ),
+      );
+      harness.ble.queueResponse(
+        BleCommandType.openPairing,
+        _event(
+          ProvisioningEventType.pairingOpened,
+          _openRequest,
+          {
+            'pairing_code_mode': 'fixed_dev',
+            'code_expires_in': 600,
+            'attempts_remaining': 3,
+          },
+        ),
+      );
+
+      await expectLater(
+        harness.repository.openPairing(),
+        throwsA(
+          isA<ProvisioningException>().having(
+            (error) => error.code,
+            'code',
+            ProvisioningErrorCode.bleEncryptedRetryFailed,
+          ),
+        ),
+      );
+
+      expect(
+        harness.ble.requests.where(
+          (request) => request.type == BleCommandType.openPairing,
+        ),
+        hasLength(1),
+      );
+    });
   });
 
   group('A4 AP/STA platform flow', () {

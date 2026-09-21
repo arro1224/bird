@@ -328,6 +328,42 @@ abstract final class UserMessageMapper {
           message: '请在系统设置中允许蓝牙和附近设备权限，然后返回继续。',
           actionLabel: '前往设置',
         );
+      case ProvisioningErrorCode.bleGattNotReady:
+        return const UserMessage(
+          title: '盒子连接尚未准备好',
+          message: '盒子连接尚未准备完成，请重试。',
+          actionLabel: '重试',
+        );
+      case ProvisioningErrorCode.bleLePairingNotStarted:
+        return const UserMessage(
+          title: '安全连接未启动',
+          message: '手机未能启动安全连接，请关闭再打开蓝牙后重试。',
+          actionLabel: '重试',
+        );
+      case ProvisioningErrorCode.blePairingRejected:
+        return const UserMessage(
+          title: '安全连接未完成',
+          message: '安全连接未完成，请重新配对。',
+          actionLabel: '重新配对',
+        );
+      case ProvisioningErrorCode.bleGattRecoveryFailed:
+        return const UserMessage(
+          title: '盒子重新连接失败',
+          message: '安全连接已建立，但重新连接盒子失败。',
+          actionLabel: '重试',
+        );
+      case ProvisioningErrorCode.bleEncryptedRetryFailed:
+        return const UserMessage(
+          title: '盒子未接受配对请求',
+          message: '安全连接已建立，但盒子未接受配对请求。',
+          actionLabel: '重试',
+        );
+      case ProvisioningErrorCode.pairingOpenTimeout:
+        return const UserMessage(
+          title: '盒子未确认配对',
+          message: '盒子未返回配对确认。',
+          actionLabel: '重试',
+        );
       case ProvisioningErrorCode.localNetworkPermissionDenied:
         return const UserMessage(
           title: '需要本地网络权限',

@@ -1,6 +1,8 @@
-enum BleScanPermissionState { unknown, granted, denied }
+enum BleScanPermissionState { unknown, notRequired, granted, denied }
 
 enum BleAdapterState { unknown, unavailable, disabled, enabled }
+
+enum BleLocationServiceState { unknown, notRequired, disabled, enabled }
 
 enum BleScanEndReason {
   timeout,
@@ -16,39 +18,181 @@ final class BleScanEnvironment {
   const BleScanEnvironment({
     required this.permission,
     required this.adapter,
+    this.scanPermission = BleScanPermissionState.unknown,
+    this.connectPermission = BleScanPermissionState.unknown,
+    this.locationPermission = BleScanPermissionState.unknown,
+    this.locationService = BleLocationServiceState.unknown,
+    this.manufacturer,
+    this.model,
+    this.androidRelease,
+    this.sdkInt,
+    this.appVersionName,
+    this.appVersionCode,
+    this.gitCommit,
+    this.apkSha256,
+    this.scanPermissionPolicy,
+    this.scanMode,
   });
 
   const BleScanEnvironment.unknown()
     : permission = BleScanPermissionState.unknown,
-      adapter = BleAdapterState.unknown;
+      adapter = BleAdapterState.unknown,
+      scanPermission = BleScanPermissionState.unknown,
+      connectPermission = BleScanPermissionState.unknown,
+      locationPermission = BleScanPermissionState.unknown,
+      locationService = BleLocationServiceState.unknown,
+      manufacturer = null,
+      model = null,
+      androidRelease = null,
+      sdkInt = null,
+      appVersionName = null,
+      appVersionCode = null,
+      gitCommit = null,
+      apkSha256 = null,
+      scanPermissionPolicy = null,
+      scanMode = null;
 
   final BleScanPermissionState permission;
   final BleAdapterState adapter;
+  final BleScanPermissionState scanPermission;
+  final BleScanPermissionState connectPermission;
+  final BleScanPermissionState locationPermission;
+  final BleLocationServiceState locationService;
+  final String? manufacturer;
+  final String? model;
+  final String? androidRelease;
+  final int? sdkInt;
+  final String? appVersionName;
+  final String? appVersionCode;
+  final String? gitCommit;
+  final String? apkSha256;
+  final String? scanPermissionPolicy;
+  final String? scanMode;
 
   factory BleScanEnvironment.fromPlatform(Map<String, dynamic> value) {
     final permissionGranted = value['permissionGranted'];
     final adapterState = value['adapterState'];
     return BleScanEnvironment(
-      permission: switch (permissionGranted) {
-        true => BleScanPermissionState.granted,
-        false => BleScanPermissionState.denied,
-        _ => BleScanPermissionState.unknown,
-      },
+      permission: _permissionFromBool(permissionGranted),
       adapter: switch (adapterState) {
         'unavailable' => BleAdapterState.unavailable,
         'disabled' => BleAdapterState.disabled,
         'enabled' => BleAdapterState.enabled,
         _ => BleAdapterState.unknown,
       },
+      scanPermission: _permissionFromValue(value['scanPermission']),
+      connectPermission: _permissionFromValue(value['connectPermission']),
+      locationPermission: _permissionFromValue(value['locationPermission']),
+      locationService: _locationServiceFromValue(value['locationService']),
+      manufacturer: value['manufacturer'] as String?,
+      model: value['model'] as String?,
+      androidRelease: value['androidRelease'] as String?,
+      sdkInt: value['sdkInt'] as int?,
+      appVersionName: value['appVersionName'] as String?,
+      appVersionCode: value['appVersionCode']?.toString(),
+      gitCommit: _knownBuildValue(value['gitCommit']),
+      apkSha256: _knownBuildValue(value['apkSha256']),
+      scanPermissionPolicy: value['scanPermissionPolicy'] as String?,
+      scanMode: value['scanMode'] as String?,
     );
   }
+
+  static BleScanPermissionState _permissionFromBool(Object? value) => switch (value) {
+    true => BleScanPermissionState.granted,
+    false => BleScanPermissionState.denied,
+    _ => BleScanPermissionState.unknown,
+  };
+
+  static BleScanPermissionState _permissionFromValue(Object? value) => switch (value) {
+    'not_required' => BleScanPermissionState.notRequired,
+    'granted' || true => BleScanPermissionState.granted,
+    'denied' || false => BleScanPermissionState.denied,
+    _ => BleScanPermissionState.unknown,
+  };
+
+  static BleLocationServiceState _locationServiceFromValue(Object? value) => switch (value) {
+    'not_required' => BleLocationServiceState.notRequired,
+    'enabled' || true => BleLocationServiceState.enabled,
+    'disabled' || false => BleLocationServiceState.disabled,
+    _ => BleLocationServiceState.unknown,
+  };
+
+  static String? _knownBuildValue(Object? value) => value is String && value.isNotEmpty && value != 'unknown' ? value : null;
+}
+
+/// One redacted raw Android scan callback.
+final class BleScanObservationDiagnostic {
+  const BleScanObservationDiagnostic({
+    required this.occurredAt,
+    required this.accepted,
+    required this.reasonCode,
+    this.addressHash,
+    this.name,
+    this.alias,
+    this.rssi,
+    this.serviceUuids = const [],
+    this.manufacturerDataPresent = false,
+    this.manufacturerDataLength = 0,
+    this.scanRecordLength,
+    this.scanRecordSha256,
+    this.scanRecordRedactedHex,
+    this.scanRecordTruncated = false,
+  });
+
+  final DateTime occurredAt;
+  final bool accepted;
+  final String reasonCode;
+  final String? addressHash;
+  final String? name;
+  final String? alias;
+  final int? rssi;
+  final List<String> serviceUuids;
+  final bool manufacturerDataPresent;
+  final int manufacturerDataLength;
+  final int? scanRecordLength;
+  final String? scanRecordSha256;
+  final String? scanRecordRedactedHex;
+  final bool scanRecordTruncated;
+
+  Map<String, Object?> toJson() => {
+    'occurred_at': occurredAt.toUtc().toIso8601String(),
+    if (addressHash != null) 'address_hash': addressHash,
+    if (name != null) 'name': name,
+    if (alias != null) 'alias': alias,
+    if (rssi != null) 'rssi': rssi,
+    'service_uuids': serviceUuids,
+    'manufacturer_data_present': manufacturerDataPresent,
+    'manufacturer_data_length': manufacturerDataLength,
+    if (scanRecordLength != null) 'scan_record_length': scanRecordLength,
+    if (scanRecordSha256 != null) 'scan_record_sha256': scanRecordSha256,
+    if (scanRecordRedactedHex != null) 'scan_record_redacted_hex': scanRecordRedactedHex,
+    if (scanRecordRedactedHex != null) 'scan_record_truncated': scanRecordTruncated,
+    'accepted': accepted,
+    'reason_code': reasonCode,
+  };
+
+  factory BleScanObservationDiagnostic.fromJson(Map<String, dynamic> value) => BleScanObservationDiagnostic(
+    occurredAt: DateTime.parse(value['occurred_at'] as String),
+    addressHash: value['address_hash'] as String?,
+    name: value['name'] as String?,
+    alias: value['alias'] as String?,
+    rssi: value['rssi'] as int?,
+    serviceUuids: (value['service_uuids'] as List? ?? const []).whereType<String>().toList(growable: false),
+    manufacturerDataPresent: value['manufacturer_data_present'] as bool? ?? false,
+    manufacturerDataLength: value['manufacturer_data_length'] as int? ?? 0,
+    // v2 records did not contain a parseable redacted representation.
+    // Do not relabel their length/hash-only observations as complete v3
+    // evidence when the cache is migrated.
+    scanRecordLength: value['scan_record_redacted_hex'] is String ? value['scan_record_length'] as int? : null,
+    scanRecordSha256: value['scan_record_redacted_hex'] is String ? value['scan_record_sha256'] as String? : null,
+    scanRecordRedactedHex: value['scan_record_redacted_hex'] as String?,
+    scanRecordTruncated: value['scan_record_truncated'] as bool? ?? false,
+    accepted: value['accepted'] as bool? ?? false,
+    reasonCode: value['reason_code'] as String? ?? 'legacy_unknown',
+  );
 }
 
 /// Secret-safe evidence for one Android BLE discovery session.
-///
-/// Device handles, local names, manufacturer bytes and pairing data are
-/// deliberately excluded so this object can be persisted and shared with
-/// technical support.
 final class BleScanDiagnosticSession {
   const BleScanDiagnosticSession({
     required this.scanSessionId,
@@ -67,6 +211,26 @@ final class BleScanDiagnosticSession {
     this.firstRawResultAt,
     this.firstCandidateAt,
     this.androidScanErrorCode,
+    this.scanPermissionBefore = BleScanPermissionState.unknown,
+    this.scanPermissionAfter = BleScanPermissionState.unknown,
+    this.connectPermissionBefore = BleScanPermissionState.unknown,
+    this.connectPermissionAfter = BleScanPermissionState.unknown,
+    this.locationPermissionBefore = BleScanPermissionState.unknown,
+    this.locationPermissionAfter = BleScanPermissionState.unknown,
+    this.locationServiceBefore = BleLocationServiceState.unknown,
+    this.locationServiceAfter = BleLocationServiceState.unknown,
+    this.manufacturer,
+    this.model,
+    this.androidRelease,
+    this.sdkInt,
+    this.appVersionName,
+    this.appVersionCode,
+    this.gitCommit,
+    this.apkSha256,
+    this.scanPermissionPolicy,
+    this.scanMode = 'low_latency',
+    this.uniqueDeviceCount = 0,
+    this.observations = const [],
   });
 
   final String scanSessionId;
@@ -79,17 +243,38 @@ final class BleScanDiagnosticSession {
   final BleScanPermissionState permissionAfter;
   final BleAdapterState adapterBefore;
   final BleAdapterState adapterAfter;
+  final BleScanPermissionState scanPermissionBefore;
+  final BleScanPermissionState scanPermissionAfter;
+  final BleScanPermissionState connectPermissionBefore;
+  final BleScanPermissionState connectPermissionAfter;
+  final BleScanPermissionState locationPermissionBefore;
+  final BleScanPermissionState locationPermissionAfter;
+  final BleLocationServiceState locationServiceBefore;
+  final BleLocationServiceState locationServiceAfter;
+  final String? manufacturer;
+  final String? model;
+  final String? androidRelease;
+  final int? sdkInt;
+  final String? appVersionName;
+  final String? appVersionCode;
+  final String? gitCommit;
+  final String? apkSha256;
+  final String? scanPermissionPolicy;
+  final String scanMode;
   final int rawResultCount;
+  final int uniqueDeviceCount;
   final int acceptedCount;
   final int filteredCount;
   final Map<String, int> reasonCounts;
+  final List<BleScanObservationDiagnostic> observations;
   final BleScanEndReason endReason;
   final int? androidScanErrorCode;
 
   Duration get duration => endedAt.difference(startedAt);
 
   Map<String, Object?> toJson() => {
-    'schema_version': 1,
+    'schema_version': 3,
+    'trace_id': scanSessionId,
     'scan_session_id': scanSessionId,
     'started_at': startedAt.toUtc().toIso8601String(),
     'native_started_at': nativeStartedAt?.toUtc().toIso8601String(),
@@ -99,12 +284,32 @@ final class BleScanDiagnosticSession {
     'duration_ms': duration.inMilliseconds,
     'permission_before': permissionBefore.name,
     'permission_after': permissionAfter.name,
+    'scan_permission_before': scanPermissionBefore.name,
+    'scan_permission_after': scanPermissionAfter.name,
+    'connect_permission_before': connectPermissionBefore.name,
+    'connect_permission_after': connectPermissionAfter.name,
+    'location_permission_before': locationPermissionBefore.name,
+    'location_permission_after': locationPermissionAfter.name,
     'adapter_before': adapterBefore.name,
     'adapter_after': adapterAfter.name,
+    'location_service_before': locationServiceBefore.name,
+    'location_service_after': locationServiceAfter.name,
+    if (manufacturer != null) 'manufacturer': manufacturer,
+    if (model != null) 'model': model,
+    if (androidRelease != null) 'android_release': androidRelease,
+    if (sdkInt != null) 'sdk_int': sdkInt,
+    if (appVersionName != null) 'app_version_name': appVersionName,
+    if (appVersionCode != null) 'app_version_code': appVersionCode,
+    if (gitCommit != null) 'git_commit': gitCommit,
+    if (apkSha256 != null) 'apk_sha256': apkSha256,
+    if (scanPermissionPolicy != null) 'scan_permission_policy': scanPermissionPolicy,
+    'scan_mode': scanMode,
     'raw_result_count': rawResultCount,
+    'unique_device_count': uniqueDeviceCount,
     'accepted_count': acceptedCount,
     'filtered_count': filteredCount,
     'reason_counts': reasonCounts,
+    'observations': observations.map((item) => item.toJson()).toList(),
     'end_reason': endReason.name,
     'android_scan_error_code': androidScanErrorCode,
   };
@@ -116,16 +321,8 @@ final class BleScanDiagnosticSession {
     firstRawResultAt: _date(value['first_raw_result_at']),
     firstCandidateAt: _date(value['first_candidate_at']),
     endedAt: DateTime.parse(value['ended_at'] as String),
-    permissionBefore: _enumByName(
-      BleScanPermissionState.values,
-      value['permission_before'],
-      BleScanPermissionState.unknown,
-    ),
-    permissionAfter: _enumByName(
-      BleScanPermissionState.values,
-      value['permission_after'],
-      BleScanPermissionState.unknown,
-    ),
+    permissionBefore: _permission(value['permission_before']),
+    permissionAfter: _permission(value['permission_after']),
     adapterBefore: _enumByName(
       BleAdapterState.values,
       value['adapter_before'],
@@ -136,12 +333,47 @@ final class BleScanDiagnosticSession {
       value['adapter_after'],
       BleAdapterState.unknown,
     ),
+    scanPermissionBefore: _permission(value['scan_permission_before']),
+    scanPermissionAfter: _permission(value['scan_permission_after']),
+    connectPermissionBefore: _permission(value['connect_permission_before']),
+    connectPermissionAfter: _permission(value['connect_permission_after']),
+    locationPermissionBefore: _permission(value['location_permission_before']),
+    locationPermissionAfter: _permission(value['location_permission_after']),
+    locationServiceBefore: _enumByName(
+      BleLocationServiceState.values,
+      value['location_service_before'],
+      BleLocationServiceState.unknown,
+    ),
+    locationServiceAfter: _enumByName(
+      BleLocationServiceState.values,
+      value['location_service_after'],
+      BleLocationServiceState.unknown,
+    ),
+    manufacturer: value['manufacturer'] as String?,
+    model: value['model'] as String?,
+    androidRelease: value['android_release'] as String?,
+    sdkInt: value['sdk_int'] as int?,
+    appVersionName: value['app_version_name'] as String?,
+    appVersionCode: value['app_version_code']?.toString(),
+    gitCommit: value['git_commit'] as String?,
+    apkSha256: value['apk_sha256'] as String?,
+    scanPermissionPolicy: value['scan_permission_policy'] as String?,
+    scanMode: value['scan_mode'] as String? ?? 'low_latency',
     rawResultCount: value['raw_result_count'] as int? ?? 0,
+    uniqueDeviceCount: value['unique_device_count'] as int? ?? 0,
     acceptedCount: value['accepted_count'] as int? ?? 0,
     filteredCount: value['filtered_count'] as int? ?? 0,
     reasonCounts: Map<String, int>.from(
       value['reason_counts'] as Map? ?? const <String, int>{},
     ),
+    observations: (value['observations'] as List? ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => BleScanObservationDiagnostic.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList(growable: false),
     endReason: _enumByName(
       BleScanEndReason.values,
       value['end_reason'],
@@ -151,6 +383,12 @@ final class BleScanDiagnosticSession {
   );
 
   static DateTime? _date(Object? value) => value is String ? DateTime.tryParse(value) : null;
+
+  static BleScanPermissionState _permission(Object? value) => _enumByName(
+    BleScanPermissionState.values,
+    value,
+    BleScanPermissionState.unknown,
+  );
 
   static T _enumByName<T extends Enum>(
     Iterable<T> values,

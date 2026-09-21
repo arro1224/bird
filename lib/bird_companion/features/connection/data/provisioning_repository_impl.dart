@@ -131,9 +131,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
   @override
   Stream<BleScanDiagnosticSession> get scanDiagnostics {
     final ble = _ble;
-    return ble is BleScanDiagnosticSource
-        ? (ble as BleScanDiagnosticSource).scanDiagnostics
-        : const Stream.empty();
+    return ble is BleScanDiagnosticSource ? (ble as BleScanDiagnosticSource).scanDiagnostics : const Stream.empty();
   }
 
   @override
@@ -411,14 +409,11 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     );
     _requestTypes[request.requestId] = type;
     try {
-      ProvisioningEvent response;
-      try {
-        response = await _ble.writeCommand(request);
-      } on ProvisioningException catch (error) {
-        if (!error.retryable) rethrow;
-        // The sole retry reuses the exact request object and request_id.
-        response = await _ble.writeCommand(request);
-      }
+      // Transport/security recovery and the one permitted byte-identical retry
+      // are owned by BirdBoxBleDataSource.writeCommand. Retrying the complete
+      // command here would stack a second retry on top of that state machine
+      // and could deliver open_pairing more than twice.
+      final response = await _ble.writeCommand(request);
       if (response.deviceId != info.deviceId) {
         throw const ProvisioningException(
           code: ProvisioningErrorCode.deviceIdMismatch,

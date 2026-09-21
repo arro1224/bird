@@ -1,8 +1,10 @@
 # B7 BLE 扫描真机证据
 
 B7 在 App 内为每次扫描生成 `scanSessionId`，并输出以
-`BLE_SCAN_DIAGNOSTIC` 开头的单行 JSON。记录不包含设备地址、广播名称、
-厂商数据、配对码、密码或令牌。
+`BLE_SCAN_DIAGNOSTIC` 开头的单行 JSON。RC4-HF-BLE-06 起使用 schema v3：
+设备地址只保存按扫描会话加盐的 SHA-256；广播记录除长度和 SHA-256 外，还保存
+最多 512 字节的脱敏十六进制。名称、Service UUID 等识别字段保留，Manufacturer
+Data 和 Service Data 只保留标识前缀，其余载荷清零；不保存配对码、密码或令牌。
 
 ## 采集矩阵
 
@@ -23,7 +25,12 @@ B7 在 App 内为每次扫描生成 `scanSessionId`，并输出以
   "runs": [
     {
       "scenario": "cold_start_permission_granted",
-      "session": { "scan_session_id": "..." }
+      "session": {
+        "schema_version": 3,
+        "trace_id": "...",
+        "scan_session_id": "...",
+        "observations": []
+      }
     }
   ]
 }
@@ -35,7 +42,8 @@ B7 在 App 内为每次扫描生成 `scanSessionId`，并输出以
 dart run tool/acceptance/ble_scan_b7_evidence_validator.dart <evidence.json>
 ```
 
-校验器只检查样本数量、字段完整性、计数一致性、会话 ID 唯一性和敏感字段。
+校验器检查样本数量、schema v3 字段完整性、计数一致性、会话 ID 唯一性、
+地址哈希格式、明文 MAC 和敏感字段。
 它会报告每个场景发现候选盒子的比例，但不会把低成功率隐藏为通过，也不会把
 模拟测试当作真机证据。
 

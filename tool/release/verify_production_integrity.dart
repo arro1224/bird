@@ -280,6 +280,9 @@ void main() {
     r'[string]$BleRc4EvidencePath',
     'tool/acceptance/ble_provisioning_rc4_real_device_gate.dart',
     r'$script:bleRc4Verified',
+    r'[string]$BleHotfixReleaseEvidencePath',
+    'tool/acceptance/rc4_hf_ble_04_release_gate.dart',
+    r'$script:bleHotfixReleaseVerified',
   ]) {
     _requireContains(
       failures,
@@ -307,6 +310,21 @@ void main() {
     '"id": "SIM-',
     'BLE RC4 release evidence must not use simulated case ids',
   );
+  const bleHotfixReleaseTemplatePath = 'docs/acceptance/rc4-hf-ble-04-release.template.json';
+  for (final marker in const [
+    '"release_gate": "rc4-hf-ble-04"',
+    '"final_result": "pending"',
+    '"signed": false',
+    '"signature_verified": false',
+    '"tested": false',
+  ]) {
+    _requireContains(
+      failures,
+      bleHotfixReleaseTemplatePath,
+      marker,
+      'BLE-04 release template must remain fail-closed: $marker',
+    );
+  }
 
   const productionFiles = [
     'lib/main.dart',

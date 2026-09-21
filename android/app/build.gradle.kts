@@ -33,6 +33,30 @@ val hasCompleteReleaseCredentials = listOf(
     releaseKeyPassword,
 ).all { it != null }
 
+fun diagnosticSha(environmentName: String, expectedLength: Int): String {
+    val value = System.getenv(environmentName)?.trim()?.lowercase()
+    return if (value != null && value.length == expectedLength && value.all { it in '0'..'9' || it in 'a'..'f' }) {
+        value
+    } else {
+        "unknown"
+    }
+}
+
+val diagnosticGitSha = diagnosticSha("AVES_GIT_SHA", 40).let { configured ->
+    if (configured != "unknown") {
+        configured
+    } else {
+        runCatching {
+            providers.exec {
+                commandLine("git", "rev-parse", "HEAD")
+            }.standardOutput.asText.get().trim().lowercase()
+        }.getOrNull()?.takeIf { value ->
+            value.length == 40 && value.all { it in '0'..'9' || it in 'a'..'f' }
+        } ?: "unknown"
+    }
+}
+val diagnosticApkSha = diagnosticSha("AVES_APK_SHA256", 64)
+
 if (hasAnyReleaseCredential && !hasCompleteReleaseCredentials) {
     throw GradleException(
         "Release signing is only partially configured. " +
@@ -44,6 +68,11 @@ android {
     namespace = "deckers.thibault.aves"
     compileSdk = 37
     ndkVersion = flutter.ndkVersion
+
+    buildFeatures {
+        buildConfig = true
+        resValues = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -57,6 +86,9 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "GIT_SHA", "\"$diagnosticGitSha\"")
+        buildConfigField("String", "APK_SHA256", "\"$diagnosticApkSha\"")
+        buildConfigField("String", "BLE_SCAN_PERMISSION_POLICY", "\"never_for_location\"")
     }
 
     flavorDimensions += "app"
@@ -68,6 +100,17 @@ android {
         create("birdV1") {
             dimension = "app"
             applicationIdSuffix = ".bird.v1"
+        }
+        create("birdScanA") {
+            dimension = "app"
+            applicationIdSuffix = ".bird.scan.a"
+            resValue("string", "app_name", "BirdBox 扫描 A")
+        }
+        create("birdScanB") {
+            dimension = "app"
+            applicationIdSuffix = ".bird.scan.b"
+            resValue("string", "app_name", "BirdBox 扫描 B")
+            buildConfigField("String", "BLE_SCAN_PERMISSION_POLICY", "\"full_scan\"")
         }
     }
 
@@ -94,6 +137,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }

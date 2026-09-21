@@ -21,6 +21,16 @@ void main() {
 
   test('App-local errors are separated from box errors', () {
     expect(ProvisioningErrorCode.deviceIdMismatch.origin, ProvisioningErrorOrigin.app);
+    expect(ProvisioningErrorCode.bleGattNotReady.origin, ProvisioningErrorOrigin.app);
+    expect(ProvisioningErrorCode.bleLePairingNotStarted.origin, ProvisioningErrorOrigin.app);
+    expect(
+      ProvisioningErrorCodeWireValue.parse('BLE_ENCRYPTED_RETRY_FAILED'),
+      ProvisioningErrorCode.bleEncryptedRetryFailed,
+    );
+    expect(
+      ProvisioningErrorCode.pairingOpenTimeout.wireValue,
+      'PAIRING_OPEN_TIMEOUT',
+    );
     expect(ProvisioningErrorCode.bleFragmentInvalid.origin, ProvisioningErrorOrigin.protocol);
   });
 }

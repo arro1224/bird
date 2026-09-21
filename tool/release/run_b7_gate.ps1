@@ -7,6 +7,7 @@ param(
     [string]$EvidencePath = "build\b7\b7-gate-evidence.json",
     [string]$RealBoxEvidencePath,
     [string]$BleRc4EvidencePath,
+    [string]$BleHotfixReleaseEvidencePath,
     [string]$B12BEvidencePath,
     [switch]$SkipPubGet
 )
@@ -24,6 +25,7 @@ $failure = $null
 $realBoxEvidence = $null
 $script:simulatedAcceptance = $null
 $script:bleRc4Verified = $false
+$script:bleHotfixReleaseVerified = $false
 
 function Invoke-NativeCommand {
     param(
@@ -138,6 +140,9 @@ try {
         }
         if ([string]::IsNullOrWhiteSpace($BleRc4EvidencePath)) {
             throw "Release mode requires -BleRc4EvidencePath."
+        }
+        if ([string]::IsNullOrWhiteSpace($BleHotfixReleaseEvidencePath)) {
+            throw "Release mode requires -BleHotfixReleaseEvidencePath."
         }
         if ([string]::IsNullOrWhiteSpace($B12BEvidencePath)) {
             throw "Release mode requires -B12BEvidencePath."
@@ -276,6 +281,10 @@ try {
         if (-not (Test-Path -LiteralPath $resolvedBleRc4Evidence)) {
             throw "BLE RC4 evidence was not found: $resolvedBleRc4Evidence"
         }
+        $resolvedBleHotfixReleaseEvidence = Resolve-EvidencePath $BleHotfixReleaseEvidencePath
+        if (-not (Test-Path -LiteralPath $resolvedBleHotfixReleaseEvidence)) {
+            throw "BLE hotfix release evidence was not found: $resolvedBleHotfixReleaseEvidence"
+        }
         $resolvedB12BEvidence = Resolve-EvidencePath $B12BEvidencePath
         if (-not (Test-Path -LiteralPath $resolvedB12BEvidence)) {
             throw "B12-B evidence was not found: $resolvedB12BEvidence"
@@ -353,6 +362,17 @@ try {
             )
         }
         $script:bleRc4Verified = $true
+        Invoke-GateStep "RC4-HF-BLE-04 release promotion" {
+            Invoke-NativeCommand $DartCommand @(
+                "run",
+                "tool/acceptance/rc4_hf_ble_04_release_gate.dart",
+                "--evidence=$resolvedBleHotfixReleaseEvidence",
+                "--apk=build/app/outputs/flutter-apk/app-bird-release.apk",
+                "--manifest=build/app/intermediates/merged_manifests/birdRelease/processBirdReleaseManifest/AndroidManifest.xml",
+                "--approved-certificate=$env:AVES_RELEASE_CERT_SHA256"
+            )
+        }
+        $script:bleHotfixReleaseVerified = $true
         Invoke-GateStep "B12-B real-hardware evidence" {
             Invoke-NativeCommand $DartCommand @(
                 "run",
@@ -434,7 +454,12 @@ try {
                 real_k7_status = "pending"
                 cases = @($script:simulatedAcceptance.cases)
             }
-        } elseif ($Mode -eq "Release" -and $status -eq "passed" -and $script:bleRc4Verified) {
+        } elseif (
+            $Mode -eq "Release" -and
+            $status -eq "passed" -and
+            $script:bleRc4Verified -and
+            $script:bleHotfixReleaseVerified
+        ) {
             [ordered]@{
                 result = "pass"
                 environment = "real_k7"
@@ -457,6 +482,14 @@ try {
                 Resolve-EvidencePath $BleRc4EvidencePath
             }
             verified = $script:bleRc4Verified
+        }
+        ble_hotfix_release = [ordered]@{
+            evidence_path = if ([string]::IsNullOrWhiteSpace($BleHotfixReleaseEvidencePath)) {
+                $null
+            } else {
+                Resolve-EvidencePath $BleHotfixReleaseEvidencePath
+            }
+            verified = $script:bleHotfixReleaseVerified
         }
         contract = [ordered]@{
             id = "$($baseline.contract_id)@$($baseline.contract_version)"

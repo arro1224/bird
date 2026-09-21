@@ -11,7 +11,8 @@ final class BleConnectionDiagnosticStore implements BleConnectionDiagnosticSink 
     this.maximumEvents = 500,
   });
 
-  static const cacheKey = 'diagnostics:ble_connection_events:v1';
+  static const cacheKey = 'diagnostics:ble_connection_events:v2';
+  static const legacyCacheKey = 'diagnostics:ble_connection_events:v1';
 
   final LocalCache _cache;
   final int maximumEvents;
@@ -21,7 +22,9 @@ final class BleConnectionDiagnosticStore implements BleConnectionDiagnosticSink 
   Stream<BleConnectionDiagnosticEvent> get records => _records.stream;
 
   List<BleConnectionDiagnosticEvent> readAll({String? traceId}) {
-    final stored = _cache.read<List<dynamic>>(cacheKey) ?? const [];
+    final stored = _cache.read<List<dynamic>>(cacheKey) ??
+        _cache.read<List<dynamic>>(legacyCacheKey) ??
+        const [];
     final events = stored
         .whereType<Map>()
         .map(
@@ -55,7 +58,7 @@ final class BleConnectionDiagnosticStore implements BleConnectionDiagnosticSink 
       const JsonEncoder.withIndent(
         '  ',
       ).convert({
-        'schema_version': 1,
+        'schema_version': 2,
         'generated_at': DateTime.now().toUtc().toIso8601String(),
         'trace_id': traceId,
         'events': readAll(
@@ -63,7 +66,10 @@ final class BleConnectionDiagnosticStore implements BleConnectionDiagnosticSink 
         ).reversed.map((event) => event.toJson()).toList(growable: false),
       });
 
-  Future<void> clear() => _cache.remove(cacheKey);
+  Future<void> clear() => Future.wait([
+    _cache.remove(cacheKey),
+    _cache.remove(legacyCacheKey),
+  ]);
 
   Future<void> dispose() async {
     await _writeQueue;

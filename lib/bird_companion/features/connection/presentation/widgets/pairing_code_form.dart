@@ -12,6 +12,7 @@ class PairingCodeForm extends StatefulWidget {
     this.displayAvailable = true,
     required this.onSubmit,
     required this.onCancel,
+    this.onCopyDiagnostic,
   });
 
   final String deviceName;
@@ -20,6 +21,7 @@ class PairingCodeForm extends StatefulWidget {
   final bool displayAvailable;
   final ValueChanged<String> onSubmit;
   final VoidCallback onCancel;
+  final VoidCallback? onCopyDiagnostic;
 
   @override
   State<PairingCodeForm> createState() => _PairingCodeFormState();
@@ -73,6 +75,16 @@ class _PairingCodeFormState extends State<PairingCodeForm> {
         onPressed: () => _submit(_controller.text),
         icon: const Icon(Icons.lock_open_rounded),
       ),
+      if (widget.onCopyDiagnostic != null) ...[
+        const SizedBox(height: AppSpacing.sm),
+        BirdButton(
+          key: const Key('ble-copy-pairing-diagnostic-json'),
+          label: '复制本次配对诊断',
+          onPressed: widget.onCopyDiagnostic,
+          icon: const Icon(Icons.copy_all_outlined),
+          variant: BirdButtonVariant.outlined,
+        ),
+      ],
       const SizedBox(height: AppSpacing.sm),
       TextButton(onPressed: widget.onCancel, child: const Text('取消')),
     ],

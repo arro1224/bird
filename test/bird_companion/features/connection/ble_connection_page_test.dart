@@ -4,6 +4,8 @@ import 'package:aves/bird_companion/features/connection/domain/provisioning_erro
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/network_provisioning_cubit.dart';
+import 'package:aves/bird_companion/features/connection/presentation/pages/connection_method_page.dart';
+import 'package:aves/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart';
 import 'fakes/fake_provisioning_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -46,6 +48,32 @@ void main() {
     },
   );
 
+  testWidgets('moving the app to background stops active BLE discovery', (
+    tester,
+  ) async {
+    final repository = FakeProvisioningRepository(devices: [_device()]);
+    addTearDown(repository.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ConnectionPage(provisioningRepository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final stopsBeforeBackground = repository.calls.where((call) => call == 'stopDiscovery').length;
+
+    tester.binding.handleAppLifecycleStateChanged(
+      AppLifecycleState.paused,
+    );
+    await tester.pump();
+
+    expect(
+      repository.calls.where((call) => call == 'stopDiscovery'),
+      hasLength(stopsBeforeBackground + 1),
+    );
+  });
+
   testWidgets('empty BLE result exposes a secret-safe support diagnostic id', (
     tester,
   ) async {
@@ -78,6 +106,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('本次扫描诊断编号：scan-b7-page'), findsOneWidget);
+    expect(find.byKey(const Key('ble-copy-diagnostic-json')), findsOneWidget);
+    expect(find.text('复制诊断 JSON'), findsOneWidget);
     expect(find.textContaining('android'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -122,6 +152,52 @@ void main() {
 
     expect(find.byKey(const Key('ble-copy-diagnostic-json')), findsOneWidget);
     expect(find.text('复制诊断 JSON'), findsOneWidget);
+  });
+
+  testWidgets('pairing and completed pages keep the trace export action', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: PairingCodeForm(
+            deviceName: 'BirdBox-REDACTED',
+            codeMode: PairingCodeMode.fixedDev,
+            codeLength: 6,
+            displayAvailable: false,
+            onSubmit: (_) {},
+            onCancel: () {},
+            onCopyDiagnostic: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('ble-copy-pairing-diagnostic-json')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: ConnectionMethodPage(
+            deviceName: 'BirdBox-REDACTED',
+            onSelected: (_) {},
+            onCopyDiagnostic: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('ble-copy-completed-pairing-diagnostic-json')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('BLE page provides and renders Direct AP provisioning', (tester) async {

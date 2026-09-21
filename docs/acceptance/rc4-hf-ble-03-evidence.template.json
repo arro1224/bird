@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "acceptance_suite": "rc4-hf-ble-03",
+  "captured_at": "REQUIRED_ISO_8601_TIMESTAMP",
+  "final_result": "pending",
+  "hardware_status": "pending",
+  "selected_scan_variant": "REQUIRED_A_OR_B",
+  "devices": {
+    "oppo": {
+      "physical": false,
+      "manufacturer": "OPPO",
+      "model": "PKC110",
+      "sdk_int": 36,
+      "redacted_serial_hash": "REQUIRED_SHA256_OR_REDACTED_HASH"
+    },
+    "huawei": {
+      "physical": false,
+      "manufacturer": "HUAWEI",
+      "model": "REQUIRED_HUAWEI_MODEL",
+      "sdk_int": 0,
+      "redacted_serial_hash": "REQUIRED_SHA256_OR_REDACTED_HASH"
+    },
+    "birdbox": {
+      "physical": false,
+      "model": "BirdBox K7",
+      "firmware_git_commit": "REQUIRED_40_CHAR_GIT_SHA",
+      "firmware_sha256": "REQUIRED_64_CHAR_FIRMWARE_SHA256"
+    }
+  },
+  "builds": {
+    "A": {
+      "apk_file": "REQUIRED_RELATIVE_PATH_TO_SCAN_A_APK",
+      "apk_sha256": "REQUIRED_SCAN_A_APK_SHA256",
+      "git_commit": "REQUIRED_40_CHAR_GIT_SHA",
+      "scan_permission_policy": "never_for_location"
+    },
+    "B": {
+      "apk_file": "REQUIRED_RELATIVE_PATH_TO_SCAN_B_APK",
+      "apk_sha256": "REQUIRED_SCAN_B_APK_SHA256",
+      "git_commit": "REQUIRED_40_CHAR_GIT_SHA",
+      "scan_permission_policy": "full_scan"
+    }
+  },
+  "scan_runs": [],
+  "pairing_runs": [],
+  "reconnect_check": {
+    "status": "pending",
+    "existing_token_reused": false,
+    "pairing_code_prompted": true,
+    "accepted_task_continued_after_ble_disconnect": false,
+    "evidence_files": []
+  },
+  "approvals": {
+    "app": {
+      "status": "pending",
+      "reviewer": "REQUIRED_APP_REVIEWER",
+      "evidence_file": "REQUIRED_APP_APPROVAL_FILE"
+    },
+    "board": {
+      "status": "pending",
+      "reviewer": "REQUIRED_BOARD_REVIEWER",
+      "evidence_file": "REQUIRED_BOARD_APPROVAL_FILE"
+    },
+    "qa": {
+      "status": "pending",
+      "reviewer": "REQUIRED_QA_REVIEWER",
+      "evidence_file": "REQUIRED_QA_APPROVAL_FILE"
+    }
+  }
+}

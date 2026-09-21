@@ -64,4 +64,23 @@ void main() {
     expect(message.message, contains('蓝牙连接会保留'));
     expect(message.actionLabel, '重新配网');
   });
+
+  test('maps BLE security stages to distinct actionable messages', () {
+    const expected = <ProvisioningErrorCode, String>{
+      ProvisioningErrorCode.bleGattNotReady: '盒子连接尚未准备完成，请重试。',
+      ProvisioningErrorCode.bleLePairingNotStarted: '手机未能启动安全连接，请关闭再打开蓝牙后重试。',
+      ProvisioningErrorCode.blePairingRejected: '安全连接未完成，请重新配对。',
+      ProvisioningErrorCode.bleGattRecoveryFailed: '安全连接已建立，但重新连接盒子失败。',
+      ProvisioningErrorCode.bleEncryptedRetryFailed: '安全连接已建立，但盒子未接受配对请求。',
+      ProvisioningErrorCode.pairingOpenTimeout: '盒子未返回配对确认。',
+    };
+
+    for (final entry in expected.entries) {
+      final message = UserMessageMapper.fromProvisioningError(
+        ProvisioningException(code: entry.key, retryable: true),
+      );
+      expect(message.message, entry.value, reason: entry.key.wireValue);
+      expect(message.actionLabel, isNotNull, reason: entry.key.wireValue);
+    }
+  });
 }

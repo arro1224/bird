@@ -74,6 +74,7 @@ powershell -ExecutionPolicy Bypass -File tool/release/run_b7_gate.ps1 `
   -Mode Release `
   -RealBoxEvidencePath C:\secure\bird-real-box-e2e.json `
   -BleRc4EvidencePath C:\secure\ble-provisioning-rc4-k7.json `
+  -BleHotfixReleaseEvidencePath C:\secure\rc4-hf-ble-04-release.json `
   -B12BEvidencePath C:\secure\b12b-real-hardware-evidence.json
 ```
 
@@ -107,6 +108,55 @@ SHA/证书不一致、缺失或重复用例，以及密码、配对码、Token�
 MAC 地址。通用真实盒子证据、BLE RC4 证据与 B12-B 证据是三个独立门禁，不能
 互相替代；任一未通过时，B7 证据保持 `releasable=false`、
 `real_k7_status=pending`。
+
+## RC4-HF-BLE-04 热修晋级证据
+
+复制 `docs/acceptance/rc4-hf-ble-04-release.template.json`，并让其中的
+`ble03_evidence_file` 指向已通过的 BLE-03 OPPO/Huawei/K7 真机证据。BLE-04
+门禁会把 `selected_scan_variant` 映射为正式包策略：A 必须保留
+`neverForLocation`，B 必须移除；同时核对合并 Manifest、生产 BuildConfig
+诊断值、正式包名、版本、APK SHA、Git SHA、签名证书、发布批准和回滚记录。
+
+可单独执行：
+
+```powershell
+dart run tool/acceptance/rc4_hf_ble_04_release_gate.dart `
+  --evidence=C:\secure\rc4-hf-ble-04-release.json `
+  --apk=build\app\outputs\flutter-apk\app-bird-release.apk `
+  --manifest=build\app\intermediates\merged_manifests\birdRelease\processBirdReleaseManifest\AndroidManifest.xml `
+  --approved-certificate=$env:AVES_RELEASE_CERT_SHA256
+```
+
+门禁还会扫描生产源码，拒绝 `createBond()`、`ensureBonded` 或
+`disconnectGattBeforeBond` 回流。vivo 单机、Debug A/B 包或 pending 模板都不能
+满足 BLE-03 前置条件。通用真实盒子、BLE RC4 K7、BLE-04 热修晋级和 B12-B
+四套证据缺一不可。
+
+## RC4-HF-BLE-05 外场真机交接
+
+当本地没有 OPPO、Huawei 或真实 K7 时，使用
+`outputs/RC4-HF-BLE-05/` 作为外场联调目录。该目录包含固定 SHA 的 A/B APK、
+BLE-03 证据模板、真机执行手册、脱敏回传清单和离线 APK 校验脚本。
+
+交付前校验：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File outputs\RC4-HF-BLE-05\verify_apks.ps1
+dart run tool/acceptance/rc4_hf_ble_05_handoff_gate.dart `
+  --manifest=outputs\RC4-HF-BLE-05\handoff-manifest.json
+```
+
+回传后把证据 JSON 及其引用文件放在同一回传目录，并运行：
+
+```powershell
+dart run tool/acceptance/rc4_hf_ble_05_handoff_gate.dart `
+  --manifest=outputs\RC4-HF-BLE-05\handoff-manifest.json `
+  --returned-evidence=<回传目录\rc4-hf-ble-03-evidence.json>
+```
+
+交接包完整只表示 `handoff_ready`，仍然是 `hardware_status=pending`、
+`releasable=false`。只有回传证据通过 BLE-03 且 A/B APK SHA 与交付包完全一致，
+才会输出 `hardware_status=verified`；之后仍必须执行 BLE-04 正式包晋级。
 
 ## B12-B 真实硬件专项证据
 

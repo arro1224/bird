@@ -9,7 +9,7 @@ final class FakeBirdBoxBleDataSource implements BirdBoxBleDataSource {
   final ProvisioningDeviceInfo deviceInfo;
   ProvisioningNetworkStatus networkStatus;
   final List<BirdBoxAdvertisement> _advertisements;
-  final Map<BleCommandType, List<ProvisioningEvent>> _responses = {};
+  final Map<BleCommandType, List<Object>> _responses = {};
   final StreamController<ProvisioningEvent> _eventController = StreamController.broadcast();
   final StreamController<void> _disconnectController = StreamController.broadcast();
   final List<BleCommandRequest> requests = [];
@@ -21,6 +21,8 @@ final class FakeBirdBoxBleDataSource implements BirdBoxBleDataSource {
   void addAdvertisement(BirdBoxAdvertisement advertisement) => _advertisements.add(advertisement);
 
   void queueResponse(BleCommandType type, ProvisioningEvent response) => _responses.putIfAbsent(type, () => []).add(response);
+
+  void queueError(BleCommandType type, Object error) => _responses.putIfAbsent(type, () => []).add(error);
 
   void emitEvent(ProvisioningEvent event) => _eventController.add(event);
 
@@ -87,7 +89,9 @@ final class FakeBirdBoxBleDataSource implements BirdBoxBleDataSource {
     requests.add(request);
     final queued = _responses[request.type];
     if (queued == null || queued.isEmpty) throw StateError('No fake response queued for ${request.type.wireValue}');
-    return queued.removeAt(0);
+    final result = queued.removeAt(0);
+    if (result is ProvisioningEvent) return result;
+    throw result;
   }
 
   @override

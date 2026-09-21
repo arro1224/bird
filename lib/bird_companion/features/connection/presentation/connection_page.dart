@@ -97,12 +97,26 @@ class _BleConnectionHost extends StatefulWidget {
   State<_BleConnectionHost> createState() => _BleConnectionHostState();
 }
 
-class _BleConnectionHostState extends State<_BleConnectionHost> {
+class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBindingObserver {
   var _completing = false;
   var _handoffCommitted = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused || state == AppLifecycleState.hidden || state == AppLifecycleState.detached) {
+      unawaited(widget.repository.stopDiscovery());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (!_handoffCommitted) {
       unawaited(widget.repository.disconnect());
     }
@@ -236,11 +250,13 @@ class _BleConnectionView extends StatelessWidget {
               displayAvailable: state.deviceInfo!.displayAvailable,
               onSubmit: cubit.authorizePairing,
               onCancel: cubit.reset,
+              onCopyDiagnostic: _diagnosticCopyAction(context, state),
             ),
             ProvisioningPhase.methodSelection => _methodSelection(
               context,
               state.deviceInfo!,
               networkState,
+              onCopyDiagnostic: _diagnosticCopyAction(context, state),
             ),
             ProvisioningPhase.connecting || ProvisioningPhase.authorizing => const _BleLoadingView(),
             _ => _BleDiscoveryView(
@@ -269,8 +285,9 @@ class _BleConnectionView extends StatelessWidget {
   Widget _methodSelection(
     BuildContext context,
     ProvisioningDeviceInfo info,
-    NetworkProvisioningState networkState,
-  ) {
+    NetworkProvisioningState networkState, {
+    VoidCallback? onCopyDiagnostic,
+  }) {
     final networkCubit = context.read<NetworkProvisioningCubit>();
     if (networkCubit.networkStatusResumeRequired && networkState.trustedDeviceId != info.deviceId) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -283,6 +300,7 @@ class _BleConnectionView extends StatelessWidget {
     return ConnectionMethodPage(
       deviceName: info.deviceName,
       capabilities: info.capabilities,
+      onCopyDiagnostic: onCopyDiagnostic,
       onSelected: (method) {
         onMethodSelected?.call(method);
         switch (method) {
@@ -373,7 +391,7 @@ class _BleConnectionView extends StatelessWidget {
     final scanSessions = dependencies.bleScanDiagnosticStore.readAll().where((session) => session.scanSessionId == traceId).map((session) => session.toJson()).toList(growable: false);
     final connectionEvents = dependencies.bleConnectionDiagnosticStore.readAll(traceId: traceId).reversed.map((event) => event.toJson()).toList(growable: false);
     final output = const JsonEncoder.withIndent('  ').convert({
-      'schema_version': 1,
+      'schema_version': 2,
       'generated_at': DateTime.now().toUtc().toIso8601String(),
       'trace_id': traceId,
       'scan_sessions': scanSessions,
@@ -383,6 +401,15 @@ class _BleConnectionView extends StatelessWidget {
     if (context.mounted) {
       BirdFeedback.success(context, '诊断 JSON 已复制，可直接回传给联调人员');
     }
+  }
+
+  VoidCallback? _diagnosticCopyAction(
+    BuildContext context,
+    ProvisioningState state,
+  ) {
+    final traceId = state.latestScanDiagnostic?.scanSessionId;
+    if (traceId == null) return null;
+    return () => unawaited(_copyBleDiagnostic(context, traceId));
   }
 }
 
@@ -469,7 +496,7 @@ class _BleDiscoveryView extends StatelessWidget {
           ),
         ),
       ],
-      if (error != null && onCopyDiagnostic != null) ...[
+      if (!searching && diagnosticId != null && onCopyDiagnostic != null) ...[
         const SizedBox(height: AppSpacing.sm),
         BirdButton(
           key: const Key('ble-copy-diagnostic-json'),

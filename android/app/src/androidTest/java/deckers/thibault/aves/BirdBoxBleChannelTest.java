@@ -16,6 +16,7 @@ public final class BirdBoxBleChannelTest {
     @Test
     public void classifiesAuthenticationAndEncryptionFailures() {
         assertTrue(BirdBoxBleChannel.isGattSecurityFailure(BluetoothGatt.GATT_INSUFFICIENT_AUTHENTICATION));
+        assertTrue(BirdBoxBleChannel.isGattSecurityFailure(BirdBoxBleChannel.GATT_INSUFFICIENT_AUTHORIZATION));
         assertTrue(BirdBoxBleChannel.isGattSecurityFailure(BluetoothGatt.GATT_INSUFFICIENT_ENCRYPTION));
         assertTrue(BirdBoxBleChannel.isGattSecurityFailure(BirdBoxBleChannel.GATT_INSUFFICIENT_ENCRYPTION_KEY_SIZE));
         assertEquals("ble_link_not_encrypted", BirdBoxBleChannel.gattErrorCode(BluetoothGatt.GATT_INSUFFICIENT_ENCRYPTION));

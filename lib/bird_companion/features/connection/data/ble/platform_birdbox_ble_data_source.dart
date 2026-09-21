@@ -34,10 +34,18 @@ abstract interface class BirdBoxBlePlatform {
   Future<Uint8List> readCharacteristic(String characteristicUuid);
   Future<void> setNotify(String characteristicUuid, {required bool enabled});
   Future<void> writeWithResponse(String characteristicUuid, Uint8List value);
-
-  /// Returns true when Android had to rebuild the GATT connection after Bond.
-  Future<bool> ensureBonded({bool disconnectBeforeBond = false});
-  Future<bool> isLinkEncrypted();
+  Future<void> beginSecurityWrite(
+    String requestId, {
+    required String commandType,
+  });
+  Future<bool> awaitSecurityReady(String requestId);
+  Future<void> beginSecurityRetry(String requestId);
+  Future<void> markSecurityWriteSent(String requestId);
+  Future<void> completeSecurityWrite(
+    String requestId, {
+    required String responseType,
+  });
+  Future<void> failSecurityWrite(String requestId, {required String errorCode});
   Future<void> dispose();
 }
 
@@ -133,14 +141,40 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
   Future<void> writeWithResponse(String characteristicUuid, Uint8List value) => _invoke<void>('writeWithResponse', {'characteristicUuid': characteristicUuid, 'value': value});
 
   @override
-  Future<bool> ensureBonded({bool disconnectBeforeBond = false}) async =>
-      (await _invoke<bool>('ensureBonded', {
-        'disconnectBeforeBond': disconnectBeforeBond,
-      })) ??
-      false;
+  Future<void> beginSecurityWrite(
+    String requestId, {
+    required String commandType,
+  }) => _invoke<void>('beginSecurityWrite', {
+    'requestId': requestId,
+    'commandType': commandType,
+  });
 
   @override
-  Future<bool> isLinkEncrypted() async => (await _invoke<bool>('isLinkEncrypted')) ?? false;
+  Future<bool> awaitSecurityReady(String requestId) async => (await _invoke<bool>('awaitSecurityReady', {'requestId': requestId})) ?? false;
+
+  @override
+  Future<void> beginSecurityRetry(String requestId) => _invoke<void>('beginSecurityRetry', {'requestId': requestId});
+
+  @override
+  Future<void> markSecurityWriteSent(String requestId) => _invoke<void>('markSecurityWriteSent', {'requestId': requestId});
+
+  @override
+  Future<void> completeSecurityWrite(
+    String requestId, {
+    required String responseType,
+  }) => _invoke<void>('completeSecurityWrite', {
+    'requestId': requestId,
+    'responseType': responseType,
+  });
+
+  @override
+  Future<void> failSecurityWrite(
+    String requestId, {
+    required String errorCode,
+  }) => _invoke<void>('failSecurityWrite', {
+    'requestId': requestId,
+    'errorCode': errorCode,
+  });
 
   @override
   Future<void> dispose() => _invoke<void>('dispose');
@@ -183,12 +217,29 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
     return ProvisioningException(
       code: switch (error.code) {
         'bluetooth_permission_denied' => ProvisioningErrorCode.bluetoothPermissionDenied,
-        'ble_link_not_encrypted' || 'ble_bond_failed' || 'ble_bond_rejected' || 'ble_bond_timeout' => ProvisioningErrorCode.authorizationRequired,
+        'ble_gatt_not_ready' => ProvisioningErrorCode.bleGattNotReady,
+        'ble_le_pairing_not_started' => ProvisioningErrorCode.bleLePairingNotStarted,
+        'ble_pairing_rejected' || 'ble_bond_rejected' => ProvisioningErrorCode.blePairingRejected,
+        'ble_gatt_recovery_failed' => ProvisioningErrorCode.bleGattRecoveryFailed,
+        'ble_encrypted_retry_failed' => ProvisioningErrorCode.bleEncryptedRetryFailed,
+        'pairing_open_timeout' => ProvisioningErrorCode.pairingOpenTimeout,
+        'ble_link_not_encrypted' || 'ble_bond_failed' || 'ble_bond_timeout' => ProvisioningErrorCode.authorizationRequired,
         'invalid_request' || 'invalid_state' => ProvisioningErrorCode.invalidRequest,
         'bluetooth_unavailable' => ProvisioningErrorCode.capabilityUnsupported,
         _ => ProvisioningErrorCode.networkInternalError,
       },
-      retryable: error.code == 'gatt_busy' || error.code == 'gatt_operation_failed' || error.code == 'ble_link_not_encrypted',
+      retryable: const {
+        'gatt_busy',
+        'gatt_operation_failed',
+        'ble_link_not_encrypted',
+        'ble_gatt_not_ready',
+        'ble_le_pairing_not_started',
+        'ble_pairing_rejected',
+        'ble_bond_rejected',
+        'ble_gatt_recovery_failed',
+        'ble_encrypted_retry_failed',
+        'pairing_open_timeout',
+      }.contains(error.code),
       diagnosticMessage: 'Android BLE platform error: ${diagnosticFields.join(', ')}',
     );
   }
@@ -199,9 +250,6 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     BirdBoxBlePlatform? platform,
     this._diagnosticSink,
     this._connectionDiagnosticSink,
-    this.disconnectGattBeforeBond = const bool.fromEnvironment(
-      'BIRD_BLE_DISCONNECT_BEFORE_BOND',
-    ),
     DateTime Function()? clock,
     this._scanSessionIdFactory,
   }) : _platform = platform ?? MethodChannelBirdBoxBlePlatform(),
@@ -221,7 +269,6 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   final BirdBoxBlePlatform _platform;
   final BleScanDiagnosticSink? _diagnosticSink;
   final BleConnectionDiagnosticSink? _connectionDiagnosticSink;
-  final bool disconnectGattBeforeBond;
   final DateTime Function() _clock;
   final String Function()? _scanSessionIdFactory;
   final BleFragmentCodec _fragmentCodec;
@@ -238,6 +285,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   StreamSubscription<Map<String, dynamic>>? _scanSubscription;
   StreamController<BirdBoxAdvertisement>? _scanController;
   _BleScanSessionBuilder? _activeScanDiagnostic;
+  final Map<String, BirdBoxAdvertisement> _scanCandidates = {};
   Timer? _scanTimer;
   bool _connected = false;
   bool _requiredNotificationsSubscribed = false;
@@ -261,6 +309,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     late final StreamController<BirdBoxAdvertisement> controller;
     controller = StreamController<BirdBoxAdvertisement>(
       onListen: () async {
+        _scanCandidates.clear();
         _activeScanDiagnostic = scanDiagnostic;
         try {
           scanDiagnostic.environmentBefore = await _readScanEnvironment();
@@ -333,6 +382,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       // Scan shutdown is best effort; discovery errors have already reached the stream.
     }
     _scanController = null;
+    _scanCandidates.clear();
     await _completeScanDiagnostic(reason);
     if (!controller.isClosed) await controller.close();
   }
@@ -359,6 +409,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       at: _clock(),
       accepted: accepted,
       reason: reason,
+      event: event,
     );
     if (!accepted) return;
 
@@ -366,7 +417,13 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       final advertisement = advertisementFromPlatform(event);
       if (advertisement.hasBirdBoxService || advertisement.hasValidLocalName) {
         diagnostic?.firstCandidateAt ??= _clock();
-        controller.add(advertisement);
+        final deviceId = advertisement.platformDeviceId!;
+        final merged = _mergeAdvertisement(
+          _scanCandidates[deviceId],
+          advertisement,
+        );
+        _scanCandidates[deviceId] = merged;
+        controller.add(merged);
       }
     } catch (error, stackTrace) {
       diagnostic?.addReason('dart_parse_error');
@@ -378,6 +435,21 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         ),
       );
     }
+  }
+
+  static BirdBoxAdvertisement _mergeAdvertisement(
+    BirdBoxAdvertisement? previous,
+    BirdBoxAdvertisement current,
+  ) {
+    if (previous == null) return current;
+    return BirdBoxAdvertisement(
+      localName: current.localName.isNotEmpty ? current.localName : previous.localName,
+      serviceUuids: {...previous.serviceUuids, ...current.serviceUuids},
+      rssi: current.rssi,
+      platformDeviceId: current.platformDeviceId,
+      companyIdentifier: current.companyIdentifier ?? previous.companyIdentifier,
+      manufacturerPayload: current.manufacturerPayload ?? previous.manufacturerPayload,
+    );
   }
 
   Future<BleScanEnvironment> _readScanEnvironment() async {
@@ -414,6 +486,11 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     final builder = _activeScanDiagnostic;
     _activeScanDiagnostic = null;
     if (builder == null) return;
+    try {
+      builder.environmentAfter = await _readScanEnvironment();
+    } catch (_) {
+      // Preserve the last environment snapshot if teardown races the platform.
+    }
     final session = builder.complete(endedAt: _clock(), endReason: reason);
     if (!_scanDiagnostics.isClosed) _scanDiagnostics.add(session);
     debugPrint('BLE_SCAN_DIAGNOSTIC ${jsonEncode(session.toJson())}');
@@ -535,30 +612,25 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     if (_pendingCommands.containsKey(request.requestId)) {
       throw const ProvisioningException(code: ProvisioningErrorCode.requestIdConflict, retryable: false);
     }
-    // Both rc4 command characteristics are encrypt-write. GATT connection and
-    // service discovery alone are not sufficient: establish Android Bond first.
+    // Both rc4 command characteristics are encrypt-write. The first real Write
+    // With Response is intentionally allowed to trigger Android LE security.
     await _recordConnectionDiagnostic(
       eventType: 'command_started',
       operationName: 'write_command',
       commandType: request.type.wireValue,
+      requestId: request.requestId,
     );
-    try {
-      await _ensureBondedForCommand(request);
-    } catch (error) {
-      await _recordConnectionDiagnostic(
-        eventType: 'command_failed',
-        operationName: 'write_command',
-        commandType: request.type.wireValue,
-        resultCode: _resultCode(error),
-      );
-      rethrow;
-    }
-
     final message = _messageCodec.encodeRequest(request);
     List<Uint8List> packets = const [];
     final completer = Completer<ProvisioningEvent>();
     _pendingCommands[request.requestId] = completer;
+    var securitySessionStarted = false;
     try {
+      await _platform.beginSecurityWrite(
+        request.requestId,
+        commandType: request.type.wireValue,
+      );
+      securitySessionStarted = true;
       final characteristicUuid = request.writesWifiCredentials ? BleProtocolConstants.wifiConfigCharacteristicUuid : BleProtocolConstants.provisioningCommandCharacteristicUuid;
       final maximumFragmentBytes = (_negotiatedMtu - 3).clamp(BleProtocolConstants.fragmentHeaderLength + 1, 514);
       packets = _fragmentCodec.fragment(message, messageId: _allocateMessageId(), maximumFragmentBytes: maximumFragmentBytes);
@@ -566,28 +638,74 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         await _writePackets(characteristicUuid, packets);
       } on ProvisioningException catch (error) {
         if (error.code != ProvisioningErrorCode.authorizationRequired) rethrow;
-        // Android status 5/12/15 may be the first evidence that the active link
-        // lost encryption. Recover Bond/GATT once and retry the exact request,
-        // preserving request_id and fragment message id.
-        await _ensureBondedForCommand(request);
-        await _writePackets(characteristicUuid, packets);
+        // Android status 5/8/12/15 is the expected signal that this real
+        // encrypted write has entered SMP. Wait for Bond/GATT recovery, restore
+        // both CCCDs, then retry these exact bytes once.
+        _requiredNotificationsSubscribed = false;
+        await _recoverSecurityWrite(request);
+        await _recordConnectionDiagnostic(
+          eventType: 'security_write_retrying',
+          operationName: 'write_command',
+          commandType: request.type.wireValue,
+          requestId: request.requestId,
+          retryCount: 1,
+          characteristicUuid: characteristicUuid,
+          securityTrigger: 'encrypted_characteristic_write',
+        );
+        await _platform.beginSecurityRetry(request.requestId);
+        try {
+          await _writePackets(characteristicUuid, packets);
+        } catch (error) {
+          throw ProvisioningException(
+            code: ProvisioningErrorCode.bleEncryptedRetryFailed,
+            retryable: true,
+            diagnosticMessage: 'The exact encrypted request retry failed: ${_resultCode(error)}',
+          );
+        }
       }
+      await _platform.markSecurityWriteSent(request.requestId);
       final response = await completer.future.timeout(
         BleProtocolConstants.commandResponseTimeout,
-        onTimeout: () => throw const ProvisioningException(code: ProvisioningErrorCode.networkInternalError, retryable: true, diagnosticMessage: 'BLE command response timed out'),
+        onTimeout: () => throw ProvisioningException(
+          code: request.type == BleCommandType.openPairing ? ProvisioningErrorCode.pairingOpenTimeout : ProvisioningErrorCode.networkInternalError,
+          retryable: true,
+          diagnosticMessage: 'BLE command response timed out for matching request_id',
+        ),
       );
+      await _platform.completeSecurityWrite(
+        request.requestId,
+        responseType: response.type.wireValue,
+      );
+      securitySessionStarted = false;
       await _recordConnectionDiagnostic(
         eventType: 'command_succeeded',
         operationName: 'write_command',
         commandType: request.type.wireValue,
+        requestId: request.requestId,
+        characteristicUuid: characteristicUuid,
+        responseType: response.type.wireValue,
         resultCode: 'success',
       );
       return response;
     } catch (error) {
+      if (securitySessionStarted) {
+        try {
+          await _platform.failSecurityWrite(
+            request.requestId,
+            errorCode: error is ProvisioningException ? error.code.wireValue.toLowerCase() : 'network_internal_error',
+          );
+        } catch (cleanupError) {
+          debugPrint(
+            'BIRDBOX_BLE_SECURITY_CLEANUP_FAILED requestId=${request.requestId} '
+            '${cleanupError.runtimeType}',
+          );
+        }
+      }
       await _recordConnectionDiagnostic(
         eventType: 'command_failed',
         operationName: 'write_command',
         commandType: request.type.wireValue,
+        requestId: request.requestId,
         resultCode: _resultCode(error),
       );
       rethrow;
@@ -600,52 +718,55 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     }
   }
 
-  Future<void> _ensureBondedForCommand(BleCommandRequest request) async {
+  Future<void> _recoverSecurityWrite(BleCommandRequest request) async {
     try {
       await _recordConnectionDiagnostic(
-        eventType: 'bond_phase_changed',
-        operationName: 'bond',
+        eventType: 'security_recovery_started',
+        operationName: 'security_recovery',
         commandType: request.type.wireValue,
-        resultCode: 'requesting',
+        requestId: request.requestId,
+        resultCode: 'waiting_for_bond',
+        securityTrigger: 'encrypted_characteristic_write',
       );
-      final reconnected = await _platform.ensureBonded(
-        disconnectBeforeBond: disconnectGattBeforeBond,
-      );
-      if (reconnected) {
-        _requiredNotificationsSubscribed = false;
-        await _recordConnectionDiagnostic(
-          eventType: 'bond_phase_changed',
-          operationName: 'restore_notifications',
-          commandType: request.type.wireValue,
-          resultCode: 'restoring_notifications',
-        );
-        await subscribeRequiredNotifications();
+      final gattRebuilt = await _platform.awaitSecurityReady(request.requestId);
+      if (gattRebuilt) {
+        _negotiatedMtu = await _platform.requestMtu(517);
       }
-      if (!await _platform.isLinkEncrypted()) {
-        throw const ProvisioningException(
-          code: ProvisioningErrorCode.authorizationRequired,
-          retryable: true,
-          diagnosticMessage: 'Android Bond completed but the active BLE link is not encrypted',
-        );
-      }
+      await subscribeRequiredNotifications();
       await _recordConnectionDiagnostic(
-        eventType: 'bond_phase_changed',
-        operationName: 'bond',
+        eventType: 'security_recovery_completed',
+        operationName: 'security_recovery',
         commandType: request.type.wireValue,
+        requestId: request.requestId,
         resultCode: 'ready_to_write',
+        retryCount: 1,
       );
     } on ProvisioningException catch (error) {
       await _recordConnectionDiagnostic(
-        eventType: 'bond_phase_changed',
-        operationName: 'bond',
+        eventType: 'security_recovery_failed',
+        operationName: 'security_recovery',
         commandType: request.type.wireValue,
+        requestId: request.requestId,
         resultCode: 'failed:${error.code.wireValue}',
       );
       debugPrint(
         'BIRDBOX_BLE_FAILURE operation=${request.type.wireValue} '
         'requestId=${request.requestId} ${error.diagnosticMessage ?? error.code.wireValue}',
       );
-      rethrow;
+      if (error.code == ProvisioningErrorCode.bleLePairingNotStarted || error.code == ProvisioningErrorCode.blePairingRejected || error.code == ProvisioningErrorCode.bleGattRecoveryFailed) {
+        rethrow;
+      }
+      throw ProvisioningException(
+        code: ProvisioningErrorCode.bleGattRecoveryFailed,
+        retryable: true,
+        diagnosticMessage: 'Secured GATT restoration failed: ${error.diagnosticMessage ?? error.code.wireValue}',
+      );
+    } catch (error) {
+      throw ProvisioningException(
+        code: ProvisioningErrorCode.bleGattRecoveryFailed,
+        retryable: true,
+        diagnosticMessage: 'Secured GATT restoration failed: ${error.runtimeType}',
+      );
     }
   }
 
@@ -781,6 +902,11 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     String? operationName,
     int? gattStatus,
     String? commandType,
+    String? requestId,
+    int? retryCount,
+    String? characteristicUuid,
+    String? securityTrigger,
+    String? responseType,
     String? resultCode,
   }) async {
     final traceId = _activeTraceId ?? _lastTraceId;
@@ -794,6 +920,11 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         operationName: operationName,
         gattStatus: gattStatus,
         commandType: commandType,
+        requestId: requestId,
+        retryCount: retryCount,
+        characteristicUuid: characteristicUuid,
+        securityTrigger: securityTrigger,
+        responseType: responseType,
         resultCode: resultCode,
       ),
     );
@@ -836,11 +967,16 @@ final class _BleScanSessionBuilder {
   int filteredCount = 0;
   int? androidScanErrorCode;
   final Map<String, int> reasonCounts = {};
+  final Set<String> uniqueAddressHashes = {};
+  final List<BleScanObservationDiagnostic> observations = [];
+
+  static const int _maximumStoredObservations = 500;
 
   void observe({
     required DateTime at,
     required bool accepted,
     required String reason,
+    required Map<String, dynamic> event,
   }) {
     firstRawResultAt ??= at;
     rawResultCount++;
@@ -850,6 +986,33 @@ final class _BleScanSessionBuilder {
       filteredCount++;
     }
     addReason(reason);
+    final addressHash = event['addressHash'];
+    if (addressHash is String && addressHash.isNotEmpty) {
+      uniqueAddressHashes.add(addressHash);
+    }
+    if (observations.length >= _maximumStoredObservations) {
+      addReason('diagnostic_observation_limit_reached');
+      return;
+    }
+    final serviceUuids = event['serviceUuids'];
+    observations.add(
+      BleScanObservationDiagnostic(
+        occurredAt: at,
+        accepted: accepted,
+        reasonCode: reason,
+        addressHash: addressHash is String ? addressHash : null,
+        name: event['diagnosticName'] as String?,
+        alias: event['diagnosticAlias'] as String?,
+        rssi: event['rssi'] as int?,
+        serviceUuids: serviceUuids is List ? serviceUuids.whereType<String>().toList(growable: false) : const [],
+        manufacturerDataPresent: event['manufacturerDataPresent'] as bool? ?? false,
+        manufacturerDataLength: event['manufacturerDataLength'] as int? ?? 0,
+        scanRecordLength: event['scanRecordLength'] as int?,
+        scanRecordSha256: event['scanRecordSha256'] as String?,
+        scanRecordRedactedHex: event['scanRecordRedactedHex'] as String?,
+        scanRecordTruncated: event['scanRecordTruncated'] as bool? ?? false,
+      ),
+    );
   }
 
   void addReason(String reason) {
@@ -870,10 +1033,30 @@ final class _BleScanSessionBuilder {
     permissionAfter: environmentAfter.permission,
     adapterBefore: environmentBefore.adapter,
     adapterAfter: environmentAfter.adapter,
+    scanPermissionBefore: environmentBefore.scanPermission,
+    scanPermissionAfter: environmentAfter.scanPermission,
+    connectPermissionBefore: environmentBefore.connectPermission,
+    connectPermissionAfter: environmentAfter.connectPermission,
+    locationPermissionBefore: environmentBefore.locationPermission,
+    locationPermissionAfter: environmentAfter.locationPermission,
+    locationServiceBefore: environmentBefore.locationService,
+    locationServiceAfter: environmentAfter.locationService,
+    manufacturer: environmentAfter.manufacturer ?? environmentBefore.manufacturer,
+    model: environmentAfter.model ?? environmentBefore.model,
+    androidRelease: environmentAfter.androidRelease ?? environmentBefore.androidRelease,
+    sdkInt: environmentAfter.sdkInt ?? environmentBefore.sdkInt,
+    appVersionName: environmentAfter.appVersionName ?? environmentBefore.appVersionName,
+    appVersionCode: environmentAfter.appVersionCode ?? environmentBefore.appVersionCode,
+    gitCommit: environmentAfter.gitCommit ?? environmentBefore.gitCommit,
+    apkSha256: environmentAfter.apkSha256 ?? environmentBefore.apkSha256,
+    scanPermissionPolicy: environmentAfter.scanPermissionPolicy ?? environmentBefore.scanPermissionPolicy,
+    scanMode: environmentAfter.scanMode ?? environmentBefore.scanMode ?? 'low_latency',
     rawResultCount: rawResultCount,
+    uniqueDeviceCount: uniqueAddressHashes.length,
     acceptedCount: acceptedCount,
     filteredCount: filteredCount,
     reasonCounts: Map.unmodifiable(reasonCounts),
+    observations: List.unmodifiable(observations),
     endReason: endReason,
     androidScanErrorCode: androidScanErrorCode,
   );

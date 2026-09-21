@@ -14,11 +14,13 @@ class ConnectionMethodPage extends StatelessWidget {
     required this.deviceName,
     required this.onSelected,
     this.capabilities,
+    this.onCopyDiagnostic,
   });
 
   final String deviceName;
   final ValueChanged<ConnectionMethod> onSelected;
   final DeviceCapabilities? capabilities;
+  final VoidCallback? onCopyDiagnostic;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -68,6 +70,15 @@ class ConnectionMethodPage extends StatelessWidget {
           context,
         ).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
       ),
+      if (onCopyDiagnostic != null) ...[
+        const SizedBox(height: AppSpacing.md),
+        OutlinedButton.icon(
+          key: const Key('ble-copy-completed-pairing-diagnostic-json'),
+          onPressed: onCopyDiagnostic,
+          icon: const Icon(Icons.copy_all_outlined),
+          label: const Text('复制完整配对诊断'),
+        ),
+      ],
     ],
   );
 }

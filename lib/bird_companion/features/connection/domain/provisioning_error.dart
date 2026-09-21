@@ -18,6 +18,12 @@ enum ProvisioningErrorCode {
   tokenExpired,
   authorizationRequired,
   authorizationFailed,
+  bleGattNotReady,
+  bleLePairingNotStarted,
+  blePairingRejected,
+  bleGattRecoveryFailed,
+  bleEncryptedRetryFailed,
+  pairingOpenTimeout,
   invalidNetworkMode,
   networkOperationBusy,
   operationNotCancellable,
@@ -73,6 +79,12 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.tokenExpired => 'TOKEN_EXPIRED',
     ProvisioningErrorCode.authorizationRequired => 'AUTHORIZATION_REQUIRED',
     ProvisioningErrorCode.authorizationFailed => 'AUTHORIZATION_FAILED',
+    ProvisioningErrorCode.bleGattNotReady => 'BLE_GATT_NOT_READY',
+    ProvisioningErrorCode.bleLePairingNotStarted => 'BLE_LE_PAIRING_NOT_STARTED',
+    ProvisioningErrorCode.blePairingRejected => 'BLE_PAIRING_REJECTED',
+    ProvisioningErrorCode.bleGattRecoveryFailed => 'BLE_GATT_RECOVERY_FAILED',
+    ProvisioningErrorCode.bleEncryptedRetryFailed => 'BLE_ENCRYPTED_RETRY_FAILED',
+    ProvisioningErrorCode.pairingOpenTimeout => 'PAIRING_OPEN_TIMEOUT',
     ProvisioningErrorCode.invalidNetworkMode => 'INVALID_NETWORK_MODE',
     ProvisioningErrorCode.networkOperationBusy => 'NETWORK_OPERATION_BUSY',
     ProvisioningErrorCode.operationNotCancellable => 'OPERATION_NOT_CANCELLABLE',
@@ -111,6 +123,12 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
 
   ProvisioningErrorOrigin get origin => switch (this) {
     ProvisioningErrorCode.bluetoothPermissionDenied ||
+    ProvisioningErrorCode.bleGattNotReady ||
+    ProvisioningErrorCode.bleLePairingNotStarted ||
+    ProvisioningErrorCode.blePairingRejected ||
+    ProvisioningErrorCode.bleGattRecoveryFailed ||
+    ProvisioningErrorCode.bleEncryptedRetryFailed ||
+    ProvisioningErrorCode.pairingOpenTimeout ||
     ProvisioningErrorCode.localNetworkPermissionDenied ||
     ProvisioningErrorCode.systemWifiJoinDenied ||
     ProvisioningErrorCode.phoneDppNotSupported ||

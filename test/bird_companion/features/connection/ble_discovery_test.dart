@@ -47,6 +47,39 @@ void main() {
     expect(advertisement.toString(), isNot(contains('handle-fallback')));
   });
 
+  test('merges split Local Name and Service UUID callbacks by device handle', () async {
+    final platform = _FakeBlePlatform();
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+
+    final result = dataSource.scan(timeout: const Duration(milliseconds: 20)).toList();
+    await Future<void>.delayed(Duration.zero);
+
+    platform.emitAdvertisement({
+      ..._advertisement('service-first'),
+      'localName': '',
+    });
+    platform.emitAdvertisement({
+      ..._advertisement('service-first'),
+      'serviceUuids': <String>[],
+    });
+    platform.emitAdvertisement({
+      ..._advertisement('name-first'),
+      'serviceUuids': <String>[],
+    });
+    platform.emitAdvertisement({
+      ..._advertisement('name-first'),
+      'localName': '',
+    });
+
+    final advertisements = await result;
+    expect(advertisements, hasLength(4));
+    for (final advertisement in [advertisements[1], advertisements[3]]) {
+      expect(advertisement.hasValidLocalName, isTrue);
+      expect(advertisement.hasBirdBoxService, isTrue);
+    }
+  });
+
   test('records a secret-safe scan session with raw and filtered evidence', () async {
     final platform = _FakeBlePlatform();
     final sink = _RecordingDiagnosticSink();
@@ -71,12 +104,23 @@ void main() {
     expect(diagnostic.permissionAfter, BleScanPermissionState.granted);
     expect(diagnostic.adapterAfter, BleAdapterState.enabled);
     expect(diagnostic.rawResultCount, 2);
+    expect(diagnostic.uniqueDeviceCount, 2);
     expect(diagnostic.acceptedCount, 1);
     expect(diagnostic.filteredCount, 1);
     expect(diagnostic.reasonCounts['non_birdbox'], 1);
     expect(diagnostic.firstRawResultAt, isNotNull);
     expect(diagnostic.firstCandidateAt, isNotNull);
     expect(diagnostic.endReason, BleScanEndReason.timeout);
+    expect(diagnostic.scanPermissionPolicy, 'never_for_location');
+    expect(diagnostic.observations, hasLength(2));
+    expect(diagnostic.observations.last.name, 'BirdBox-ACCEPTED');
+    expect(diagnostic.observations.last.scanRecordLength, 21);
+    expect(
+      diagnostic.observations.last.scanRecordRedactedHex,
+      '02010603030102',
+    );
+    expect(diagnostic.observations.last.scanRecordTruncated, isFalse);
+    expect(diagnostic.toJson()['schema_version'], 3);
     expect(sink.sessions.single.toJson(), diagnostic.toJson());
     expect(diagnostic.toJson().toString(), isNot(contains('handle-accepted')));
   });
@@ -218,7 +262,7 @@ void main() {
   });
 
   test('write uses rc4 fragments and waits for the matching protocol response', () async {
-    final platform = _FakeBlePlatform(negotiatedMtu: 64, encrypted: true);
+    final platform = _FakeBlePlatform(negotiatedMtu: 64);
     final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
     addTearDown(dataSource.dispose);
     await dataSource.connect(advertisementFromPlatform(_advertisement('device')));
@@ -250,8 +294,14 @@ void main() {
     expect(requestJson['request_id'], request.requestId);
   });
 
-  test('sensitive writes require a bonded encrypted link and disconnect never sends cancel', () async {
-    final platform = _FakeBlePlatform();
+  test('first encrypted write is attempted before Android pairing is awaited', () async {
+    final platform = _FakeBlePlatform(
+      securityFailuresRemaining: 1,
+      securityReadyError: const ProvisioningException(
+        code: ProvisioningErrorCode.bleLePairingNotStarted,
+        retryable: true,
+      ),
+    );
     final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
     addTearDown(dataSource.dispose);
     await dataSource.connect(advertisementFromPlatform(_advertisement('device')));
@@ -267,8 +317,12 @@ void main() {
 
     await expectLater(
       dataSource.writeCommand(request),
-      throwsA(isA<ProvisioningException>().having((error) => error.code, 'code', ProvisioningErrorCode.authorizationRequired)),
+      throwsA(isA<ProvisioningException>().having((error) => error.code, 'code', ProvisioningErrorCode.bleLePairingNotStarted)),
     );
+    expect(platform.writeAttempts, hasLength(1));
+    expect(platform.beginSecurityWriteCalls, 1);
+    expect(platform.awaitSecurityReadyCalls, 1);
+    expect(platform.beginSecurityRetryCalls, 0);
     final disconnect = dataSource.disconnects.first;
     platform.emitDisconnect();
     await disconnect;
@@ -276,8 +330,12 @@ void main() {
     expect(platform.writes, isEmpty);
   });
 
-  test('open command bonds first and restores notifications after GATT reconnect', () async {
-    final platform = _FakeBlePlatform(bondSucceeds: true);
+  test('security recovery rebuilds MTU and restores both notifications', () async {
+    final platform = _FakeBlePlatform(
+      negotiatedMtu: 64,
+      securityFailuresRemaining: 1,
+      gattRebuiltAfterSecurity: true,
+    );
     final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
     addTearDown(dataSource.dispose);
     await dataSource.connect(advertisementFromPlatform(_advertisement('device')));
@@ -306,18 +364,21 @@ void main() {
     }
     await responseFuture;
 
-    expect(platform.ensureBondedCalls, 1);
+    expect(platform.beginSecurityWriteCalls, 1);
+    expect(platform.awaitSecurityReadyCalls, 1);
+    expect(platform.beginSecurityRetryCalls, 1);
+    expect(platform.requestedMtu, 517);
     expect(platform.writes, isNotEmpty);
     expect(
-      platform.subscribed,
-      containsAll(BleProtocolConstants.notifyCharacteristicUuids),
+      BleProtocolConstants.notifyCharacteristicUuids.every(
+        (uuid) => platform.notifyEnableCounts[uuid] == 2,
+      ),
+      isTrue,
     );
   });
 
-  test('GATT security failure bonds and retries the same command once', () async {
+  test('GATT security failure retries the exact same request bytes once', () async {
     final platform = _FakeBlePlatform(
-      encrypted: true,
-      bondSucceeds: true,
       securityFailuresRemaining: 1,
     );
     final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
@@ -348,17 +409,23 @@ void main() {
     }
     await responseFuture;
 
-    expect(platform.ensureBondedCalls, 2);
+    expect(platform.awaitSecurityReadyCalls, 1);
+    expect(platform.beginSecurityRetryCalls, 1);
     expect(platform.securityFailuresRemaining, 0);
     expect(platform.writes, isNotEmpty);
+    expect(platform.writeAttempts.first.characteristicUuid, platform.writes.first.characteristicUuid);
+    expect(platform.writeAttempts.first.value, orderedEquals(platform.writes.first.value));
+    expect(platform.completedSecurityRequestId, request.requestId);
+    expect(platform.markSecurityWriteSentCalls, 1);
   });
 
-  test('Bond timeout keeps the first failure and never writes a command', () async {
+  test('pairing-not-started keeps the first real write as evidence', () async {
     final platform = _FakeBlePlatform(
-      ensureBondedError: const ProvisioningException(
-        code: ProvisioningErrorCode.authorizationRequired,
+      securityFailuresRemaining: 1,
+      securityReadyError: const ProvisioningException(
+        code: ProvisioningErrorCode.bleLePairingNotStarted,
         retryable: true,
-        diagnosticMessage: 'platformExceptionCode=ble_bond_timeout',
+        diagnosticMessage: 'platformExceptionCode=ble_le_pairing_not_started',
       ),
     );
     final sink = _RecordingConnectionDiagnosticSink();
@@ -382,23 +449,24 @@ void main() {
         isA<ProvisioningException>().having(
           (error) => error.diagnosticMessage,
           'diagnosticMessage',
-          contains('ble_bond_timeout'),
+          contains('ble_le_pairing_not_started'),
         ),
       ),
     );
 
+    expect(platform.writeAttempts, hasLength(1));
     expect(platform.writes, isEmpty);
     expect(
       sink.events.map((event) => event.resultCode),
       containsAll([
-        'failed:AUTHORIZATION_REQUIRED',
-        'AUTHORIZATION_REQUIRED',
+        'failed:BLE_LE_PAIRING_NOT_STARTED',
+        'BLE_LE_PAIRING_NOT_STARTED',
       ]),
     );
   });
 
-  test('notification restore failure blocks the command after a new Bond', () async {
-    final platform = _FakeBlePlatform(bondSucceeds: true);
+  test('notification restore failure blocks the encrypted retry', () async {
+    final platform = _FakeBlePlatform(securityFailuresRemaining: 1);
     final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
     addTearDown(dataSource.dispose);
     await dataSource.connect(advertisementFromPlatform(_advertisement('device')));
@@ -416,45 +484,40 @@ void main() {
       throwsA(isA<ProvisioningException>()),
     );
 
-    expect(platform.ensureBondedCalls, 1);
+    expect(platform.awaitSecurityReadyCalls, 1);
+    expect(platform.beginSecurityRetryCalls, 0);
+    expect(platform.writeAttempts, hasLength(1));
     expect(platform.writes, isEmpty);
   });
 
-  test('disconnect-before-Bond compatibility path is explicit and opt-in', () async {
-    final platform = _FakeBlePlatform(bondSucceeds: true);
-    final dataSource = PlatformBirdBoxBleDataSource(
-      platform: platform,
-      disconnectGattBeforeBond: true,
-    );
+  test('encrypted retry failure is not allowed to start a second recovery', () async {
+    final platform = _FakeBlePlatform(securityFailuresRemaining: 2);
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
     addTearDown(dataSource.dispose);
     await dataSource.connect(advertisementFromPlatform(_advertisement('device')));
     await dataSource.subscribeRequiredNotifications();
-    const request = BleCommandRequest(
-      type: BleCommandType.getNetworkStatus,
-      requestId: '550e8400-e29b-41d4-a716-446655440000',
-      clientId: 'a870bcb1-d423-4d66-96f7-f809ce786543',
+
+    await expectLater(
+      dataSource.writeCommand(
+        const BleCommandRequest(
+          type: BleCommandType.openPairing,
+          requestId: '550e8400-e29b-41d4-a716-446655440003',
+          clientId: 'a870bcb1-d423-4d66-96f7-f809ce786543',
+        ),
+      ),
+      throwsA(
+        isA<ProvisioningException>().having(
+          (error) => error.code,
+          'code',
+          ProvisioningErrorCode.bleEncryptedRetryFailed,
+        ),
+      ),
     );
 
-    final responseFuture = dataSource.writeCommand(request);
-    for (var attempt = 0; attempt < 20 && platform.writes.isEmpty; attempt++) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
-    expect(platform.disconnectBeforeBondRequested, isTrue);
-    expect(platform.writes, isNotEmpty);
-    final responseJson = File(
-      'test/contracts/fixtures/ble-network-status.rc4.json',
-    ).readAsStringSync();
-    for (final packet in const BleFragmentCodec().fragment(
-      Uint8List.fromList(utf8.encode(responseJson)),
-      messageId: 13,
-      maximumFragmentBytes: 52,
-    )) {
-      platform.emitNotification(
-        BleProtocolConstants.networkStatusCharacteristicUuid,
-        packet,
-      );
-    }
-    await responseFuture;
+    expect(platform.awaitSecurityReadyCalls, 1);
+    expect(platform.beginSecurityRetryCalls, 1);
+    expect(platform.writeAttempts, hasLength(2));
+    expect(platform.failSecurityWriteCalls, 1);
   });
 }
 
@@ -463,6 +526,14 @@ Map<String, dynamic> _advertisement(String suffix, {int? companyIdentifier, Uint
   'localName': 'BirdBox-${suffix.toUpperCase()}',
   'serviceUuids': [BleProtocolConstants.serviceUuid.toUpperCase()],
   'rssi': -50,
+  'addressHash': List.filled(64, suffix.codeUnitAt(0).isEven ? 'a' : 'b').join(),
+  'diagnosticName': 'BirdBox-${suffix.toUpperCase()}',
+  'manufacturerDataPresent': manufacturerPayload != null,
+  'manufacturerDataLength': manufacturerPayload?.length ?? 0,
+  'scanRecordLength': 21,
+  'scanRecordSha256': List.filled(64, 'c').join(),
+  'scanRecordRedactedHex': '02010603030102',
+  'scanRecordTruncated': false,
   'companyIdentifier': companyIdentifier,
   'manufacturerPayload': manufacturerPayload,
 };
@@ -477,18 +548,16 @@ final class _Write {
 final class _FakeBlePlatform implements BirdBoxBlePlatform {
   _FakeBlePlatform({
     this.negotiatedMtu = 23,
-    this.encrypted = false,
-    this.bondSucceeds = false,
-    this.ensureBondedError,
+    this.gattRebuiltAfterSecurity = false,
+    this.securityReadyError,
     this.securityFailuresRemaining = 0,
     this.permissionGranted = true,
     this.adapterState = BleAdapterState.enabled,
   });
 
   final int negotiatedMtu;
-  bool encrypted;
-  final bool bondSucceeds;
-  final Object? ensureBondedError;
+  final bool gattRebuiltAfterSecurity;
+  final Object? securityReadyError;
   String? notifyFailureUuid;
   int securityFailuresRemaining;
   final bool permissionGranted;
@@ -499,13 +568,20 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   final StreamController<BleDisconnectEvent> _disconnects = StreamController.broadcast();
   final Map<String, List<Uint8List>> _reads = {};
   final Set<String> subscribed = {};
+  final Map<String, int> notifyEnableCounts = {};
+  final List<_Write> writeAttempts = [];
   final List<_Write> writes = [];
   String? connectedHandle;
   String? connectedTraceId;
   int? requestedMtu;
   String? startedScanSessionId;
-  int ensureBondedCalls = 0;
-  bool? disconnectBeforeBondRequested;
+  int beginSecurityWriteCalls = 0;
+  int awaitSecurityReadyCalls = 0;
+  int beginSecurityRetryCalls = 0;
+  int markSecurityWriteSentCalls = 0;
+  int failSecurityWriteCalls = 0;
+  String? activeSecurityRequestId;
+  String? completedSecurityRequestId;
 
   @override
   Stream<Map<String, dynamic>> get scanResults => _scan.stream;
@@ -522,6 +598,10 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
     'scanSessionId': startedScanSessionId,
     'accepted': false,
     'decisionReason': reason,
+    'addressHash': List.filled(64, 'f').join(),
+    'serviceUuids': const <String>[],
+    'manufacturerDataPresent': false,
+    'manufacturerDataLength': 0,
   });
   void emitScanFailure(int errorCode) {
     _scan.add({
@@ -549,6 +629,19 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   Future<BleScanEnvironment> readScanEnvironment() async => BleScanEnvironment(
     permission: permissionGranted ? BleScanPermissionState.granted : BleScanPermissionState.denied,
     adapter: adapterState,
+    scanPermission: permissionGranted ? BleScanPermissionState.granted : BleScanPermissionState.denied,
+    connectPermission: permissionGranted ? BleScanPermissionState.granted : BleScanPermissionState.denied,
+    locationPermission: BleScanPermissionState.notRequired,
+    locationService: BleLocationServiceState.notRequired,
+    manufacturer: 'test-manufacturer',
+    model: 'test-model',
+    androidRelease: '16',
+    sdkInt: 36,
+    appVersionName: '1.14.8',
+    appVersionCode: '172',
+    gitCommit: '0123456789abcdef0123456789abcdef01234567',
+    scanPermissionPolicy: 'never_for_location',
+    scanMode: 'low_latency',
   );
   @override
   Future<bool> ensurePermissions() async => permissionGranted;
@@ -597,6 +690,7 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
     }
     if (enabled) {
       subscribed.add(characteristicUuid);
+      notifyEnableCounts.update(characteristicUuid, (value) => value + 1, ifAbsent: () => 1);
     } else {
       subscribed.remove(characteristicUuid);
     }
@@ -607,9 +701,9 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
     String characteristicUuid,
     Uint8List value,
   ) async {
+    writeAttempts.add(_Write(characteristicUuid, Uint8List.fromList(value)));
     if (securityFailuresRemaining > 0) {
       securityFailuresRemaining -= 1;
-      encrypted = false;
       throw const ProvisioningException(
         code: ProvisioningErrorCode.authorizationRequired,
         retryable: true,
@@ -620,20 +714,54 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   }
 
   @override
-  Future<bool> ensureBonded({bool disconnectBeforeBond = false}) async {
-    ensureBondedCalls += 1;
-    disconnectBeforeBondRequested = disconnectBeforeBond;
-    final error = ensureBondedError;
-    if (error != null) throw error;
-    if (bondSucceeds) {
-      encrypted = true;
-      return true;
-    }
-    return false;
+  Future<void> beginSecurityWrite(
+    String requestId, {
+    required String commandType,
+  }) async {
+    beginSecurityWriteCalls += 1;
+    activeSecurityRequestId = requestId;
   }
 
   @override
-  Future<bool> isLinkEncrypted() async => encrypted;
+  Future<bool> awaitSecurityReady(String requestId) async {
+    awaitSecurityReadyCalls += 1;
+    if (requestId != activeSecurityRequestId) throw StateError('request mismatch');
+    final error = securityReadyError;
+    if (error != null) throw error;
+    return gattRebuiltAfterSecurity;
+  }
+
+  @override
+  Future<void> beginSecurityRetry(String requestId) async {
+    beginSecurityRetryCalls += 1;
+    if (requestId != activeSecurityRequestId) throw StateError('request mismatch');
+  }
+
+  @override
+  Future<void> markSecurityWriteSent(String requestId) async {
+    markSecurityWriteSentCalls += 1;
+    if (requestId != activeSecurityRequestId) throw StateError('request mismatch');
+  }
+
+  @override
+  Future<void> completeSecurityWrite(
+    String requestId, {
+    required String responseType,
+  }) async {
+    if (requestId != activeSecurityRequestId) throw StateError('request mismatch');
+    completedSecurityRequestId = requestId;
+    activeSecurityRequestId = null;
+  }
+
+  @override
+  Future<void> failSecurityWrite(
+    String requestId, {
+    required String errorCode,
+  }) async {
+    failSecurityWriteCalls += 1;
+    if (requestId != activeSecurityRequestId) throw StateError('request mismatch');
+    activeSecurityRequestId = null;
+  }
 
   @override
   Future<void> dispose() async {
