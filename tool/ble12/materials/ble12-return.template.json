@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "candidate_suite": "rc4-hf-ble-12",
+  "candidate_id": "COPY_FROM_CANDIDATE_MANIFEST",
+  "evidence_kind": "simulated",
+  "hardware_status": "pending",
+  "releasable": false,
+  "operator": "FILL_IN_OPERATOR",
+  "executed_at": "FILL_IN_ISO_8601_TIME",
+  "scenarios": [
+    {"name": "success", "evidence_file": "FILL_IN_RELATIVE_JSON_PATH"},
+    {"name": "auto_bond", "evidence_file": "FILL_IN_RELATIVE_JSON_PATH"},
+    {"name": "fallback_once", "evidence_file": "FILL_IN_RELATIVE_JSON_PATH"},
+    {"name": "disconnect_once", "evidence_file": "FILL_IN_RELATIVE_JSON_PATH"}
+  ],
+  "real_hardware_evidence_included": false,
+  "notes": "Do not include credentials, complete MAC addresses, or raw PCAP data."
+}

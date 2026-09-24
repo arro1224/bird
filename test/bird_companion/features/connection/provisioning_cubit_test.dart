@@ -56,6 +56,25 @@ void main() {
       },
     );
 
+    test('coalesces repeated device taps into one connection action', () async {
+      final repository = FakeProvisioningRepository(
+        devices: [_compactDevice()],
+        deviceInfo: _deviceInfo(),
+      );
+      final cubit = ProvisioningCubit(repository);
+      addTearDown(cubit.close);
+
+      final first = cubit.selectDevice(_compactDevice());
+      final duplicate = cubit.selectDevice(_compactDevice());
+      await Future.wait([first, duplicate]);
+
+      expect(cubit.state.phase, ProvisioningPhase.trusted);
+      expect(
+        repository.calls.where((call) => call == 'connect:scan-1'),
+        hasLength(1),
+      );
+    });
+
     test(
       'only offers connection methods after a pairing code has been authorized',
       () async {

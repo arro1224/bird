@@ -144,6 +144,62 @@ void main() {
     expect(failures, contains('Legacy pre-bond path'));
   });
 
+  test('accepts the single guarded post-security-write Bond fallback', () {
+    final channel = File(
+      '${root.path}${Platform.pathSeparator}android${Platform.pathSeparator}app${Platform.pathSeparator}src${Platform.pathSeparator}main${Platform.pathSeparator}java${Platform.pathSeparator}deckers${Platform.pathSeparator}thibault${Platform.pathSeparator}aves${Platform.pathSeparator}BirdBoxBleChannel.java',
+    )..createSync(recursive: true);
+    channel.writeAsStringSync('''
+final class BirdBoxBleChannel {
+  static final long CONDITIONAL_BOND_FALLBACK_DELAY_MS = 2000L;
+  final BirdBoxConditionalBondFallbackPolicy policy = new BirdBoxConditionalBondFallbackPolicy();
+  boolean securityGattStatusObserved;
+  void scheduleConditionalBondFallback() {
+    if (securityGattStatusObserved && device.getBondState() == BluetoothDevice.BOND_NONE
+        && machine.tryMarkConditionalBondFallbackAttempted()) {
+      device.createBond();
+    }
+  }
+}
+''');
+
+    final result = _validate(
+      root: root,
+      apk: apk,
+      manifest: manifest,
+      evidence: _releaseEvidence(apkSha),
+    );
+
+    expect(result.passed, isTrue, reason: result.failures.join('\n'));
+  });
+
+  test('rejects an allowed-file createBond that bypasses the policy', () {
+    final channel = File(
+      '${root.path}${Platform.pathSeparator}android${Platform.pathSeparator}app${Platform.pathSeparator}src${Platform.pathSeparator}main${Platform.pathSeparator}java${Platform.pathSeparator}deckers${Platform.pathSeparator}thibault${Platform.pathSeparator}aves${Platform.pathSeparator}BirdBoxBleChannel.java',
+    )..createSync(recursive: true);
+    channel.writeAsStringSync('''
+final class BirdBoxBleChannel {
+  static final long CONDITIONAL_BOND_FALLBACK_DELAY_MS = 2000L;
+  boolean securityGattStatusObserved;
+  void scheduleConditionalBondFallback() {
+    if (securityGattStatusObserved && device.getBondState() == BluetoothDevice.BOND_NONE
+        && machine.tryMarkConditionalBondFallbackAttempted()) {
+      device.createBond();
+    }
+  }
+}
+''');
+
+    final result = _validate(
+      root: root,
+      apk: apk,
+      manifest: manifest,
+      evidence: _releaseEvidence(apkSha),
+    );
+
+    expect(result.passed, isFalse);
+    expect(result.failures.join('\n'), contains('Legacy pre-bond path'));
+  });
+
   test('rejects credential and complete MAC leakage in release evidence', () {
     File('${root.path}${Platform.pathSeparator}release-approval.txt').writeAsStringSync('password=birdbox-secret AA:BB:CC:DD:EE:FF');
 

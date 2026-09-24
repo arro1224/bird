@@ -219,6 +219,131 @@ void main() {
     expect(platform.subscribed, {BleProtocolConstants.networkStatusCharacteristicUuid, BleProtocolConstants.scanResultsCharacteristicUuid});
   });
 
+  test('connect performs an idempotent native teardown before every attempt', () async {
+    final platform = _FakeBlePlatform();
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+
+    await dataSource.connect(
+      advertisementFromPlatform(_advertisement('pre-clean')),
+    );
+
+    expect(platform.operations.take(2), [
+      'disconnect',
+      'connect:handle-pre-clean',
+    ]);
+    expect(platform.disconnectCalls, 1);
+    expect(dataSource.isConnected, isTrue);
+  });
+
+  test('failed connect is fully torn down and can reconnect in the same process', () async {
+    final platform = _FakeBlePlatform(connectFailuresRemaining: 1);
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+    final advertisement = advertisementFromPlatform(
+      _advertisement('same-process'),
+    );
+
+    await expectLater(
+      dataSource.connect(advertisement),
+      throwsA(
+        isA<ProvisioningException>().having(
+          (error) => error.code,
+          'code',
+          ProvisioningErrorCode.networkInternalError,
+        ),
+      ),
+    );
+    expect(dataSource.isConnected, isFalse);
+
+    await dataSource.connect(advertisement);
+
+    expect(dataSource.isConnected, isTrue);
+    expect(platform.connectCalls, 2);
+    expect(platform.disconnectCalls, 3);
+    expect(platform.operations, [
+      'disconnect',
+      'connect:handle-same-process',
+      'disconnect',
+      'disconnect',
+      'connect:handle-same-process',
+    ]);
+  });
+
+  test('a stale disconnect event cannot tear down the replacement connection', () async {
+    final platform = _FakeBlePlatform();
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+    final advertisement = advertisementFromPlatform(
+      _advertisement('generation'),
+    );
+
+    await dataSource.connect(advertisement);
+    await dataSource.connect(advertisement);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(platform.connectCalls, 2);
+    expect(dataSource.isConnected, isTrue);
+  });
+
+  test('a current-generation disconnect aborts connection readiness', () async {
+    final platform = _FakeBlePlatform(disconnectDuringMtu: true);
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+
+    await expectLater(
+      dataSource.connect(
+        advertisementFromPlatform(_advertisement('interrupted')),
+      ),
+      throwsA(
+        isA<ProvisioningException>().having(
+          (error) => error.diagnosticMessage,
+          'diagnosticMessage',
+          contains('becoming ready'),
+        ),
+      ),
+    );
+
+    expect(dataSource.isConnected, isFalse);
+    expect(platform.connectCalls, 1);
+  });
+
+  test('concurrent connect taps start only one platform connection', () async {
+    final platform = _FakeBlePlatform();
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+    final advertisement = advertisementFromPlatform(
+      _advertisement('single-flight'),
+    );
+
+    final first = dataSource.connect(advertisement);
+    await expectLater(
+      dataSource.connect(advertisement),
+      throwsA(
+        isA<ProvisioningException>().having(
+          (error) => error.code,
+          'code',
+          ProvisioningErrorCode.networkOperationBusy,
+        ),
+      ),
+    );
+    await first;
+
+    expect(platform.connectCalls, 1);
+  });
+
+  test('disconnect reaches native cleanup even without a connected flag', () async {
+    final platform = _FakeBlePlatform();
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+
+    await dataSource.disconnect();
+    await dataSource.disconnect();
+
+    expect(platform.disconnectCalls, 2);
+    expect(dataSource.isConnected, isFalse);
+  });
+
   test('uses one trace for scan, connect and secret-safe native diagnostics', () async {
     final platform = _FakeBlePlatform();
     final sink = _RecordingConnectionDiagnosticSink();
@@ -553,6 +678,8 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
     this.securityFailuresRemaining = 0,
     this.permissionGranted = true,
     this.adapterState = BleAdapterState.enabled,
+    this.connectFailuresRemaining = 0,
+    this.disconnectDuringMtu = false,
   });
 
   final int negotiatedMtu;
@@ -562,6 +689,8 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   int securityFailuresRemaining;
   final bool permissionGranted;
   final BleAdapterState adapterState;
+  int connectFailuresRemaining;
+  final bool disconnectDuringMtu;
   final StreamController<Map<String, dynamic>> _scan = StreamController.broadcast();
   final StreamController<Map<String, dynamic>> _notifications = StreamController.broadcast();
   final StreamController<Map<String, dynamic>> _diagnostics = StreamController.broadcast();
@@ -582,6 +711,11 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   int failSecurityWriteCalls = 0;
   String? activeSecurityRequestId;
   String? completedSecurityRequestId;
+  int connectCalls = 0;
+  int disconnectCalls = 0;
+  int _nextConnectionGeneration = 0;
+  int? _nativeConnectionGeneration;
+  final List<String> operations = [];
 
   @override
   Stream<Map<String, dynamic>> get scanResults => _scan.stream;
@@ -621,7 +755,19 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   }
 
   void emitNotification(String characteristicUuid, Uint8List value) => _notifications.add({'characteristicUuid': characteristicUuid, 'value': value});
-  void emitDisconnect() => _disconnects.add(const BleDisconnectEvent(reason: 'link_lost', gattStatus: 133, unexpected: true));
+  void emitDisconnect() {
+    final generation = _nativeConnectionGeneration;
+    _nativeConnectionGeneration = null;
+    _disconnects.add(
+      BleDisconnectEvent(
+        reason: 'link_lost',
+        gattStatus: 133,
+        unexpected: true,
+        connectionGeneration: generation,
+      ),
+    );
+  }
+
   void emitDiagnostic(Map<String, dynamic> event) => _diagnostics.add(event);
   void queueRead(String characteristicUuid, List<Uint8List> packets) => _reads[characteristicUuid] = List.of(packets);
 
@@ -656,19 +802,52 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   @override
   Future<void> stopScan() async {}
   @override
-  Future<void> connect(
+  Future<int> connect(
     String platformDeviceId, {
     required String traceId,
   }) async {
+    connectCalls += 1;
+    operations.add('connect:$platformDeviceId');
+    final generation = ++_nextConnectionGeneration;
+    _nativeConnectionGeneration = generation;
     connectedHandle = platformDeviceId;
     connectedTraceId = traceId;
+    if (connectFailuresRemaining > 0) {
+      connectFailuresRemaining -= 1;
+      throw const ProvisioningException(
+        code: ProvisioningErrorCode.networkInternalError,
+        retryable: true,
+        diagnosticMessage: 'simulated GATT connection failure',
+      );
+    }
+    return generation;
   }
 
   @override
-  Future<void> disconnect() async => emitDisconnect();
+  Future<void> disconnect() async {
+    disconnectCalls += 1;
+    operations.add('disconnect');
+    final generation = _nativeConnectionGeneration;
+    _nativeConnectionGeneration = null;
+    if (generation != null) {
+      _disconnects.add(
+        BleDisconnectEvent(
+          reason: 'requested',
+          gattStatus: 0,
+          unexpected: false,
+          connectionGeneration: generation,
+        ),
+      );
+    }
+  }
+
   @override
   Future<int> requestMtu(int mtu) async {
     requestedMtu = mtu;
+    if (disconnectDuringMtu) {
+      emitDisconnect();
+      await Future<void>.delayed(Duration.zero);
+    }
     return negotiatedMtu;
   }
 

@@ -178,6 +178,38 @@ public final class BirdBoxSecurityWriteStateMachineTest {
         );
     }
 
+    @Test
+    public void conditionalBondFallbackRequiresARealSecurityTrigger() {
+        final BirdBoxSecurityWriteStateMachine machine = readyMachine(16L);
+
+        machine.beginSecurityWrite("request-fallback-guard", 16L);
+
+        assertThrows(
+                IllegalStateException.class,
+                machine::tryMarkConditionalBondFallbackAttempted
+        );
+        assertFalse(machine.conditionalBondFallbackAttempted());
+    }
+
+    @Test
+    public void conditionalBondFallbackCanRunOnlyOnceBeforeExactRetry() {
+        final BirdBoxSecurityWriteStateMachine machine = readyMachine(17L);
+
+        machine.beginSecurityWrite("request-fallback-once", 17L);
+        machine.onSecurityRequired();
+
+        assertTrue(machine.tryMarkConditionalBondFallbackAttempted());
+        assertFalse(machine.tryMarkConditionalBondFallbackAttempted());
+        assertTrue(machine.conditionalBondFallbackAttempted());
+
+        machine.onBonded(true);
+        machine.onNotificationsRestored();
+        machine.onWriteSucceeded();
+
+        assertEquals(1, machine.encryptedRetryCount());
+        assertTrue(machine.onResponse("request-fallback-once"));
+    }
+
     private static BirdBoxSecurityWriteStateMachine readyMachine(long generation) {
         final BirdBoxSecurityWriteStateMachine machine = new BirdBoxSecurityWriteStateMachine();
         machine.markGattReady(generation);

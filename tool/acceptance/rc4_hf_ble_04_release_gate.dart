@@ -389,10 +389,19 @@ void _auditProductionSources(
     ),
   ];
   final forbidden = <String, RegExp>{
-    'BluetoothDevice.createBond': RegExp(r'\bcreateBond\s*\('),
     'ensureBonded': RegExp(r'\bensureBonded\b'),
     'disconnectGattBeforeBond': RegExp(r'\bdisconnectGattBeforeBond\b'),
   };
+  final createBondPattern = RegExp(r'\bcreateBond\s*\(');
+  const conditionalFallbackFile = 'android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java';
+  const conditionalFallbackGuards = <String>[
+    'CONDITIONAL_BOND_FALLBACK_DELAY_MS',
+    'scheduleConditionalBondFallback',
+    'securityGattStatusObserved',
+    'BluetoothDevice.BOND_NONE',
+    'tryMarkConditionalBondFallbackAttempted',
+    'BirdBoxConditionalBondFallbackPolicy',
+  ];
   for (final root in roots) {
     require(root.existsSync(), 'Production source root is missing: ${root.path}');
     if (!root.existsSync()) continue;
@@ -405,6 +414,15 @@ void _auditProductionSources(
           'Legacy pre-bond path ${entry.key} is forbidden in ${_relativePath(repositoryRoot, entity)}.',
         );
       }
+      final createBondCount = createBondPattern.allMatches(source).length;
+      if (createBondCount == 0) continue;
+      final relativePath = _relativePath(repositoryRoot, entity).replaceAll('\\', '/');
+      final guardedConditionalFallback = relativePath == conditionalFallbackFile && createBondCount == 1 && conditionalFallbackGuards.every(source.contains);
+      require(
+        guardedConditionalFallback,
+        'Legacy pre-bond path BluetoothDevice.createBond is forbidden in $relativePath. '
+        'Only the single audited post-security-write conditional fallback is allowed.',
+      );
     }
   }
 }

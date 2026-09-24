@@ -38,6 +38,7 @@ final class BirdBoxSecurityWriteStateMachine {
     private String requestId;
     private long gattGeneration = -1L;
     private int encryptedRetryCount;
+    private boolean conditionalBondFallbackAttempted;
 
     Phase phase() {
         return phase;
@@ -49,6 +50,10 @@ final class BirdBoxSecurityWriteStateMachine {
 
     int encryptedRetryCount() {
         return encryptedRetryCount;
+    }
+
+    boolean conditionalBondFallbackAttempted() {
+        return conditionalBondFallbackAttempted;
     }
 
     String requestId() {
@@ -71,6 +76,7 @@ final class BirdBoxSecurityWriteStateMachine {
         gattGeneration = generation;
         requestId = null;
         encryptedRetryCount = 0;
+        conditionalBondFallbackAttempted = false;
         failure = Failure.NONE;
         phase = Phase.GATT_READY;
     }
@@ -91,6 +97,7 @@ final class BirdBoxSecurityWriteStateMachine {
         requestId = nextRequestId;
         failure = Failure.NONE;
         encryptedRetryCount = 0;
+        conditionalBondFallbackAttempted = false;
         phase = Phase.SECURITY_WRITE_STARTING;
     }
 
@@ -110,6 +117,13 @@ final class BirdBoxSecurityWriteStateMachine {
                 || phase == Phase.RESTORING_NOTIFICATIONS) return;
         requirePhase("observe security requirement", Phase.SECURITY_WRITE_STARTING, Phase.BONDING);
         phase = Phase.BONDING;
+    }
+
+    boolean tryMarkConditionalBondFallbackAttempted() {
+        requirePhase("start conditional Bond fallback", Phase.BONDING);
+        if (conditionalBondFallbackAttempted) return false;
+        conditionalBondFallbackAttempted = true;
+        return true;
     }
 
     void onPairingRejected() {
@@ -198,6 +212,7 @@ final class BirdBoxSecurityWriteStateMachine {
         requestId = null;
         gattGeneration = -1L;
         encryptedRetryCount = 0;
+        conditionalBondFallbackAttempted = false;
     }
 
     private void fail(Failure reason) {

@@ -127,10 +127,12 @@ dart run tool/acceptance/rc4_hf_ble_04_release_gate.dart `
   --approved-certificate=$env:AVES_RELEASE_CERT_SHA256
 ```
 
-门禁还会扫描生产源码，拒绝 `createBond()`、`ensureBonded` 或
-`disconnectGattBeforeBond` 回流。vivo 单机、Debug A/B 包或 pending 模板都不能
-满足 BLE-03 前置条件。通用真实盒子、BLE RC4 K7、BLE-04 热修晋级和 B12-B
-四套证据缺一不可。
+门禁还会扫描生产源码，拒绝 `ensureBonded`、`disconnectGattBeforeBond` 以及
+连接前/通用 `createBond()` 回流。BLE-09 仅放行 `BirdBoxBleChannel` 中唯一一处
+受审计的条件式兜底：加密写已经触发鉴权错误、等待系统自动配对后仍为
+`BOND_NONE`，且状态机确认本请求尚未尝试兜底。vivo 单机、Debug A/B 包或
+pending 模板都不能满足 BLE-03 前置条件。通用真实盒子、BLE RC4 K7、BLE-04
+热修晋级和 B12-B 四套证据缺一不可。
 
 ## RC4-HF-BLE-05 外场真机交接
 

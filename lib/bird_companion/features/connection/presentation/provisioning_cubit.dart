@@ -78,6 +78,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   StreamSubscription<BleScanDiagnosticSession>? _scanDiagnosticSubscription;
   var _lastAction = _ProvisioningAction.discover;
   Object? _rootFailure;
+  bool _connectionActionActive = false;
 
   Future<void> discover() async {
     _rootFailure = null;
@@ -99,11 +100,10 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   }
 
   Future<void> selectDevice(ProvisioningDevice device) async {
+    if (isClosed || _connectionActionActive) return;
+    _connectionActionActive = true;
     _rootFailure = null;
     _lastAction = _ProvisioningAction.connect;
-    await _discoverySubscription?.cancel();
-    await _repository.stopDiscovery();
-    if (isClosed) return;
     emit(
       state.copyWith(
         phase: ProvisioningPhase.connecting,
@@ -114,6 +114,9 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
       ),
     );
     try {
+      await _discoverySubscription?.cancel();
+      await _repository.stopDiscovery();
+      if (isClosed) return;
       final info = await _repository.connect(device);
       if (isClosed) return;
       emit(
@@ -125,6 +128,8 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
       );
     } catch (error) {
       _onFailure(error);
+    } finally {
+      _connectionActionActive = false;
     }
   }
 
@@ -194,11 +199,13 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   };
 
   Future<void> _reconnectAndOpenPairing() async {
+    if (isClosed || _connectionActionActive) return;
     final device = state.selectedDevice;
     if (device == null) {
       await discover();
       return;
     }
+    _connectionActionActive = true;
     _rootFailure = null;
     emit(
       state.copyWith(
@@ -226,6 +233,8 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
       await openPairing();
     } catch (error) {
       _onFailure(error);
+    } finally {
+      _connectionActionActive = false;
     }
   }
 

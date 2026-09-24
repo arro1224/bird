@@ -37,3 +37,4 @@ plugins {
 }
 
 include(":app")
+include(":virtualBirdBox")

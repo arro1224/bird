@@ -25,7 +25,7 @@ abstract interface class BirdBoxBlePlatform {
     required String scanSessionId,
   });
   Future<void> stopScan();
-  Future<void> connect(
+  Future<int> connect(
     String platformDeviceId, {
     required String traceId,
   });
@@ -50,14 +50,20 @@ abstract interface class BirdBoxBlePlatform {
 }
 
 final class BleDisconnectEvent {
-  const BleDisconnectEvent({required this.reason, required this.gattStatus, required this.unexpected});
+  const BleDisconnectEvent({
+    required this.reason,
+    required this.gattStatus,
+    required this.unexpected,
+    this.connectionGeneration,
+  });
 
   final String reason;
   final int gattStatus;
   final bool unexpected;
+  final int? connectionGeneration;
 
   @override
-  String toString() => 'BleDisconnectEvent(reason: $reason, gattStatus: $gattStatus, unexpected: $unexpected)';
+  String toString() => 'BleDisconnectEvent(reason: $reason, gattStatus: $gattStatus, unexpected: $unexpected, connectionGeneration: $connectionGeneration)';
 }
 
 final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
@@ -113,13 +119,15 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
   Future<void> stopScan() => _invoke<void>('stopScan');
 
   @override
-  Future<void> connect(
+  Future<int> connect(
     String platformDeviceId, {
     required String traceId,
-  }) => _invoke<void>('connect', {
-    'deviceId': platformDeviceId,
-    'traceId': traceId,
-  });
+  }) async =>
+      (await _invoke<int>('connect', {
+        'deviceId': platformDeviceId,
+        'traceId': traceId,
+      })) ??
+      0;
 
   @override
   Future<void> disconnect() => _invoke<void>('disconnect');
@@ -197,22 +205,44 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
     final reason = event['reason'];
     final gattStatus = event['gattStatus'];
     final unexpected = event['unexpected'];
+    final connectionGeneration = event['connectionGeneration'];
     if (reason is! String || reason.isEmpty || gattStatus is! int || unexpected is! bool) {
       throw const ProvisioningProtocolException('platform_disconnect_event', 'contains invalid fields');
     }
-    return BleDisconnectEvent(reason: reason, gattStatus: gattStatus, unexpected: unexpected);
+    return BleDisconnectEvent(
+      reason: reason,
+      gattStatus: gattStatus,
+      unexpected: unexpected,
+      connectionGeneration: connectionGeneration is int ? connectionGeneration : null,
+    );
   }
 
   static ProvisioningException _platformError(PlatformException error) {
     final details = error.details is Map ? Map<String, dynamic>.from(error.details as Map) : const <String, dynamic>{};
+    final sanitizedMessage = _sanitizePlatformMessage(
+      details['sanitizedMessage'] as String? ?? error.message,
+    );
     final diagnosticFields = <String>[
       'platformExceptionCode=${error.code}',
+      if (details['platformMethod'] != null) 'platformMethod=${details['platformMethod']}',
+      if (details['nativeState'] != null) 'nativeState=${details['nativeState']}',
+      if (details['securityPhase'] != null) 'securityPhase=${details['securityPhase']}',
+      if (details['pendingOperation'] != null) 'pendingOperation=${details['pendingOperation']}',
+      if (details['gattPresent'] != null) 'gattPresent=${details['gattPresent']}',
+      if (details['linkReady'] != null) 'linkReady=${details['linkReady']}',
+      if (details['scanning'] != null) 'scanning=${details['scanning']}',
+      if (details['connectionGeneration'] != null) 'connectionGeneration=${details['connectionGeneration']}',
+      if (details['gattInstanceId'] != null) 'gattInstanceId=${details['gattInstanceId']}',
       if (details['gattStatus'] != null) 'gattStatus=${details['gattStatus']}',
       if (details['bondState'] != null) 'bondState=${details['bondState']}',
+      if (details['actualBondState'] != null) 'actualBondState=${details['actualBondState']}',
       if (details['characteristicUuid'] != null) 'characteristicUuid=${details['characteristicUuid']}',
       if (details['operationName'] != null) 'operation=${details['operationName']}',
+      if (details['deviceAddressHash'] != null) 'deviceAddressHash=${details['deviceAddressHash']}',
+      if (details['traceId'] != null) 'traceId=${details['traceId']}',
       if (details['androidScanErrorCode'] != null) 'Android scan error ${details['androidScanErrorCode']}',
       if (details['scanSessionId'] != null) 'scanSession=${details['scanSessionId']}',
+      if (sanitizedMessage != null) 'message=$sanitizedMessage',
     ];
     return ProvisioningException(
       code: switch (error.code) {
@@ -242,6 +272,28 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
       }.contains(error.code),
       diagnosticMessage: 'Android BLE platform error: ${diagnosticFields.join(', ')}',
     );
+  }
+
+  static String? _sanitizePlatformMessage(String? message) {
+    if (message == null) return null;
+    var safe = message.replaceAll(RegExp(r'[\r\n\t]+'), ' ').trim();
+    safe = safe.replaceAll(
+      RegExp(r'(?:[0-9a-f]{2}:){5}[0-9a-f]{2}', caseSensitive: false),
+      '[REDACTED_MAC]',
+    );
+    safe = safe.replaceAllMapped(
+      RegExp(
+        r'(password|passphrase|token|secret|authorization|pairing[_ -]?code)\s*[:=]\s*[^,;\s]+',
+        caseSensitive: false,
+      ),
+      (match) => '${match.group(1)}=[REDACTED]',
+    );
+    safe = safe.replaceAll(
+      RegExp(r'dpp:\S+', caseSensitive: false),
+      '[REDACTED_DPP_URI]',
+    );
+    if (safe.isEmpty) return null;
+    return safe.length <= 240 ? safe : safe.substring(0, 240);
   }
 }
 
@@ -288,11 +340,17 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   final Map<String, BirdBoxAdvertisement> _scanCandidates = {};
   Timer? _scanTimer;
   bool _connected = false;
+  bool _connectInProgress = false;
+  bool _platformConnectPending = false;
   bool _requiredNotificationsSubscribed = false;
   bool _disposed = false;
+  Future<void>? _disconnectFuture;
+  BleDisconnectEvent? _connectInterruptedBy;
+  final List<BleDisconnectEvent> _deferredConnectDisconnects = [];
   int _negotiatedMtu = 23;
   int _nextMessageId = 0;
   int _scanSessionSequence = 0;
+  int? _activeConnectionGeneration;
   String? _lastTraceId;
   String? _activeTraceId;
 
@@ -507,44 +565,130 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   @override
   Future<void> connect(BirdBoxAdvertisement advertisement) async {
     _checkNotDisposed();
-    if (!await _platform.ensurePermissions()) throw _permissionDenied();
-    final platformDeviceId = advertisement.platformDeviceId;
-    if (platformDeviceId == null || platformDeviceId.isEmpty) {
-      throw const ProvisioningProtocolException('platform_device_id', 'scan result cannot be connected');
+    if (_connectInProgress) {
+      throw const ProvisioningException(
+        code: ProvisioningErrorCode.networkOperationBusy,
+        retryable: true,
+        diagnosticMessage: 'A BLE connection attempt is already active.',
+      );
     }
-    final traceId = _lastTraceId ?? _newScanSessionId();
-    _activeTraceId = traceId;
-    await _recordConnectionDiagnostic(
-      eventType: 'connect_requested',
-      operationName: 'connect',
-    );
-    await stopScan();
+    _connectInProgress = true;
+    _connectInterruptedBy = null;
+    _deferredConnectDisconnects.clear();
     try {
-      await _platform.connect(platformDeviceId, traceId: traceId);
-      _negotiatedMtu = (await _platform.requestMtu(517)).clamp(23, 517);
+      if (!await _platform.ensurePermissions()) throw _permissionDenied();
+      final platformDeviceId = advertisement.platformDeviceId;
+      if (platformDeviceId == null || platformDeviceId.isEmpty) {
+        throw const ProvisioningProtocolException('platform_device_id', 'scan result cannot be connected');
+      }
+      final traceId = _lastTraceId ?? _newScanSessionId();
+      _activeTraceId = traceId;
       await _recordConnectionDiagnostic(
-        eventType: 'connect_ready',
+        eventType: 'connect_requested',
         operationName: 'connect',
-        resultCode: 'success',
       );
-    } catch (error) {
-      await _recordConnectionDiagnostic(
-        eventType: 'connect_failed',
-        operationName: 'connect',
-        resultCode: _resultCode(error),
-      );
-      await _platform.disconnect();
-      rethrow;
+      await stopScan();
+      await _teardownPlatformSession(reason: 'pre_connect_reset');
+      // A controlled disconnect acknowledgement may be delivered while the
+      // pre-connect teardown is awaiting its platform result. It belongs to
+      // the old session and must not abort the replacement connection.
+      _connectInterruptedBy = null;
+      try {
+        _platformConnectPending = true;
+        final connectionGeneration = await _platform.connect(
+          platformDeviceId,
+          traceId: traceId,
+        );
+        _platformConnectPending = false;
+        _activeConnectionGeneration = connectionGeneration;
+        final deferredDisconnects = List<BleDisconnectEvent>.of(
+          _deferredConnectDisconnects,
+        );
+        _deferredConnectDisconnects.clear();
+        for (final event in deferredDisconnects) {
+          _handleDisconnect(event);
+        }
+        _throwIfConnectInterrupted();
+        _negotiatedMtu = (await _platform.requestMtu(517)).clamp(23, 517);
+        _throwIfConnectInterrupted();
+        await _recordConnectionDiagnostic(
+          eventType: 'connect_ready',
+          operationName: 'connect',
+          resultCode: 'success',
+        );
+        _throwIfConnectInterrupted();
+      } catch (error) {
+        await _recordConnectionDiagnostic(
+          eventType: 'connect_failed',
+          operationName: 'connect',
+          resultCode: _resultCode(error),
+        );
+        try {
+          await _teardownPlatformSession(reason: 'connect_failed');
+        } catch (cleanupError) {
+          await _recordConnectionDiagnostic(
+            eventType: 'teardown_failed',
+            operationName: 'disconnect',
+            resultCode: _resultCode(cleanupError),
+          );
+        }
+        rethrow;
+      }
+      _connected = true;
+      _requiredNotificationsSubscribed = false;
+    } finally {
+      _platformConnectPending = false;
+      _connectInterruptedBy = null;
+      _deferredConnectDisconnects.clear();
+      _connectInProgress = false;
     }
-    _connected = true;
-    _requiredNotificationsSubscribed = false;
+  }
+
+  void _throwIfConnectInterrupted() {
+    final event = _connectInterruptedBy;
+    if (event == null) return;
+    throw ProvisioningException(
+      code: ProvisioningErrorCode.networkInternalError,
+      retryable: true,
+      diagnosticMessage:
+          'BLE disconnected while the connection was becoming ready: '
+          '${event.reason}; gattStatus=${event.gattStatus}',
+    );
   }
 
   @override
-  Future<void> disconnect() async {
-    if (!_connected) return;
-    await _platform.disconnect();
-    _markDisconnected();
+  Future<void> disconnect() {
+    if (_disposed) return Future<void>.value();
+    return _teardownPlatformSession(reason: 'requested');
+  }
+
+  Future<void> _teardownPlatformSession({required String reason}) {
+    final active = _disconnectFuture;
+    if (active != null) return active;
+    late final Future<void> operation;
+    operation = _performPlatformTeardown(reason).whenComplete(() {
+      if (identical(_disconnectFuture, operation)) _disconnectFuture = null;
+    });
+    _disconnectFuture = operation;
+    return operation;
+  }
+
+  Future<void> _performPlatformTeardown(String reason) async {
+    await _recordConnectionDiagnostic(
+      eventType: 'teardown_started',
+      operationName: 'disconnect',
+      resultCode: reason,
+    );
+    try {
+      await _platform.disconnect();
+    } finally {
+      _markDisconnected(reason);
+      await _recordConnectionDiagnostic(
+        eventType: 'teardown_completed',
+        operationName: 'disconnect',
+        resultCode: reason,
+      );
+    }
   }
 
   @override
@@ -826,7 +970,38 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   Stream<void> get disconnects => _disconnects.stream;
 
   void _handleDisconnect([BleDisconnectEvent? event]) {
-    if (!_connected) return;
+    final eventGeneration = event?.connectionGeneration;
+    final activeGeneration = _activeConnectionGeneration;
+    if (_connectInProgress && activeGeneration == null && event != null) {
+      if (_platformConnectPending) {
+        _deferredConnectDisconnects.add(event);
+      } else {
+        unawaited(
+          _recordConnectionDiagnostic(
+            eventType: 'stale_disconnect_ignored',
+            operationName: 'disconnect',
+            gattStatus: event.gattStatus,
+            resultCode: event.reason,
+          ),
+        );
+      }
+      return;
+    }
+    if (eventGeneration != null && activeGeneration != null && eventGeneration != activeGeneration) {
+      unawaited(
+        _recordConnectionDiagnostic(
+          eventType: 'stale_disconnect_ignored',
+          operationName: 'disconnect',
+          gattStatus: event?.gattStatus,
+          resultCode: event?.reason ?? 'unknown',
+        ),
+      );
+      return;
+    }
+    if (_connectInProgress && event != null) {
+      _connectInterruptedBy = event;
+    }
+    final wasConnected = _connected;
     unawaited(
       _recordConnectionDiagnostic(
         eventType: 'disconnected',
@@ -836,11 +1011,13 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       ),
     );
     _markDisconnected(event?.reason ?? 'unknown');
-    _disconnects.add(null);
+    if (wasConnected) _disconnects.add(null);
   }
 
   void _markDisconnected([String reason = 'unknown']) {
     _connected = false;
+    _activeConnectionGeneration = null;
+    _negotiatedMtu = 23;
     _requiredNotificationsSubscribed = false;
     for (final reassembler in _notificationReassemblers.values) {
       reassembler.reset();
@@ -865,8 +1042,11 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         reason: BleScanEndReason.disposed,
       );
     }
-    if (_connected) await _platform.disconnect();
-    _markDisconnected();
+    try {
+      await _teardownPlatformSession(reason: 'disposed');
+    } catch (error) {
+      debugPrint('BLE teardown during dispose failed: ${error.runtimeType}');
+    }
     await _notificationSubscription.cancel();
     await _disconnectSubscription.cancel();
     await _diagnosticSubscription.cancel();
