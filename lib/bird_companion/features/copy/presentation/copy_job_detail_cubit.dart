@@ -73,8 +73,7 @@ class CopyJobDetailState {
 
 /// 复制任务详情状态机：详情 + 增量事件 + 失败项分页 + 报告 + 动作。
 class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
-  CopyJobDetailCubit(this._repository, {required this.copyJobId})
-    : super(const CopyJobDetailState());
+  CopyJobDetailCubit(this._repository, {required this.copyJobId}) : super(const CopyJobDetailState());
 
   final CopyJobRepository _repository;
   final String copyJobId;
@@ -167,6 +166,25 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
     if (detail == null || state.acting || isClosed) return;
     emit(state.copyWith(acting: true, clearNotice: true, clearError: true));
     try {
+      if (action.wire == CopyAllowedAction.safeRemoveSource.wire || action.wire == CopyAllowedAction.safeRemoveTarget.wire) {
+        final source = action.wire == CopyAllowedAction.safeRemoveSource.wire;
+        final mediaId = (source ? detail.sourceDevice : detail.targetDevice)?.mediaId;
+        if (mediaId == null || mediaId.trim().isEmpty) {
+          throw StateError('设备信息不可用，无法安全移除');
+        }
+        final result = await _repository.safeRemoveDevice(
+          mediaId,
+          role: source ? 'source' : 'target',
+          expectedCopyJobId: copyJobId,
+        );
+        if (!result.safeToRemove) {
+          throw StateError(result.reason ?? '设备当前仍被复制任务占用');
+        }
+        if (isClosed) return;
+        emit(state.copyWith(acting: false, notice: '现在可以拔出设备（保持期 60 秒）'));
+        await load();
+        return;
+      }
       await _repository.jobAction(
         copyJobId,
         action.wire,
@@ -178,8 +196,7 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
     } on Object catch (error) {
       if (isClosed) return;
       final message = UserMessageMapper.fromError(error);
-      final conflict = error is ApiException &&
-          error.code == 'COPY_STATE_VERSION_CONFLICT';
+      final conflict = error is ApiException && error.code == 'COPY_STATE_VERSION_CONFLICT';
       emit(
         state.copyWith(
           acting: false,
@@ -206,10 +223,7 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
       lastEventSeq: merged.isEmpty ? base.lastEventSeq : merged.last.seq!,
     );
     // 缺口检测：增量页首条不紧接已知序号 → 从 0 重拉一次；仍缺口则报错防死循环。
-    if (base.lastEventSeq > 0 &&
-        page.events.isNotEmpty &&
-        page.events.first.seq != null &&
-        page.events.first.seq! > base.lastEventSeq + 1) {
+    if (base.lastEventSeq > 0 && page.events.isNotEmpty && page.events.first.seq != null && page.events.first.seq! > base.lastEventSeq + 1) {
       if (_eventGapRetryUsed) {
         return next.copyWith(error: StateError('事件流出现缺口，请手动刷新'));
       }

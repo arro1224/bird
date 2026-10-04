@@ -105,9 +105,7 @@ class CopyApi {
       ..addEntries(parsed.map((device) => MapEntry(device.mediaId, device)));
     return CopyDeviceList(
       devices: parsed,
-      recommendedTargetMediaId:
-          (raw['last_successful_target_media_id'] ?? raw['recommended_target_media_id'])
-              ?.toString(),
+      recommendedTargetMediaId: (raw['last_successful_target_media_id'] ?? raw['recommended_target_media_id'])?.toString(),
     );
   }
 
@@ -310,16 +308,16 @@ class CopyApi {
     required int expectedStateVersion,
   }) async {
     final raw = await _c.post(
-      ApiEndpoints.copyJobAction
-          .replaceFirst('{copyJobId}', copyJobId)
-          .replaceFirst('{action}', actionWire),
+      ApiEndpoints.copyJobAction.replaceFirst('{copyJobId}', copyJobId).replaceFirst('{action}', actionWire),
       data: {
         'expected_state_version': expectedStateVersion,
         'reason': 'user_requested',
       },
       headers: _protocolHeader,
     );
-    final rawJob = raw['copy_job'];
+    // The backend returns the job directly inside `data`; older mock/server
+    // builds may wrap it as {copy_job: ...}. Accept both during RC3 rollout.
+    final rawJob = raw['copy_job'] ?? raw;
     if (rawJob is Map) {
       return CopyJobDetail.fromJson(Map<String, dynamic>.from(rawJob));
     }
@@ -354,8 +352,7 @@ class CopyApi {
         ApiEndpoints.storageDeviceSafeRemove.replaceFirst('{mediaId}', id),
         data: {
           'role': role,
-          if (expectedCopyJobId != null && expectedCopyJobId.isNotEmpty)
-            'expected_copy_job_id': expectedCopyJobId,
+          if (expectedCopyJobId != null && expectedCopyJobId.isNotEmpty) 'expected_copy_job_id': expectedCopyJobId,
         },
         headers: _protocolHeader,
       ),

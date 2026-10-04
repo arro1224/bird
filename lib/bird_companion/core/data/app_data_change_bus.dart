@@ -69,6 +69,13 @@ class BatchReviewDecisionChanged extends AppDataChange {
 
 /// App-internal signal that an analysis job has completed and the album root
 /// should wait for the corresponding project data to become readable.
+class RecognitionFactsChanged extends AppDataChange {
+  const RecognitionFactsChanged({required this.deviceId, required this.projectId, required this.fileIds}) : super(const {AppDataResource.photos, AppDataResource.batches}, reason: 'recognition_committed');
+  final String deviceId;
+  final String projectId;
+  final Set<String> fileIds;
+}
+
 class AnalysisCompleted extends AppDataChange {
   const AnalysisCompleted({
     required this.deviceId,

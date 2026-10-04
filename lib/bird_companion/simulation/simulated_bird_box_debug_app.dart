@@ -24,14 +24,17 @@ final class SimulatedBirdBoxDebugConfig {
   const SimulatedBirdBoxDebugConfig({
     required this.baseUri,
     required this.deviceId,
+    this.pairingCode = '',
   });
 
   final Uri baseUri;
   final String deviceId;
+  final String pairingCode;
 
   factory SimulatedBirdBoxDebugConfig.parse({
     required String baseUrl,
     required String deviceId,
+    String pairingCode = '',
   }) {
     final uri = Uri.tryParse(baseUrl.trim());
     const allowedHosts = {'127.0.0.1', 'localhost', '10.0.2.2'};
@@ -45,7 +48,7 @@ final class SimulatedBirdBoxDebugConfig {
         'BIRD_SIMULATED_DEVICE_ID must match bbx- plus 32 lowercase hex characters.',
       );
     }
-    return SimulatedBirdBoxDebugConfig(baseUri: uri, deviceId: deviceId);
+    return SimulatedBirdBoxDebugConfig(baseUri: uri, deviceId: deviceId, pairingCode: pairingCode);
   }
 }
 
@@ -122,13 +125,23 @@ class _SimulatedBirdBoxDebugAppState extends State<SimulatedBirdBoxDebugApp> {
 
     // Exchange the same transient pairing session exposed by the simulated BLE
     // layer. Persist is false so a debug run cannot replace real credentials.
-    final credential = await PairingApi(dependencies.apiClient).exchangeSession(
-      completion.baseUri,
-      deviceId: completion.deviceId,
-      clientId: _simulatedClientId,
-      pairingSessionId: simulatedBirdBoxPairingSessionId,
-      clientName: 'Bird Companion Android (Simulated)',
-    );
+    final pairing = PairingApi(dependencies.apiClient);
+    final credential = widget.config.pairingCode.isNotEmpty
+        ? await pairing.pair(
+            completion.baseUri,
+            pairingCode: widget.config.pairingCode,
+            clientName: 'Bird Companion Python local acceptance',
+          )
+        : await pairing.exchangeSession(
+            completion.baseUri,
+            deviceId: completion.deviceId,
+            clientId: _simulatedClientId,
+            pairingSessionId: simulatedBirdBoxPairingSessionId,
+            clientName: 'Bird Companion Android (Simulated)',
+          );
+    if (credential.deviceId != completion.deviceId) {
+      throw StateError('Local backend pairing identity does not match simulated BLE.');
+    }
     await dependencies.sessionCoordinator.activate(
       credential,
       persist: false,

@@ -20,7 +20,10 @@ class TaskDestination {
 }
 
 abstract final class TaskDestinationResolver {
-  static TaskDestination resolve(TaskSummary task) {
+  static TaskDestination resolve(TaskSummary task, {bool incrementalRecognition = false}) {
+    if (task.type == TaskType.aiAnalysis && incrementalRecognition) {
+      return const TaskDestination.detail();
+    }
     if (task.state != TaskRunState.completed) {
       return const TaskDestination.detail();
     }

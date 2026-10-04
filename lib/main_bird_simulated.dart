@@ -21,6 +21,7 @@ void main() {
   final config = SimulatedBirdBoxDebugConfig.parse(
     baseUrl: baseUrl,
     deviceId: deviceId,
+    pairingCode: const String.fromEnvironment('BIRD_TEST_PAIRING_CODE'),
   );
   runApp(SimulatedBirdBoxDebugApp(config: config));
 }

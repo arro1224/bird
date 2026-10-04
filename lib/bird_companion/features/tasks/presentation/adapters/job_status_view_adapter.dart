@@ -10,6 +10,7 @@ abstract final class JobStatusViewAdapter {
   static const _knownWorkflowStages = {
     'scanning',
     'importing',
+    'ready_for_analysis',
     'analyzing',
     'awaiting_review',
     'reviewing',

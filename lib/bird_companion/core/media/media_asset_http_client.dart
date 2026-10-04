@@ -20,9 +20,9 @@ class MediaAssetHttpResponse {
   final Duration maxAge;
 }
 
-/// Downloads signed media URLs without attaching the REST Bearer token.
+/// Signed URLs remain public; unsigned active-box URLs may use its credential.
 class MediaAssetHttpClient {
-  MediaAssetHttpClient({Dio? dio})
+  MediaAssetHttpClient({Dio? dio, this.headersForUri})
     : _dio =
           dio ??
           Dio(
@@ -36,6 +36,7 @@ class MediaAssetHttpClient {
 
   final Dio _dio;
   final bool _ownsDio;
+  final Map<String, String> Function(Uri)? headersForUri;
 
   Future<MediaAssetHttpResponse> fetch(
     Uri uri, {
@@ -43,13 +44,16 @@ class MediaAssetHttpClient {
     CancelToken? cancelToken,
   }) async {
     try {
+      final sessionHeaders = headersForUri?.call(uri) ?? const <String, String>{};
       final response = await _dio.getUri<Object?>(
         uri,
         cancelToken: cancelToken,
         options: Options(
           responseType: ResponseType.bytes,
           validateStatus: (_) => true,
+          followRedirects: sessionHeaders.isEmpty,
           headers: {
+            ...sessionHeaders,
             if (ifNoneMatch != null && ifNoneMatch.isNotEmpty) 'If-None-Match': ifNoneMatch,
           },
         ),

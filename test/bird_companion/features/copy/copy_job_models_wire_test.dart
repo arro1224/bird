@@ -42,12 +42,11 @@ void main() {
 
   group('CopyJobDetail tolerant parsing', () {
     test('stateVersion 三键依次回退（state_version/expected_state_version/version）', () {
-      int version(Map<String, dynamic> json) =>
-          CopyJobDetail.fromJson({
-            'copy_job_id': 'job-1',
-            'state': 'running',
-            ...json,
-          }).stateVersion;
+      int version(Map<String, dynamic> json) => CopyJobDetail.fromJson({
+        'copy_job_id': 'job-1',
+        'state': 'running',
+        ...json,
+      }).stateVersion;
       expect(version({'state_version': 7}), 7);
       expect(version({'expected_state_version': 9}), 9);
       expect(version({'version': 11}), 11);
@@ -62,6 +61,16 @@ void main() {
       expect(stats.copiedFiles, 0);
       expect(stats.effectiveProgressPercent, isNull);
       expect(stats.currentFile, isNull);
+    });
+
+    test('后端 progress 别名按 stats 解析', () {
+      final detail = CopyJobDetail.fromJson({
+        'copy_job_id': 'job-1',
+        'state': 'running',
+        'progress': {'total_files': 3, 'copied_files': 2},
+      });
+      expect(detail.stats?.totalFiles, 3);
+      expect(detail.stats?.copiedFiles, 2);
     });
 
     test('未知 allowed_action 丢弃、已知保留', () {
@@ -106,7 +115,13 @@ void main() {
     });
 
     test('items 非法行忽略不抛', () {
-      final page = CopyJobItemPage.fromJson({'items': [null, 'junk', {'copy_item_id': 'i1'}]});
+      final page = CopyJobItemPage.fromJson({
+        'items': [
+          null,
+          'junk',
+          {'copy_item_id': 'i1'},
+        ],
+      });
       expect(page.items, hasLength(1));
       expect(page.items.first.copyItemId, 'i1');
     });
@@ -115,6 +130,18 @@ void main() {
       expect(CopyJobEvent.fromJson({'seq': 5}).seq, 5);
       expect(CopyJobEvent.fromJson({'event_seq': 6}).seq, 6);
       expect(CopyJobEvent.fromJson({}).seq, isNull);
+    });
+
+    test('后端 items/event_type 别名可解析为事件页', () {
+      final page = CopyJobEventPage.fromJson({
+        'items': [
+          {'event_seq': 7, 'event_type': 'item_copied'},
+        ],
+      });
+      expect(page.events, hasLength(1));
+      expect(page.events.single.seq, 7);
+      expect(page.events.single.type, 'item_copied');
+      expect(page.events.single.message, 'item_copied');
     });
   });
 
@@ -188,10 +215,11 @@ void main() {
   });
 
   group('CopyJobItem', () {
-    test('copy_item_id 三键容错（copy_item_id|item_id|id）', () {
+    test('copy_item_id 四键容错（copy_item_id|preview_item_id|item_id|id）', () {
       expect(CopyJobItem.fromJson({'copy_item_id': 'a'}).copyItemId, 'a');
-      expect(CopyJobItem.fromJson({'item_id': 'b'}).copyItemId, 'b');
-      expect(CopyJobItem.fromJson({'id': 'c'}).copyItemId, 'c');
+      expect(CopyJobItem.fromJson({'preview_item_id': 'b'}).copyItemId, 'b');
+      expect(CopyJobItem.fromJson({'item_id': 'c'}).copyItemId, 'c');
+      expect(CopyJobItem.fromJson({'id': 'd'}).copyItemId, 'd');
       expect(() => CopyJobItem.fromJson({}), throwsA(isA<ProtocolCompatibilityException>()));
     });
 

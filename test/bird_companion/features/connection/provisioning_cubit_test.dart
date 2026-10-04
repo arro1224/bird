@@ -177,6 +177,9 @@ void main() {
       await cubit.openPairing();
       expect(cubit.state.phase, ProvisioningPhase.failure);
 
+      // A second failure in the same process must not poison a later retry.
+      await cubit.retry();
+      expect(cubit.state.phase, ProvisioningPhase.failure);
       repository.openPairingError = null;
       repository.calls.clear();
       await cubit.retry();

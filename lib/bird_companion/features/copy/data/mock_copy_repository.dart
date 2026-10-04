@@ -8,10 +8,14 @@ import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 
 /// 协议字段 mock 实现（迁移对照文档 §7）。
 ///
-/// 后端交付 birdbox-copy-v1 前，[useMockCopyRepository] 为 true 时使用本实现。
+/// 本地没有盒子时可通过 `--dart-define=BIRD_USE_MOCK_COPY=true` 临时启用
+/// 协议 mock；正式联调默认走真实 RC3 HTTP 接口。
 /// 所有字段与语义均为主协议字段，不创造临时枚举；设备数据取自协议 §22
 /// 已实机验证记录。联调时将开关置为 false 即可切换真实接口。
-const useMockCopyRepository = true;
+const useMockCopyRepository = bool.fromEnvironment(
+  'BIRD_USE_MOCK_COPY',
+  defaultValue: false,
+);
 
 /// RC3 任务闭环 mock：
 /// - 状态机用**惰性时间推进**（注入 [clock]，所有读写在调用时按相对时间
@@ -20,8 +24,7 @@ const useMockCopyRepository = true;
 /// - [fullBackupAvailable] 镜像真实后端 `copy-capabilities`：默认 false 时
 ///   全量备份预检返回 COPY_SCOPE_UNSUPPORTED（联调问题 01 §二 P0-2）。
 class MockCopyRepository implements CopyRepository, CopyJobRepository {
-  MockCopyRepository({DateTime Function()? clock, this.fullBackupAvailable = false})
-    : _now = clock ?? DateTime.now;
+  MockCopyRepository({DateTime Function()? clock, this.fullBackupAvailable = false}) : _now = clock ?? DateTime.now;
 
   /// 惰性推进用的时间源。
   final DateTime Function() _now;
@@ -382,11 +385,7 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
   Future<CopyJobEventPage> jobEvents(String copyJobId, {int? afterSeq}) async {
     await _delay();
     final job = _requireJob(copyJobId);
-    final events = afterSeq == null
-        ? job.events
-        : job.events
-              .where((event) => event.seq != null && event.seq! > afterSeq)
-              .toList(growable: false);
+    final events = afterSeq == null ? job.events : job.events.where((event) => event.seq != null && event.seq! > afterSeq).toList(growable: false);
     return CopyJobEventPage(events: List.unmodifiable(events), hasMore: false);
   }
 
@@ -414,9 +413,7 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
       notApplicableFiles: stats.notApplicableFiles,
       totalBytes: stats.totalBytes,
       elapsedSeconds: elapsedSeconds,
-      bytesPerSecond: stats.copiedBytes > 0 && elapsedSeconds != null && elapsedSeconds > 0
-          ? stats.copiedBytes ~/ elapsedSeconds
-          : null,
+      bytesPerSecond: stats.copiedBytes > 0 && elapsedSeconds != null && elapsedSeconds > 0 ? stats.copiedBytes ~/ elapsedSeconds : null,
       sourceDevice: CopyJobDeviceSnapshot(mediaId: job.sourceMediaId),
       targetDevice: CopyJobDeviceSnapshot(mediaId: job.targetMediaId),
       generatedAt: _now(),
@@ -441,8 +438,7 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
     final now = _now();
     switch (actionWire) {
       case 'pause':
-        if (job.state == CopyJobState.running ||
-            job.state == CopyJobState.acquiringTarget) {
+        if (job.state == CopyJobState.running || job.state == CopyJobState.acquiringTarget) {
           job.transition(CopyJobState.pauseRequested, now, '已请求暂停，当前文件完成后暂停');
         }
       case 'resume':
@@ -454,8 +450,7 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
           job.transition(CopyJobState.cancelRequested, now, '已请求取消，已完成的副本不会删除');
         }
       case 'retry_failed':
-        if (job.state == CopyJobState.failed ||
-            job.state == CopyJobState.completedWithErrors) {
+        if (job.state == CopyJobState.failed || job.state == CopyJobState.completedWithErrors) {
           job.retryFailed(now);
         }
       case 'safe_remove_source' || 'safe_remove_target':
@@ -502,9 +497,7 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
     final now = _now();
     // 有进行中的任务占用该设备时不得拔出（§4.5 安全移除条件）。
     final busy = _jobs.values.any(
-      (job) =>
-          !job.state.isTerminal &&
-          (job.sourceMediaId == mediaId || job.targetMediaId == mediaId),
+      (job) => !job.state.isTerminal && (job.sourceMediaId == mediaId || job.targetMediaId == mediaId),
     );
     if (busy) {
       return const SafeRemoveResult(
@@ -537,19 +530,16 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
   );
 
   List<CopyAllowedAction> _allowedActions(_MockCopyJob job) {
-    if (job.state == CopyJobState.running ||
-        job.state == CopyJobState.acquiringTarget) {
+    if (job.state == CopyJobState.running || job.state == CopyJobState.acquiringTarget) {
       return const [CopyAllowedAction.pause, CopyAllowedAction.cancel];
     }
     if (job.state == CopyJobState.paused) {
       return const [CopyAllowedAction.resume, CopyAllowedAction.cancel];
     }
-    if (job.state == CopyJobState.pauseRequested ||
-        job.state == CopyJobState.cancelRequested) {
+    if (job.state == CopyJobState.pauseRequested || job.state == CopyJobState.cancelRequested) {
       return const [];
     }
-    if (job.state == CopyJobState.completedWithErrors ||
-        job.state == CopyJobState.failed) {
+    if (job.state == CopyJobState.completedWithErrors || job.state == CopyJobState.failed) {
       return const [CopyAllowedAction.retryFailed];
     }
     if (job.state.isTerminal) {
@@ -589,23 +579,17 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
       notApplicableFiles: notApplicable,
       totalBytes: total * itemBytes,
       copiedBytes: copied * itemBytes,
-      elapsedSeconds: job.startedAt == null
-          ? null
-          : (_now().difference(job.startedAt!).inSeconds),
-      etaSeconds: job.state.isTerminal || total == 0
-          ? null
-          : max(total - copied - failed, 1) * 2,
+      elapsedSeconds: job.startedAt == null ? null : (_now().difference(job.startedAt!).inSeconds),
+      etaSeconds: job.state.isTerminal || total == 0 ? null : max(total - copied - failed, 1) * 2,
       bytesPerSecond: job.state == CopyJobState.running ? itemBytes ~/ 2 : null,
       currentFile: job.state == CopyJobState.running
           ? job.items
-              .firstWhere(
-                (entry) =>
-                    entry.state == CopyItemState.copying ||
-                    entry.state == CopyItemState.verifying,
-                orElse: () => job.items.first,
-              )
-              .item
-              .targetFilename
+                .firstWhere(
+                  (entry) => entry.state == CopyItemState.copying || entry.state == CopyItemState.verifying,
+                  orElse: () => job.items.first,
+                )
+                .item
+                .targetFilename
           : null,
       progressPercent: total == 0 ? null : ((copied + failed) / total).clamp(0.0, 1.0),
     );
@@ -648,8 +632,7 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
           sourceSize: 28 * 1024 * 1024,
           sourceMtimeNs: 1726000000000000000 + i * 1000000000,
           targetRelativeDirectory: '20260901',
-          targetFilename:
-              'DSC0${(5000 + i).toString()}${i.isEven ? '.ARW' : '.JPG'}',
+          targetFilename: 'DSC0${(5000 + i).toString()}${i.isEven ? '.ARW' : '.JPG'}',
           state: CopyItemState.pending,
           conflictDecision: i < conflicts ? 'skip' : null,
         ),
@@ -929,10 +912,7 @@ class _MockCopyJob {
   }
 
   bool _itemTerminal(_MockCopyItemState item) => switch (item.state) {
-    CopyItemState.copied ||
-    CopyItemState.failed ||
-    CopyItemState.skippedConflict ||
-    CopyItemState.notApplicable => true,
+    CopyItemState.copied || CopyItemState.failed || CopyItemState.skippedConflict || CopyItemState.notApplicable => true,
     _ => false,
   };
 
@@ -963,9 +943,7 @@ class _MockCopyJob {
               _nextItemStartMs = item.enteredAtMs + 600;
               _emit(
                 item.willFail ? 'item_failed' : 'item_copied',
-                item.willFail
-                    ? '文件 ${item.item.targetFilename} 校验失败（COPY_HASH_MISMATCH）'
-                    : '文件 ${item.item.targetFilename} 已复制并通过校验',
+                item.willFail ? '文件 ${item.item.targetFilename} 校验失败（COPY_HASH_MISMATCH）' : '文件 ${item.item.targetFilename} 已复制并通过校验',
               );
               progressed = true;
             }
@@ -979,8 +957,7 @@ class _MockCopyJob {
 }
 
 class _MockCopyItemState {
-  _MockCopyItemState({required this.item, required this.willFail})
-    : state = item.state;
+  _MockCopyItemState({required this.item, required this.willFail}) : state = item.state;
 
   CopyJobItem item;
   final bool willFail;

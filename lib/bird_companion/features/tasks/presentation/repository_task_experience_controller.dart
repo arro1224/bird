@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:aves/bird_companion/features/recognition/recognition_repository.dart';
 
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/models/batch_models.dart';
@@ -42,6 +43,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     required DeviceSessionCubit deviceSessionCubit,
     required PendingOperationStore pendingOperationStore,
     AppDataChangeBus? dataChangeBus,
+    RecognitionRepository? recognitionRepository,
     Duration pollInterval = const Duration(seconds: 4),
   }) : this._(
          storageRepository: storageRepository,
@@ -54,6 +56,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
          deviceSessionCubit: deviceSessionCubit,
          pendingOperationStore: pendingOperationStore,
          dataChangeBus: dataChangeBus,
+         recognitionRepository: recognitionRepository,
          pollInterval: pollInterval,
        );
 
@@ -68,6 +71,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     required this._deviceSessionCubit,
     required this._pendingOperationStore,
     required this._dataChangeBus,
+    required this.recognitionRepository,
     required this._pollInterval,
   }) : super(const ProductionTaskExperienceDataSource()) {
     setConnectionState(_mapConnection(_deviceSessionCubit.state.phase));
@@ -84,6 +88,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   }
 
   final DeviceRepository _deviceRepository;
+  final RecognitionRepository? recognitionRepository;
   final StorageRepository _storageRepository;
   final BatchRepository _batchRepository;
   final JobRepository _jobRepository;
@@ -211,6 +216,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
         _applyScan(results[3]! as CardScanResult);
       }
       await _fetchCopyCapabilities();
+      await _refreshRecognition();
       await _createAnalysisForCompletedImports();
       _authorityReady = true;
       _recomputeExecutableTaskTypes();
@@ -292,7 +298,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   }
 
   @override
-  Future<String> startImportBatch(String batchName) async {
+  Future<String> startImportBatch(String batchName, {Map<String, dynamic>? smartFollow}) async {
     if (acting) {
       throw StateError('A task action is already in progress');
     }
@@ -324,6 +330,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
         ProjectCreateRequest(name: normalizedName, cardId: cardId),
       );
       _guardProductionId(project.id, 'project_id');
+      await recognitionRepository?.rememberAnalysisOption(project.id, smartFollow);
       final importJob = await _jobRepository.createImport(
         project.id,
         const ImportJobRequest(),
@@ -354,7 +361,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     }
   }
 
-  Future<String> startAnalysisForActiveProject() async {
+  Future<String> startAnalysisForActiveProject({Map<String, dynamic>? smartFollow}) async {
     if (!_deviceSessionCubit.state.isConnected) {
       throw StateError('The box is not connected');
     }
@@ -380,7 +387,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       }
     }
 
-    final request = _submitManualAnalysis(projectId);
+    final request = _submitManualAnalysis(projectId, smartFollow);
     _analysisRequests[projectId] = request;
     try {
       return await request;
@@ -391,13 +398,13 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     }
   }
 
-  Future<String> _submitManualAnalysis(String projectId) async {
+  Future<String> _submitManualAnalysis(String projectId, Map<String, dynamic>? smartFollow) async {
     setBusyState(acting: true, clearError: true);
     _analysisRequestedProjects.add(projectId);
     try {
       final job = await _jobRepository.createAnalysis(
         projectId,
-        const AnalysisJobRequest(),
+        AnalysisJobRequest(smartFollow: smartFollow),
       );
       _guardProductionId(job.id, 'job_id');
       _mergeJob(job);
@@ -512,6 +519,11 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
 
   void _onEvent(DeviceEvent event) {
     if (_disposed || !_deviceSessionCubit.state.isConnected) return;
+    if (event.type == 'RecognitionResultCommitted' || event.type == 'SmartFollowStateChanged') {
+      final job = event.payload['recognition_job_id']?.toString();
+      if (job != null) unawaited(_refreshRecognition(jobId: job));
+      return;
+    }
     if (!event.type.contains('job')) return;
     try {
       final raw = event.payload['job'];
@@ -584,7 +596,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     try {
       final job = await _jobRepository.createAnalysis(
         projectId,
-        const AnalysisJobRequest(),
+        AnalysisJobRequest(smartFollow: recognitionRepository?.analysisOption(projectId)),
       );
       if (_disposed) return;
       _guardProductionId(job.id, 'job_id');
@@ -593,6 +605,27 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     } catch (caught) {
       _analysisRequestedProjects.remove(projectId);
       if (!_disposed) setBusyState(error: caught);
+    }
+  }
+
+  Future<void> _refreshRecognition({String? jobId}) async {
+    final repo = recognitionRepository;
+    if (repo == null) return;
+    try {
+      final caps = await repo.capabilities();
+      if ((caps['incremental_recognition_results'] as Map?)?['available'] != true) return;
+      final ids = jobId == null ? _jobs.values.where((j) => j.type == BirdJobType.analysis).map((j) => j.id) : [jobId];
+      for (final id in ids) {
+        try {
+          await repo.sync(id);
+          if (jobId != null && !_disposed) await refreshJobDetail(id);
+        } on ApiException catch (error) {
+          if (error.statusCode != 404) rethrow;
+        }
+      }
+    } catch (caught) {
+      // Old servers do not have this additive API. Existing task flow stays usable.
+      if (jobId != null && !_disposed) setBusyState(error: caught);
     }
   }
 

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
@@ -31,9 +30,10 @@ import 'package:aves/bird_companion/features/connection/presentation/widgets/pai
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
+import 'package:aves/bird_companion/features/connection/domain/ble_diagnostic_export.dart';
+import 'package:aves/bird_companion/features/connection/presentation/widgets/ble_diagnostic_export_dialog.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class ConnectionPage extends StatelessWidget {
@@ -390,17 +390,11 @@ class _BleConnectionView extends StatelessWidget {
     }
     final scanSessions = dependencies.bleScanDiagnosticStore.readAll().where((session) => session.scanSessionId == traceId).map((session) => session.toJson()).toList(growable: false);
     final connectionEvents = dependencies.bleConnectionDiagnosticStore.readAll(traceId: traceId).reversed.map((event) => event.toJson()).toList(growable: false);
-    final output = const JsonEncoder.withIndent('  ').convert({
-      'schema_version': 2,
-      'generated_at': DateTime.now().toUtc().toIso8601String(),
-      'trace_id': traceId,
-      'scan_sessions': scanSessions,
-      'connection_events': connectionEvents,
-    });
-    await Clipboard.setData(ClipboardData(text: output));
-    if (context.mounted) {
-      BirdFeedback.success(context, '诊断 JSON 已复制，可直接回传给联调人员');
-    }
+    final export = BleDiagnosticExport(traceId: traceId, scans: scanSessions, events: connectionEvents, generatedAt: DateTime.now());
+    await showDialog<void>(
+      context: context,
+      builder: (_) => BleDiagnosticExportDialog(export: export),
+    );
   }
 
   VoidCallback? _diagnosticCopyAction(

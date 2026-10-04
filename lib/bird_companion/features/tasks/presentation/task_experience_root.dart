@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'package:aves/bird_companion/features/recognition/recognition_widgets.dart';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
+import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_destination_resolver.dart';
@@ -57,6 +59,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       deviceSessionCubit: dependencies.deviceSessionCubit,
       pendingOperationStore: dependencies.pendingOperationStore,
       dataChangeBus: dependencies.dataChangeBus,
+      recognitionRepository: dependencies.recognitionRepository,
     );
     _controller = controller;
     _analysisSubscription = controller.analysisCompletedProjects.listen(
@@ -132,7 +135,9 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
           _openSdCard();
           return;
         case TaskType.aiAnalysis:
-          final jobId = await controller.startAnalysisForActiveProject();
+          final choice = await chooseRecognitionMode(context, BirdCompanionScope.of(context).recognitionRepository);
+          if (choice == null) return;
+          final jobId = await controller.startAnalysisForActiveProject(smartFollow: choice.config);
           if (mounted) await _openTask(jobId);
           return;
         case TaskType.copy:
@@ -201,6 +206,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
 
   void _openSdCard() {
     final controller = _controller!;
+    Map<String, dynamic>? selected;
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (sdContext) => SdCardFlowPage(
@@ -210,9 +216,10 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
             MaterialPageRoute<void>(
               builder: (batchContext) => BatchSetupPage(
                 controller: controller,
+                analysisOptions: RecognitionOptions(repository: BirdCompanionScope.of(context).recognitionRepository, onChanged: (value) => selected = value),
                 onStartImport: (batchName) async {
                   try {
-                    await controller.startImportBatch(batchName);
+                    await controller.startImportBatch(batchName, smartFollow: selected);
                     if (!batchContext.mounted) return;
                     final jobId = controller.currentJobId;
                     if (jobId == null) return;
@@ -254,7 +261,22 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
     if (!mounted) return;
     final refreshedTask = controller.taskById(taskId);
     final sourceProjectId = refreshedTask.sourceBatchId?.trim();
-    final destination = TaskDestinationResolver.resolve(refreshedTask);
+    final recognition = BirdCompanionScope.of(context).recognitionRepository;
+    if (refreshedTask.type == TaskType.aiAnalysis) {
+      try {
+        await recognition.sync(taskId);
+      } on ApiException catch (error) {
+        if (error.statusCode != 404) {
+          if (mounted) _showError(context, error);
+          return;
+        }
+      } catch (error) {
+        if (mounted) _showError(context, error);
+        return;
+      }
+      if (!mounted) return;
+    }
+    final destination = TaskDestinationResolver.resolve(refreshedTask, incrementalRecognition: recognition.snapshot(taskId) != null);
     switch (destination.kind) {
       case TaskDestinationKind.album:
         widget.onOpenGallery(
@@ -273,10 +295,12 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
           builder: (_) => TaskDetailPage(
             controller: controller,
             taskId: taskId,
+            incrementalPanel: refreshedTask.type == TaskType.aiAnalysis ? RecognitionPanel(repository: BirdCompanionScope.of(context).recognitionRepository, jobId: taskId) : null,
             allowDemoCompletion: false,
             onControl: _control,
             onExportLog: _exportTaskLog,
             onShowResult: switch ((refreshedTask.type, refreshedTask.state)) {
+              (TaskType.aiAnalysis, TaskRunState.completed) when sourceProjectId != null => () => widget.onOpenGallery(GalleryArgs(sourceProjectId)),
               (TaskType.copy, TaskRunState.completed) => () => unawaited(
                 _openReport(taskId, sourceProjectId),
               ),

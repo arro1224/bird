@@ -16,12 +16,14 @@ class ImportJobRequest {
 }
 
 class AnalysisJobRequest {
-  const AnalysisJobRequest({this.includeGrouping = true});
+  const AnalysisJobRequest({this.includeGrouping = true, this.smartFollow});
 
   final bool includeGrouping;
+  final Map<String, dynamic>? smartFollow;
 
   Map<String, dynamic> toJson() => {
     'mode': 'standard',
     'include_grouping': includeGrouping,
+    if (smartFollow != null) 'smart_follow': smartFollow,
   };
 }

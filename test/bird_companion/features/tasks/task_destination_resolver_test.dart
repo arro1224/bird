@@ -31,6 +31,14 @@ void main() {
       expect(destination.kind, TaskDestinationKind.copyResult);
     });
 
+    test('completed incremental recognition keeps follow details accessible', () {
+      final destination = TaskDestinationResolver.resolve(
+        _task(type: TaskType.aiAnalysis, sourceBatchId: 'project-42'),
+        incrementalRecognition: true,
+      );
+      expect(destination.kind, TaskDestinationKind.detail);
+    });
+
     test('active, failed and cancelled tasks always keep task detail', () {
       for (final state in TaskRunState.values.where(
         (state) => state != TaskRunState.completed,
@@ -67,7 +75,8 @@ void main() {
       'lib/bird_companion/features/tasks/presentation/task_experience_root.dart',
     ).readAsStringSync();
 
-    expect(source, contains('TaskDestinationResolver.resolve(refreshedTask)'));
+    expect(source, contains('TaskDestinationResolver.resolve('));
+    expect(source, contains('incrementalRecognition:'));
     expect(source, contains('case TaskDestinationKind.album:'));
     expect(source, contains('case TaskDestinationKind.copyResult:'));
     expect(source, contains('case TaskDestinationKind.detail:'));
@@ -104,10 +113,7 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
 
-    final subtitleText = tester
-        .widgetList<Text>(find.descendant(of: row, matching: find.byType(Text)))
-        .map((text) => text.data ?? text.textSpan?.toPlainText() ?? '')
-        .join(' ');
+    final subtitleText = tester.widgetList<Text>(find.descendant(of: row, matching: find.byType(Text))).map((text) => text.data ?? text.textSpan?.toPlainText() ?? '').join(' ');
     expect(subtitleText, contains('来源拍摄记录：崇明东滩晨拍'));
     expect(subtitleText, contains('完成于 9月8日 14:05'));
     expect(subtitleText, contains('处理 20/24 张'));

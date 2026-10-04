@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:aves/bird_companion/features/recognition/recognition_repository.dart';
 
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
@@ -102,6 +103,7 @@ class BirdCompanionDependencies {
   });
 
   final ApiClient apiClient;
+  late final recognitionRepository = RecognitionRepository(apiClient, cache, dataChangeBus, () => deviceSessionCubit.state.device?.id);
   final EventClient eventClient;
   final ConnectivityMonitor connectivityMonitor;
   final LocalCache cache;
@@ -220,7 +222,7 @@ class BirdCompanionDependencies {
       cacheInvalidator: mediaAssetCache,
     );
     final mediaAssetService = MediaAssetService(
-      httpClient: MediaAssetHttpClient(),
+      httpClient: MediaAssetHttpClient(headersForUri: apiClient.mediaHeaders),
       cache: mediaAssetCache,
       coordinator: mediaAssetCoordinator,
     );
@@ -288,11 +290,18 @@ class BirdCompanionDependencies {
     );
     dependencies.birdSyncService.start();
     const testBaseUrl = String.fromEnvironment('BIRD_TEST_BASE_URL');
+    const testPairingCode = String.fromEnvironment('BIRD_TEST_PAIRING_CODE');
     if (connectEnvironmentTestEndpoint && testBaseUrl.isNotEmpty) {
       final uri = Uri.tryParse(testBaseUrl);
       if (uri != null && uri.hasScheme && uri.host.isNotEmpty) {
         try {
-          final status = await connectionRepository.connect(uri, networkMode: NetworkMode.manual);
+          DeviceStatus status;
+          try {
+            status = await connectionRepository.connect(uri, networkMode: NetworkMode.manual);
+          } on PairingRequiredException {
+            if (testPairingCode.isEmpty) rethrow;
+            status = await connectionRepository.pair(uri, networkMode: NetworkMode.manual, pairingCode: testPairingCode);
+          }
           await deviceSessionCubit.setConnectedFromStatus(status);
         } catch (_) {
           // The regular connection page remains available when a test box is
@@ -329,6 +338,7 @@ class BirdCompanionDependencies {
   }
 
   void dispose() {
+    recognitionRepository.dispose();
     unawaited(provisioningRepository.dispose());
     unawaited(mediaAssetCoordinator.dispose());
     mediaAssetService.dispose();

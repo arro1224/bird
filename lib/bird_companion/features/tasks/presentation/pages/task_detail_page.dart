@@ -19,6 +19,7 @@ class TaskDetailPage extends StatelessWidget {
     this.onControl,
     this.onExportLog,
     this.allowDemoCompletion = false,
+    this.incrementalPanel,
   });
 
   final TaskExperienceController controller;
@@ -28,6 +29,7 @@ class TaskDetailPage extends StatelessWidget {
   final Future<void> Function(String taskId, TaskAction action)? onControl;
   final Future<String> Function(String taskId)? onExportLog;
   final bool allowDemoCompletion;
+  final Widget? incrementalPanel;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -72,6 +74,7 @@ class TaskDetailPage extends StatelessWidget {
             _timeline(task),
             const SizedBox(height: 10),
             _details(task),
+            ?incrementalPanel,
             if (task.failureReason != null) ...[
               const SizedBox(height: 10),
               _failureNotice(task),
@@ -323,12 +326,13 @@ class TaskDetailPage extends StatelessWidget {
     );
   }
 
-  bool _canShowResult(TaskSummary task) => onShowResult != null && task.state == TaskRunState.completed && (task.type == TaskType.copy || task.type == TaskType.sync);
+  bool _canShowResult(TaskSummary task) => onShowResult != null && task.state == TaskRunState.completed && (task.type == TaskType.copy || task.type == TaskType.sync || task.type == TaskType.aiAnalysis);
 
   String _resultLabel(TaskSummary task) => switch (task.type) {
     TaskType.copy => '查看复制结果',
     TaskType.sync => '查看同步摘要',
-    TaskType.importIndex || TaskType.aiAnalysis => '查看任务结果',
+    TaskType.aiAnalysis => '查看相册结果',
+    TaskType.importIndex => '查看任务结果',
     TaskType.fullBackup => '查看备份结果',
   };
 

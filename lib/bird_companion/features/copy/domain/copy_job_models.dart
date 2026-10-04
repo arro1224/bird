@@ -16,14 +16,9 @@ import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 
 /// 复制任务状态机（§12）。常量类而非 enum：未知 wire 值保留原始字符串。
 class CopyJobState {
-  const CopyJobState._(this.wire, this.label, {required this.isTerminal})
-    : isCustom = false;
+  const CopyJobState._(this.wire, this.label, {required this.isTerminal}) : isCustom = false;
 
-  const CopyJobState._custom(String raw)
-    : wire = raw,
-      label = raw,
-      isTerminal = false,
-      isCustom = true;
+  const CopyJobState._custom(String raw) : wire = raw, label = raw, isTerminal = false, isCustom = true;
 
   static const draft = CopyJobState._('draft', '已创建', isTerminal: false);
   static const preflighted = CopyJobState._(
@@ -124,9 +119,7 @@ class CopyJobState {
 class CopyItemState {
   const CopyItemState._(this.wire, this.label);
 
-  const CopyItemState._custom(String raw)
-    : wire = raw,
-      label = raw;
+  const CopyItemState._custom(String raw) : wire = raw, label = raw;
 
   static const pending = CopyItemState._('pending', '待复制');
   static const copying = CopyItemState._('copying', '复制中');
@@ -154,8 +147,7 @@ class CopyItemState {
   }
 
   @override
-  bool operator ==(Object other) =>
-      other is CopyItemState && other.wire == wire;
+  bool operator ==(Object other) => other is CopyItemState && other.wire == wire;
 
   @override
   int get hashCode => wire.hashCode;
@@ -204,8 +196,7 @@ class CopyAllowedAction {
   }
 
   @override
-  bool operator ==(Object other) =>
-      other is CopyAllowedAction && other.wire == wire;
+  bool operator ==(Object other) => other is CopyAllowedAction && other.wire == wire;
 
   @override
   int get hashCode => wire.hashCode;
@@ -292,13 +283,12 @@ class CopyJobDeviceSnapshot {
     return mediaId;
   }
 
-  factory CopyJobDeviceSnapshot.fromJson(Map<String, dynamic> json) =>
-      CopyJobDeviceSnapshot(
-        mediaId: _string(json, 'media_id'),
-        displayName: _string(json, 'display_name'),
-        kind: _string(json, 'kind'),
-        userAlias: _string(json, 'user_alias'),
-      );
+  factory CopyJobDeviceSnapshot.fromJson(Map<String, dynamic> json) => CopyJobDeviceSnapshot(
+    mediaId: _string(json, 'media_id'),
+    displayName: _string(json, 'display_name'),
+    kind: _string(json, 'kind'),
+    userAlias: _string(json, 'user_alias'),
+  );
 }
 
 /// 复制任务详情（§13.5）。
@@ -347,32 +337,19 @@ class CopyJobDetail {
     if (rawState == null) {
       throw const ProtocolCompatibilityException('state', '不能为空');
     }
-    final rawStats = json['stats'];
+    final rawStats = json['stats'] ?? json['progress'];
     final rawSource = json['source_device'];
     final rawTarget = json['target_device'];
     final rawActions = json['allowed_actions'];
     return CopyJobDetail(
       copyJobId: ProtocolValidation.requiredId(json, 'copy_job_id'),
       state: CopyJobState.fromWire(rawState?.toString()),
-      stateVersion:
-          _int(json, 'state_version') ??
-          _int(json, 'expected_state_version') ??
-          _int(json, 'version') ??
-          0,
+      stateVersion: _int(json, 'state_version') ?? _int(json, 'expected_state_version') ?? _int(json, 'version') ?? 0,
       eventSeq: _int(json, 'event_seq') ?? 0,
-      stats: rawStats is Map
-          ? CopyJobStats.fromJson(Map<String, dynamic>.from(rawStats))
-          : null,
-      sourceDevice: rawSource is Map
-          ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawSource))
-          : null,
-      targetDevice: rawTarget is Map
-          ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawTarget))
-          : null,
-      allowedActions: (rawActions is List ? rawActions : const [])
-          .map((action) => CopyAllowedAction.fromWire(action?.toString()))
-          .whereType<CopyAllowedAction>()
-          .toList(growable: false),
+      stats: rawStats is Map ? CopyJobStats.fromJson(Map<String, dynamic>.from(rawStats)) : null,
+      sourceDevice: rawSource is Map ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawSource)) : null,
+      targetDevice: rawTarget is Map ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawTarget)) : null,
+      allowedActions: (rawActions is List ? rawActions : const []).map((action) => CopyAllowedAction.fromWire(action?.toString())).whereType<CopyAllowedAction>().toList(growable: false),
       scopeWire: _string(json, 'scope'),
       batchId: _string(json, 'batch_id'),
       selectionId: _string(json, 'selection_id'),
@@ -402,14 +379,12 @@ class CopyJobListItem {
   bool get isFullBackup => scopeWire == 'media_full_backup';
 
   factory CopyJobListItem.fromJson(Map<String, dynamic> json) {
-    final rawStats = json['stats'];
+    final rawStats = json['stats'] ?? json['progress'];
     return CopyJobListItem(
       copyJobId: ProtocolValidation.requiredId(json, 'copy_job_id'),
       state: CopyJobState.fromWire(json['state']?.toString()),
       scopeWire: _string(json, 'scope'),
-      stats: rawStats is Map
-          ? CopyJobStats.fromJson(Map<String, dynamic>.from(rawStats))
-          : null,
+      stats: rawStats is Map ? CopyJobStats.fromJson(Map<String, dynamic>.from(rawStats)) : null,
       createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
     );
   }
@@ -453,10 +428,7 @@ class CopyJobItem {
   }
 
   factory CopyJobItem.fromJson(Map<String, dynamic> json) {
-    final rawId =
-        _string(json, 'copy_item_id') ??
-        _string(json, 'item_id') ??
-        _string(json, 'id');
+    final rawId = _string(json, 'copy_item_id') ?? _string(json, 'preview_item_id') ?? _string(json, 'item_id') ?? _string(json, 'id');
     if (rawId == null || rawId.isEmpty) {
       throw const ProtocolCompatibilityException('copy_item_id', '不能为空');
     }
@@ -497,8 +469,7 @@ class _PageFields {
   final String? nextCursor;
 
   factory _PageFields.fromJson(Map<String, dynamic> json) {
-    final cursor =
-        _string(json, 'next_cursor') ?? _string(json, 'next_after_seq');
+    final cursor = _string(json, 'next_cursor') ?? _string(json, 'next_after_seq');
     final rawHasMore = json['has_more'];
     final hasMore = rawHasMore is bool ? rawHasMore : cursor != null;
     return _PageFields(hasMore: hasMore, nextCursor: cursor);
@@ -517,12 +488,7 @@ class CopyJobItemPage {
     final page = _PageFields.fromJson(json);
     final rawItems = json['items'];
     return CopyJobItemPage(
-      items: rawItems is List
-          ? rawItems
-              .whereType<Map>()
-              .map((item) => CopyJobItem.fromJson(Map<String, dynamic>.from(item)))
-              .toList(growable: false)
-          : const [],
+      items: rawItems is List ? rawItems.whereType<Map>().map((item) => CopyJobItem.fromJson(Map<String, dynamic>.from(item))).toList(growable: false) : const [],
       hasMore: page.hasMore,
       nextCursor: page.nextCursor,
     );
@@ -543,12 +509,11 @@ class CopyJobPage {
     return CopyJobPage(
       items: rawItems is List
           ? rawItems
-              .whereType<Map>()
-              .map(
-                (item) =>
-                    CopyJobListItem.fromJson(Map<String, dynamic>.from(item)),
-              )
-              .toList(growable: false)
+                .whereType<Map>()
+                .map(
+                  (item) => CopyJobListItem.fromJson(Map<String, dynamic>.from(item)),
+                )
+                .toList(growable: false)
           : const [],
       hasMore: page.hasMore,
       nextCursor: page.nextCursor,
@@ -572,8 +537,8 @@ class CopyJobEvent {
 
   factory CopyJobEvent.fromJson(Map<String, dynamic> json) => CopyJobEvent(
     seq: _int(json, 'seq') ?? _int(json, 'event_seq'),
-    type: _string(json, 'type'),
-    message: _string(json, 'message'),
+    type: _string(json, 'type') ?? _string(json, 'event_type'),
+    message: _string(json, 'message') ?? _string(json, 'event_type'),
     createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
   );
 }
@@ -588,15 +553,16 @@ class CopyJobEventPage {
 
   factory CopyJobEventPage.fromJson(Map<String, dynamic> json) {
     final page = _PageFields.fromJson(json);
-    final rawEvents = json['events'];
+    // Mixed-version boxes historically called this list `items`.
+    final rawEvents = json['events'] ?? json['items'];
     return CopyJobEventPage(
       events: rawEvents is List
           ? rawEvents
-              .whereType<Map>()
-              .map(
-                (event) => CopyJobEvent.fromJson(Map<String, dynamic>.from(event)),
-              )
-              .toList(growable: false)
+                .whereType<Map>()
+                .map(
+                  (event) => CopyJobEvent.fromJson(Map<String, dynamic>.from(event)),
+                )
+                .toList(growable: false)
           : const [],
       hasMore: page.hasMore,
       nextCursor: page.nextCursor,
@@ -685,12 +651,8 @@ class CopyReport {
       csvStatus: _string(json, 'csv_status'),
       embedSuccessCount: _int(json, 'embed_success_count'),
       embedDegradedCount: _int(json, 'embed_degraded_count'),
-      sourceDevice: rawSource is Map
-          ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawSource))
-          : null,
-      targetDevice: rawTarget is Map
-          ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawTarget))
-          : null,
+      sourceDevice: rawSource is Map ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawSource)) : null,
+      targetDevice: rawTarget is Map ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawTarget)) : null,
       generatedAt: ProtocolValidation.optionalDateTime(json, 'generated_at'),
     );
   }
@@ -726,19 +688,17 @@ class CopyDeviceList {
 
   factory CopyDeviceList.fromJson(Map<String, dynamic> json) {
     final rawDevices = json['devices'];
-    final recommended =
-        _string(json, 'last_successful_target_media_id') ??
-        _string(json, 'recommended_target_media_id');
+    final recommended = _string(json, 'last_successful_target_media_id') ?? _string(json, 'recommended_target_media_id');
     return CopyDeviceList(
       devices: rawDevices is List
           ? rawDevices
-              .whereType<Map>()
-              .map(
-                (device) => StorageDeviceSummary.fromJson(
-                  Map<String, dynamic>.from(device),
-                ),
-              )
-              .toList(growable: false)
+                .whereType<Map>()
+                .map(
+                  (device) => StorageDeviceSummary.fromJson(
+                    Map<String, dynamic>.from(device),
+                  ),
+                )
+                .toList(growable: false)
           : const [],
       recommendedTargetMediaId: recommended,
     );

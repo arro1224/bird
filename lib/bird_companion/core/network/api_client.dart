@@ -71,6 +71,25 @@ class ApiClient {
   int _requestSequence = 0;
 
   Uri? get baseUri => _baseUri;
+
+  /// Credentials only apply to unsigned media endpoints on the active box.
+  Map<String, String> mediaHeaders(Uri uri) {
+    final base = _baseUri;
+    final token = _accessToken;
+    if (base == null ||
+        token == null ||
+        token.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.query.isNotEmpty ||
+        uri.scheme != base.scheme ||
+        uri.host != base.host ||
+        uri.port != base.port ||
+        !RegExp(r'^/api/v1/files/[^/]+/(thumbnail|preview)$').hasMatch(uri.path)) {
+      return const {};
+    }
+    return {'Authorization': 'Bearer $token', 'X-Api-Version': _apiVersion};
+  }
+
   Stream<int> get authenticationFailures => _authenticationFailures.stream;
   Uri? _baseUri;
   String? _accessToken;

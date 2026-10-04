@@ -407,6 +407,7 @@ class GalleryCubit extends Cubit<GalleryState> {
   }
 
   Future<void> _handleDataChange(AppDataChange change) async {
+    if (change is RecognitionFactsChanged && (change.projectId != batchId || change.deviceId != _activeDeviceId?.call())) return;
     if (change.affects(AppDataResource.photoPreferences)) {
       _applyPhotoPreferences();
       return;
