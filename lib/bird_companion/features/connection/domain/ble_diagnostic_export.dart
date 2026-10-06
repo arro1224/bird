@@ -10,10 +10,12 @@ final class BleDiagnosticExport {
     required List<Map<String, dynamic>> events,
     required DateTime generatedAt,
   }) {
+    final build = _buildMetadata(scans, events);
     final header = <String, dynamic>{
-      'schema_version': 2,
+      'schema_version': 3,
       'generated_at': generatedAt.toUtc().toIso8601String(),
       'trace_id': traceId,
+      if (build.isNotEmpty) 'build': build,
     };
     fullJson = jsonEncode({...header, 'scan_sessions': scans, 'connection_events': events});
     final errors = events.where((e) => e['error_code'] != null || (e['gatt_status'] is int && (e['gatt_status'] as int) > 0) || RegExp('fail|error|timeout').hasMatch(e['event_type']?.toString() ?? ''));
@@ -72,6 +74,44 @@ final class BleDiagnosticExport {
   late final String fullJson;
   late final List<String> parts;
 
+  static Map<String, Object?> _buildMetadata(
+    List<Map<String, dynamic>> scans,
+    List<Map<String, dynamic>> events,
+  ) {
+    final records = <Map<String, dynamic>>[
+      if (events.isNotEmpty) events.last,
+      if (scans.isNotEmpty) scans.last,
+    ];
+
+    Object? firstValue(List<String> keys) {
+      for (final record in records) {
+        for (final key in keys) {
+          final value = record[key];
+          if (value is String && value.isNotEmpty) return value;
+          if (value is int) return value;
+        }
+      }
+      return null;
+    }
+
+    final packageId = firstValue(const ['package_id']);
+    final flavor = firstValue(const ['build_flavor', 'scan_flavor']);
+    final buildType = firstValue(const ['build_type']);
+    final versionName = firstValue(const ['app_version_name']);
+    final versionCode = firstValue(const ['app_version_code']);
+    final gitCommit = firstValue(const ['git_commit']);
+    final apkSha256 = firstValue(const ['apk_sha256']);
+    return {
+      'package_id': ?packageId,
+      'flavor': ?flavor,
+      'build_type': ?buildType,
+      'version_name': ?versionName,
+      'version_code': ?versionCode,
+      'git_commit': ?gitCommit,
+      'apk_sha256': ?apkSha256,
+    };
+  }
+
   static Object? _shorten(Object? value, int limit) {
     if (value is String) return value.runes.length > limit ? '${String.fromCharCodes(value.runes.take(limit))}…' : value;
     if (value is Map<String, dynamic>) return value.map((key, item) => MapEntry(key, _shorten(item, limit)));
@@ -107,7 +147,20 @@ final class BleDiagnosticExport {
     'gatt_present',
     'link_ready',
     'connection_generation',
+    'gatt_generation',
     'conditional_bond_fallback_attempted',
     'bond_initiation_source',
+    'attempt_id',
+    'write_api_accepted',
+    'write_callback_received',
+    'security_write_elapsed_ms',
+    'fallback_trigger',
+    'bond_state_at_trigger',
+    'create_bond_invoked',
+    'create_bond_returned',
+    'state_before',
+    'state_after',
+    'terminal_outcome',
+    'cleanup_outcome',
   ];
 }

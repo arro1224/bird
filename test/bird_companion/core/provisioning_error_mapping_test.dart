@@ -35,6 +35,20 @@ void main() {
     expect('${message.title}${message.message}', isNot(contains('dpp://')));
   });
 
+  test('maps disabled location services to the correct system action', () {
+    final message = UserMessageMapper.fromError(
+      const ProvisioningException(
+        code: ProvisioningErrorCode.locationServicesDisabled,
+        retryable: true,
+        diagnosticMessage: 'platformExceptionCode=location_service_disabled',
+      ),
+    );
+
+    expect(message.title, '需要开启定位服务');
+    expect(message.message, contains('开启定位服务'));
+    expect(message.actionLabel, '前往设置');
+  });
+
   test('maps retryable box errors without displaying the raw box message', () {
     final message = UserMessageMapper.fromError(
       const ProvisioningException(
@@ -69,8 +83,11 @@ void main() {
     const expected = <ProvisioningErrorCode, String>{
       ProvisioningErrorCode.bleGattNotReady: '盒子连接尚未准备完成，请重试。',
       ProvisioningErrorCode.bleLePairingNotStarted: '手机未能启动安全连接，请关闭再打开蓝牙后重试。',
+      ProvisioningErrorCode.blePairingTimeout: '配对长时间未完成，请检查系统配对界面后重试。',
       ProvisioningErrorCode.blePairingRejected: '安全连接未完成，请重新配对。',
+      ProvisioningErrorCode.bleGattOperationFailed: '手机与盒子的蓝牙通信中断，请重新连接后重试。',
       ProvisioningErrorCode.bleGattRecoveryFailed: '安全连接已建立，但重新连接盒子失败。',
+      ProvisioningErrorCode.bleSecurityRecoveryFailed: '手机已尝试恢复安全连接，但流程未能完成。',
       ProvisioningErrorCode.bleEncryptedRetryFailed: '安全连接已建立，但盒子未接受配对请求。',
       ProvisioningErrorCode.pairingOpenTimeout: '盒子未返回配对确认。',
     };

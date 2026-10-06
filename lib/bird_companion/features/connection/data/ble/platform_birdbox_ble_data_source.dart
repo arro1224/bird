@@ -233,10 +233,19 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
       if (details['scanning'] != null) 'scanning=${details['scanning']}',
       if (details['connectionGeneration'] != null) 'connectionGeneration=${details['connectionGeneration']}',
       if (details['gattInstanceId'] != null) 'gattInstanceId=${details['gattInstanceId']}',
+      if (details['gattGeneration'] != null) 'gattGeneration=${details['gattGeneration']}',
       if (details['gattStatus'] != null) 'gattStatus=${details['gattStatus']}',
       if (details['bondState'] != null) 'bondState=${details['bondState']}',
       if (details['actualBondState'] != null) 'actualBondState=${details['actualBondState']}',
       if (details['characteristicUuid'] != null) 'characteristicUuid=${details['characteristicUuid']}',
+      if (details['attemptId'] != null) 'attemptId=${details['attemptId']}',
+      if (details['writeApiAccepted'] != null) 'writeApiAccepted=${details['writeApiAccepted']}',
+      if (details['writeCallbackReceived'] != null) 'writeCallbackReceived=${details['writeCallbackReceived']}',
+      if (details['securityWriteElapsedMs'] != null) 'securityWriteElapsedMs=${details['securityWriteElapsedMs']}',
+      if (details['fallbackTrigger'] != null) 'fallbackTrigger=${details['fallbackTrigger']}',
+      if (details['bondStateAtTrigger'] != null) 'bondStateAtTrigger=${details['bondStateAtTrigger']}',
+      if (details['createBondInvoked'] != null) 'createBondInvoked=${details['createBondInvoked']}',
+      if (details['createBondReturned'] != null) 'createBondReturned=${details['createBondReturned']}',
       if (details['operationName'] != null) 'operation=${details['operationName']}',
       if (details['deviceAddressHash'] != null) 'deviceAddressHash=${details['deviceAddressHash']}',
       if (details['traceId'] != null) 'traceId=${details['traceId']}',
@@ -247,13 +256,17 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
     return ProvisioningException(
       code: switch (error.code) {
         'bluetooth_permission_denied' => ProvisioningErrorCode.bluetoothPermissionDenied,
+        'location_service_disabled' => ProvisioningErrorCode.locationServicesDisabled,
         'ble_gatt_not_ready' => ProvisioningErrorCode.bleGattNotReady,
         'ble_le_pairing_not_started' => ProvisioningErrorCode.bleLePairingNotStarted,
+        'ble_pairing_timeout' || 'ble_bond_timeout' => ProvisioningErrorCode.blePairingTimeout,
         'ble_pairing_rejected' || 'ble_bond_rejected' => ProvisioningErrorCode.blePairingRejected,
+        'ble_gatt_operation_failed' || 'gatt_operation_failed' => ProvisioningErrorCode.bleGattOperationFailed,
         'ble_gatt_recovery_failed' => ProvisioningErrorCode.bleGattRecoveryFailed,
+        'ble_security_recovery_failed' || 'ble_bond_failed' => ProvisioningErrorCode.bleSecurityRecoveryFailed,
         'ble_encrypted_retry_failed' => ProvisioningErrorCode.bleEncryptedRetryFailed,
         'pairing_open_timeout' => ProvisioningErrorCode.pairingOpenTimeout,
-        'ble_link_not_encrypted' || 'ble_bond_failed' || 'ble_bond_timeout' => ProvisioningErrorCode.authorizationRequired,
+        'ble_link_not_encrypted' => ProvisioningErrorCode.authorizationRequired,
         'invalid_request' || 'invalid_state' => ProvisioningErrorCode.invalidRequest,
         'bluetooth_unavailable' => ProvisioningErrorCode.capabilityUnsupported,
         _ => ProvisioningErrorCode.networkInternalError,
@@ -261,12 +274,17 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform {
       retryable: const {
         'gatt_busy',
         'gatt_operation_failed',
+        'ble_gatt_operation_failed',
         'ble_link_not_encrypted',
         'ble_gatt_not_ready',
         'ble_le_pairing_not_started',
         'ble_pairing_rejected',
+        'ble_pairing_timeout',
+        'ble_bond_timeout',
         'ble_bond_rejected',
         'ble_gatt_recovery_failed',
+        'ble_security_recovery_failed',
+        'ble_bond_failed',
         'ble_encrypted_retry_failed',
         'pairing_open_timeout',
       }.contains(error.code),
@@ -358,7 +376,8 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   Stream<BirdBoxAdvertisement> scan({Duration? timeout}) {
     if (_disposed) return Stream.error(StateError('BLE data source is disposed'));
     if (_scanController != null) return Stream.error(StateError('BLE scan is already active'));
-    final scanTimeout = timeout ?? const Duration(seconds: 10);
+    var scanTimeout = timeout ?? const Duration(seconds: 10);
+    final usesDefaultTimeout = timeout == null;
     final scanDiagnostic = _BleScanSessionBuilder(
       scanSessionId: _newScanSessionId(),
       startedAt: _clock(),
@@ -376,6 +395,10 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
             throw _permissionDenied();
           }
           scanDiagnostic.environmentAfter = await _readScanEnvironment();
+          if (usesDefaultTimeout && scanDiagnostic.environmentAfter.scanStrategyFallbackEnabled) {
+            // Three four-second strategy windows plus a short terminal margin.
+            scanTimeout = const Duration(seconds: 13);
+          }
           _scanSubscription = _platform.scanResults.listen(
             (event) => _handleScanEvent(controller, event),
             onError: (Object error, StackTrace stackTrace) {
@@ -457,6 +480,10 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     if (event['eventType'] == 'scanFailure') {
       final errorCode = event['androidScanErrorCode'];
       if (errorCode is int) diagnostic?.androidScanErrorCode = errorCode;
+      return;
+    }
+    if (event['eventType'] == 'scanStrategy') {
+      diagnostic?.observeStrategy(at: _clock(), event: event);
       return;
     }
 
@@ -648,7 +675,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     final event = _connectInterruptedBy;
     if (event == null) return;
     throw ProvisioningException(
-      code: ProvisioningErrorCode.networkInternalError,
+      code: ProvisioningErrorCode.bleGattOperationFailed,
       retryable: true,
       diagnosticMessage:
           'BLE disconnected while the connection was becoming ready: '
@@ -839,6 +866,16 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
             errorCode: error is ProvisioningException ? error.code.wireValue.toLowerCase() : 'network_internal_error',
           );
         } catch (cleanupError) {
+          await _recordConnectionDiagnostic(
+            eventType: 'security_cleanup_failed',
+            operationName: 'security_write',
+            commandType: request.type.wireValue,
+            requestId: request.requestId,
+            resultCode: _resultCode(error),
+            errorCode: _resultCode(cleanupError),
+            terminalOutcome: _resultCode(error),
+            cleanupOutcome: 'failed',
+          );
           debugPrint(
             'BIRDBOX_BLE_SECURITY_CLEANUP_FAILED requestId=${request.requestId} '
             '${cleanupError.runtimeType}',
@@ -851,6 +888,8 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         commandType: request.type.wireValue,
         requestId: request.requestId,
         resultCode: _resultCode(error),
+        errorCode: _resultCode(error),
+        terminalOutcome: _resultCode(error),
       );
       rethrow;
     } finally {
@@ -897,17 +936,22 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         'BIRDBOX_BLE_FAILURE operation=${request.type.wireValue} '
         'requestId=${request.requestId} ${error.diagnosticMessage ?? error.code.wireValue}',
       );
-      if (error.code == ProvisioningErrorCode.bleLePairingNotStarted || error.code == ProvisioningErrorCode.blePairingRejected || error.code == ProvisioningErrorCode.bleGattRecoveryFailed) {
+      if (error.code == ProvisioningErrorCode.bleLePairingNotStarted ||
+          error.code == ProvisioningErrorCode.blePairingTimeout ||
+          error.code == ProvisioningErrorCode.blePairingRejected ||
+          error.code == ProvisioningErrorCode.bleGattRecoveryFailed ||
+          error.code == ProvisioningErrorCode.bleGattOperationFailed ||
+          error.code == ProvisioningErrorCode.bleSecurityRecoveryFailed) {
         rethrow;
       }
       throw ProvisioningException(
-        code: ProvisioningErrorCode.bleGattRecoveryFailed,
+        code: ProvisioningErrorCode.bleSecurityRecoveryFailed,
         retryable: true,
         diagnosticMessage: 'Secured GATT restoration failed: ${error.diagnosticMessage ?? error.code.wireValue}',
       );
     } catch (error) {
       throw ProvisioningException(
-        code: ProvisioningErrorCode.bleGattRecoveryFailed,
+        code: ProvisioningErrorCode.bleSecurityRecoveryFailed,
         retryable: true,
         diagnosticMessage: 'Secured GATT restoration failed: ${error.runtimeType}',
       );
@@ -1023,7 +1067,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       reassembler.reset();
     }
     _notificationReassemblers.clear();
-    final error = ProvisioningException(code: ProvisioningErrorCode.networkInternalError, retryable: true, diagnosticMessage: 'BLE disconnected before the command response: $reason');
+    final error = ProvisioningException(code: ProvisioningErrorCode.bleGattOperationFailed, retryable: true, diagnosticMessage: 'BLE disconnected before the command response: $reason');
     for (final completer in _pendingCommands.values) {
       if (!completer.isCompleted) completer.completeError(error);
     }
@@ -1088,6 +1132,9 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     String? securityTrigger,
     String? responseType,
     String? resultCode,
+    String? errorCode,
+    String? terminalOutcome,
+    String? cleanupOutcome,
   }) async {
     final traceId = _activeTraceId ?? _lastTraceId;
     if (traceId == null) return;
@@ -1106,6 +1153,9 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         securityTrigger: securityTrigger,
         responseType: responseType,
         resultCode: resultCode,
+        errorCode: errorCode,
+        terminalOutcome: terminalOutcome,
+        cleanupOutcome: cleanupOutcome,
       ),
     );
   }
@@ -1149,6 +1199,7 @@ final class _BleScanSessionBuilder {
   final Map<String, int> reasonCounts = {};
   final Set<String> uniqueAddressHashes = {};
   final List<BleScanObservationDiagnostic> observations = [];
+  final List<BleScanStrategyDiagnostic> strategyEvents = [];
 
   static const int _maximumStoredObservations = 500;
 
@@ -1191,6 +1242,42 @@ final class _BleScanSessionBuilder {
         scanRecordSha256: event['scanRecordSha256'] as String?,
         scanRecordRedactedHex: event['scanRecordRedactedHex'] as String?,
         scanRecordTruncated: event['scanRecordTruncated'] as bool? ?? false,
+        strategyIndex: event['strategyIndex'] as int?,
+        strategyName: event['strategyName'] as String?,
+        strategyGeneration: event['strategyGeneration'] as int?,
+        deviceNamePresent: event['deviceNamePresent'] as bool? ?? false,
+      ),
+    );
+  }
+
+  void observeStrategy({
+    required DateTime at,
+    required Map<String, dynamic> event,
+  }) {
+    final index = event['strategyIndex'];
+    final name = event['strategyName'];
+    final generation = event['strategyGeneration'];
+    if (index is! int || name is! String || generation is! int) {
+      addReason('invalid_strategy_diagnostic');
+      return;
+    }
+    final errorCode = event['androidScanErrorCode'];
+    if (errorCode is int) androidScanErrorCode = errorCode;
+    strategyEvents.add(
+      BleScanStrategyDiagnostic(
+        occurredAt: at,
+        event: event['strategyEvent'] as String? ?? 'unknown',
+        index: index,
+        name: name,
+        generation: generation,
+        switchReason: event['strategySwitchReason'] as String? ?? 'unknown',
+        rawResultCount: event['strategyRawResultCount'] as int? ?? 0,
+        deviceNameResultCount: event['strategyDeviceNameCount'] as int? ?? 0,
+        candidateCount: event['strategyCandidateCount'] as int? ?? 0,
+        locationService: BleScanEnvironment.fromPlatform({
+          'locationService': event['locationService'],
+        }).locationService,
+        androidScanErrorCode: errorCode is int ? errorCode : null,
       ),
     );
   }
@@ -1225,11 +1312,16 @@ final class _BleScanSessionBuilder {
     model: environmentAfter.model ?? environmentBefore.model,
     androidRelease: environmentAfter.androidRelease ?? environmentBefore.androidRelease,
     sdkInt: environmentAfter.sdkInt ?? environmentBefore.sdkInt,
+    packageId: environmentAfter.packageId ?? environmentBefore.packageId,
+    buildFlavor: environmentAfter.buildFlavor ?? environmentBefore.buildFlavor,
+    buildType: environmentAfter.buildType ?? environmentBefore.buildType,
     appVersionName: environmentAfter.appVersionName ?? environmentBefore.appVersionName,
     appVersionCode: environmentAfter.appVersionCode ?? environmentBefore.appVersionCode,
     gitCommit: environmentAfter.gitCommit ?? environmentBefore.gitCommit,
     apkSha256: environmentAfter.apkSha256 ?? environmentBefore.apkSha256,
     scanPermissionPolicy: environmentAfter.scanPermissionPolicy ?? environmentBefore.scanPermissionPolicy,
+    scanFlavor: environmentAfter.scanFlavor ?? environmentBefore.scanFlavor,
+    scanStrategyFallbackEnabled: environmentAfter.scanStrategyFallbackEnabled || environmentBefore.scanStrategyFallbackEnabled,
     scanMode: environmentAfter.scanMode ?? environmentBefore.scanMode ?? 'low_latency',
     rawResultCount: rawResultCount,
     uniqueDeviceCount: uniqueAddressHashes.length,
@@ -1237,6 +1329,7 @@ final class _BleScanSessionBuilder {
     filteredCount: filteredCount,
     reasonCounts: Map.unmodifiable(reasonCounts),
     observations: List.unmodifiable(observations),
+    strategyEvents: List.unmodifiable(strategyEvents),
     endReason: endReason,
     androidScanErrorCode: androidScanErrorCode,
   );

@@ -8,6 +8,7 @@ param(
     [string]$RealBoxEvidencePath,
     [string]$BleRc4EvidencePath,
     [string]$BleHotfixReleaseEvidencePath,
+    [string]$Ble16EvidencePath,
     [string]$B12BEvidencePath,
     [switch]$SkipPubGet
 )
@@ -26,6 +27,7 @@ $realBoxEvidence = $null
 $script:simulatedAcceptance = $null
 $script:bleRc4Verified = $false
 $script:bleHotfixReleaseVerified = $false
+$script:ble16Verified = $false
 
 function Invoke-NativeCommand {
     param(
@@ -143,6 +145,9 @@ try {
         }
         if ([string]::IsNullOrWhiteSpace($BleHotfixReleaseEvidencePath)) {
             throw "Release mode requires -BleHotfixReleaseEvidencePath."
+        }
+        if ([string]::IsNullOrWhiteSpace($Ble16EvidencePath)) {
+            throw "Release mode requires -Ble16EvidencePath."
         }
         if ([string]::IsNullOrWhiteSpace($B12BEvidencePath)) {
             throw "Release mode requires -B12BEvidencePath."
@@ -285,6 +290,10 @@ try {
         if (-not (Test-Path -LiteralPath $resolvedBleHotfixReleaseEvidence)) {
             throw "BLE hotfix release evidence was not found: $resolvedBleHotfixReleaseEvidence"
         }
+        $resolvedBle16Evidence = Resolve-EvidencePath $Ble16EvidencePath
+        if (-not (Test-Path -LiteralPath $resolvedBle16Evidence)) {
+            throw "BLE-16 evidence was not found: $resolvedBle16Evidence"
+        }
         $resolvedB12BEvidence = Resolve-EvidencePath $B12BEvidencePath
         if (-not (Test-Path -LiteralPath $resolvedB12BEvidence)) {
             throw "B12-B evidence was not found: $resolvedB12BEvidence"
@@ -362,11 +371,20 @@ try {
             )
         }
         $script:bleRc4Verified = $true
+        Invoke-GateStep "RC4-HF-BLE-16 version delivery and real-device evidence" {
+            Invoke-NativeCommand $DartCommand @(
+                "run",
+                "tool/acceptance/rc4_hf_ble_16_evidence_validator.dart",
+                $resolvedBle16Evidence
+            )
+        }
+        $script:ble16Verified = $true
         Invoke-GateStep "RC4-HF-BLE-04 release promotion" {
             Invoke-NativeCommand $DartCommand @(
                 "run",
                 "tool/acceptance/rc4_hf_ble_04_release_gate.dart",
                 "--evidence=$resolvedBleHotfixReleaseEvidence",
+                "--ble16-evidence=$resolvedBle16Evidence",
                 "--apk=build/app/outputs/flutter-apk/app-bird-release.apk",
                 "--manifest=build/app/intermediates/merged_manifests/birdRelease/processBirdReleaseManifest/AndroidManifest.xml",
                 "--approved-certificate=$env:AVES_RELEASE_CERT_SHA256"
@@ -458,6 +476,7 @@ try {
             $Mode -eq "Release" -and
             $status -eq "passed" -and
             $script:bleRc4Verified -and
+            $script:ble16Verified -and
             $script:bleHotfixReleaseVerified
         ) {
             [ordered]@{
@@ -490,6 +509,14 @@ try {
                 Resolve-EvidencePath $BleHotfixReleaseEvidencePath
             }
             verified = $script:bleHotfixReleaseVerified
+        }
+        ble16_delivery = [ordered]@{
+            evidence_path = if ([string]::IsNullOrWhiteSpace($Ble16EvidencePath)) {
+                $null
+            } else {
+                Resolve-EvidencePath $Ble16EvidencePath
+            }
+            verified = $script:ble16Verified
         }
         contract = [ordered]@{
             id = "$($baseline.contract_id)@$($baseline.contract_version)"

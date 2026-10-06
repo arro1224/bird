@@ -24,6 +24,8 @@ void main() {
       source,
       contains('Release mode requires -BleHotfixReleaseEvidencePath.'),
     );
+    expect(source, contains(r'[string]$Ble16EvidencePath'));
+    expect(source, contains('Release mode requires -Ble16EvidencePath.'));
     expect(source, contains(r'[string]$B12BEvidencePath'));
     expect(source, contains('Release mode requires -B12BEvidencePath.'));
     expect(source, contains('BLE RC4 K7 real-hardware evidence'));
@@ -32,6 +34,15 @@ void main() {
       contains('tool/acceptance/ble_provisioning_rc4_real_device_gate.dart'),
     );
     expect(source, contains(r'$script:bleRc4Verified = $true'));
+    expect(
+      source,
+      contains('RC4-HF-BLE-16 version delivery and real-device evidence'),
+    );
+    expect(
+      source,
+      contains('tool/acceptance/rc4_hf_ble_16_evidence_validator.dart'),
+    );
+    expect(source, contains(r'$script:ble16Verified = $true'));
     expect(source, contains('RC4-HF-BLE-04 release promotion'));
     expect(
       source,
@@ -42,6 +53,7 @@ void main() {
       source,
       contains(r'$script:bleHotfixReleaseVerified'),
     );
+    expect(source, contains(r'$script:ble16Verified'));
     expect(source, contains('environment = "real_k7"'));
     expect(source, contains('real_k7_status = "verified"'));
   });

@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "evidence_suite": "rc4-hf-ble-16",
+  "captured_at": "REQUIRED_ISO_8601_TIMESTAMP",
+  "final_result": "pending",
+  "release_decision": "blocked",
+  "selected_scan_variant": "REQUIRED_A_OR_B",
+  "source": {
+    "git_commit": "REQUIRED_40_CHAR_GIT_SHA",
+    "version_name": "1.14.9",
+    "version_code": 174
+  },
+  "artifacts": {
+    "bird": {
+      "package_id": "deckers.thibault.aves.bird",
+      "display_name": "拍鸟伴侣",
+      "flavor": "bird",
+      "build_mode": "release",
+      "signed": true,
+      "signature_verified": false,
+      "version_name": "1.14.9",
+      "version_code": 174,
+      "git_commit": "REQUIRED_40_CHAR_GIT_SHA",
+      "apk_file": "REQUIRED_RELEASE_APK_PATH",
+      "apk_size_bytes": 0,
+      "apk_sha256": "REQUIRED_RELEASE_APK_SHA256",
+      "scan_permission_policy": "REQUIRED_never_for_location_OR_full_scan",
+      "strategy_fallback_enabled": false,
+      "diagnostic_identity_verified": false
+    },
+    "birdScanA": {
+      "package_id": "deckers.thibault.aves.bird.scan.a",
+      "display_name": "BirdBox 扫描 A",
+      "flavor": "birdScanA",
+      "build_mode": "debug",
+      "version_name": "1.14.9",
+      "version_code": 174,
+      "git_commit": "REQUIRED_40_CHAR_GIT_SHA",
+      "apk_file": "REQUIRED_SCAN_A_APK_PATH",
+      "apk_size_bytes": 0,
+      "apk_sha256": "REQUIRED_SCAN_A_APK_SHA256",
+      "scan_permission_policy": "never_for_location",
+      "strategy_fallback_enabled": true,
+      "diagnostic_identity_verified": false
+    },
+    "birdScanB": {
+      "package_id": "deckers.thibault.aves.bird.scan.b",
+      "display_name": "BirdBox 扫描 B",
+      "flavor": "birdScanB",
+      "build_mode": "debug",
+      "version_name": "1.14.9",
+      "version_code": 174,
+      "git_commit": "REQUIRED_40_CHAR_GIT_SHA",
+      "apk_file": "REQUIRED_SCAN_B_APK_PATH",
+      "apk_size_bytes": 0,
+      "apk_sha256": "REQUIRED_SCAN_B_APK_SHA256",
+      "scan_permission_policy": "full_scan",
+      "strategy_fallback_enabled": true,
+      "diagnostic_identity_verified": false
+    }
+  },
+  "automation": [
+    {"id": "flutter_analyze", "status": "pending", "evidence_files": []},
+    {"id": "flutter_test", "status": "pending", "evidence_files": []},
+    {"id": "android_bird_unit", "status": "pending", "evidence_files": []},
+    {"id": "android_scan_a_unit", "status": "pending", "evidence_files": []},
+    {"id": "android_scan_b_unit", "status": "pending", "evidence_files": []},
+    {"id": "candidate_builds", "status": "pending", "evidence_files": []},
+    {"id": "git_diff_check", "status": "pending", "evidence_files": []}
+  ],
+  "scenarios": [
+    {"id": "T1", "status": "pending", "artifact": "bird", "rounds": 1, "executed_at": "REQUIRED_ISO_8601_TIMESTAMP", "executor": "REQUIRED_EXECUTOR", "environment_id": "REQUIRED_ENVIRONMENT_ID", "phone": {}, "k7": {}, "assertions": {}, "evidence_files": []},
+    {"id": "T2", "status": "pending", "artifact": "bird", "rounds": 1, "executed_at": "REQUIRED_ISO_8601_TIMESTAMP", "executor": "REQUIRED_EXECUTOR", "environment_id": "REQUIRED_ENVIRONMENT_ID", "phone": {}, "k7": {}, "assertions": {}, "evidence_files": []},
+    {"id": "T3", "status": "pending", "artifact": "bird", "rounds": 1, "executed_at": "REQUIRED_ISO_8601_TIMESTAMP", "executor": "REQUIRED_EXECUTOR", "environment_id": "REQUIRED_ENVIRONMENT_ID", "phone": {}, "k7": {}, "assertions": {}, "evidence_files": []},
+    {"id": "T4", "status": "pending", "artifact": "birdScanA", "rounds": 3, "executed_at": "REQUIRED_ISO_8601_TIMESTAMP", "executor": "REQUIRED_EXECUTOR", "environment_id": "REQUIRED_HUAWEI_AB_ENVIRONMENT_ID", "phone": {}, "k7": {}, "assertions": {}, "evidence_files": []},
+    {"id": "T5", "status": "pending", "artifact": "birdScanB", "rounds": 3, "executed_at": "REQUIRED_ISO_8601_TIMESTAMP", "executor": "REQUIRED_EXECUTOR", "environment_id": "REQUIRED_HUAWEI_AB_ENVIRONMENT_ID", "phone": {}, "k7": {}, "assertions": {}, "evidence_files": []},
+    {"id": "T6", "status": "pending", "artifact": "bird", "rounds": 1, "executed_at": "REQUIRED_ISO_8601_TIMESTAMP", "executor": "REQUIRED_EXECUTOR", "environment_id": "REQUIRED_ENVIRONMENT_ID", "phone": {}, "k7": {}, "assertions": {}, "evidence_files": []},
+    {"id": "T7", "status": "pending", "artifact": "bird", "rounds": 1, "executed_at": "REQUIRED_ISO_8601_TIMESTAMP", "executor": "REQUIRED_EXECUTOR", "environment_id": "REQUIRED_ENVIRONMENT_ID", "phone": {}, "k7": {}, "assertions": {}, "evidence_files": []},
+    {"id": "T8", "status": "pending", "artifact": "bird", "rounds": 1, "executed_at": "REQUIRED_ISO_8601_TIMESTAMP", "executor": "REQUIRED_EXECUTOR", "environment_id": "REQUIRED_ENVIRONMENT_ID", "phone": {}, "k7": {}, "assertions": {}, "evidence_files": []}
+  ],
+  "known_limitations": [],
+  "rollback": {
+    "tested": false,
+    "package_id": "deckers.thibault.aves.bird",
+    "version_name": "REQUIRED_PREVIOUS_VERSION_NAME",
+    "version_code": 0,
+    "apk_sha256": "REQUIRED_PREVIOUS_APK_SHA256",
+    "evidence_file": "REQUIRED_ROLLBACK_EVIDENCE_FILE"
+  },
+  "approvals": {
+    "app": {"status": "pending", "reviewer": "REQUIRED_APP_REVIEWER", "evidence_file": "REQUIRED_APP_APPROVAL_FILE"},
+    "board": {"status": "pending", "reviewer": "REQUIRED_BOARD_REVIEWER", "evidence_file": "REQUIRED_BOARD_APPROVAL_FILE"},
+    "qa": {"status": "pending", "reviewer": "REQUIRED_QA_REVIEWER", "evidence_file": "REQUIRED_QA_APPROVAL_FILE"}
+  }
+}

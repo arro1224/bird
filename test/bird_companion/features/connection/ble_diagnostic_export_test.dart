@@ -10,7 +10,17 @@ void main() {
   BleDiagnosticExport build(List<Map<String, dynamic>> events) => BleDiagnosticExport(
     traceId: 'ble-test-trace',
     scans: const [
-      {'end_reason': 'timeout', 'raw_result_count': 3},
+      {
+        'end_reason': 'timeout',
+        'raw_result_count': 3,
+        'package_id': 'deckers.thibault.aves.bird.scan.a',
+        'scan_flavor': 'birdScanA',
+        'build_type': 'debug',
+        'app_version_name': '1.14.9',
+        'app_version_code': '174',
+        'git_commit': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        'apk_sha256': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      },
     ],
     events: events,
     generatedAt: DateTime.utc(2026, 10, 4),
@@ -43,8 +53,42 @@ void main() {
     final value = jsonDecode(export.summaryJson) as Map;
     expect(value['full_record_included'], isFalse);
     expect(value['retained_event_count'], 3);
+    expect(value['build']['package_id'], 'deckers.thibault.aves.bird.scan.a');
+    expect(value['build']['flavor'], 'birdScanA');
+    expect(value['build']['version_code'], '174');
     expect(value['first_error']['gatt_status'], 5);
     expect(value['latest_state']['bond_state'], 'bonded');
+  });
+
+  test('summary exports BLE-14 correlation fields without sensitive payload', () {
+    final export = build([
+      {
+        'event_type': 'security_write_callback_timeout',
+        'attempt_id': 'request-1:3:7:1000',
+        'request_id': 'request-1',
+        'connection_generation': 3,
+        'gatt_generation': 7,
+        'characteristic_uuid': '6f7d0005-7a66-4c45-a1b9-5f4d2e3c1000',
+        'write_api_accepted': true,
+        'write_callback_received': false,
+        'security_write_elapsed_ms': 2000,
+        'fallback_trigger': 'write_callback_timeout',
+        'bond_state_at_trigger': 'not_bonded',
+        'create_bond_invoked': true,
+        'create_bond_returned': true,
+        'terminal_outcome': 'ble_pairing_timeout',
+        'cleanup_outcome': 'complete',
+      },
+    ]);
+    final summary = jsonDecode(export.summaryJson) as Map<String, dynamic>;
+    final error = summary['first_error'] as Map<String, dynamic>;
+
+    expect(error['attempt_id'], 'request-1:3:7:1000');
+    expect(error['gatt_generation'], 7);
+    expect(error['fallback_trigger'], 'write_callback_timeout');
+    expect(error['cleanup_outcome'], 'complete');
+    expect(export.fullJson, isNot(contains('password')));
+    expect(export.fullJson, isNot(contains('payload')));
   });
 
   test('empty trace and oversized fields remain parseable and bounded', () {

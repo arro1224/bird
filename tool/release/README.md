@@ -122,6 +122,7 @@ MAC 地址。通用真实盒子证据、BLE RC4 证据与 B12-B 证据是三个�
 ```powershell
 dart run tool/acceptance/rc4_hf_ble_04_release_gate.dart `
   --evidence=C:\secure\rc4-hf-ble-04-release.json `
+  --ble16-evidence=C:\secure\rc4-hf-ble-16-evidence.json `
   --apk=build\app\outputs\flutter-apk\app-bird-release.apk `
   --manifest=build\app\intermediates\merged_manifests\birdRelease\processBirdReleaseManifest\AndroidManifest.xml `
   --approved-certificate=$env:AVES_RELEASE_CERT_SHA256
@@ -132,7 +133,24 @@ dart run tool/acceptance/rc4_hf_ble_04_release_gate.dart `
 受审计的条件式兜底：加密写已经触发鉴权错误、等待系统自动配对后仍为
 `BOND_NONE`，且状态机确认本请求尚未尝试兜底。vivo 单机、Debug A/B 包或
 pending 模板都不能满足 BLE-03 前置条件。通用真实盒子、BLE RC4 K7、BLE-04
-热修晋级和 B12-B 四套证据缺一不可。
+热修晋级、BLE-16 版本交付与真机矩阵和 B12-B 五套证据缺一不可。
+
+## RC4-HF-BLE-16 版本交付与真机证据
+
+以 `docs/acceptance/rc4-hf-ble-16-evidence.template.json` 为起点，登记同一
+Git SHA 和 `1.14.9+174` 版本生成的正式候选、Scan A、Scan B 三个 APK，逐个
+核对 packageId、显示名称、字节数和 SHA-256。完成 OPPO、华为、真实 K7 和
+非目标 Android 的 T1～T8 后执行：
+
+```powershell
+dart run tool/acceptance/rc4_hf_ble_16_evidence_validator.dart `
+  C:\secure\rc4-hf-ble-16-evidence.json
+```
+
+校验器会拒绝 versionCode 小于等于 173、APK 哈希不匹配、华为 A/B 不是同一
+环境或少于三轮、OPPO 安全写断言缺失、T1～T8 任一失败、回退未验证、批准缺失
+以及包含完整 MAC 或凭据的材料。B7 Release 还要求显式传入
+`-Ble16EvidencePath`，并由 BLE-04 晋级门禁再次交叉核对正式包身份。
 
 ## RC4-HF-BLE-05 外场真机交接
 

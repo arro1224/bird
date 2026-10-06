@@ -93,8 +93,31 @@ void main() {
 
     final result = dataSource.scan(timeout: const Duration(milliseconds: 20)).toList();
     await Future<void>.delayed(Duration.zero);
+    platform.emitScanStrategy(
+      event: 'strategy_started',
+      index: 0,
+      name: 'NULL_FILTER_LOW_LATENCY',
+      generation: 1,
+      reason: 'session_started',
+    );
     platform.emitFiltered('non_birdbox');
-    platform.emitAdvertisement(_advertisement('accepted'));
+    platform.emitAdvertisement({
+      ..._advertisement('accepted'),
+      'strategyIndex': 0,
+      'strategyName': 'NULL_FILTER_LOW_LATENCY',
+      'strategyGeneration': 1,
+      'deviceNamePresent': true,
+    });
+    platform.emitScanStrategy(
+      event: 'strategy_window_elapsed',
+      index: 0,
+      name: 'NULL_FILTER_LOW_LATENCY',
+      generation: 1,
+      reason: 'raw_results_observed',
+      rawResultCount: 2,
+      deviceNameResultCount: 1,
+      candidateCount: 1,
+    );
     final advertisements = await result;
     final diagnostic = await diagnosticFuture;
 
@@ -112,6 +135,11 @@ void main() {
     expect(diagnostic.firstCandidateAt, isNotNull);
     expect(diagnostic.endReason, BleScanEndReason.timeout);
     expect(diagnostic.scanPermissionPolicy, 'never_for_location');
+    expect(diagnostic.scanFlavor, 'birdScanA');
+    expect(diagnostic.packageId, 'deckers.thibault.aves.bird.scan.a');
+    expect(diagnostic.buildFlavor, 'birdScanA');
+    expect(diagnostic.buildType, 'debug');
+    expect(diagnostic.scanStrategyFallbackEnabled, isTrue);
     expect(diagnostic.observations, hasLength(2));
     expect(diagnostic.observations.last.name, 'BirdBox-ACCEPTED');
     expect(diagnostic.observations.last.scanRecordLength, 21);
@@ -120,6 +148,14 @@ void main() {
       '02010603030102',
     );
     expect(diagnostic.observations.last.scanRecordTruncated, isFalse);
+    expect(diagnostic.observations.last.strategyIndex, 0);
+    expect(diagnostic.observations.last.deviceNamePresent, isTrue);
+    expect(diagnostic.strategyEvents, hasLength(2));
+    expect(
+      diagnostic.strategyEvents.last.switchReason,
+      'raw_results_observed',
+    );
+    expect(diagnostic.strategyEvents.last.rawResultCount, 2);
     expect(diagnostic.toJson()['schema_version'], 3);
     expect(sink.sessions.single.toJson(), diagnostic.toJson());
     expect(diagnostic.toJson().toString(), isNot(contains('handle-accepted')));
@@ -151,6 +187,20 @@ void main() {
     final diagnostic = await diagnosticFuture;
     expect(diagnostic.endReason, BleScanEndReason.platformError);
     expect(diagnostic.androidScanErrorCode, 2);
+  });
+
+  test('gives all three fallback strategies a complete default window', () async {
+    final platform = _FakeBlePlatform();
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+
+    final subscription = dataSource.scan().listen((_) {});
+    await Future<void>.delayed(Duration.zero);
+
+    expect(platform.startedScanTimeout, const Duration(seconds: 13));
+
+    await dataSource.stopScan();
+    await subscription.cancel();
   });
 
   test('records permission and disabled-adapter preflight failures without starting a scan', () async {
@@ -704,6 +754,7 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
   String? connectedTraceId;
   int? requestedMtu;
   String? startedScanSessionId;
+  Duration? startedScanTimeout;
   int beginSecurityWriteCalls = 0;
   int awaitSecurityReadyCalls = 0;
   int beginSecurityRetryCalls = 0;
@@ -754,6 +805,32 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
     );
   }
 
+  void emitScanStrategy({
+    required String event,
+    required int index,
+    required String name,
+    required int generation,
+    required String reason,
+    int rawResultCount = 0,
+    int deviceNameResultCount = 0,
+    int candidateCount = 0,
+  }) => _scan.add({
+    'eventType': 'scanStrategy',
+    'strategyEvent': event,
+    'scanSessionId': startedScanSessionId,
+    'scanFlavor': 'birdScanA',
+    'scanPermissionPolicy': 'never_for_location',
+    'locationService': 'not_required',
+    'strategyFallbackEnabled': true,
+    'strategyIndex': index,
+    'strategyName': name,
+    'strategyGeneration': generation,
+    'strategySwitchReason': reason,
+    'strategyRawResultCount': rawResultCount,
+    'strategyDeviceNameCount': deviceNameResultCount,
+    'strategyCandidateCount': candidateCount,
+  });
+
   void emitNotification(String characteristicUuid, Uint8List value) => _notifications.add({'characteristicUuid': characteristicUuid, 'value': value});
   void emitDisconnect() {
     final generation = _nativeConnectionGeneration;
@@ -783,10 +860,15 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
     model: 'test-model',
     androidRelease: '16',
     sdkInt: 36,
-    appVersionName: '1.14.8',
-    appVersionCode: '172',
+    packageId: 'deckers.thibault.aves.bird.scan.a',
+    buildFlavor: 'birdScanA',
+    buildType: 'debug',
+    appVersionName: '1.14.9',
+    appVersionCode: '174',
     gitCommit: '0123456789abcdef0123456789abcdef01234567',
     scanPermissionPolicy: 'never_for_location',
+    scanFlavor: 'birdScanA',
+    scanStrategyFallbackEnabled: true,
     scanMode: 'low_latency',
   );
   @override
@@ -797,6 +879,7 @@ final class _FakeBlePlatform implements BirdBoxBlePlatform {
     required String scanSessionId,
   }) async {
     startedScanSessionId = scanSessionId;
+    startedScanTimeout = timeout;
   }
 
   @override

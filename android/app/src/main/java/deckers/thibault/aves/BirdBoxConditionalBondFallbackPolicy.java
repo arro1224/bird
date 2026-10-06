@@ -50,8 +50,7 @@ final class BirdBoxConditionalBondFallbackPolicy {
             long nowMs,
             boolean securityRecoveryPending,
             boolean securityPhaseEligible,
-            boolean securityFailureObserved,
-            boolean explicitGattSecurityStatusObserved,
+            BirdBoxSecurityWriteAttemptContext.Trigger trigger,
             boolean bondingObserved,
             BondState bondState) {
         final Decision immediate = immediateDecision(
@@ -59,14 +58,18 @@ final class BirdBoxConditionalBondFallbackPolicy {
                 activeConnectionGeneration,
                 securityRecoveryPending,
                 securityPhaseEligible,
-                securityFailureObserved,
-                explicitGattSecurityStatusObserved,
+                trigger,
                 bondingObserved,
                 bondState
         );
         if (immediate != Decision.WAIT_FOR_SYSTEM) {
+            if (immediate == Decision.START_CONDITIONAL_FALLBACK) {
+                if (attempted) return Decision.INELIGIBLE;
+                attempted = true;
+            }
             if (immediate == Decision.OBSERVE_SYSTEM_BONDING
-                    || immediate == Decision.RECOVER_BONDED) {
+                    || immediate == Decision.RECOVER_BONDED
+                    || immediate == Decision.START_CONDITIONAL_FALLBACK) {
                 cancelPending();
             }
             return immediate;
@@ -85,8 +88,7 @@ final class BirdBoxConditionalBondFallbackPolicy {
             long nowMs,
             boolean securityRecoveryPending,
             boolean securityPhaseEligible,
-            boolean securityFailureObserved,
-            boolean explicitGattSecurityStatusObserved,
+            BirdBoxSecurityWriteAttemptContext.Trigger trigger,
             boolean bondingObserved,
             BondState bondState) {
         final Decision immediate = immediateDecision(
@@ -94,13 +96,18 @@ final class BirdBoxConditionalBondFallbackPolicy {
                 activeConnectionGeneration,
                 securityRecoveryPending,
                 securityPhaseEligible,
-                securityFailureObserved,
-                explicitGattSecurityStatusObserved,
+                trigger,
                 bondingObserved,
                 bondState
         );
         if (immediate != Decision.WAIT_FOR_SYSTEM) {
-            if (sameSession(activeRequestId, activeConnectionGeneration)) cancelPending();
+            if (immediate == Decision.START_CONDITIONAL_FALLBACK) {
+                if (attempted) return Decision.INELIGIBLE;
+                attempted = true;
+            }
+            if (sameSession(activeRequestId, activeConnectionGeneration)) {
+                cancelPending();
+            }
             return immediate;
         }
         if (!armed || attempted || nowMs < dueAtMs) {
@@ -140,22 +147,26 @@ final class BirdBoxConditionalBondFallbackPolicy {
             int activeConnectionGeneration,
             boolean securityRecoveryPending,
             boolean securityPhaseEligible,
-            boolean securityFailureObserved,
-            boolean explicitGattSecurityStatusObserved,
+            BirdBoxSecurityWriteAttemptContext.Trigger trigger,
             boolean bondingObserved,
             BondState bondState) {
         if (!sameSession(activeRequestId, activeConnectionGeneration)
-                || !securityRecoveryPending
                 || !securityPhaseEligible
-                || !securityFailureObserved
-                || !explicitGattSecurityStatusObserved) {
+                || trigger == null
+                || trigger == BirdBoxSecurityWriteAttemptContext.Trigger.NONE) {
             return Decision.INELIGIBLE;
         }
         if (bondState == BondState.BONDED) return Decision.RECOVER_BONDED;
         if (bondingObserved || bondState == BondState.BONDING) {
             return Decision.OBSERVE_SYSTEM_BONDING;
         }
-        return bondState == BondState.NONE
+        if (bondState != BondState.NONE) return Decision.INELIGIBLE;
+        if (trigger == BirdBoxSecurityWriteAttemptContext.Trigger.WRITE_CALLBACK_TIMEOUT) {
+            return Decision.START_CONDITIONAL_FALLBACK;
+        }
+        return securityRecoveryPending
+                && trigger
+                == BirdBoxSecurityWriteAttemptContext.Trigger.EXPLICIT_GATT_SECURITY_STATUS
                 ? Decision.WAIT_FOR_SYSTEM
                 : Decision.INELIGIBLE;
     }

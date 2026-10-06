@@ -27,6 +27,7 @@ final class BirdBoxSecurityWriteStateMachine {
         NONE,
         GATT_NOT_READY,
         LE_PAIRING_NOT_STARTED,
+        PAIRING_TIMEOUT,
         PAIRING_REJECTED,
         GATT_RECOVERY_FAILED,
         ENCRYPTED_RETRY_FAILED,
@@ -119,6 +120,10 @@ final class BirdBoxSecurityWriteStateMachine {
         phase = Phase.BONDING;
     }
 
+    void onWriteCallbackTimeout() {
+        onSecurityRequired();
+    }
+
     boolean tryMarkConditionalBondFallbackAttempted() {
         requirePhase("start conditional Bond fallback", Phase.BONDING);
         if (conditionalBondFallbackAttempted) return false;
@@ -134,6 +139,11 @@ final class BirdBoxSecurityWriteStateMachine {
     void onPairingNotStartedTimeout() {
         requirePhase("time out pairing start", Phase.SECURITY_WRITE_STARTING, Phase.BONDING);
         fail(Failure.LE_PAIRING_NOT_STARTED);
+    }
+
+    void onPairingTimeout() {
+        requirePhase("time out pairing", Phase.SECURITY_WRITE_STARTING, Phase.BONDING);
+        fail(Failure.PAIRING_TIMEOUT);
     }
 
     void onBonded(boolean currentGattUsable) {

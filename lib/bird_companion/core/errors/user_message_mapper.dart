@@ -299,11 +299,7 @@ abstract final class UserMessageMapper {
     String? actionLabel,
   }) {
     final normalized = error.message.trim();
-    final usable = normalized.isNotEmpty &&
-        !normalized.contains(RegExp(r'[/\\]')) &&
-        !normalized.contains('Exception') &&
-        !normalized.contains('http://') &&
-        !normalized.contains('https://');
+    final usable = normalized.isNotEmpty && !normalized.contains(RegExp(r'[/\\]')) && !normalized.contains('Exception') && !normalized.contains('http://') && !normalized.contains('https://');
     return UserMessage(
       title: title,
       message: usable ? normalized : fallbackMessage,
@@ -328,6 +324,12 @@ abstract final class UserMessageMapper {
           message: '请在系统设置中允许蓝牙和附近设备权限，然后返回继续。',
           actionLabel: '前往设置',
         );
+      case ProvisioningErrorCode.locationServicesDisabled:
+        return const UserMessage(
+          title: '需要开启定位服务',
+          message: '当前扫描模式需要系统定位服务。请开启定位服务后返回重新搜索。',
+          actionLabel: '前往设置',
+        );
       case ProvisioningErrorCode.bleGattNotReady:
         return const UserMessage(
           title: '盒子连接尚未准备好',
@@ -340,17 +342,35 @@ abstract final class UserMessageMapper {
           message: '手机未能启动安全连接，请关闭再打开蓝牙后重试。',
           actionLabel: '重试',
         );
+      case ProvisioningErrorCode.blePairingTimeout:
+        return const UserMessage(
+          title: '安全配对超时',
+          message: '配对长时间未完成，请检查系统配对界面后重试。',
+          actionLabel: '重试',
+        );
       case ProvisioningErrorCode.blePairingRejected:
         return const UserMessage(
           title: '安全连接未完成',
           message: '安全连接未完成，请重新配对。',
           actionLabel: '重新配对',
         );
+      case ProvisioningErrorCode.bleGattOperationFailed:
+        return const UserMessage(
+          title: '蓝牙通信失败',
+          message: '手机与盒子的蓝牙通信中断，请重新连接后重试。',
+          actionLabel: '重新连接',
+        );
       case ProvisioningErrorCode.bleGattRecoveryFailed:
         return const UserMessage(
           title: '盒子重新连接失败',
           message: '安全连接已建立，但重新连接盒子失败。',
           actionLabel: '重试',
+        );
+      case ProvisioningErrorCode.bleSecurityRecoveryFailed:
+        return const UserMessage(
+          title: '安全连接恢复失败',
+          message: '手机已尝试恢复安全连接，但流程未能完成。',
+          actionLabel: '重新连接',
         );
       case ProvisioningErrorCode.bleEncryptedRetryFailed:
         return const UserMessage(

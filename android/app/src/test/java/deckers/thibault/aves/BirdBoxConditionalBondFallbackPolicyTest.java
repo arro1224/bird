@@ -13,35 +13,36 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
 
         assertEquals(
                 BirdBoxConditionalBondFallbackPolicy.Decision.WAIT_FOR_SYSTEM,
-                arm(policy, "request-1", 3, 1000L, true, false,
+                arm(policy, "request-1", 3, 1000L, explicitGattStatus(), false,
                         BirdBoxConditionalBondFallbackPolicy.BondState.NONE)
         );
         assertEquals(3000L, policy.dueAtMs());
         assertEquals(
                 BirdBoxConditionalBondFallbackPolicy.Decision.WAIT_FOR_SYSTEM,
-                evaluate(policy, "request-1", 3, 2999L, true, false,
+                evaluate(policy, "request-1", 3, 2999L, explicitGattStatus(), false,
                         BirdBoxConditionalBondFallbackPolicy.BondState.NONE)
         );
         assertEquals(
                 BirdBoxConditionalBondFallbackPolicy.Decision.START_CONDITIONAL_FALLBACK,
-                evaluate(policy, "request-1", 3, 3000L, true, false,
+                evaluate(policy, "request-1", 3, 3000L, explicitGattStatus(), false,
                         BirdBoxConditionalBondFallbackPolicy.BondState.NONE)
         );
         assertTrue(policy.attempted());
         assertEquals(
                 BirdBoxConditionalBondFallbackPolicy.Decision.INELIGIBLE,
-                evaluate(policy, "request-1", 3, 5000L, true, false,
+                evaluate(policy, "request-1", 3, 5000L, explicitGattStatus(), false,
                         BirdBoxConditionalBondFallbackPolicy.BondState.NONE)
         );
     }
 
     @Test
-    public void inferredWriteFailureWithoutGattSecurityStatusNeverArms() {
+    public void missingSecurityTriggerNeverArms() {
         final BirdBoxConditionalBondFallbackPolicy policy = readyPolicy("request-2", 4);
 
         assertEquals(
                 BirdBoxConditionalBondFallbackPolicy.Decision.INELIGIBLE,
-                arm(policy, "request-2", 4, 1000L, false, false,
+                arm(policy, "request-2", 4, 1000L,
+                        BirdBoxSecurityWriteAttemptContext.Trigger.NONE, false,
                         BirdBoxConditionalBondFallbackPolicy.BondState.NONE)
         );
         assertEquals(-1L, policy.dueAtMs());
@@ -49,14 +50,47 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
     }
 
     @Test
+    public void callbackTimeoutStartsFallbackImmediatelyAndOnlyOnce() {
+        final BirdBoxConditionalBondFallbackPolicy policy = readyPolicy("request-timeout", 4);
+
+        assertEquals(
+                BirdBoxConditionalBondFallbackPolicy.Decision.START_CONDITIONAL_FALLBACK,
+                policy.arm(
+                        "request-timeout",
+                        4,
+                        3000L,
+                        false,
+                        true,
+                        BirdBoxSecurityWriteAttemptContext.Trigger.WRITE_CALLBACK_TIMEOUT,
+                        false,
+                        BirdBoxConditionalBondFallbackPolicy.BondState.NONE
+                )
+        );
+        assertTrue(policy.attempted());
+        assertEquals(
+                BirdBoxConditionalBondFallbackPolicy.Decision.INELIGIBLE,
+                policy.evaluate(
+                        "request-timeout",
+                        4,
+                        5000L,
+                        true,
+                        true,
+                        BirdBoxSecurityWriteAttemptContext.Trigger.WRITE_CALLBACK_TIMEOUT,
+                        false,
+                        BirdBoxConditionalBondFallbackPolicy.BondState.NONE
+                )
+        );
+    }
+
+    @Test
     public void systemBondingBeforeDeadlineCancelsFallback() {
         final BirdBoxConditionalBondFallbackPolicy policy = readyPolicy("request-3", 5);
-        arm(policy, "request-3", 5, 1000L, true, false,
+        arm(policy, "request-3", 5, 1000L, explicitGattStatus(), false,
                 BirdBoxConditionalBondFallbackPolicy.BondState.NONE);
 
         assertEquals(
                 BirdBoxConditionalBondFallbackPolicy.Decision.OBSERVE_SYSTEM_BONDING,
-                evaluate(policy, "request-3", 5, 1500L, true, true,
+                evaluate(policy, "request-3", 5, 1500L, explicitGattStatus(), true,
                         BirdBoxConditionalBondFallbackPolicy.BondState.BONDING)
         );
         assertEquals(-1L, policy.dueAtMs());
@@ -64,14 +98,34 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
     }
 
     @Test
+    public void systemBondTriggerIsEligibleBeforeRecoveryCallStarts() {
+        final BirdBoxConditionalBondFallbackPolicy policy = readyPolicy("request-system", 5);
+
+        assertEquals(
+                BirdBoxConditionalBondFallbackPolicy.Decision.OBSERVE_SYSTEM_BONDING,
+                policy.arm(
+                        "request-system",
+                        5,
+                        1500L,
+                        false,
+                        true,
+                        BirdBoxSecurityWriteAttemptContext.Trigger.SYSTEM_BOND_STATE_OBSERVED,
+                        true,
+                        BirdBoxConditionalBondFallbackPolicy.BondState.BONDING
+                )
+        );
+        assertFalse(policy.attempted());
+    }
+
+    @Test
     public void bondedBeforeDeadlineGoesDirectlyToRecovery() {
         final BirdBoxConditionalBondFallbackPolicy policy = readyPolicy("request-4", 6);
-        arm(policy, "request-4", 6, 1000L, true, false,
+        arm(policy, "request-4", 6, 1000L, explicitGattStatus(), false,
                 BirdBoxConditionalBondFallbackPolicy.BondState.NONE);
 
         assertEquals(
                 BirdBoxConditionalBondFallbackPolicy.Decision.RECOVER_BONDED,
-                evaluate(policy, "request-4", 6, 1500L, true, false,
+                evaluate(policy, "request-4", 6, 1500L, explicitGattStatus(), false,
                         BirdBoxConditionalBondFallbackPolicy.BondState.BONDED)
         );
         assertFalse(policy.attempted());
@@ -80,23 +134,23 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
     @Test
     public void staleRequestAndConnectionGenerationCannotTriggerFallback() {
         final BirdBoxConditionalBondFallbackPolicy policy = readyPolicy("request-5", 7);
-        arm(policy, "request-5", 7, 1000L, true, false,
+        arm(policy, "request-5", 7, 1000L, explicitGattStatus(), false,
                 BirdBoxConditionalBondFallbackPolicy.BondState.NONE);
 
         assertEquals(
                 BirdBoxConditionalBondFallbackPolicy.Decision.INELIGIBLE,
-                evaluate(policy, "request-stale", 7, 3000L, true, false,
+                evaluate(policy, "request-stale", 7, 3000L, explicitGattStatus(), false,
                         BirdBoxConditionalBondFallbackPolicy.BondState.NONE)
         );
         assertEquals(
                 BirdBoxConditionalBondFallbackPolicy.Decision.INELIGIBLE,
-                evaluate(policy, "request-5", 8, 3000L, true, false,
+                evaluate(policy, "request-5", 8, 3000L, explicitGattStatus(), false,
                         BirdBoxConditionalBondFallbackPolicy.BondState.NONE)
         );
         assertFalse(policy.attempted());
         assertEquals(
                 BirdBoxConditionalBondFallbackPolicy.Decision.START_CONDITIONAL_FALLBACK,
-                evaluate(policy, "request-5", 7, 3000L, true, false,
+                evaluate(policy, "request-5", 7, 3000L, explicitGattStatus(), false,
                         BirdBoxConditionalBondFallbackPolicy.BondState.NONE)
         );
     }
@@ -104,7 +158,7 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
     @Test
     public void teardownOrWrongSecurityPhaseMakesCallbackIneligible() {
         final BirdBoxConditionalBondFallbackPolicy policy = readyPolicy("request-6", 9);
-        arm(policy, "request-6", 9, 1000L, true, false,
+        arm(policy, "request-6", 9, 1000L, explicitGattStatus(), false,
                 BirdBoxConditionalBondFallbackPolicy.BondState.NONE);
 
         assertEquals(
@@ -115,8 +169,7 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
                         3000L,
                         false,
                         true,
-                        true,
-                        true,
+                        explicitGattStatus(),
                         false,
                         BirdBoxConditionalBondFallbackPolicy.BondState.NONE
                 )
@@ -129,8 +182,7 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
                         3000L,
                         true,
                         false,
-                        true,
-                        true,
+                        explicitGattStatus(),
                         false,
                         BirdBoxConditionalBondFallbackPolicy.BondState.NONE
                 )
@@ -141,9 +193,9 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
     @Test
     public void newRequestResetAllowsOneNewAttempt() {
         final BirdBoxConditionalBondFallbackPolicy policy = readyPolicy("request-old", 10);
-        arm(policy, "request-old", 10, 0L, true, false,
+        arm(policy, "request-old", 10, 0L, explicitGattStatus(), false,
                 BirdBoxConditionalBondFallbackPolicy.BondState.NONE);
-        evaluate(policy, "request-old", 10, 2000L, true, false,
+        evaluate(policy, "request-old", 10, 2000L, explicitGattStatus(), false,
                 BirdBoxConditionalBondFallbackPolicy.BondState.NONE);
         assertTrue(policy.attempted());
 
@@ -152,7 +204,7 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
         assertFalse(policy.attempted());
         assertEquals(
                 BirdBoxConditionalBondFallbackPolicy.Decision.WAIT_FOR_SYSTEM,
-                arm(policy, "request-new", 11, 5000L, true, false,
+                arm(policy, "request-new", 11, 5000L, explicitGattStatus(), false,
                         BirdBoxConditionalBondFallbackPolicy.BondState.NONE)
         );
     }
@@ -171,7 +223,7 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
             String requestId,
             int generation,
             long nowMs,
-            boolean explicitGattStatus,
+            BirdBoxSecurityWriteAttemptContext.Trigger trigger,
             boolean bondingObserved,
             BirdBoxConditionalBondFallbackPolicy.BondState bondState) {
         return policy.arm(
@@ -180,8 +232,7 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
                 nowMs,
                 true,
                 true,
-                true,
-                explicitGattStatus,
+                trigger,
                 bondingObserved,
                 bondState
         );
@@ -192,7 +243,7 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
             String requestId,
             int generation,
             long nowMs,
-            boolean explicitGattStatus,
+            BirdBoxSecurityWriteAttemptContext.Trigger trigger,
             boolean bondingObserved,
             BirdBoxConditionalBondFallbackPolicy.BondState bondState) {
         return policy.evaluate(
@@ -201,10 +252,13 @@ public final class BirdBoxConditionalBondFallbackPolicyTest {
                 nowMs,
                 true,
                 true,
-                true,
-                explicitGattStatus,
+                trigger,
                 bondingObserved,
                 bondState
         );
+    }
+
+    private static BirdBoxSecurityWriteAttemptContext.Trigger explicitGattStatus() {
+        return BirdBoxSecurityWriteAttemptContext.Trigger.EXPLICIT_GATT_SECURITY_STATUS;
     }
 }

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../../tool/acceptance/rc4_hf_ble_03_evidence_validator.dart';
 import '../../../tool/acceptance/rc4_hf_ble_04_release_gate.dart';
+import '../../../tool/acceptance/rc4_hf_ble_16_evidence_validator.dart';
 
 void main() {
   late Directory root;
@@ -93,6 +94,31 @@ void main() {
     expect(
       result.failures.join('\n'),
       contains('BLE-03 real-device evidence gate must pass'),
+    );
+  });
+
+  test('rejects release promotion while BLE-16 hardware evidence is pending', () {
+    final result = _validate(
+      root: root,
+      apk: apk,
+      manifest: manifest,
+      evidence: _releaseEvidence(apkSha),
+      ble16Validation: const Rc4HfBle16EvidenceValidation(
+        errors: ['T1-T8 real-device matrix is pending.'],
+        gitCommit: '',
+        versionName: '1.14.9',
+        versionCode: 174,
+        selectedScanVariant: '',
+        artifacts: {},
+        scenarioCount: 0,
+      ),
+    );
+
+    expect(result.passed, isFalse);
+    expect(result.toJson()['ble16_delivery_status'], 'pending');
+    expect(
+      result.failures.join('\n'),
+      contains('BLE-16 version delivery and real-device evidence gate must pass'),
     );
   });
 
@@ -228,11 +254,18 @@ Rc4HfBle04ReleaseGateResult _validate({
   ),
   String selectedVariant = 'B',
   bool worktreeDirty = false,
+  Rc4HfBle16EvidenceValidation? ble16Validation,
 }) {
   return Rc4HfBle04ReleaseGateValidator.validate(
     evidence: evidence,
     evidenceRoot: root,
     ble03Validation: ble03Validation,
+    ble16Validation:
+        ble16Validation ??
+        _validBle16Validation(
+          sha256.convert(apk.readAsBytesSync()).toString(),
+          selectedVariant,
+        ),
     selectedScanVariant: selectedVariant,
     repositoryRoot: root,
     apkFile: apk,
@@ -255,8 +288,8 @@ Map<String, dynamic> _releaseEvidence(String apkSha) => {
     'signed': true,
     'signature_verified': true,
     'git_commit': 'a' * 40,
-    'version_name': '1.14.8',
-    'version_code': 172,
+    'version_name': '1.14.9',
+    'version_code': 174,
     'build_time': '2026-09-20T07:30:00Z',
     'apk_sha256': apkSha,
     'certificate_sha256': 'c' * 64,
@@ -275,7 +308,7 @@ void _writeRepositoryFixture(
   required String policy,
   String? birdPolicy,
 }) {
-  File('${root.path}${Platform.pathSeparator}pubspec.yaml').writeAsStringSync('name: fixture\nversion: 1.14.8+172\n');
+  File('${root.path}${Platform.pathSeparator}pubspec.yaml').writeAsStringSync('name: fixture\nversion: 1.14.9+174\n');
   final gradle = File(
     '${root.path}${Platform.pathSeparator}android${Platform.pathSeparator}app${Platform.pathSeparator}build.gradle.kts',
   )..createSync(recursive: true);
@@ -308,9 +341,31 @@ void _writeManifest(File file, {required String policy}) {
   file.writeAsStringSync('''
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="deckers.thibault.aves.bird"
-    android:versionCode="172"
-    android:versionName="1.14.8">
+    android:versionCode="174"
+    android:versionName="1.14.9">
   <uses-permission android:name="android.permission.BLUETOOTH_SCAN"$flag />
 </manifest>
 ''');
 }
+
+Rc4HfBle16EvidenceValidation _validBle16Validation(
+  String apkSha,
+  String selectedVariant,
+) => Rc4HfBle16EvidenceValidation(
+  errors: const [],
+  gitCommit: 'a' * 40,
+  versionName: '1.14.9',
+  versionCode: 174,
+  selectedScanVariant: selectedVariant,
+  artifacts: {
+    'bird': Rc4HfBle16ArtifactIdentity(
+      packageId: 'deckers.thibault.aves.bird',
+      versionName: '1.14.9',
+      versionCode: 174,
+      gitCommit: 'a' * 40,
+      apkSha256: apkSha,
+      scanPermissionPolicy: selectedVariant == 'B' ? 'full_scan' : 'never_for_location',
+    ),
+  },
+  scenarioCount: 8,
+);

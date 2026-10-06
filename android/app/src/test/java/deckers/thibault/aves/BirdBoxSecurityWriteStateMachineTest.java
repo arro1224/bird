@@ -210,6 +210,30 @@ public final class BirdBoxSecurityWriteStateMachineTest {
         assertTrue(machine.onResponse("request-fallback-once"));
     }
 
+    @Test
+    public void writeCallbackTimeoutEntersBondingAndOwnsOneFallback() {
+        final BirdBoxSecurityWriteStateMachine machine = readyMachine(18L);
+
+        machine.beginSecurityWrite("request-no-callback", 18L);
+        machine.onWriteCallbackTimeout();
+
+        assertEquals(BirdBoxSecurityWriteStateMachine.Phase.BONDING, machine.phase());
+        assertTrue(machine.tryMarkConditionalBondFallbackAttempted());
+        assertFalse(machine.tryMarkConditionalBondFallbackAttempted());
+    }
+
+    @Test
+    public void bondingTimeoutIsNotMisclassifiedAsPairingRejection() {
+        final BirdBoxSecurityWriteStateMachine state = readyMachine(1L);
+        state.beginSecurityWrite("request-1", 1L);
+        state.onBonding();
+
+        state.onPairingTimeout();
+
+        assertEquals(BirdBoxSecurityWriteStateMachine.Phase.FAILED, state.phase());
+        assertEquals(BirdBoxSecurityWriteStateMachine.Failure.PAIRING_TIMEOUT, state.failure());
+    }
+
     private static BirdBoxSecurityWriteStateMachine readyMachine(long generation) {
         final BirdBoxSecurityWriteStateMachine machine = new BirdBoxSecurityWriteStateMachine();
         machine.markGattReady(generation);

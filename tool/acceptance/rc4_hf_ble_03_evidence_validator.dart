@@ -115,10 +115,27 @@ Rc4HfBle03EvidenceValidation validateRc4HfBle03Evidence(
   for (final variant in const ['A', 'B']) {
     final build = _map(builds[variant]);
     final expectedPolicy = variant == 'A' ? 'never_for_location' : 'full_scan';
+    final expectedApplicationId = variant == 'A' ? 'deckers.thibault.aves.bird.scan.a' : 'deckers.thibault.aves.bird.scan.b';
     final apkSha = _text(build['apk_sha256']).toLowerCase();
     require(
       build['scan_permission_policy'] == expectedPolicy,
       'builds.$variant.scan_permission_policy must be $expectedPolicy.',
+    );
+    require(
+      build['application_id'] == expectedApplicationId,
+      'builds.$variant.application_id must be $expectedApplicationId.',
+    );
+    require(
+      _usableText(build['app_version_name']),
+      'builds.$variant.app_version_name is required.',
+    );
+    require(
+      _usableText(build['app_version_code']),
+      'builds.$variant.app_version_code is required.',
+    );
+    require(
+      build['scan_strategy_fallback_enabled'] == true,
+      'builds.$variant.scan_strategy_fallback_enabled must be true.',
     );
     require(_isSha256(apkSha), 'builds.$variant.apk_sha256 must be SHA-256.');
     require(
@@ -158,6 +175,7 @@ Rc4HfBle03EvidenceValidation validateRc4HfBle03Evidence(
       _map(run['session']),
       label: 'scan_runs[$index].session',
       expectedRole: role,
+      expectedVariant: variant,
       expectedPolicy: variant == 'A' ? 'never_for_location' : 'full_scan',
       expectedApkSha: buildHashes[variant] ?? '',
       traceIds: traceIds,
@@ -247,6 +265,7 @@ void _validateScanSession(
   Map<String, dynamic> session, {
   required String label,
   required String expectedRole,
+  required String expectedVariant,
   required String expectedPolicy,
   required String expectedApkSha,
   required Set<String> traceIds,
@@ -291,6 +310,15 @@ void _validateScanSession(
     session['scan_permission_policy'] == expectedPolicy,
     '$label scan_permission_policy does not match its APK variant.',
   );
+  final expectedFlavor = expectedVariant == 'A' ? 'birdScanA' : 'birdScanB';
+  require(
+    session['scan_flavor'] == expectedFlavor,
+    '$label scan_flavor must be $expectedFlavor.',
+  );
+  require(
+    session['scan_strategy_fallback_enabled'] == true,
+    '$label must enable the serial scan strategy fallback.',
+  );
   require(
     _text(session['apk_sha256']).toLowerCase() == expectedApkSha,
     '$label apk_sha256 does not match its APK variant.',
@@ -318,6 +346,22 @@ void _validateScanSession(
     session['adapter_before'] == 'enabled' && session['adapter_after'] == 'enabled',
     '$label must record an enabled Bluetooth adapter.',
   );
+  final sdkInt = session['sdk_int'];
+  if (sdkInt is int && sdkInt >= 31 && sdkInt <= 32 && expectedVariant == 'B') {
+    require(
+      session['location_permission_before'] == 'granted' && session['location_permission_after'] == 'granted',
+      '$label Scan B must record granted location permission on Android 12/12L.',
+    );
+    require(
+      session['location_service_before'] == 'enabled' && session['location_service_after'] == 'enabled',
+      '$label Scan B requires enabled location services on Android 12/12L.',
+    );
+  } else if (sdkInt is int && sdkInt >= 31) {
+    require(
+      session['location_permission_before'] == 'notRequired' && session['location_permission_after'] == 'notRequired',
+      '$label must not request location permission for this SDK/variant.',
+    );
+  }
   for (final field in const [
     'location_permission_before',
     'location_permission_after',
@@ -360,6 +404,7 @@ void _validateScanSession(
       'manufacturer_data_length',
       'accepted',
       'reason_code',
+      'device_name_present',
     ]) {
       require(
         observation.containsKey(field),
@@ -391,7 +436,85 @@ void _validateScanSession(
     }),
     '$label has no accepted BirdBox observation.',
   );
+  _validateScanStrategies(session, label: label, require: require);
   _validateSecretSafe(session, label, require);
+}
+
+void _validateScanStrategies(
+  Map<String, dynamic> session, {
+  required String label,
+  required void Function(bool, String) require,
+}) {
+  final events = _maps(session['strategy_events']);
+  require(events.isNotEmpty, '$label.strategy_events must not be empty.');
+  if (events.isEmpty) return;
+  final started = events.where((event) => event['event'] == 'strategy_started').toList();
+  require(started.isNotEmpty, '$label must record a strategy_started event.');
+  if (started.isNotEmpty) {
+    require(
+      started.first['index'] == 0 && started.first['name'] == 'NULL_FILTER_LOW_LATENCY',
+      '$label must start with NULL_FILTER_LOW_LATENCY.',
+    );
+  }
+  const expectedNames = [
+    'NULL_FILTER_LOW_LATENCY',
+    'EMPTY_FILTER_LIST_LOW_LATENCY',
+    'EMPTY_FILTER_LIST_DEFAULT_SETTINGS',
+  ];
+  for (var index = 0; index < events.length; index++) {
+    final event = events[index];
+    final strategyIndex = event['index'];
+    require(
+      strategyIndex is int && strategyIndex >= 0 && strategyIndex < expectedNames.length,
+      '$label.strategy_events[$index].index is invalid.',
+    );
+    if (strategyIndex is int && strategyIndex >= 0 && strategyIndex < expectedNames.length) {
+      require(
+        event['name'] == expectedNames[strategyIndex],
+        '$label.strategy_events[$index].name does not match its index.',
+      );
+    }
+    for (final field in const [
+      'occurred_at',
+      'generation',
+      'switch_reason',
+      'raw_result_count',
+      'device_name_result_count',
+      'candidate_count',
+      'location_service',
+    ]) {
+      require(
+        event.containsKey(field),
+        '$label.strategy_events[$index].$field is required.',
+      );
+    }
+    require(
+      event['raw_result_count'] is int &&
+          (event['raw_result_count'] as int) >= 0 &&
+          event['device_name_result_count'] is int &&
+          (event['device_name_result_count'] as int) >= 0 &&
+          event['candidate_count'] is int &&
+          (event['candidate_count'] as int) >= 0,
+      '$label.strategy_events[$index] has invalid counters.',
+    );
+  }
+  for (var strategyIndex = 1; strategyIndex < started.length; strategyIndex++) {
+    final current = started[strategyIndex];
+    final previousIndex = current['index'] is int ? (current['index'] as int) - 1 : -1;
+    final switchEvidence = events.where(
+      (event) => event['event'] == 'strategy_window_elapsed' && event['index'] == previousIndex && event['switch_reason'] == 'raw_zero_after_4000ms',
+    );
+    require(
+      switchEvidence.any((event) => event['raw_result_count'] == 0),
+      '$label strategy $previousIndex switched without a raw-zero window.',
+    );
+  }
+  require(
+    !events.any(
+      (event) => event['switch_reason'] == 'raw_zero_after_4000ms' && event['raw_result_count'] is int && (event['raw_result_count'] as int) > 0,
+    ),
+    '$label switched strategy after raw callbacks were observed.',
+  );
 }
 
 void _validatePairingRun(

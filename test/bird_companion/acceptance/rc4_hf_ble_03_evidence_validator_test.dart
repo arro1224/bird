@@ -94,6 +94,26 @@ void main() {
     expect(result.errors, contains(contains('plaintext Bluetooth address')));
     expect(result.errors, contains(contains('credential-like material')));
   });
+
+  test('rejects a scan strategy switch after raw callbacks were observed', () {
+    final broken = _clone(evidence);
+    final scanRun = (broken['scan_runs'] as List).first as Map<String, dynamic>;
+    final session = scanRun['session'] as Map<String, dynamic>;
+    final strategyEvents = session['strategy_events'] as List;
+    (strategyEvents.first as Map<String, dynamic>)['switch_reason'] = 'raw_zero_after_4000ms';
+    (strategyEvents.first as Map<String, dynamic>)['raw_result_count'] = 1;
+
+    final result = validateRc4HfBle03Evidence(
+      broken,
+      evidenceRoot: evidenceRoot,
+    );
+
+    expect(result.passed, isFalse);
+    expect(
+      result.errors,
+      contains(contains('switched strategy after raw callbacks')),
+    );
+  });
 }
 
 Map<String, dynamic> _validEvidence(Directory root) {
@@ -170,13 +190,21 @@ Map<String, dynamic> _validEvidence(Directory root) {
         'apk_file': 'scan-A.apk',
         'apk_sha256': buildHashes['A'],
         'git_commit': 'a' * 40,
+        'application_id': 'deckers.thibault.aves.bird.scan.a',
+        'app_version_name': '1.14.8',
+        'app_version_code': '172',
         'scan_permission_policy': 'never_for_location',
+        'scan_strategy_fallback_enabled': true,
       },
       'B': {
         'apk_file': 'scan-B.apk',
         'apk_sha256': buildHashes['B'],
         'git_commit': 'a' * 40,
+        'application_id': 'deckers.thibault.aves.bird.scan.b',
+        'app_version_name': '1.14.8',
+        'app_version_code': '172',
         'scan_permission_policy': 'full_scan',
+        'scan_strategy_fallback_enabled': true,
       },
     },
     'scan_runs': scanRuns,
@@ -249,6 +277,8 @@ Map<String, Object?> _scanSession(
   'git_commit': 'a' * 40,
   'apk_sha256': apkSha,
   'scan_permission_policy': variant == 'A' ? 'never_for_location' : 'full_scan',
+  'scan_flavor': variant == 'A' ? 'birdScanA' : 'birdScanB',
+  'scan_strategy_fallback_enabled': true,
   'scan_mode': 'low_latency',
   'scan_permission_before': 'granted',
   'scan_permission_after': 'granted',
@@ -277,6 +307,7 @@ Map<String, Object?> _scanSession(
       'scan_record_truncated': false,
       'accepted': true,
       'reason_code': 'birdbox_service',
+      'device_name_present': true,
     },
     {
       'address_hash': 'd' * 64,
@@ -285,6 +316,33 @@ Map<String, Object?> _scanSession(
       'manufacturer_data_length': 0,
       'accepted': false,
       'reason_code': 'non_birdbox',
+      'device_name_present': false,
+    },
+  ],
+  'strategy_events': [
+    {
+      'occurred_at': '2026-09-20T08:00:00Z',
+      'event': 'strategy_started',
+      'index': 0,
+      'name': 'NULL_FILTER_LOW_LATENCY',
+      'generation': 1,
+      'switch_reason': 'session_started',
+      'raw_result_count': 0,
+      'device_name_result_count': 0,
+      'candidate_count': 0,
+      'location_service': 'notRequired',
+    },
+    {
+      'occurred_at': '2026-09-20T08:00:04Z',
+      'event': 'strategy_window_elapsed',
+      'index': 0,
+      'name': 'NULL_FILTER_LOW_LATENCY',
+      'generation': 1,
+      'switch_reason': 'raw_results_observed',
+      'raw_result_count': 2,
+      'device_name_result_count': 1,
+      'candidate_count': 1,
+      'location_service': 'notRequired',
     },
   ],
   'end_reason': 'timeout',

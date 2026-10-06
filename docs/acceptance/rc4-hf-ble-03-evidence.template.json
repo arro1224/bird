@@ -32,14 +32,36 @@
       "apk_file": "REQUIRED_RELATIVE_PATH_TO_SCAN_A_APK",
       "apk_sha256": "REQUIRED_SCAN_A_APK_SHA256",
       "git_commit": "REQUIRED_40_CHAR_GIT_SHA",
-      "scan_permission_policy": "never_for_location"
+      "application_id": "deckers.thibault.aves.bird.scan.a",
+      "app_version_name": "REQUIRED_APP_VERSION_NAME",
+      "app_version_code": "REQUIRED_APP_VERSION_CODE",
+      "scan_permission_policy": "never_for_location",
+      "scan_strategy_fallback_enabled": true
     },
     "B": {
       "apk_file": "REQUIRED_RELATIVE_PATH_TO_SCAN_B_APK",
       "apk_sha256": "REQUIRED_SCAN_B_APK_SHA256",
       "git_commit": "REQUIRED_40_CHAR_GIT_SHA",
-      "scan_permission_policy": "full_scan"
+      "application_id": "deckers.thibault.aves.bird.scan.b",
+      "app_version_name": "REQUIRED_APP_VERSION_NAME",
+      "app_version_code": "REQUIRED_APP_VERSION_CODE",
+      "scan_permission_policy": "full_scan",
+      "scan_strategy_fallback_enabled": true
     }
+  },
+  "scan_strategy_contract": {
+    "window_ms": 4000,
+    "switch_only_when_raw_count_is_zero": true,
+    "strategies_in_order": [
+      "NULL_FILTER_LOW_LATENCY",
+      "EMPTY_FILTER_LIST_LOW_LATENCY",
+      "EMPTY_FILTER_LIST_DEFAULT_SETTINGS"
+    ],
+    "candidate_sources": [
+      "service_uuid",
+      "advertising_local_name",
+      "bluetooth_device_name"
+    ]
   },
   "scan_runs": [],
   "pairing_runs": [],

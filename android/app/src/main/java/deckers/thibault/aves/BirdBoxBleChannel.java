@@ -13,6 +13,7 @@ import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanRecord;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
@@ -65,6 +66,8 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     static final int GATT_INSUFFICIENT_AUTHORIZATION = 0x08;
     private static final long CONDITIONAL_BOND_FALLBACK_DELAY_MS =
             BirdBoxConditionalBondFallbackPolicy.GRACE_PERIOD_MS;
+    private static final long SECURITY_WRITE_CALLBACK_GUARD_MS = 2000L;
+    private static final String FULL_SCAN_PERMISSION_POLICY = "full_scan";
 
     private static final UUID SERVICE_UUID = UUID.fromString("6f7d0001-7a66-4c45-a1b9-5f4d2e3c1000");
     private static final UUID DEVICE_INFO_UUID = UUID.fromString("6f7d0002-7a66-4c45-a1b9-5f4d2e3c1000");
@@ -87,6 +90,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             new BirdBoxSecurityWriteStateMachine();
     private final BirdBoxConditionalBondFallbackPolicy conditionalBondFallbackPolicy =
             new BirdBoxConditionalBondFallbackPolicy();
+    private final BirdBoxSecurityWriteAttemptContext securityWriteAttemptContext =
+            new BirdBoxSecurityWriteAttemptContext();
+    private final BirdBoxScanStrategyController scanStrategyController =
+            new BirdBoxScanStrategyController();
     private final BluetoothAdapter adapter;
     private final MethodChannel methodChannel;
     private final EventChannel scanEventChannel;
@@ -106,7 +113,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     @Nullable private volatile String pendingOperation;
     @Nullable private Runnable pendingOperationTimeout;
     @Nullable private Runnable scanTimeout;
+    @Nullable private Runnable scanStrategyTimeout;
+    @Nullable private ScanCallback activeScanCallback;
     @Nullable private Runnable conditionalBondFallback;
+    @Nullable private Runnable securityWriteCallbackGuard;
     @Nullable private String activeScanSessionId;
     @Nullable private volatile String activeTraceId;
     @Nullable private BroadcastReceiver bondStateReceiver;
@@ -255,6 +265,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             addIfMissing(permissions, Manifest.permission.BLUETOOTH_SCAN);
             addIfMissing(permissions, Manifest.permission.BLUETOOTH_CONNECT);
+            if (requiresLocationPermission()) {
+                addIfMissing(permissions, Manifest.permission.ACCESS_FINE_LOCATION);
+            }
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             addIfMissing(permissions, Manifest.permission.ACCESS_FINE_LOCATION);
         }
@@ -279,7 +292,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 Manifest.permission.BLUETOOTH_CONNECT
         ));
         environment.put("locationPermission", permissionState(
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Build.VERSION.SDK_INT < Build.VERSION_CODES.S,
+                requiresLocationPermission(),
                 Manifest.permission.ACCESS_FINE_LOCATION
         ));
         environment.put("locationService", locationServiceState());
@@ -290,6 +303,11 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         environment.put("gitCommit", BuildConfig.GIT_SHA);
         environment.put("apkSha256", apkSha256());
         environment.put("scanPermissionPolicy", BuildConfig.BLE_SCAN_PERMISSION_POLICY);
+        environment.put("scanFlavor", BuildConfig.FLAVOR);
+        environment.put(
+                "scanStrategyFallbackEnabled",
+                BuildConfig.BLE_SCAN_STRATEGY_FALLBACK_ENABLED
+        );
         environment.put("scanMode", "low_latency");
         addPackageMetadata(environment);
         return environment;
@@ -305,7 +323,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
 
     @NonNull
     private String locationServiceState() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (!requiresLocationService()) {
             return "not_required";
         }
         final LocationManager manager = (LocationManager) activity.getSystemService(Context.LOCATION_SERVICE);
@@ -321,6 +339,21 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         } catch (RuntimeException ignored) {
             return "unknown";
         }
+    }
+
+    private boolean usesFullScanPermissionPolicy() {
+        return FULL_SCAN_PERMISSION_POLICY.equals(BuildConfig.BLE_SCAN_PERMISSION_POLICY);
+    }
+
+    private boolean requiresLocationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true;
+        return Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2
+                && usesFullScanPermissionPolicy();
+    }
+
+    private boolean requiresLocationService() {
+        return requiresLocationPermission();
     }
 
     private boolean requireBluetooth(@NonNull String platformMethod, MethodChannel.Result result) {
@@ -339,6 +372,15 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     platformMethod,
                     "bluetooth_permission_denied",
                     "Required Bluetooth permission is missing."
+            );
+            return false;
+        }
+        if (requiresLocationService() && "disabled".equals(locationServiceState())) {
+            returnError(
+                    result,
+                    platformMethod,
+                    "location_service_disabled",
+                    "Location services must be enabled for this BLE scan variant."
             );
             return false;
         }
@@ -370,23 +412,23 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         final Integer timeoutMs = call.argument("timeoutMs");
         final String scanSessionId = call.argument("scanSessionId");
         final long timeout = timeoutMs == null ? 10000L : Math.max(1000L, timeoutMs.longValue());
+        activeScanSessionId = scanSessionId == null || scanSessionId.isEmpty()
+                ? "native-unknown"
+                : scanSessionId;
+        activeTraceId = activeScanSessionId;
+        firstScanCallbackEmitted = false;
+        scanning = true;
+        final BirdBoxScanStrategyController.Snapshot initialStrategy =
+                scanStrategyController.begin();
         try {
-            final ScanSettings settings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
-            // An unfiltered scan permits the Local Name compatibility fallback. Results
-            // containing the frozen Service UUID remain the primary accepted path.
-            activeScanSessionId = scanSessionId == null || scanSessionId.isEmpty() ? "native-unknown" : scanSessionId;
-            activeTraceId = activeScanSessionId;
-            firstScanCallbackEmitted = false;
-            scanner.startScan(null, settings, scanCallback);
-            scanning = true;
+            startActiveScanStrategy(initialStrategy, "session_started");
             emitDiagnostic("scan_started", "scan", -1, null, "success");
             scanTimeout = this::stopScan;
             mainHandler.postDelayed(scanTimeout, timeout);
             result.success(null);
         } catch (SecurityException error) {
             emitDiagnostic("scan_start_failed", "scan", -1, null, "bluetooth_permission_denied");
-            activeScanSessionId = null;
-            scanner = null;
+            clearScanStateAfterFailure();
             returnError(
                     result,
                     "startScan",
@@ -394,9 +436,8 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     "Bluetooth scan permission is missing."
             );
         } catch (RuntimeException error) {
-            emitDiagnostic("scan_start_failed", "scan", -1, null, "gatt_operation_failed");
-            activeScanSessionId = null;
-            scanner = null;
+            emitDiagnostic("scan_start_failed", "scan", -1, null, "ble_gatt_operation_failed");
+            clearScanStateAfterFailure();
             returnError(result, "startScan", "gatt_operation_failed", "BLE scan could not start.");
         }
     }
@@ -404,75 +445,178 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     private void stopScan() {
         if (scanTimeout != null) mainHandler.removeCallbacks(scanTimeout);
         scanTimeout = null;
-        if (!scanning || scanner == null) {
+        cancelScanStrategyTimeout();
+        if (!scanning) {
             activeScanSessionId = null;
             return;
         }
         emitDiagnostic("scan_stopped", "scan", -1, null, "success");
-        try {
-            scanner.stopScan(scanCallback);
-        } catch (SecurityException ignored) {
-            // Permission may have been revoked while the scan was active.
-        }
+        emitScanStrategyEvent(
+                "strategy_stopped",
+                scanStrategyController.current(),
+                "scan_stopped"
+        );
+        scanStrategyController.stop();
+        stopActiveScanCallback();
         scanning = false;
         scanner = null;
         activeScanSessionId = null;
     }
 
-    private final ScanCallback scanCallback = new ScanCallback() {
-        @Override
-        public void onScanResult(int callbackType, @NonNull ScanResult result) {
-            emitScanResult(result);
+    private void startActiveScanStrategy(
+            @NonNull BirdBoxScanStrategyController.Snapshot strategy,
+            @NonNull String reason) {
+        final BluetoothLeScanner activeScanner = scanner;
+        if (activeScanner == null) throw new IllegalStateException("BLE scanner is unavailable");
+        final ScanSettings settings;
+        final List<ScanFilter> filters;
+        switch (strategy.strategy) {
+            case NULL_FILTER_LOW_LATENCY:
+                filters = null;
+                settings = new ScanSettings.Builder()
+                        .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                        .build();
+                break;
+            case EMPTY_FILTER_LIST_LOW_LATENCY:
+                filters = new ArrayList<>();
+                settings = new ScanSettings.Builder()
+                        .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                        .build();
+                break;
+            case EMPTY_FILTER_LIST_DEFAULT_SETTINGS:
+                filters = new ArrayList<>();
+                settings = new ScanSettings.Builder().build();
+                break;
+            default:
+                throw new IllegalStateException("Unknown BLE scan strategy");
         }
-
-        @Override
-        public void onBatchScanResults(@NonNull List<ScanResult> results) {
-            for (ScanResult result : results) emitScanResult(result);
+        final ScanCallback callback = scanCallback(strategy.generation);
+        activeScanCallback = callback;
+        activeScanner.startScan(filters, settings, callback);
+        emitScanStrategyEvent("strategy_started", strategy, reason);
+        if (BuildConfig.BLE_SCAN_STRATEGY_FALLBACK_ENABLED) {
+            scheduleScanStrategyTimeout(strategy.generation);
         }
+    }
 
-        @Override
-        public void onScanFailed(int errorCode) {
-            final String failedSessionId = activeScanSessionId;
-            scanning = false;
-            scanner = null;
-            activeScanSessionId = null;
-            if (scanTimeout != null) mainHandler.removeCallbacks(scanTimeout);
-            scanTimeout = null;
-            emitDiagnostic("scan_failed", "scan", errorCode, null, "android_scan_failed");
-            final Map<String, Object> diagnostic = new LinkedHashMap<>();
-            diagnostic.put("eventType", "scanFailure");
-            diagnostic.put("scanSessionId", failedSessionId == null ? "native-unknown" : failedSessionId);
-            diagnostic.put("androidScanErrorCode", errorCode);
-            emitSuccess(scanSink, diagnostic);
-            final Map<String, Object> details = new LinkedHashMap<>();
-            details.put("androidScanErrorCode", errorCode);
-            details.put("scanSessionId", failedSessionId == null ? "native-unknown" : failedSessionId);
-            emitError(scanSink, "gatt_operation_failed", "BLE scan failed.", details);
+    @NonNull
+    private ScanCallback scanCallback(final int generation) {
+        return new ScanCallback() {
+            @Override
+            public void onScanResult(int callbackType, @NonNull ScanResult result) {
+                emitScanResult(result, generation);
+            }
+
+            @Override
+            public void onBatchScanResults(@NonNull List<ScanResult> results) {
+                for (ScanResult result : results) emitScanResult(result, generation);
+            }
+
+            @Override
+            public void onScanFailed(int errorCode) {
+                handleScanFailure(generation, errorCode);
+            }
+        };
+    }
+
+    private void scheduleScanStrategyTimeout(final int generation) {
+        cancelScanStrategyTimeout();
+        scanStrategyTimeout = () -> onScanStrategyWindowElapsed(generation);
+        mainHandler.postDelayed(
+                scanStrategyTimeout,
+                BirdBoxScanStrategyController.STRATEGY_WINDOW_MS
+        );
+    }
+
+    private void cancelScanStrategyTimeout() {
+        if (scanStrategyTimeout != null) mainHandler.removeCallbacks(scanStrategyTimeout);
+        scanStrategyTimeout = null;
+    }
+
+    private void onScanStrategyWindowElapsed(final int generation) {
+        scanStrategyTimeout = null;
+        if (!scanning) return;
+        final BirdBoxScanStrategyController.Decision decision =
+                scanStrategyController.onWindowElapsed(generation);
+        if (decision.type == BirdBoxScanStrategyController.DecisionType.IGNORE_STALE) return;
+        emitScanStrategyEvent("strategy_window_elapsed", decision.completed, decision.reason);
+        if (decision.type != BirdBoxScanStrategyController.DecisionType.SWITCH
+                || decision.next == null) {
+            return;
         }
-    };
+        stopActiveScanCallback();
+        try {
+            startActiveScanStrategy(decision.next, decision.reason);
+        } catch (SecurityException error) {
+            handleScanFailure(decision.next.generation, ScanCallback.SCAN_FAILED_INTERNAL_ERROR);
+        } catch (RuntimeException error) {
+            handleScanFailure(decision.next.generation, ScanCallback.SCAN_FAILED_INTERNAL_ERROR);
+        }
+    }
 
-    private void emitScanResult(ScanResult result) {
+    private void stopActiveScanCallback() {
+        final ScanCallback callback = activeScanCallback;
+        final BluetoothLeScanner activeScanner = scanner;
+        activeScanCallback = null;
+        if (callback == null || activeScanner == null) return;
+        try {
+            activeScanner.stopScan(callback);
+        } catch (SecurityException ignored) {
+            // Permission may have been revoked while the scan was active.
+        } catch (RuntimeException ignored) {
+            // Vendor stacks may already have removed a failed callback.
+        }
+    }
+
+    private void handleScanFailure(final int generation, final int errorCode) {
+        if (!scanStrategyController.recordAndroidError(generation, errorCode)) return;
+        final String failedSessionId = activeScanSessionId;
+        emitScanStrategyEvent(
+                "strategy_failed",
+                scanStrategyController.current(),
+                "android_scan_failed"
+        );
+        if (scanTimeout != null) mainHandler.removeCallbacks(scanTimeout);
+        scanTimeout = null;
+        cancelScanStrategyTimeout();
+        stopActiveScanCallback();
+        scanStrategyController.stop();
+        scanning = false;
+        scanner = null;
+        activeScanSessionId = null;
+        emitDiagnostic("scan_failed", "scan", errorCode, null, "android_scan_failed");
+        final Map<String, Object> diagnostic = new LinkedHashMap<>();
+        diagnostic.put("eventType", "scanFailure");
+        diagnostic.put("scanSessionId", failedSessionId == null ? "native-unknown" : failedSessionId);
+        diagnostic.put("androidScanErrorCode", errorCode);
+        emitSuccess(scanSink, diagnostic);
+        final Map<String, Object> details = new LinkedHashMap<>();
+        details.put("androidScanErrorCode", errorCode);
+        details.put("scanSessionId", failedSessionId == null ? "native-unknown" : failedSessionId);
+        emitError(scanSink, "ble_gatt_operation_failed", "BLE scan failed.", details);
+    }
+
+    private void clearScanStateAfterFailure() {
+        cancelScanStrategyTimeout();
+        stopActiveScanCallback();
+        scanStrategyController.stop();
+        scanning = false;
+        activeScanSessionId = null;
+        scanner = null;
+    }
+
+    private void emitScanResult(ScanResult result, int generation) {
         final EventChannel.EventSink sink = scanSink;
+        if (!scanStrategyController.accepts(generation)) return;
         final ScanRecord record = result.getScanRecord();
         if (sink == null) return;
         if (!firstScanCallbackEmitted) {
             firstScanCallbackEmitted = true;
             emitDiagnostic("scan_first_callback", "scan", -1, null, "success");
         }
-        if (record == null) {
-            emitSuccess(sink, scanObservation(
-                    result,
-                    null,
-                    false,
-                    "missing_scan_record",
-                    "",
-                    new ArrayList<>()
-            ));
-            return;
-        }
         final List<String> serviceUuids = new ArrayList<>();
         boolean hasBirdBoxService = false;
-        final List<ParcelUuid> advertised = record.getServiceUuids();
+        final List<ParcelUuid> advertised = record == null ? null : record.getServiceUuids();
         if (advertised != null) {
             for (ParcelUuid value : advertised) {
                 final String normalized = value.getUuid().toString().toLowerCase(Locale.ROOT);
@@ -480,19 +624,38 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 hasBirdBoxService |= SERVICE_UUID.equals(value.getUuid());
             }
         }
-        String localName = record.getDeviceName();
+        String localName = record == null ? null : record.getDeviceName();
         if (localName == null) localName = "";
-        final boolean accepted = hasBirdBoxService || localName.startsWith("BirdBox-");
+        final boolean localNameCandidate = localName.startsWith("BirdBox-");
+        final String deviceName = hasBirdBoxService || localNameCandidate
+                ? ""
+                : safeDeviceName(result.getDevice());
+        final boolean deviceNameCandidate = deviceName.startsWith("BirdBox-");
+        final boolean accepted = hasBirdBoxService || localNameCandidate || deviceNameCandidate;
         final String decisionReason = hasBirdBoxService
                 ? "birdbox_service"
-                : accepted ? "birdbox_local_name" : "non_birdbox";
+                : localNameCandidate
+                ? "birdbox_local_name"
+                : deviceNameCandidate
+                ? "birdbox_device_name"
+                : record == null ? "missing_scan_record" : "non_birdbox";
+        if (!scanStrategyController.recordResult(
+                generation,
+                !deviceName.isEmpty(),
+                accepted
+        )) return;
+        final String displayName = localName.isEmpty() && deviceNameCandidate
+                ? deviceName
+                : localName;
         final Map<String, Object> event = scanObservation(
                 result,
                 record,
                 accepted,
                 decisionReason,
-                localName,
-                serviceUuids
+                displayName,
+                serviceUuids,
+                generation,
+                !deviceName.isEmpty()
         );
         if (!accepted) {
             emitSuccess(sink, event);
@@ -500,7 +663,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         }
         emitDiagnostic("scan_candidate_found", "scan", -1, null, decisionReason);
 
-        final SparseArray<byte[]> manufacturerData = record.getManufacturerSpecificData();
+        final SparseArray<byte[]> manufacturerData = record == null
+                ? null
+                : record.getManufacturerSpecificData();
         Integer companyIdentifier = null;
         byte[] manufacturerPayload = null;
         if (manufacturerData != null && manufacturerData.size() > 0) {
@@ -509,7 +674,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             manufacturerPayload = manufacturerData.valueAt(index);
         }
         event.put("deviceId", result.getDevice().getAddress());
-        event.put("localName", localName);
+        event.put("localName", displayName);
         event.put("companyIdentifier", companyIdentifier);
         event.put("manufacturerPayload", manufacturerPayload);
         emitSuccess(sink, event);
@@ -522,7 +687,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             boolean accepted,
             @NonNull String decisionReason,
             @NonNull String localName,
-            @NonNull List<String> serviceUuids) {
+            @NonNull List<String> serviceUuids,
+            int generation,
+            boolean deviceNamePresent) {
         final Map<String, Object> event = new LinkedHashMap<>();
         event.put("eventType", "advertisement");
         event.put("scanSessionId", activeScanSessionId == null ? "native-unknown" : activeScanSessionId);
@@ -534,6 +701,14 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         if (alias != null && !alias.isEmpty()) event.put("diagnosticAlias", alias);
         event.put("rssi", result.getRssi());
         event.put("serviceUuids", serviceUuids);
+        event.put("deviceNamePresent", deviceNamePresent);
+        final BirdBoxScanStrategyController.Snapshot strategy =
+                scanStrategyController.current();
+        if (strategy != null && strategy.generation == generation) {
+            event.put("strategyIndex", strategy.index);
+            event.put("strategyName", strategy.strategy.name());
+            event.put("strategyGeneration", strategy.generation);
+        }
 
         int manufacturerDataLength = 0;
         boolean manufacturerDataPresent = false;
@@ -563,6 +738,51 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         event.put("manufacturerDataPresent", manufacturerDataPresent);
         event.put("manufacturerDataLength", manufacturerDataLength);
         return event;
+    }
+
+    @NonNull
+    private String safeDeviceName(@NonNull BluetoothDevice device) {
+        try {
+            final String name = device.getName();
+            return name == null ? "" : name;
+        } catch (SecurityException ignored) {
+            emitDiagnostic(
+                    "scan_device_name_unavailable",
+                    "scan",
+                    -1,
+                    null,
+                    "bluetooth_permission_denied"
+            );
+            return "";
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    private void emitScanStrategyEvent(
+            @NonNull String event,
+            @Nullable BirdBoxScanStrategyController.Snapshot strategy,
+            @NonNull String reason) {
+        if (strategy == null) return;
+        final Map<String, Object> diagnostic = new LinkedHashMap<>();
+        diagnostic.put("eventType", "scanStrategy");
+        diagnostic.put("strategyEvent", event);
+        diagnostic.put("scanSessionId", activeScanSessionId == null ? "native-unknown" : activeScanSessionId);
+        diagnostic.put("scanFlavor", BuildConfig.FLAVOR);
+        diagnostic.put("scanPermissionPolicy", BuildConfig.BLE_SCAN_PERMISSION_POLICY);
+        diagnostic.put("locationService", locationServiceState());
+        diagnostic.put("strategyFallbackEnabled", BuildConfig.BLE_SCAN_STRATEGY_FALLBACK_ENABLED);
+        diagnostic.put("strategyIndex", strategy.index);
+        diagnostic.put("strategyName", strategy.strategy.name());
+        diagnostic.put("strategyGeneration", strategy.generation);
+        diagnostic.put("strategySwitchReason", reason);
+        diagnostic.put("strategyRawResultCount", strategy.rawResultCount);
+        diagnostic.put("strategyDeviceNameCount", strategy.deviceNameResultCount);
+        diagnostic.put("strategyCandidateCount", strategy.candidateCount);
+        if (strategy.androidScanErrorCode != null) {
+            diagnostic.put("androidScanErrorCode", strategy.androidScanErrorCode);
+        }
+        emitSuccess(scanSink, diagnostic);
     }
 
     @Nullable
@@ -789,6 +1009,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             );
             return;
         }
+        if (sensitiveWrite) prepareSecurityWriteAttempt(characteristic.getUuid());
         try {
             final boolean started;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -799,6 +1020,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 started = current.writeCharacteristic(characteristic);
             }
             if (!started) {
+                if (sensitiveWrite) {
+                    cancelSecurityWriteCallbackGuard();
+                    securityWriteAttemptContext.reset();
+                }
                 if (sensitiveWrite
                         && securityWriteStateMachine.phase()
                         == BirdBoxSecurityWriteStateMachine.Phase.RETRYING_ENCRYPTED_WRITE) {
@@ -821,10 +1046,33 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 } else {
                     failPending("gatt_operation_failed", "GATT write was rejected.");
                 }
+            } else if (sensitiveWrite) {
+                startSecurityWriteCallbackGuard(characteristic.getUuid());
             }
         } catch (SecurityException error) {
+            if (sensitiveWrite) {
+                cancelSecurityWriteCallbackGuard();
+                securityWriteAttemptContext.reset();
+            }
             failPending("bluetooth_permission_denied", "Bluetooth connect permission is missing.");
         }
+    }
+
+    private void prepareSecurityWriteAttempt(@NonNull UUID characteristicUuid) {
+        cancelSecurityWriteCallbackGuard();
+        final String requestId = activeSecurityRequestId;
+        if (requestId == null) return;
+        securityWriteAttemptContext.begin(
+                requestId,
+                connectionGeneration,
+                gattGeneration,
+                characteristicUuid,
+                SystemClock.uptimeMillis()
+        );
+        securityWriteAttemptContext.recordStateTransition(
+                "gatt_ready",
+                securityWriteStateMachine.phase().name().toLowerCase(Locale.ROOT)
+        );
     }
 
     private void beginSecurityWrite(MethodCall call, MethodChannel.Result result) {
@@ -860,6 +1108,8 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             return;
         }
         try {
+            cancelSecurityWriteCallbackGuard();
+            securityWriteAttemptContext.reset();
             securityWriteStateMachine.markGattReady(gattGeneration);
             securityWriteStateMachine.beginSecurityWrite(requestId, gattGeneration);
             activeSecurityRequestId = requestId;
@@ -879,6 +1129,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             activeSecurityCommandType = null;
             securityWriteStateMachine.reset();
             conditionalBondFallbackPolicy.reset();
+            securityWriteAttemptContext.reset();
             unregisterBondStateReceiver();
             returnError(
                     result,
@@ -891,6 +1142,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             activeSecurityCommandType = null;
             securityWriteStateMachine.reset();
             conditionalBondFallbackPolicy.reset();
+            securityWriteAttemptContext.reset();
             unregisterBondStateReceiver();
             returnError(
                     result,
@@ -903,6 +1155,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             activeSecurityCommandType = null;
             securityWriteStateMachine.reset();
             conditionalBondFallbackPolicy.reset();
+            securityWriteAttemptContext.reset();
             unregisterBondStateReceiver();
             returnError(
                     result,
@@ -910,6 +1163,129 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     "ble_gatt_not_ready",
                     "Android could not register the BLE pairing listener."
             );
+        }
+    }
+
+    private void startSecurityWriteCallbackGuard(@NonNull UUID characteristicUuid) {
+        cancelSecurityWriteCallbackGuard();
+        final String expectedRequestId = activeSecurityRequestId;
+        final BluetoothDevice expectedDevice = connectedDevice;
+        if (expectedRequestId == null || expectedDevice == null) return;
+        final int expectedConnectionGeneration = connectionGeneration;
+        final int expectedGattGeneration = gattGeneration;
+        final long acceptedAtMs = SystemClock.uptimeMillis();
+        if (!securityWriteAttemptContext.markApiAccepted(
+                expectedRequestId,
+                expectedConnectionGeneration,
+                expectedGattGeneration,
+                characteristicUuid)) return;
+        if (!securityWriteAttemptContext.isWaitingForCallback(
+                expectedRequestId,
+                expectedConnectionGeneration,
+                expectedGattGeneration,
+                characteristicUuid)) return;
+        securityWriteCallbackGuard = () -> {
+            securityWriteCallbackGuard = null;
+            if (connectedDevice != expectedDevice
+                    || !"write".equals(pendingOperation)
+                    || !securityWriteAttemptContext.completeFromCallbackTimeout(
+                    expectedRequestId,
+                    expectedConnectionGeneration,
+                    expectedGattGeneration,
+                    characteristicUuid)) {
+                return;
+            }
+            securityFailureObserved = true;
+            securityWriteAttemptContext.recordTriggerBondState(
+                    bondStateName(expectedDevice.getBondState())
+            );
+            emitDiagnostic(
+                    "security_write_callback_timeout",
+                    "write",
+                    -1,
+                    characteristicUuid,
+                    "callback_missing"
+            );
+            try {
+                securityWriteStateMachine.onWriteCallbackTimeout();
+                if (securityWriteStateMachine.phase()
+                        == BirdBoxSecurityWriteStateMachine.Phase.FAILED) {
+                    failPending(
+                            "ble_encrypted_retry_failed",
+                            "The encrypted BirdBox request retry received no write callback.",
+                            gattFailureDetails(-1, characteristicUuid)
+                    );
+                    return;
+                }
+                final BirdBoxConditionalBondFallbackPolicy.Decision decision =
+                        conditionalBondFallbackPolicy.arm(
+                                expectedRequestId,
+                                expectedConnectionGeneration,
+                                SystemClock.uptimeMillis(),
+                                false,
+                                securityWriteStateMachine.phase()
+                                        == BirdBoxSecurityWriteStateMachine.Phase.BONDING,
+                                securityWriteAttemptContext.trigger(),
+                                securityBondingObserved,
+                                conditionalBondState(expectedDevice.getBondState())
+                        );
+                final boolean waitingForSecurity;
+                if (decision
+                        == BirdBoxConditionalBondFallbackPolicy.Decision.RECOVER_BONDED) {
+                    bondInitiationSource = "system";
+                    securityBondingObserved = true;
+                    securityWriteStateMachine.onBonded(false);
+                    waitingForSecurity = true;
+                } else if (decision
+                        == BirdBoxConditionalBondFallbackPolicy.Decision.OBSERVE_SYSTEM_BONDING) {
+                    bondInitiationSource = "system";
+                    securityBondingObserved = true;
+                    securityWriteStateMachine.onBonding();
+                    waitingForSecurity = true;
+                } else if (decision
+                        == BirdBoxConditionalBondFallbackPolicy.Decision.START_CONDITIONAL_FALLBACK) {
+                    waitingForSecurity = startConditionalBondFallback(expectedDevice, false);
+                } else {
+                    waitingForSecurity = false;
+                }
+                if (waitingForSecurity && "write".equals(pendingOperation)) {
+                    failPending(
+                            "ble_link_not_encrypted",
+                            "The accepted encrypted write received no Android callback and started BLE link security.",
+                            gattFailureDetails(-1, characteristicUuid)
+                    );
+                }
+            } catch (SecurityException error) {
+                failPending(
+                        "bluetooth_permission_denied",
+                        "Bluetooth connect permission is missing.",
+                        gattFailureDetails(-1, characteristicUuid)
+                );
+            } catch (IllegalStateException error) {
+                failPending(
+                        "ble_gatt_recovery_failed",
+                        error.getMessage(),
+                        gattFailureDetails(-1, characteristicUuid)
+                );
+            }
+        };
+        emitDiagnostic(
+                "security_write_callback_guard_started",
+                "write",
+                -1,
+                characteristicUuid,
+                "await_callback"
+        );
+        mainHandler.postAtTime(
+                securityWriteCallbackGuard,
+                acceptedAtMs + SECURITY_WRITE_CALLBACK_GUARD_MS
+        );
+    }
+
+    private void cancelSecurityWriteCallbackGuard() {
+        if (securityWriteCallbackGuard != null) {
+            mainHandler.removeCallbacks(securityWriteCallbackGuard);
+            securityWriteCallbackGuard = null;
         }
     }
 
@@ -924,14 +1300,20 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     == BirdBoxSecurityWriteStateMachine.Failure.PAIRING_REJECTED;
             final boolean pairingNotStarted = failure
                     == BirdBoxSecurityWriteStateMachine.Failure.LE_PAIRING_NOT_STARTED;
+            final boolean pairingTimedOut = failure
+                    == BirdBoxSecurityWriteStateMachine.Failure.PAIRING_TIMEOUT;
             failPending(
                     rejected
                             ? "ble_pairing_rejected"
+                            : pairingTimedOut
+                            ? "ble_pairing_timeout"
                             : pairingNotStarted
                             ? "ble_le_pairing_not_started"
                             : "ble_gatt_recovery_failed",
                     rejected
                             ? "BLE link pairing was rejected or cancelled."
+                            : pairingTimedOut
+                            ? "Android LE pairing did not complete before the timeout."
                             : pairingNotStarted
                             ? "Android LE pairing did not start after the encrypted write."
                             : "Security recovery had already failed.",
@@ -1036,7 +1418,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     null,
                     (String) call.argument("responseType")
             );
-            finishSecuritySession();
+            finishSecuritySession("success");
             result.success(null);
         } catch (IllegalStateException error) {
             returnError(
@@ -1065,6 +1447,8 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     || phase == BirdBoxSecurityWriteStateMachine.Phase.BONDING) {
                 if ("ble_pairing_rejected".equals(errorCode)) {
                     securityWriteStateMachine.onPairingRejected();
+                } else if ("ble_pairing_timeout".equals(errorCode)) {
+                    securityWriteStateMachine.onPairingTimeout();
                 } else {
                     securityWriteStateMachine.onPairingNotStartedTimeout();
                 }
@@ -1073,11 +1457,16 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             // Cleanup is still required when Dart reports a terminal error after a racing callback.
         }
         emitSecurityPhase(errorCode == null ? "failed" : errorCode);
+        if (securityWriteAttemptContext.attemptId() != null) {
+            securityWriteAttemptContext.markTerminal(
+                    errorCode == null ? "failed" : stableErrorCode(errorCode)
+            );
+        }
         if (isTerminalTransportFailure(errorCode)) {
             disconnectRequested = true;
             closeGatt(true, "security_failure", BluetoothGatt.GATT_FAILURE);
         } else {
-            finishSecuritySession();
+            finishSecuritySession(errorCode == null ? "failed" : errorCode);
         }
         result.success(null);
     }
@@ -1086,10 +1475,12 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         return "ble_link_not_encrypted".equals(errorCode)
                 || "ble_le_pairing_not_started".equals(errorCode)
                 || "ble_pairing_rejected".equals(errorCode)
+                || "ble_pairing_timeout".equals(errorCode)
                 || "ble_bond_rejected".equals(errorCode)
                 || "ble_bond_failed".equals(errorCode)
                 || "ble_bond_timeout".equals(errorCode)
                 || "ble_gatt_recovery_failed".equals(errorCode)
+                || "ble_security_recovery_failed".equals(errorCode)
                 || "ble_encrypted_retry_failed".equals(errorCode)
                 || "pairing_open_timeout".equals(errorCode);
     }
@@ -1107,6 +1498,20 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 final int state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR);
                 final int previous = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.ERROR);
                 previousBondState = bondStateName(previous);
+                final boolean bondReleasedPendingWrite =
+                        (state == BluetoothDevice.BOND_BONDING
+                                || state == BluetoothDevice.BOND_BONDED)
+                                && securityWriteAttemptContext.completeFromSystemBondState(
+                                connectionGeneration,
+                                gattGeneration
+                        );
+                if (bondReleasedPendingWrite) {
+                    cancelSecurityWriteCallbackGuard();
+                    securityFailureObserved = true;
+                    securityWriteAttemptContext.recordTriggerBondState(
+                            bondStateName(state)
+                    );
+                }
                 if (state == BluetoothDevice.BOND_BONDING || state == BluetoothDevice.BOND_BONDED) {
                     cancelConditionalBondFallback();
                     systemPairingInteraction = true;
@@ -1139,6 +1544,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     } catch (IllegalStateException ignored) {
                         // A terminal request may receive a duplicate vendor Bond broadcast.
                     }
+                    if (bondReleasedPendingWrite) {
+                        releasePendingSecurityWriteForBond(state);
+                    }
                 } else if (state == BluetoothDevice.BOND_BONDING) {
                     securityBondingObserved = true;
                     try {
@@ -1146,6 +1554,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                         emitSecurityPhase("bonding");
                     } catch (IllegalStateException ignored) {
                         // Ignore stale callbacks after the request has completed.
+                    }
+                    if (bondReleasedPendingWrite) {
+                        releasePendingSecurityWriteForBond(state);
                     }
                 } else if (state == BluetoothDevice.BOND_NONE
                         && previous == BluetoothDevice.BOND_BONDING) {
@@ -1179,6 +1590,25 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         } catch (IllegalArgumentException ignored) {
             // Receiver may already have been removed during Activity teardown.
         }
+    }
+
+    private void releasePendingSecurityWriteForBond(int state) {
+        if (!"write".equals(pendingOperation)) return;
+        final UUID characteristicUuid = securityWriteAttemptContext.characteristicUuid();
+        emitDiagnostic(
+                "security_write_released_by_bond_state",
+                "write",
+                -1,
+                characteristicUuid,
+                bondStateName(state)
+        );
+        failPending(
+                "ble_link_not_encrypted",
+                state == BluetoothDevice.BOND_BONDED
+                        ? "Android completed BLE pairing before returning the encrypted write callback."
+                        : "Android started BLE pairing before returning the encrypted write callback.",
+                gattFailureDetails(-1, characteristicUuid)
+        );
     }
 
     private void continueSecurityRecovery() {
@@ -1236,8 +1666,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                         "securityRecovery".equals(pendingOperation),
                         securityWriteStateMachine.phase()
                                 == BirdBoxSecurityWriteStateMachine.Phase.BONDING,
-                        securityFailureObserved,
-                        securityGattStatusObserved,
+                        securityWriteAttemptContext.trigger(),
                         securityBondingObserved,
                         conditionalBondState(expectedDevice.getBondState())
                 );
@@ -1273,8 +1702,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                                 "securityRecovery".equals(pendingOperation),
                                 securityWriteStateMachine.phase()
                                         == BirdBoxSecurityWriteStateMachine.Phase.BONDING,
-                                securityFailureObserved,
-                                securityGattStatusObserved,
+                                securityWriteAttemptContext.trigger(),
                                 securityBondingObserved,
                                 conditionalBondState(stateBeforeFallback)
                         );
@@ -1297,39 +1725,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                         != BirdBoxConditionalBondFallbackPolicy.Decision.START_CONDITIONAL_FALLBACK) {
                     return;
                 }
-                if (!securityWriteStateMachine.tryMarkConditionalBondFallbackAttempted()) return;
-                bondInitiationSource = "conditional_fallback";
-                emitDiagnostic(
-                        "conditional_bond_fallback_started",
-                        "security_write",
-                        -1,
-                        null,
-                        "bond_none_after_security_write"
-                );
-                final boolean started = expectedDevice.createBond();
-                final int stateAfterFallback = expectedDevice.getBondState();
-                emitDiagnostic(
-                        "conditional_bond_fallback_result",
-                        "security_write",
-                        -1,
-                        null,
-                        started ? "started" : bondStateName(stateAfterFallback)
-                );
-                if (stateAfterFallback == BluetoothDevice.BOND_BONDED) {
-                    securityBondingObserved = true;
-                    securityWriteStateMachine.onBonded(false);
-                    continueSecurityRecovery();
-                } else if (stateAfterFallback == BluetoothDevice.BOND_BONDING) {
-                    securityBondingObserved = true;
-                    securityWriteStateMachine.onBonding();
-                } else if (!started) {
-                    securityWriteStateMachine.onPairingNotStartedTimeout();
-                    failPending(
-                            "ble_le_pairing_not_started",
-                            "Android rejected the conditional LE pairing fallback.",
-                            gattFailureDetails(-1, null)
-                    );
-                }
+                startConditionalBondFallback(expectedDevice, true);
             } catch (SecurityException error) {
                 failPending(
                         "bluetooth_permission_denied",
@@ -1360,6 +1756,74 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 conditionalBondFallback,
                 fallbackScheduledAtMs + CONDITIONAL_BOND_FALLBACK_DELAY_MS
         );
+    }
+
+    private boolean startConditionalBondFallback(
+            @NonNull BluetoothDevice expectedDevice,
+            boolean continueRecoveryWhenReady) {
+        if (!securityWriteAttemptContext.tryMarkFallbackStarted()) return false;
+        if (!securityWriteStateMachine.tryMarkConditionalBondFallbackAttempted()) return false;
+        bondInitiationSource = "conditional_fallback";
+        emitDiagnostic(
+                "conditional_bond_fallback_started",
+                "security_write",
+                -1,
+                securityWriteAttemptContext.characteristicUuid(),
+                securityWriteAttemptContext.trigger().name().toLowerCase(Locale.ROOT)
+        );
+        try {
+            final int stateBeforeFallback = expectedDevice.getBondState();
+            final boolean started = expectedDevice.createBond();
+            final int stateAfterFallback = expectedDevice.getBondState();
+            securityWriteAttemptContext.recordCreateBond(
+                    started,
+                    bondStateName(stateBeforeFallback),
+                    bondStateName(stateAfterFallback)
+            );
+            emitDiagnostic(
+                    "conditional_bond_fallback_result",
+                    "security_write",
+                    -1,
+                    securityWriteAttemptContext.characteristicUuid(),
+                    started ? "started" : bondStateName(stateAfterFallback)
+            );
+            if (stateAfterFallback == BluetoothDevice.BOND_BONDED) {
+                securityBondingObserved = true;
+                securityWriteStateMachine.onBonded(false);
+                if (continueRecoveryWhenReady) continueSecurityRecovery();
+                return true;
+            }
+            if (stateAfterFallback == BluetoothDevice.BOND_BONDING) {
+                securityBondingObserved = true;
+                securityWriteStateMachine.onBonding();
+                return true;
+            }
+            if (started) return true;
+            securityWriteStateMachine.onPairingNotStartedTimeout();
+            failPending(
+                    "ble_le_pairing_not_started",
+                    "Android rejected the conditional LE pairing fallback.",
+                    gattFailureDetails(-1, securityWriteAttemptContext.characteristicUuid())
+            );
+        } catch (SecurityException error) {
+            failPending(
+                    "bluetooth_permission_denied",
+                    "Bluetooth connect permission is missing.",
+                    gattFailureDetails(-1, securityWriteAttemptContext.characteristicUuid())
+            );
+        } catch (RuntimeException error) {
+            try {
+                securityWriteStateMachine.onPairingNotStartedTimeout();
+            } catch (IllegalStateException ignored) {
+                // The pending operation still receives the deterministic platform error.
+            }
+            failPending(
+                    "ble_le_pairing_not_started",
+                    "Android could not start the conditional LE pairing fallback.",
+                    gattFailureDetails(-1, securityWriteAttemptContext.characteristicUuid())
+            );
+        }
+        return false;
     }
 
     private void cancelConditionalBondFallback() {
@@ -1448,15 +1912,41 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         failPending(code, message, gattFailureDetails(-1, null));
     }
 
-    private void finishSecuritySession() {
+    private void finishSecuritySession(@NonNull String terminalOutcome) {
+        final boolean hadAttempt = securityWriteAttemptContext.attemptId() != null;
+        final UUID characteristicUuid = securityWriteAttemptContext.characteristicUuid();
+        if (hadAttempt) {
+            if (securityWriteAttemptContext.terminalOutcome() == null) {
+                securityWriteAttemptContext.markTerminal(terminalOutcome);
+            }
+            emitDiagnostic(
+                    "security_write_terminal",
+                    "security_write",
+                    -1,
+                    characteristicUuid,
+                    securityWriteAttemptContext.terminalOutcome()
+            );
+        }
+        cancelSecurityWriteCallbackGuard();
         cancelConditionalBondFallback();
         unregisterBondStateReceiver();
+        if (hadAttempt) {
+            securityWriteAttemptContext.markCleanup("complete");
+            emitDiagnostic(
+                    "security_write_cleanup_completed",
+                    "security_write",
+                    -1,
+                    characteristicUuid,
+                    "complete"
+            );
+        }
         activeSecurityRequestId = null;
         activeSecurityCommandType = null;
         securityBondingObserved = false;
         securityFailureObserved = false;
         securityGattStatusObserved = false;
         bondInitiationSource = "none";
+        securityWriteAttemptContext.reset();
         conditionalBondFallbackPolicy.reset();
         securityWriteStateMachine.reset();
     }
@@ -1516,8 +2006,8 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                         message = "The encrypted write did not start Android LE pairing within 60 seconds.";
                     } else if (phase == BirdBoxSecurityWriteStateMachine.Phase.SECURITY_WRITE_STARTING
                             || phase == BirdBoxSecurityWriteStateMachine.Phase.BONDING) {
-                        securityWriteStateMachine.onPairingRejected();
-                        code = "ble_pairing_rejected";
+                        securityWriteStateMachine.onPairingTimeout();
+                        code = "ble_pairing_timeout";
                         message = "Android LE pairing did not complete within 60 seconds.";
                     } else {
                         securityWriteStateMachine.onGattRecoveryFailed();
@@ -1551,6 +2041,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
 
     private synchronized void succeedPending(@Nullable Object value) {
         final String completedOperation = pendingOperation;
+        if ("write".equals(completedOperation)) {
+            cancelSecurityWriteCallbackGuard();
+            securityWriteAttemptContext.cancelActive();
+        }
         emitDiagnostic("operation_succeeded", completedOperation, -1, null, "success");
         cancelPendingOperationTimeout();
         final MethodChannel.Result result = pendingOperationResult;
@@ -1575,7 +2069,12 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     }
 
     private synchronized void failPending(String code, String message, @Nullable Object details) {
+        final String stableCode = stableErrorCode(code);
         final String failedOperation = pendingOperation;
+        if ("write".equals(failedOperation)) {
+            cancelSecurityWriteCallbackGuard();
+            securityWriteAttemptContext.cancelActive();
+        }
         int status = -1;
         UUID characteristicUuid = null;
         if (details instanceof Map) {
@@ -1592,7 +2091,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         }
         final Map<String, Object> failureDetails = failureDetails(
                 platformMethodName(failedOperation),
-                code,
+                stableCode,
                 message,
                 status,
                 characteristicUuid,
@@ -1603,8 +2102,8 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 failedOperation,
                 status,
                 characteristicUuid,
-                code,
-                code,
+                stableCode,
+                stableCode,
                 message
         );
         cancelPendingOperationTimeout();
@@ -1612,7 +2111,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         pendingOperationResult = null;
         pendingOperation = null;
         pendingNotificationEnabled = null;
-        if (result != null) mainHandler.post(() -> result.error(code, message, failureDetails));
+        if (result != null) {
+            mainHandler.post(() -> result.error(stableCode, message, failureDetails));
+        }
     }
 
     private synchronized void cancelPendingOperationTimeout() {
@@ -1666,6 +2167,16 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                             && phase != BirdBoxSecurityWriteStateMachine.Phase.RETRYING_ENCRYPTED_WRITE) {
                         securityFailureObserved = true;
                         securityGattStatusObserved |= isGattSecurityFailure(status);
+                        if (isGattSecurityFailure(status)) {
+                            securityWriteAttemptContext.completeFromGattSecurityStatus(
+                                    connectionGeneration,
+                                    gattGeneration
+                            );
+                            securityWriteAttemptContext.recordTriggerBondState(
+                                    bondStateName()
+                            );
+                            cancelSecurityWriteCallbackGuard();
+                        }
                     }
                     closeGattForSecurity(callbackGatt);
                     try {
@@ -1817,6 +2328,21 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         @Override
         public void onCharacteristicWrite(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattCharacteristic characteristic, int status) {
             if (callbackGatt != gatt || !"write".equals(pendingOperation)) return;
+            final boolean sensitiveWrite = WIFI_CONFIG_UUID.equals(characteristic.getUuid())
+                    || PROVISIONING_COMMAND_UUID.equals(characteristic.getUuid());
+            if (sensitiveWrite) {
+                if (!securityWriteAttemptContext.completeFromCallback(
+                        connectionGeneration,
+                        gattGeneration,
+                        characteristic.getUuid(),
+                        isGattSecurityFailure(status))) {
+                    return;
+                }
+                cancelSecurityWriteCallbackGuard();
+                if (isGattSecurityFailure(status)) {
+                    securityWriteAttemptContext.recordTriggerBondState(bondStateName());
+                }
+            }
             emitDiagnostic(
                     "gatt_characteristic_write",
                     pendingOperation,
@@ -1826,9 +2352,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             );
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 succeedPending(null);
-            } else if (activeSecurityRequestId != null
-                    && (WIFI_CONFIG_UUID.equals(characteristic.getUuid())
-                    || PROVISIONING_COMMAND_UUID.equals(characteristic.getUuid()))) {
+            } else if (activeSecurityRequestId != null && sensitiveWrite) {
                 securityFailureObserved |= isGattSecurityFailure(status);
                 securityGattStatusObserved |= isGattSecurityFailure(status);
                 if (securityWriteStateMachine.phase()
@@ -1900,11 +2424,19 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
 
     @NonNull
     private Map<String, Object> gattFailureDetails(int status, @Nullable UUID characteristicUuid) {
+        final UUID effectiveCharacteristicUuid = characteristicUuid != null
+                ? characteristicUuid
+                : securityWriteAttemptContext.characteristicUuid();
         final Map<String, Object> details = new LinkedHashMap<>();
         details.put("gattStatus", status);
         details.put("platformExceptionCode", gattErrorCode(status));
         details.put("bondState", bondStateName());
-        details.put("characteristicUuid", characteristicUuid == null ? "none" : characteristicUuid.toString().toLowerCase(Locale.ROOT));
+        details.put(
+                "characteristicUuid",
+                effectiveCharacteristicUuid == null
+                        ? "none"
+                        : effectiveCharacteristicUuid.toString().toLowerCase(Locale.ROOT)
+        );
         details.put("operationName", diagnosticOperationName(pendingOperation));
         return details;
     }
@@ -1923,10 +2455,11 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             @NonNull String code,
             @Nullable String message,
             @Nullable Object additionalDetails) {
+        final String stableCode = stableErrorCode(code);
         final String safeMessage = safeDiagnosticMessage(message);
         final Map<String, Object> details = failureDetails(
                 platformMethod,
-                code,
+                stableCode,
                 safeMessage,
                 -1,
                 null,
@@ -1937,11 +2470,20 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 platformMethod,
                 -1,
                 null,
-                code,
-                code,
+                stableCode,
+                stableCode,
                 safeMessage
         );
-        result.error(code, safeMessage, details);
+        result.error(stableCode, safeMessage, details);
+    }
+
+    @NonNull
+    private static String stableErrorCode(@NonNull String code) {
+        return switch (code) {
+            case "gatt_operation_failed" -> "ble_gatt_operation_failed";
+            case "ble_bond_timeout" -> "ble_pairing_timeout";
+            default -> code;
+        };
     }
 
     @NonNull
@@ -1975,12 +2517,49 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         details.put("scanning", scanning);
         details.put("connectionGeneration", connectionGeneration);
         details.put("gattInstanceId", gattGeneration);
+        details.put("gattGeneration", gattGeneration);
         details.put(
                 "conditionalBondFallbackAttempted",
                 securityWriteStateMachine.conditionalBondFallbackAttempted()
         );
         details.put("bondInitiationSource", bondInitiationSource);
         details.put("securityGattStatusObserved", securityGattStatusObserved);
+        if (securityWriteAttemptContext.trigger()
+                != BirdBoxSecurityWriteAttemptContext.Trigger.NONE) {
+            details.put(
+                    "securityTrigger",
+                    securityWriteAttemptContext.trigger().name().toLowerCase(Locale.ROOT)
+            );
+            details.put(
+                    "fallbackTrigger",
+                    securityWriteAttemptContext.trigger().name().toLowerCase(Locale.ROOT)
+            );
+        }
+        if (securityWriteAttemptContext.attemptId() != null) {
+            details.put("attemptId", securityWriteAttemptContext.attemptId());
+            details.put("writeApiAccepted", securityWriteAttemptContext.apiAccepted());
+            details.put("writeCallbackReceived", securityWriteAttemptContext.callbackReceived());
+            details.put(
+                    "securityWriteElapsedMs",
+                    securityWriteAttemptContext.elapsedMs(SystemClock.uptimeMillis())
+            );
+            if (securityWriteAttemptContext.bondStateAtTrigger() != null) {
+                details.put(
+                        "bondStateAtTrigger",
+                        securityWriteAttemptContext.bondStateAtTrigger()
+                );
+            }
+            details.put(
+                    "createBondInvoked",
+                    securityWriteAttemptContext.createBondInvoked()
+            );
+            if (securityWriteAttemptContext.createBondReturned() != null) {
+                details.put(
+                        "createBondReturned",
+                        securityWriteAttemptContext.createBondReturned()
+                );
+            }
+        }
         if (activeTraceId != null && !activeTraceId.isEmpty()) details.put("traceId", activeTraceId);
         if (connectedDeviceAddressHash != null) details.put("deviceAddressHash", connectedDeviceAddressHash);
         if (gattStatus >= 0) details.put("gattStatus", gattStatus);
@@ -2079,7 +2658,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
 
     @NonNull
     static String gattErrorCode(int status) {
-        return isGattSecurityFailure(status) ? "ble_link_not_encrypted" : "gatt_operation_failed";
+        return isGattSecurityFailure(status)
+                ? "ble_link_not_encrypted"
+                : "ble_gatt_operation_failed";
     }
 
     private void emitNotification(UUID characteristicUuid, @Nullable byte[] value) {
@@ -2121,7 +2702,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         if (emitDisconnect && hadNativeSession) {
             emitDisconnect(reason, status, !disconnectRequested);
         }
-        finishSecuritySession();
+        finishSecuritySession(reason);
         connectedDevice = null;
         connectedDeviceAddressHash = null;
         previousBondState = null;
@@ -2188,6 +2769,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             event.put("deviceAddressHash", connectedDeviceAddressHash);
         }
         if (gattGeneration > 0) event.put("gattInstanceId", gattGeneration);
+        if (gattGeneration > 0) event.put("gattGeneration", gattGeneration);
         event.put("connectionGeneration", connectionGeneration);
         if (operationName != null) {
             event.put("operationName", diagnosticOperationName(operationName));
@@ -2212,6 +2794,50 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         );
         event.put("bondInitiationSource", bondInitiationSource);
         event.put("securityGattStatusObserved", securityGattStatusObserved);
+        if (activeSecurityRequestId != null
+                && securityWriteAttemptContext.characteristicUuid() != null) {
+            event.put("attemptId", securityWriteAttemptContext.attemptId());
+            event.put("writeApiAccepted", securityWriteAttemptContext.apiAccepted());
+            event.put("writeCallbackReceived", securityWriteAttemptContext.callbackReceived());
+            event.put(
+                    "securityWriteElapsedMs",
+                    securityWriteAttemptContext.elapsedMs(SystemClock.uptimeMillis())
+            );
+            if (securityWriteAttemptContext.bondStateAtTrigger() != null) {
+                event.put(
+                        "bondStateAtTrigger",
+                        securityWriteAttemptContext.bondStateAtTrigger()
+                );
+            }
+            event.put(
+                    "createBondInvoked",
+                    securityWriteAttemptContext.createBondInvoked()
+            );
+            if (securityWriteAttemptContext.createBondReturned() != null) {
+                event.put(
+                        "createBondReturned",
+                        securityWriteAttemptContext.createBondReturned()
+                );
+            }
+            if (securityWriteAttemptContext.stateBefore() != null) {
+                event.put("stateBefore", securityWriteAttemptContext.stateBefore());
+            }
+            if (securityWriteAttemptContext.stateAfter() != null) {
+                event.put("stateAfter", securityWriteAttemptContext.stateAfter());
+            }
+            if (securityWriteAttemptContext.terminalOutcome() != null) {
+                event.put(
+                        "terminalOutcome",
+                        securityWriteAttemptContext.terminalOutcome()
+                );
+            }
+            if (securityWriteAttemptContext.cleanupOutcome() != null) {
+                event.put(
+                        "cleanupOutcome",
+                        securityWriteAttemptContext.cleanupOutcome()
+                );
+            }
+        }
         if (activeSecurityRequestId != null) {
             event.put("requestId", activeSecurityRequestId);
         }
@@ -2232,7 +2858,17 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         if ("gatt_characteristic_write".equals(eventType) && gattStatus >= 0) {
             event.put("writeCallbackStatus", gattStatus);
         }
-        if ("write".equals(operationName)
+        if (securityWriteAttemptContext.trigger()
+                != BirdBoxSecurityWriteAttemptContext.Trigger.NONE) {
+            event.put(
+                    "securityTrigger",
+                    securityWriteAttemptContext.trigger().name().toLowerCase(Locale.ROOT)
+            );
+            event.put(
+                    "fallbackTrigger",
+                    securityWriteAttemptContext.trigger().name().toLowerCase(Locale.ROOT)
+            );
+        } else if ("write".equals(operationName)
                 && activeSecurityRequestId != null
                 && (isGattSecurityFailure(gattStatus) || securityFailureObserved)) {
             event.put("securityTrigger", "encrypted_characteristic_write");
@@ -2252,6 +2888,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     }
 
     private void addPackageMetadata(@NonNull Map<String, Object> event) {
+        event.put("packageId", activity.getPackageName());
+        event.put("buildFlavor", BuildConfig.FLAVOR);
+        event.put("buildType", BuildConfig.BUILD_TYPE);
         try {
             final PackageInfo packageInfo = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
             if (packageInfo.versionName != null) event.put("appVersionName", packageInfo.versionName);
@@ -2286,6 +2925,13 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     }
 
     private void emitSecurityPhase(@Nullable String reason) {
+        if (securityWriteAttemptContext.attemptId() != null) {
+            final String previous = securityWriteAttemptContext.stateAfter();
+            securityWriteAttemptContext.recordStateTransition(
+                    previous == null ? "none" : previous,
+                    securityPhaseName()
+            );
+        }
         emitDiagnostic(
                 "security_phase_changed",
                 "security_write",

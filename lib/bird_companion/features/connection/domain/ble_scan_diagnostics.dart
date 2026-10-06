@@ -26,11 +26,16 @@ final class BleScanEnvironment {
     this.model,
     this.androidRelease,
     this.sdkInt,
+    this.packageId,
+    this.buildFlavor,
+    this.buildType,
     this.appVersionName,
     this.appVersionCode,
     this.gitCommit,
     this.apkSha256,
     this.scanPermissionPolicy,
+    this.scanFlavor,
+    this.scanStrategyFallbackEnabled = false,
     this.scanMode,
   });
 
@@ -45,11 +50,16 @@ final class BleScanEnvironment {
       model = null,
       androidRelease = null,
       sdkInt = null,
+      packageId = null,
+      buildFlavor = null,
+      buildType = null,
       appVersionName = null,
       appVersionCode = null,
       gitCommit = null,
       apkSha256 = null,
       scanPermissionPolicy = null,
+      scanFlavor = null,
+      scanStrategyFallbackEnabled = false,
       scanMode = null;
 
   final BleScanPermissionState permission;
@@ -62,11 +72,16 @@ final class BleScanEnvironment {
   final String? model;
   final String? androidRelease;
   final int? sdkInt;
+  final String? packageId;
+  final String? buildFlavor;
+  final String? buildType;
   final String? appVersionName;
   final String? appVersionCode;
   final String? gitCommit;
   final String? apkSha256;
   final String? scanPermissionPolicy;
+  final String? scanFlavor;
+  final bool scanStrategyFallbackEnabled;
   final String? scanMode;
 
   factory BleScanEnvironment.fromPlatform(Map<String, dynamic> value) {
@@ -88,11 +103,16 @@ final class BleScanEnvironment {
       model: value['model'] as String?,
       androidRelease: value['androidRelease'] as String?,
       sdkInt: value['sdkInt'] as int?,
+      packageId: value['packageId'] as String?,
+      buildFlavor: value['buildFlavor'] as String?,
+      buildType: value['buildType'] as String?,
       appVersionName: value['appVersionName'] as String?,
       appVersionCode: value['appVersionCode']?.toString(),
       gitCommit: _knownBuildValue(value['gitCommit']),
       apkSha256: _knownBuildValue(value['apkSha256']),
       scanPermissionPolicy: value['scanPermissionPolicy'] as String?,
+      scanFlavor: value['scanFlavor'] as String?,
+      scanStrategyFallbackEnabled: value['scanStrategyFallbackEnabled'] as bool? ?? false,
       scanMode: value['scanMode'] as String?,
     );
   }
@@ -111,7 +131,7 @@ final class BleScanEnvironment {
   };
 
   static BleLocationServiceState _locationServiceFromValue(Object? value) => switch (value) {
-    'not_required' => BleLocationServiceState.notRequired,
+    'not_required' || 'notRequired' => BleLocationServiceState.notRequired,
     'enabled' || true => BleLocationServiceState.enabled,
     'disabled' || false => BleLocationServiceState.disabled,
     _ => BleLocationServiceState.unknown,
@@ -137,6 +157,10 @@ final class BleScanObservationDiagnostic {
     this.scanRecordSha256,
     this.scanRecordRedactedHex,
     this.scanRecordTruncated = false,
+    this.strategyIndex,
+    this.strategyName,
+    this.strategyGeneration,
+    this.deviceNamePresent = false,
   });
 
   final DateTime occurredAt;
@@ -153,6 +177,10 @@ final class BleScanObservationDiagnostic {
   final String? scanRecordSha256;
   final String? scanRecordRedactedHex;
   final bool scanRecordTruncated;
+  final int? strategyIndex;
+  final String? strategyName;
+  final int? strategyGeneration;
+  final bool deviceNamePresent;
 
   Map<String, Object?> toJson() => {
     'occurred_at': occurredAt.toUtc().toIso8601String(),
@@ -167,6 +195,10 @@ final class BleScanObservationDiagnostic {
     if (scanRecordSha256 != null) 'scan_record_sha256': scanRecordSha256,
     if (scanRecordRedactedHex != null) 'scan_record_redacted_hex': scanRecordRedactedHex,
     if (scanRecordRedactedHex != null) 'scan_record_truncated': scanRecordTruncated,
+    if (strategyIndex != null) 'strategy_index': strategyIndex,
+    if (strategyName != null) 'strategy_name': strategyName,
+    if (strategyGeneration != null) 'strategy_generation': strategyGeneration,
+    'device_name_present': deviceNamePresent,
     'accepted': accepted,
     'reason_code': reasonCode,
   };
@@ -187,8 +219,71 @@ final class BleScanObservationDiagnostic {
     scanRecordSha256: value['scan_record_redacted_hex'] is String ? value['scan_record_sha256'] as String? : null,
     scanRecordRedactedHex: value['scan_record_redacted_hex'] as String?,
     scanRecordTruncated: value['scan_record_truncated'] as bool? ?? false,
+    strategyIndex: value['strategy_index'] as int?,
+    strategyName: value['strategy_name'] as String?,
+    strategyGeneration: value['strategy_generation'] as int?,
+    deviceNamePresent: value['device_name_present'] as bool? ?? false,
     accepted: value['accepted'] as bool? ?? false,
     reasonCode: value['reason_code'] as String? ?? 'legacy_unknown',
+  );
+}
+
+/// One native strategy lifecycle event from the serial Huawei scan fallback.
+final class BleScanStrategyDiagnostic {
+  const BleScanStrategyDiagnostic({
+    required this.occurredAt,
+    required this.event,
+    required this.index,
+    required this.name,
+    required this.generation,
+    required this.switchReason,
+    required this.rawResultCount,
+    required this.deviceNameResultCount,
+    required this.candidateCount,
+    this.locationService = BleLocationServiceState.unknown,
+    this.androidScanErrorCode,
+  });
+
+  final DateTime occurredAt;
+  final String event;
+  final int index;
+  final String name;
+  final int generation;
+  final String switchReason;
+  final int rawResultCount;
+  final int deviceNameResultCount;
+  final int candidateCount;
+  final BleLocationServiceState locationService;
+  final int? androidScanErrorCode;
+
+  Map<String, Object?> toJson() => {
+    'occurred_at': occurredAt.toUtc().toIso8601String(),
+    'event': event,
+    'index': index,
+    'name': name,
+    'generation': generation,
+    'switch_reason': switchReason,
+    'raw_result_count': rawResultCount,
+    'device_name_result_count': deviceNameResultCount,
+    'candidate_count': candidateCount,
+    'location_service': locationService.name,
+    if (androidScanErrorCode != null) 'android_scan_error_code': androidScanErrorCode,
+  };
+
+  factory BleScanStrategyDiagnostic.fromJson(Map<String, dynamic> value) => BleScanStrategyDiagnostic(
+    occurredAt: DateTime.parse(value['occurred_at'] as String),
+    event: value['event'] as String? ?? 'unknown',
+    index: value['index'] as int? ?? -1,
+    name: value['name'] as String? ?? 'UNKNOWN',
+    generation: value['generation'] as int? ?? -1,
+    switchReason: value['switch_reason'] as String? ?? 'unknown',
+    rawResultCount: value['raw_result_count'] as int? ?? 0,
+    deviceNameResultCount: value['device_name_result_count'] as int? ?? 0,
+    candidateCount: value['candidate_count'] as int? ?? 0,
+    locationService: BleScanEnvironment._locationServiceFromValue(
+      value['location_service'],
+    ),
+    androidScanErrorCode: value['android_scan_error_code'] as int?,
   );
 }
 
@@ -223,14 +318,20 @@ final class BleScanDiagnosticSession {
     this.model,
     this.androidRelease,
     this.sdkInt,
+    this.packageId,
+    this.buildFlavor,
+    this.buildType,
     this.appVersionName,
     this.appVersionCode,
     this.gitCommit,
     this.apkSha256,
     this.scanPermissionPolicy,
+    this.scanFlavor,
+    this.scanStrategyFallbackEnabled = false,
     this.scanMode = 'low_latency',
     this.uniqueDeviceCount = 0,
     this.observations = const [],
+    this.strategyEvents = const [],
   });
 
   final String scanSessionId;
@@ -255,11 +356,16 @@ final class BleScanDiagnosticSession {
   final String? model;
   final String? androidRelease;
   final int? sdkInt;
+  final String? packageId;
+  final String? buildFlavor;
+  final String? buildType;
   final String? appVersionName;
   final String? appVersionCode;
   final String? gitCommit;
   final String? apkSha256;
   final String? scanPermissionPolicy;
+  final String? scanFlavor;
+  final bool scanStrategyFallbackEnabled;
   final String scanMode;
   final int rawResultCount;
   final int uniqueDeviceCount;
@@ -267,6 +373,7 @@ final class BleScanDiagnosticSession {
   final int filteredCount;
   final Map<String, int> reasonCounts;
   final List<BleScanObservationDiagnostic> observations;
+  final List<BleScanStrategyDiagnostic> strategyEvents;
   final BleScanEndReason endReason;
   final int? androidScanErrorCode;
 
@@ -298,11 +405,16 @@ final class BleScanDiagnosticSession {
     if (model != null) 'model': model,
     if (androidRelease != null) 'android_release': androidRelease,
     if (sdkInt != null) 'sdk_int': sdkInt,
+    if (packageId != null) 'package_id': packageId,
+    if (buildFlavor != null) 'build_flavor': buildFlavor,
+    if (buildType != null) 'build_type': buildType,
     if (appVersionName != null) 'app_version_name': appVersionName,
     if (appVersionCode != null) 'app_version_code': appVersionCode,
     if (gitCommit != null) 'git_commit': gitCommit,
     if (apkSha256 != null) 'apk_sha256': apkSha256,
     if (scanPermissionPolicy != null) 'scan_permission_policy': scanPermissionPolicy,
+    if (scanFlavor != null) 'scan_flavor': scanFlavor,
+    'scan_strategy_fallback_enabled': scanStrategyFallbackEnabled,
     'scan_mode': scanMode,
     'raw_result_count': rawResultCount,
     'unique_device_count': uniqueDeviceCount,
@@ -310,6 +422,7 @@ final class BleScanDiagnosticSession {
     'filtered_count': filteredCount,
     'reason_counts': reasonCounts,
     'observations': observations.map((item) => item.toJson()).toList(),
+    'strategy_events': strategyEvents.map((item) => item.toJson()).toList(),
     'end_reason': endReason.name,
     'android_scan_error_code': androidScanErrorCode,
   };
@@ -353,11 +466,16 @@ final class BleScanDiagnosticSession {
     model: value['model'] as String?,
     androidRelease: value['android_release'] as String?,
     sdkInt: value['sdk_int'] as int?,
+    packageId: value['package_id'] as String?,
+    buildFlavor: value['build_flavor'] as String?,
+    buildType: value['build_type'] as String?,
     appVersionName: value['app_version_name'] as String?,
     appVersionCode: value['app_version_code']?.toString(),
     gitCommit: value['git_commit'] as String?,
     apkSha256: value['apk_sha256'] as String?,
     scanPermissionPolicy: value['scan_permission_policy'] as String?,
+    scanFlavor: value['scan_flavor'] as String?,
+    scanStrategyFallbackEnabled: value['scan_strategy_fallback_enabled'] as bool? ?? false,
     scanMode: value['scan_mode'] as String? ?? 'low_latency',
     rawResultCount: value['raw_result_count'] as int? ?? 0,
     uniqueDeviceCount: value['unique_device_count'] as int? ?? 0,
@@ -370,6 +488,14 @@ final class BleScanDiagnosticSession {
         .whereType<Map>()
         .map(
           (item) => BleScanObservationDiagnostic.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList(growable: false),
+    strategyEvents: (value['strategy_events'] as List? ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => BleScanStrategyDiagnostic.fromJson(
             Map<String, dynamic>.from(item),
           ),
         )

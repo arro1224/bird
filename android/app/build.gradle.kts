@@ -89,28 +89,31 @@ android {
         buildConfigField("String", "GIT_SHA", "\"$diagnosticGitSha\"")
         buildConfigField("String", "APK_SHA256", "\"$diagnosticApkSha\"")
         buildConfigField("String", "BLE_SCAN_PERMISSION_POLICY", "\"never_for_location\"")
+        buildConfigField("boolean", "BLE_SCAN_STRATEGY_FALLBACK_ENABLED", "false")
     }
 
     flavorDimensions += "app"
     productFlavors {
         create("bird") {
             dimension = "app"
-            applicationIdSuffix = ".bird"
+            applicationId = "deckers.thibault.aves.bird"
         }
         create("birdV1") {
             dimension = "app"
-            applicationIdSuffix = ".bird.v1"
+            applicationId = "deckers.thibault.aves.bird.v1"
         }
         create("birdScanA") {
             dimension = "app"
-            applicationIdSuffix = ".bird.scan.a"
+            applicationId = "deckers.thibault.aves.bird.scan.a"
             resValue("string", "app_name", "BirdBox 扫描 A")
+            buildConfigField("boolean", "BLE_SCAN_STRATEGY_FALLBACK_ENABLED", "true")
         }
         create("birdScanB") {
             dimension = "app"
-            applicationIdSuffix = ".bird.scan.b"
+            applicationId = "deckers.thibault.aves.bird.scan.b"
             resValue("string", "app_name", "BirdBox 扫描 B")
             buildConfigField("String", "BLE_SCAN_PERMISSION_POLICY", "\"full_scan\"")
+            buildConfigField("boolean", "BLE_SCAN_STRATEGY_FALLBACK_ENABLED", "true")
         }
     }
 

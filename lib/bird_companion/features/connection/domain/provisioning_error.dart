@@ -20,8 +20,11 @@ enum ProvisioningErrorCode {
   authorizationFailed,
   bleGattNotReady,
   bleLePairingNotStarted,
+  blePairingTimeout,
   blePairingRejected,
+  bleGattOperationFailed,
   bleGattRecoveryFailed,
+  bleSecurityRecoveryFailed,
   bleEncryptedRetryFailed,
   pairingOpenTimeout,
   invalidNetworkMode,
@@ -46,6 +49,7 @@ enum ProvisioningErrorCode {
   networkRecoveryFailed,
   networkInternalError,
   bluetoothPermissionDenied,
+  locationServicesDisabled,
   localNetworkPermissionDenied,
   systemWifiJoinDenied,
   phoneDppNotSupported,
@@ -81,8 +85,11 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.authorizationFailed => 'AUTHORIZATION_FAILED',
     ProvisioningErrorCode.bleGattNotReady => 'BLE_GATT_NOT_READY',
     ProvisioningErrorCode.bleLePairingNotStarted => 'BLE_LE_PAIRING_NOT_STARTED',
+    ProvisioningErrorCode.blePairingTimeout => 'BLE_PAIRING_TIMEOUT',
     ProvisioningErrorCode.blePairingRejected => 'BLE_PAIRING_REJECTED',
+    ProvisioningErrorCode.bleGattOperationFailed => 'BLE_GATT_OPERATION_FAILED',
     ProvisioningErrorCode.bleGattRecoveryFailed => 'BLE_GATT_RECOVERY_FAILED',
+    ProvisioningErrorCode.bleSecurityRecoveryFailed => 'BLE_SECURITY_RECOVERY_FAILED',
     ProvisioningErrorCode.bleEncryptedRetryFailed => 'BLE_ENCRYPTED_RETRY_FAILED',
     ProvisioningErrorCode.pairingOpenTimeout => 'PAIRING_OPEN_TIMEOUT',
     ProvisioningErrorCode.invalidNetworkMode => 'INVALID_NETWORK_MODE',
@@ -107,6 +114,7 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.networkRecoveryFailed => 'NETWORK_RECOVERY_FAILED',
     ProvisioningErrorCode.networkInternalError => 'NETWORK_INTERNAL_ERROR',
     ProvisioningErrorCode.bluetoothPermissionDenied => 'BLUETOOTH_PERMISSION_DENIED',
+    ProvisioningErrorCode.locationServicesDisabled => 'LOCATION_SERVICES_DISABLED',
     ProvisioningErrorCode.localNetworkPermissionDenied => 'LOCAL_NETWORK_PERMISSION_DENIED',
     ProvisioningErrorCode.systemWifiJoinDenied => 'SYSTEM_WIFI_JOIN_DENIED',
     ProvisioningErrorCode.phoneDppNotSupported => 'PHONE_DPP_NOT_SUPPORTED',
@@ -123,10 +131,14 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
 
   ProvisioningErrorOrigin get origin => switch (this) {
     ProvisioningErrorCode.bluetoothPermissionDenied ||
+    ProvisioningErrorCode.locationServicesDisabled ||
     ProvisioningErrorCode.bleGattNotReady ||
     ProvisioningErrorCode.bleLePairingNotStarted ||
+    ProvisioningErrorCode.blePairingTimeout ||
     ProvisioningErrorCode.blePairingRejected ||
+    ProvisioningErrorCode.bleGattOperationFailed ||
     ProvisioningErrorCode.bleGattRecoveryFailed ||
+    ProvisioningErrorCode.bleSecurityRecoveryFailed ||
     ProvisioningErrorCode.bleEncryptedRetryFailed ||
     ProvisioningErrorCode.pairingOpenTimeout ||
     ProvisioningErrorCode.localNetworkPermissionDenied ||

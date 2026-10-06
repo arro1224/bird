@@ -22,6 +22,14 @@ void main() {
   test('App-local errors are separated from box errors', () {
     expect(ProvisioningErrorCode.deviceIdMismatch.origin, ProvisioningErrorOrigin.app);
     expect(ProvisioningErrorCode.bleGattNotReady.origin, ProvisioningErrorOrigin.app);
+    expect(
+      ProvisioningErrorCode.locationServicesDisabled.origin,
+      ProvisioningErrorOrigin.app,
+    );
+    expect(
+      ProvisioningErrorCodeWireValue.parse('LOCATION_SERVICES_DISABLED'),
+      ProvisioningErrorCode.locationServicesDisabled,
+    );
     expect(ProvisioningErrorCode.bleLePairingNotStarted.origin, ProvisioningErrorOrigin.app);
     expect(
       ProvisioningErrorCodeWireValue.parse('BLE_ENCRYPTED_RETRY_FAILED'),
@@ -31,6 +39,20 @@ void main() {
       ProvisioningErrorCode.pairingOpenTimeout.wireValue,
       'PAIRING_OPEN_TIMEOUT',
     );
+    expect(
+      ProvisioningErrorCodeWireValue.parse('BLE_PAIRING_TIMEOUT'),
+      ProvisioningErrorCode.blePairingTimeout,
+    );
+    expect(
+      ProvisioningErrorCodeWireValue.parse('BLE_GATT_OPERATION_FAILED'),
+      ProvisioningErrorCode.bleGattOperationFailed,
+    );
+    expect(
+      ProvisioningErrorCodeWireValue.parse('BLE_SECURITY_RECOVERY_FAILED'),
+      ProvisioningErrorCode.bleSecurityRecoveryFailed,
+    );
+    expect(ProvisioningErrorCode.blePairingTimeout.origin, ProvisioningErrorOrigin.app);
+    expect(ProvisioningErrorCode.bleGattOperationFailed.origin, ProvisioningErrorOrigin.app);
     expect(ProvisioningErrorCode.bleFragmentInvalid.origin, ProvisioningErrorOrigin.protocol);
   });
 }

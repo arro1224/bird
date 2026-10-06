@@ -6,4 +6,8 @@
     <uses-permission
         android:name="android.permission.BLUETOOTH_SCAN"
         tools:remove="android:usesPermissionFlags" />
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="32"
+        tools:replace="android:maxSdkVersion" />
 </manifest>

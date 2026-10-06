@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 
 import 'rc4_hf_ble_03_evidence_validator.dart';
+import 'rc4_hf_ble_16_evidence_validator.dart';
 
 const rc4HfBle04PackageId = 'deckers.thibault.aves.bird';
 
@@ -22,6 +23,17 @@ Future<void> main(List<String> arguments) async {
     ble03Evidence,
     evidenceRoot: ble03File.parent,
   );
+  final configuredBle16Path = options.ble16EvidencePath.isNotEmpty ? options.ble16EvidencePath : _text(evidence['ble16_evidence_file']);
+  final ble16File = _resolveFile(evidenceRoot, configuredBle16Path);
+  final ble16Evidence = _readJson(
+    ble16File,
+    'BLE-16 evidence',
+    failures,
+  );
+  final ble16Validation = validateRc4HfBle16Evidence(
+    ble16Evidence,
+    evidenceRoot: ble16File.parent,
+  );
 
   final gitSha = await _git(
     repositoryRoot,
@@ -37,6 +49,7 @@ Future<void> main(List<String> arguments) async {
     evidence: evidence,
     evidenceRoot: evidenceRoot,
     ble03Validation: ble03Validation,
+    ble16Validation: ble16Validation,
     selectedScanVariant: _text(ble03Evidence['selected_scan_variant']),
     repositoryRoot: repositoryRoot,
     apkFile: _resolveFile(repositoryRoot, options.apkPath),
@@ -57,6 +70,7 @@ final class Rc4HfBle04ReleaseGateValidator {
     required Map<String, dynamic> evidence,
     required Directory evidenceRoot,
     required Rc4HfBle03EvidenceValidation ble03Validation,
+    required Rc4HfBle16EvidenceValidation ble16Validation,
     required String selectedScanVariant,
     required Directory repositoryRoot,
     required File apkFile,
@@ -102,6 +116,15 @@ final class Rc4HfBle04ReleaseGateValidator {
       }
     }
     require(
+      ble16Validation.passed,
+      'BLE-16 version delivery and real-device evidence gate must pass before release promotion.',
+    );
+    if (!ble16Validation.passed) {
+      for (final error in ble16Validation.errors) {
+        failures.add('BLE-16: $error');
+      }
+    }
+    require(
       const {'A', 'B'}.contains(selectedScanVariant),
       'BLE-03 selected_scan_variant must be A or B.',
     );
@@ -110,9 +133,18 @@ final class Rc4HfBle04ReleaseGateValidator {
       'B' => 'full_scan',
       _ => 'pending',
     };
+    require(
+      ble16Validation.selectedScanVariant == selectedScanVariant,
+      'BLE-16 selected_scan_variant must match BLE-03.',
+    );
 
     require(!worktreeDirty, 'BLE-04 release requires a clean Git worktree.');
     final candidate = _map(evidence['candidate']);
+    final ble16Candidate = ble16Validation.artifacts['bird'];
+    require(
+      ble16Candidate != null,
+      'BLE-16 evidence must contain the production bird artifact.',
+    );
     require(
       candidate['package_id'] == rc4HfBle04PackageId,
       'candidate.package_id must be $rc4HfBle04PackageId.',
@@ -138,6 +170,32 @@ final class Rc4HfBle04ReleaseGateValidator {
       candidate['scan_permission_policy'] == expectedPolicy,
       'candidate.scan_permission_policy must be $expectedPolicy for BLE-03 variant $selectedScanVariant.',
     );
+    if (ble16Candidate != null) {
+      require(
+        candidate['package_id'] == ble16Candidate.packageId,
+        'candidate.package_id does not match BLE-16.',
+      );
+      require(
+        _text(candidate['version_name']) == ble16Candidate.versionName,
+        'candidate.version_name does not match BLE-16.',
+      );
+      require(
+        candidate['version_code'] == ble16Candidate.versionCode,
+        'candidate.version_code does not match BLE-16.',
+      );
+      require(
+        _text(candidate['git_commit']).toLowerCase() == ble16Candidate.gitCommit,
+        'candidate.git_commit does not match BLE-16.',
+      );
+      require(
+        _text(candidate['apk_sha256']).toLowerCase() == ble16Candidate.apkSha256,
+        'candidate.apk_sha256 does not match BLE-16.',
+      );
+      require(
+        candidate['scan_permission_policy'] == ble16Candidate.scanPermissionPolicy,
+        'candidate.scan_permission_policy does not match BLE-16.',
+      );
+    }
     require(
       DateTime.tryParse(_text(candidate['build_time'])) != null,
       'candidate.build_time must be an ISO-8601 timestamp.',
@@ -234,6 +292,7 @@ final class Rc4HfBle04ReleaseGateValidator {
       selectedScanVariant: selectedScanVariant,
       expectedScanPolicy: expectedPolicy,
       ble03HardwareVerified: ble03Validation.passed,
+      ble16HardwareVerified: ble16Validation.passed,
     );
   }
 }
@@ -244,12 +303,14 @@ final class Rc4HfBle04ReleaseGateResult {
     required this.selectedScanVariant,
     required this.expectedScanPolicy,
     required this.ble03HardwareVerified,
+    required this.ble16HardwareVerified,
   });
 
   final List<String> failures;
   final String selectedScanVariant;
   final String expectedScanPolicy;
   final bool ble03HardwareVerified;
+  final bool ble16HardwareVerified;
 
   bool get passed => failures.isEmpty;
 
@@ -258,6 +319,7 @@ final class Rc4HfBle04ReleaseGateResult {
     'status': passed ? 'passed' : 'blocked',
     'releasable': passed,
     'ble03_hardware_status': ble03HardwareVerified ? 'verified' : 'pending',
+    'ble16_delivery_status': ble16HardwareVerified ? 'verified' : 'pending',
     'selected_scan_variant': const {'A', 'B'}.contains(selectedScanVariant) ? selectedScanVariant : 'pending',
     'expected_scan_permission_policy': expectedScanPolicy,
     'failure_count': failures.length,
@@ -450,6 +512,7 @@ final class _Options {
   const _Options({
     required this.evidencePath,
     required this.ble03EvidencePath,
+    required this.ble16EvidencePath,
     required this.apkPath,
     required this.manifestPath,
     required this.approvedCertificateSha256,
@@ -457,6 +520,7 @@ final class _Options {
 
   final String evidencePath;
   final String ble03EvidencePath;
+  final String ble16EvidencePath;
   final String apkPath;
   final String manifestPath;
   final String approvedCertificateSha256;
@@ -478,6 +542,7 @@ final class _Options {
         'docs/acceptance/rc4-hf-ble-04-release.template.json',
       ),
       ble03EvidencePath: value('ble03-evidence', ''),
+      ble16EvidencePath: value('ble16-evidence', ''),
       apkPath: value(
         'apk',
         'build/app/outputs/flutter-apk/app-bird-release.apk',
