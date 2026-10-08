@@ -76,6 +76,8 @@ void main() {
         'bond_state_at_trigger': 'not_bonded',
         'create_bond_invoked': true,
         'create_bond_returned': true,
+        'create_bond_state_before': 'not_bonded',
+        'create_bond_state_after': 'bonding',
         'terminal_outcome': 'ble_pairing_timeout',
         'cleanup_outcome': 'complete',
       },
@@ -86,6 +88,8 @@ void main() {
     expect(error['attempt_id'], 'request-1:3:7:1000');
     expect(error['gatt_generation'], 7);
     expect(error['fallback_trigger'], 'write_callback_timeout');
+    expect(error['create_bond_state_before'], 'not_bonded');
+    expect(error['create_bond_state_after'], 'bonding');
     expect(error['cleanup_outcome'], 'complete');
     expect(export.fullJson, isNot(contains('password')));
     expect(export.fullJson, isNot(contains('payload')));

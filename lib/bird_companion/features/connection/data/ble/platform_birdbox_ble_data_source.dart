@@ -396,8 +396,8 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
           }
           scanDiagnostic.environmentAfter = await _readScanEnvironment();
           if (usesDefaultTimeout && scanDiagnostic.environmentAfter.scanStrategyFallbackEnabled) {
-            // Three four-second strategy windows plus a short terminal margin.
-            scanTimeout = const Duration(seconds: 13);
+            // Three four-second strategy windows plus a complete final observation margin.
+            scanTimeout = const Duration(seconds: 15);
           }
           _scanSubscription = _platform.scanResults.listen(
             (event) => _handleScanEvent(controller, event),

@@ -96,4 +96,18 @@ public final class BirdBoxScanStrategyControllerTest {
         assertTrue(controller.recordAndroidError(first.generation, 3));
         assertEquals(Integer.valueOf(3), controller.current().androidScanErrorCode);
     }
+
+    @Test
+    public void startedEventIsRecordedOnceForEachActiveGeneration() {
+        final BirdBoxScanStrategyController controller = new BirdBoxScanStrategyController();
+        final BirdBoxScanStrategyController.Snapshot first = controller.begin();
+
+        assertTrue(controller.markStarted(first.generation));
+        assertFalse(controller.markStarted(first.generation));
+
+        final BirdBoxScanStrategyController.Decision second =
+                controller.onWindowElapsed(first.generation);
+        assertTrue(controller.markStarted(second.next.generation));
+        assertFalse(controller.markStarted(first.generation));
+    }
 }

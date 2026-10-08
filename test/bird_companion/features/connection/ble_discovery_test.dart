@@ -189,7 +189,7 @@ void main() {
     expect(diagnostic.androidScanErrorCode, 2);
   });
 
-  test('gives all three fallback strategies a complete default window', () async {
+  test('gives all three fallback strategies a complete 15-second default window', () async {
     final platform = _FakeBlePlatform();
     final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
     addTearDown(dataSource.dispose);
@@ -197,7 +197,7 @@ void main() {
     final subscription = dataSource.scan().listen((_) {});
     await Future<void>.delayed(Duration.zero);
 
-    expect(platform.startedScanTimeout, const Duration(seconds: 13));
+    expect(platform.startedScanTimeout, const Duration(seconds: 15));
 
     await dataSource.stopScan();
     await subscription.cancel();

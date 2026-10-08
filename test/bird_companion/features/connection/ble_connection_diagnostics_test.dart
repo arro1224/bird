@@ -49,6 +49,8 @@ void main() {
       'bondStateAtTrigger': 'not_bonded',
       'createBondInvoked': true,
       'createBondReturned': true,
+      'createBondStateBefore': 'not_bonded',
+      'createBondStateAfter': 'bonding',
       'stateBefore': 'bonding',
       'stateAfter': 'bonded_recovering_gatt',
       'terminalOutcome': 'ble_pairing_timeout',
@@ -84,6 +86,9 @@ void main() {
     expect(restored.bondStateAtTrigger, 'not_bonded');
     expect(restored.createBondInvoked, isTrue);
     expect(restored.createBondReturned, isTrue);
+    expect(restored.createBondStateBefore, 'not_bonded');
+    expect(restored.createBondStateAfter, 'bonding');
+    expect(restored.createBondException, isNull);
     expect(restored.stateBefore, 'bonding');
     expect(restored.stateAfter, 'bonded_recovering_gatt');
     expect(restored.terminalOutcome, 'ble_pairing_timeout');

@@ -55,6 +55,9 @@ final class BleConnectionDiagnosticEvent {
     this.bondStateAtTrigger,
     this.createBondInvoked,
     this.createBondReturned,
+    this.createBondStateBefore,
+    this.createBondStateAfter,
+    this.createBondException,
     this.stateBefore,
     this.stateAfter,
     this.terminalOutcome,
@@ -120,6 +123,9 @@ final class BleConnectionDiagnosticEvent {
   final String? bondStateAtTrigger;
   final bool? createBondInvoked;
   final bool? createBondReturned;
+  final String? createBondStateBefore;
+  final String? createBondStateAfter;
+  final String? createBondException;
   final String? stateBefore;
   final String? stateAfter;
   final String? terminalOutcome;
@@ -186,6 +192,9 @@ final class BleConnectionDiagnosticEvent {
     if (bondStateAtTrigger != null) 'bond_state_at_trigger': bondStateAtTrigger,
     if (createBondInvoked != null) 'create_bond_invoked': createBondInvoked,
     if (createBondReturned != null) 'create_bond_returned': createBondReturned,
+    if (createBondStateBefore != null) 'create_bond_state_before': createBondStateBefore,
+    if (createBondStateAfter != null) 'create_bond_state_after': createBondStateAfter,
+    if (createBondException != null) 'create_bond_exception': createBondException,
     if (stateBefore != null) 'state_before': stateBefore,
     if (stateAfter != null) 'state_after': stateAfter,
     if (terminalOutcome != null) 'terminal_outcome': terminalOutcome,
@@ -252,6 +261,9 @@ final class BleConnectionDiagnosticEvent {
     bondStateAtTrigger: value['bond_state_at_trigger'] as String?,
     createBondInvoked: value['create_bond_invoked'] as bool?,
     createBondReturned: value['create_bond_returned'] as bool?,
+    createBondStateBefore: value['create_bond_state_before'] as String?,
+    createBondStateAfter: value['create_bond_state_after'] as String?,
+    createBondException: value['create_bond_exception'] as String?,
     stateBefore: value['state_before'] as String?,
     stateAfter: value['state_after'] as String?,
     terminalOutcome: value['terminal_outcome'] as String?,
@@ -330,6 +342,9 @@ final class BleConnectionDiagnosticEvent {
       bondStateAtTrigger: value['bondStateAtTrigger'] as String?,
       createBondInvoked: value['createBondInvoked'] as bool?,
       createBondReturned: value['createBondReturned'] as bool?,
+      createBondStateBefore: value['createBondStateBefore'] as String?,
+      createBondStateAfter: value['createBondStateAfter'] as String?,
+      createBondException: value['createBondException'] as String?,
       stateBefore: value['stateBefore'] as String?,
       stateAfter: value['stateAfter'] as String?,
       terminalOutcome: value['terminalOutcome'] as String?,

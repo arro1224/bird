@@ -2,7 +2,7 @@
 # 一键启动模拟器并运行拍鸟伴侣（Git Bash / Claude Code 环境）
 # 用法:
 #   bash tool/run_app.sh          # 默认 bird flavor
-#   bash tool/run_app.sh birdV1   # V1 flavor
+#   bash tool/run_app.sh birdSim  # simulated-box flavor
 #
 # 依次处理: JDK 17+ 检查 → 启动模拟器并等待就绪 → pub get → flutter run
 set -euo pipefail
@@ -45,6 +45,6 @@ DEVICE="$("$ADB" devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
 [ -n "$DEVICE" ] || { echo "!! 没有可用的 Android 设备" >&2; exit 1; }
 echo "==> 设备 $DEVICE 在线，flavor=$FLAVOR"
 
-# 3. 依赖 + 运行（必须带 --flavor，项目有 bird / birdV1 两个 flavor）
+# 3. 依赖 + 运行（必须带 --flavor；日常运行使用 bird，模拟盒子使用 birdSim）
 "$FLUTTER" pub get
 exec "$FLUTTER" run --flavor "$FLAVOR" -d "$DEVICE"

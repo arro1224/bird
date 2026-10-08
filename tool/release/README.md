@@ -3,6 +3,25 @@
 `run_b7_gate.ps1` 把实施说明书 B7 的格式、契约、静态检查、测试、Android
 构建和证据采集收口到一个可重复执行的入口。
 
+## 统一 APK 构建入口
+
+日常构建使用 `build_android_apks.ps1`。默认只生成 `bird` Debug；`HuaweiAB`
+和 `Simulation` 必须显式选择，且只允许 Debug。Gradle 同时禁用了三个内部
+flavor 的 Release variant，正常发布只能生成 `bird` Release。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool/release/build_android_apks.ps1
+powershell -ExecutionPolicy Bypass -File tool/release/build_android_apks.ps1 -Mode HuaweiAB
+powershell -ExecutionPolicy Bypass -File tool/release/build_android_apks.ps1 -Mode Simulation
+powershell -ExecutionPolicy Bypass -File tool/release/build_android_apks.ps1 `
+  -Mode Normal -BuildType Release
+```
+
+脚本将 APK 复制到 `build/delivery/`，并写出包含包名、flavor、版本、Git SHA、
+工作区状态、构建输入源文件指纹、权限策略、扫描回退开关、文件大小、APK SHA-256
+和签名证书 SHA-256 的 `build-manifest.json`。工作树不干净时，构建输入源文件指纹用于证明
+多个候选包确实来自同一份未提交源码；这不改变其 `releasable=false` 状态。
+
 ## 本地预检
 
 预检允许脏工作树，执行非严格契约检查、生产入口完整性检查、全部测试和 bird debug APK 构建：

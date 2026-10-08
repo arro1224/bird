@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Bird V1 - New Device UI" type="FlutterRunConfigurationType" factoryName="Flutter">
-    <option name="buildFlavor" value="birdV1" />
+  <configuration default="false" name="Bird - Production UI" type="FlutterRunConfigurationType" factoryName="Flutter">
+    <option name="buildFlavor" value="bird" />
     <option name="filePath" value="$PROJECT_DIR$/lib/main.dart" />
     <method v="2" />
   </configuration>

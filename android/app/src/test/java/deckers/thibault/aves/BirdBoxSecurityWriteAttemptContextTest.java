@@ -166,6 +166,26 @@ public final class BirdBoxSecurityWriteAttemptContextTest {
         assertEquals("complete", context.cleanupOutcome());
     }
 
+    @Test
+    public void createBondInvocationIsRetainedWhenTheFrameworkThrows() {
+        final BirdBoxSecurityWriteAttemptContext context = acceptedContext();
+
+        assertTrue(context.completeFromCallbackTimeout(
+                "request-1",
+                3,
+                7,
+                CHARACTERISTIC_UUID
+        ));
+        context.recordCreateBondInvoked("not_bonded");
+        context.recordCreateBondException("SecurityException", "not_bonded");
+
+        assertTrue(context.createBondInvoked());
+        assertEquals("not_bonded", context.createBondStateBefore());
+        assertEquals("not_bonded", context.createBondStateAfter());
+        assertEquals("SecurityException", context.createBondException());
+        assertFalse(context.createBondReturned() != null);
+    }
+
     private static BirdBoxSecurityWriteAttemptContext acceptedContext() {
         final BirdBoxSecurityWriteAttemptContext context = newContext();
         context.markApiAccepted("request-1", 3, 7, CHARACTERISTIC_UUID);

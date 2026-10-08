@@ -26,6 +26,9 @@ final class BirdBoxSecurityWriteAttemptContext {
     private String bondStateAtTrigger;
     private boolean createBondInvoked;
     private Boolean createBondReturned;
+    private String createBondStateBefore;
+    private String createBondStateAfter;
+    private String createBondException;
     private String stateBefore;
     private String stateAfter;
     private String terminalOutcome;
@@ -60,6 +63,9 @@ final class BirdBoxSecurityWriteAttemptContext {
         bondStateAtTrigger = null;
         createBondInvoked = false;
         createBondReturned = null;
+        createBondStateBefore = null;
+        createBondStateAfter = null;
+        createBondException = null;
         stateBefore = null;
         stateAfter = null;
         terminalOutcome = null;
@@ -158,11 +164,31 @@ final class BirdBoxSecurityWriteAttemptContext {
         bondStateAtTrigger = value;
     }
 
-    void recordCreateBond(boolean returned, String before, String after) {
+    /** Records the side-effect boundary before BluetoothDevice.createBond() is invoked. */
+    void recordCreateBondInvoked(String before) {
+        createBondInvoked = true;
+        createBondStateBefore = before;
+    }
+
+    void recordCreateBondResult(boolean returned, String after) {
         createBondInvoked = true;
         createBondReturned = returned;
-        stateBefore = before;
-        stateAfter = after;
+        createBondStateAfter = after;
+    }
+
+    /**
+     * Retains only the exception type: framework messages can contain vendor/device details and
+     * must not be included in exported diagnostics.
+     */
+    void recordCreateBondException(String exceptionType, String after) {
+        createBondInvoked = true;
+        createBondException = exceptionType;
+        createBondStateAfter = after;
+    }
+
+    void recordCreateBond(boolean returned, String before, String after) {
+        recordCreateBondInvoked(before);
+        recordCreateBondResult(returned, after);
     }
 
     void recordStateTransition(String before, String after) {
@@ -218,6 +244,18 @@ final class BirdBoxSecurityWriteAttemptContext {
         return createBondReturned;
     }
 
+    String createBondStateBefore() {
+        return createBondStateBefore;
+    }
+
+    String createBondStateAfter() {
+        return createBondStateAfter;
+    }
+
+    String createBondException() {
+        return createBondException;
+    }
+
     String stateBefore() {
         return stateBefore;
     }
@@ -271,6 +309,9 @@ final class BirdBoxSecurityWriteAttemptContext {
         bondStateAtTrigger = null;
         createBondInvoked = false;
         createBondReturned = null;
+        createBondStateBefore = null;
+        createBondStateAfter = null;
+        createBondException = null;
         stateBefore = null;
         stateAfter = null;
         terminalOutcome = null;

@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.Build;
 import android.util.Log;
 import android.view.Gravity;
 import android.widget.TextView;
@@ -63,7 +64,7 @@ public final class VirtualBirdBoxActivity extends Activity {
             if (log.exists() && !log.delete()) Log.w(TAG, "Unable to reset previous event log");
         }
         status.setText("BLE-11 Virtual BirdBox\n" + scenario.wireValue() + "\nstarting…");
-        if (hasPermissions()) {
+        if (hasRequiredPermissions()) {
             startPeripheral();
         } else {
             requestPermissions(PERMISSIONS, PERMISSION_REQUEST);
@@ -77,7 +78,7 @@ public final class VirtualBirdBoxActivity extends Activity {
             int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode != PERMISSION_REQUEST) return;
-        if (hasPermissions()) {
+        if (hasRequiredPermissions()) {
             startPeripheral();
         } else {
             status.setText("BLE permissions denied");
@@ -85,7 +86,10 @@ public final class VirtualBirdBoxActivity extends Activity {
         }
     }
 
-    private boolean hasPermissions() {
+    private boolean hasRequiredPermissions() {
+        // BLUETOOTH_ADVERTISE and BLUETOOTH_CONNECT are runtime permissions only
+        // from Android 12. Android 5--11 use the legacy manifest declarations.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true;
         for (String permission : PERMISSIONS) {
             if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) return false;
         }

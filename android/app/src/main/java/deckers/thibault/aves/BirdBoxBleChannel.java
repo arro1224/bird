@@ -411,7 +411,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         }
         final Integer timeoutMs = call.argument("timeoutMs");
         final String scanSessionId = call.argument("scanSessionId");
-        final long timeout = timeoutMs == null ? 10000L : Math.max(1000L, timeoutMs.longValue());
+        final long timeout = BirdBoxScanTiming.effectiveTimeoutMs(
+                BuildConfig.BLE_SCAN_STRATEGY_FALLBACK_ENABLED,
+                timeoutMs
+        );
         activeScanSessionId = scanSessionId == null || scanSessionId.isEmpty()
                 ? "native-unknown"
                 : scanSessionId;
@@ -761,9 +764,13 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
 
     private void emitScanStrategyEvent(
             @NonNull String event,
-            @Nullable BirdBoxScanStrategyController.Snapshot strategy,
-            @NonNull String reason) {
+        @Nullable BirdBoxScanStrategyController.Snapshot strategy,
+        @NonNull String reason) {
         if (strategy == null) return;
+        if ("strategy_started".equals(event)
+                && !scanStrategyController.markStarted(strategy.generation)) {
+            return;
+        }
         final Map<String, Object> diagnostic = new LinkedHashMap<>();
         diagnostic.put("eventType", "scanStrategy");
         diagnostic.put("strategyEvent", event);
@@ -1773,11 +1780,13 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         );
         try {
             final int stateBeforeFallback = expectedDevice.getBondState();
+            securityWriteAttemptContext.recordCreateBondInvoked(
+                    bondStateName(stateBeforeFallback)
+            );
             final boolean started = expectedDevice.createBond();
             final int stateAfterFallback = expectedDevice.getBondState();
-            securityWriteAttemptContext.recordCreateBond(
+            securityWriteAttemptContext.recordCreateBondResult(
                     started,
-                    bondStateName(stateBeforeFallback),
                     bondStateName(stateAfterFallback)
             );
             emitDiagnostic(
@@ -1806,12 +1815,20 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     gattFailureDetails(-1, securityWriteAttemptContext.characteristicUuid())
             );
         } catch (SecurityException error) {
+            securityWriteAttemptContext.recordCreateBondException(
+                    error.getClass().getSimpleName(),
+                    null
+            );
             failPending(
                     "bluetooth_permission_denied",
                     "Bluetooth connect permission is missing.",
                     gattFailureDetails(-1, securityWriteAttemptContext.characteristicUuid())
             );
         } catch (RuntimeException error) {
+            securityWriteAttemptContext.recordCreateBondException(
+                    error.getClass().getSimpleName(),
+                    null
+            );
             try {
                 securityWriteStateMachine.onPairingNotStartedTimeout();
             } catch (IllegalStateException ignored) {
@@ -1932,6 +1949,15 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         unregisterBondStateReceiver();
         if (hadAttempt) {
             securityWriteAttemptContext.markCleanup("complete");
+            // This is the immutable end-of-request evidence event. It is emitted before the
+            // active context is reset, so cleanup cannot erase whether createBond() was tried.
+            emitDiagnostic(
+                    "security_write_fact_finalized",
+                    "security_write",
+                    -1,
+                    characteristicUuid,
+                    securityWriteAttemptContext.terminalOutcome()
+            );
             emitDiagnostic(
                     "security_write_cleanup_completed",
                     "security_write",
@@ -2535,31 +2561,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     securityWriteAttemptContext.trigger().name().toLowerCase(Locale.ROOT)
             );
         }
-        if (securityWriteAttemptContext.attemptId() != null) {
-            details.put("attemptId", securityWriteAttemptContext.attemptId());
-            details.put("writeApiAccepted", securityWriteAttemptContext.apiAccepted());
-            details.put("writeCallbackReceived", securityWriteAttemptContext.callbackReceived());
-            details.put(
-                    "securityWriteElapsedMs",
-                    securityWriteAttemptContext.elapsedMs(SystemClock.uptimeMillis())
-            );
-            if (securityWriteAttemptContext.bondStateAtTrigger() != null) {
-                details.put(
-                        "bondStateAtTrigger",
-                        securityWriteAttemptContext.bondStateAtTrigger()
-                );
-            }
-            details.put(
-                    "createBondInvoked",
-                    securityWriteAttemptContext.createBondInvoked()
-            );
-            if (securityWriteAttemptContext.createBondReturned() != null) {
-                details.put(
-                        "createBondReturned",
-                        securityWriteAttemptContext.createBondReturned()
-                );
-            }
-        }
+        addSecurityWriteAttemptFacts(details);
         if (activeTraceId != null && !activeTraceId.isEmpty()) details.put("traceId", activeTraceId);
         if (connectedDeviceAddressHash != null) details.put("deviceAddressHash", connectedDeviceAddressHash);
         if (gattStatus >= 0) details.put("gattStatus", gattStatus);
@@ -2794,50 +2796,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         );
         event.put("bondInitiationSource", bondInitiationSource);
         event.put("securityGattStatusObserved", securityGattStatusObserved);
-        if (activeSecurityRequestId != null
-                && securityWriteAttemptContext.characteristicUuid() != null) {
-            event.put("attemptId", securityWriteAttemptContext.attemptId());
-            event.put("writeApiAccepted", securityWriteAttemptContext.apiAccepted());
-            event.put("writeCallbackReceived", securityWriteAttemptContext.callbackReceived());
-            event.put(
-                    "securityWriteElapsedMs",
-                    securityWriteAttemptContext.elapsedMs(SystemClock.uptimeMillis())
-            );
-            if (securityWriteAttemptContext.bondStateAtTrigger() != null) {
-                event.put(
-                        "bondStateAtTrigger",
-                        securityWriteAttemptContext.bondStateAtTrigger()
-                );
-            }
-            event.put(
-                    "createBondInvoked",
-                    securityWriteAttemptContext.createBondInvoked()
-            );
-            if (securityWriteAttemptContext.createBondReturned() != null) {
-                event.put(
-                        "createBondReturned",
-                        securityWriteAttemptContext.createBondReturned()
-                );
-            }
-            if (securityWriteAttemptContext.stateBefore() != null) {
-                event.put("stateBefore", securityWriteAttemptContext.stateBefore());
-            }
-            if (securityWriteAttemptContext.stateAfter() != null) {
-                event.put("stateAfter", securityWriteAttemptContext.stateAfter());
-            }
-            if (securityWriteAttemptContext.terminalOutcome() != null) {
-                event.put(
-                        "terminalOutcome",
-                        securityWriteAttemptContext.terminalOutcome()
-                );
-            }
-            if (securityWriteAttemptContext.cleanupOutcome() != null) {
-                event.put(
-                        "cleanupOutcome",
-                        securityWriteAttemptContext.cleanupOutcome()
-                );
-            }
-        }
+        addSecurityWriteAttemptFacts(event);
         if (activeSecurityRequestId != null) {
             event.put("requestId", activeSecurityRequestId);
         }
@@ -2885,6 +2844,52 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         if (!safeMessage.isEmpty()) event.put("sanitizedMessage", safeMessage);
         addPackageMetadata(event);
         emitSuccess(diagnosticSink, event);
+    }
+
+    /** Adds the secret-safe, request-scoped facts to an event or platform exception map. */
+    private void addSecurityWriteAttemptFacts(@NonNull Map<String, Object> target) {
+        if (securityWriteAttemptContext.attemptId() == null) return;
+        target.put("attemptId", securityWriteAttemptContext.attemptId());
+        target.put("writeApiAccepted", securityWriteAttemptContext.apiAccepted());
+        target.put("writeCallbackReceived", securityWriteAttemptContext.callbackReceived());
+        target.put(
+                "securityWriteElapsedMs",
+                securityWriteAttemptContext.elapsedMs(SystemClock.uptimeMillis())
+        );
+        if (securityWriteAttemptContext.bondStateAtTrigger() != null) {
+            target.put("bondStateAtTrigger", securityWriteAttemptContext.bondStateAtTrigger());
+        }
+        target.put("createBondInvoked", securityWriteAttemptContext.createBondInvoked());
+        if (securityWriteAttemptContext.createBondReturned() != null) {
+            target.put("createBondReturned", securityWriteAttemptContext.createBondReturned());
+        }
+        if (securityWriteAttemptContext.createBondStateBefore() != null) {
+            target.put(
+                    "createBondStateBefore",
+                    securityWriteAttemptContext.createBondStateBefore()
+            );
+        }
+        if (securityWriteAttemptContext.createBondStateAfter() != null) {
+            target.put(
+                    "createBondStateAfter",
+                    securityWriteAttemptContext.createBondStateAfter()
+            );
+        }
+        if (securityWriteAttemptContext.createBondException() != null) {
+            target.put("createBondException", securityWriteAttemptContext.createBondException());
+        }
+        if (securityWriteAttemptContext.stateBefore() != null) {
+            target.put("stateBefore", securityWriteAttemptContext.stateBefore());
+        }
+        if (securityWriteAttemptContext.stateAfter() != null) {
+            target.put("stateAfter", securityWriteAttemptContext.stateAfter());
+        }
+        if (securityWriteAttemptContext.terminalOutcome() != null) {
+            target.put("terminalOutcome", securityWriteAttemptContext.terminalOutcome());
+        }
+        if (securityWriteAttemptContext.cleanupOutcome() != null) {
+            target.put("cleanupOutcome", securityWriteAttemptContext.cleanupOutcome());
+        }
     }
 
     private void addPackageMetadata(@NonNull Map<String, Object> event) {

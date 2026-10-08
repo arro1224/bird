@@ -65,11 +65,13 @@ final class BirdBoxScanStrategyController {
     private int deviceNameResultCount;
     private int candidateCount;
     private Integer androidScanErrorCode;
+    private int startedEventGeneration = -1;
 
     synchronized Snapshot begin() {
         active = true;
         generation++;
         strategyIndex = 0;
+        startedEventGeneration = -1;
         resetCounts();
         return snapshot();
     }
@@ -92,6 +94,12 @@ final class BirdBoxScanStrategyController {
     synchronized boolean recordAndroidError(int callbackGeneration, int errorCode) {
         if (!accepts(callbackGeneration)) return false;
         androidScanErrorCode = errorCode;
+        return true;
+    }
+
+    synchronized boolean markStarted(int callbackGeneration) {
+        if (!accepts(callbackGeneration) || startedEventGeneration == callbackGeneration) return false;
+        startedEventGeneration = callbackGeneration;
         return true;
     }
 

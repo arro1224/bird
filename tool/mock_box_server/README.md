@@ -36,7 +36,7 @@ Set-Location -LiteralPath "D:\Androidstudio2\project\4"
 & "D:\flutter344\flutter\bin\flutter.bat" run `
   -d b502aabb `
   --debug `
-  --flavor birdV1 `
+  --flavor birdSim `
   -t .\lib\main_bird_simulated.dart `
   --dart-define=BIRD_TEST_BASE_URL=http://127.0.0.1:8787 `
   --dart-define=BIRD_SIMULATED_DEVICE_ID=bbx-82f41c9e7a3d4b68a1501e21e536c649

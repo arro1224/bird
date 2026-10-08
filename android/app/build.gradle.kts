@@ -97,10 +97,12 @@ android {
         create("bird") {
             dimension = "app"
             applicationId = "deckers.thibault.aves.bird"
+            buildConfigField("boolean", "BLE_SCAN_STRATEGY_FALLBACK_ENABLED", "true")
         }
-        create("birdV1") {
+        create("birdSim") {
             dimension = "app"
-            applicationId = "deckers.thibault.aves.bird.v1"
+            applicationId = "deckers.thibault.aves.bird.sim"
+            resValue("string", "app_name", "拍鸟伴侣（模拟）")
         }
         create("birdScanA") {
             dimension = "app"
@@ -135,6 +137,17 @@ android {
             if (hasCompleteReleaseCredentials) {
                 signingConfig = signingConfigs.getByName("release")
             }
+        }
+    }
+}
+
+androidComponents {
+    beforeVariants(selector()) { variantBuilder ->
+        val appFlavor = variantBuilder.productFlavors
+            .firstOrNull { (dimension, _) -> dimension == "app" }
+            ?.second
+        if (appFlavor != "bird" && variantBuilder.buildType != "debug") {
+            variantBuilder.enable = false
         }
     }
 }
