@@ -15,6 +15,43 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(methodChannel, null);
   });
 
+  test('MethodChannel preparation and retry carry readiness and stable owner', () async {
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(methodChannel, (call) async {
+      calls.add(call);
+      if (call.method == 'preparePairing' || call.method == 'recoverPairing') {
+        return {'requestId': 'req', 'attemptId': 'attempt', 'connectionGeneration': 4, 'gattGeneration': call.method == 'preparePairing' ? 2 : 3, 'mtu': call.method == 'preparePairing' ? 517 : 23, 'notificationsReady': true};
+      }
+      return null;
+    });
+    final platform = MethodChannelBirdBoxBlePlatform();
+    final first = await platform.preparePairing('req', 'open_pairing');
+    final retry = await platform.recoverPairing('req');
+    await platform.beginSecurityRetry('req');
+    await platform.markSecurityWriteSent('req');
+    await platform.disconnectOwned('req', retry, retry.connectionGeneration);
+    await platform.completeSecurityWrite('req', responseType: 'pairing_opened');
+    expect(first.mtu, 517);
+    expect(retry.mtu, 23);
+    expect(retry.gattGeneration, 3);
+    for (final call in calls.skip(1)) {
+      expect(call.arguments['requestId'], 'req');
+      expect(call.arguments['attemptId'], 'attempt');
+      expect(call.arguments['connectionGeneration'], 4);
+    }
+  });
+
+  test('MethodChannel rejects incomplete or mismatched native readiness', () async {
+    for (final values in [
+      {'requestId': 'req', 'attemptId': 'attempt', 'connectionGeneration': 1, 'gattGeneration': 1, 'mtu': 22, 'notificationsReady': true},
+      {'requestId': 'req', 'attemptId': 'attempt', 'connectionGeneration': 1, 'gattGeneration': 1, 'mtu': 23, 'notificationsReady': false},
+      {'requestId': 'old', 'attemptId': 'attempt', 'connectionGeneration': 1, 'gattGeneration': 1, 'mtu': 23, 'notificationsReady': true},
+    ]) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(methodChannel, (_) async => values);
+      await expectLater(MethodChannelBirdBoxBlePlatform().preparePairing('req', 'open_pairing'), throwsA(isA<ProvisioningProtocolException>()));
+    }
+  });
+
   test('preserves the native BLE state snapshot through JSON storage', () {
     final event = BleConnectionDiagnosticEvent.fromPlatform({
       'traceId': 'ble-scan-07',
@@ -40,6 +77,14 @@ void main() {
       'actualBondState': 'not_bonded',
       'conditionalBondFallbackAttempted': true,
       'bondInitiationSource': 'conditional_fallback',
+      'systemBondAttempted': true,
+      'createBondCallCount': 1,
+      'bondElapsedMs': 1900,
+      'securityWriteAttemptCount': 2,
+      'securityWriteResult': 'success',
+      'thread': 'main',
+      'callSource': 'user_start_pairing',
+      'teardownReason': 'requested',
       'securityGattStatusObserved': true,
       'attemptId': 'request-1:3:7:1000',
       'writeApiAccepted': true,
@@ -77,6 +122,14 @@ void main() {
     expect(restored.actualBondState, 'not_bonded');
     expect(restored.conditionalBondFallbackAttempted, isTrue);
     expect(restored.bondInitiationSource, 'conditional_fallback');
+    expect(restored.systemBondAttempted, isTrue);
+    expect(restored.createBondCallCount, 1);
+    expect(restored.bondElapsedMs, 1900);
+    expect(restored.securityWriteAttemptCount, 2);
+    expect(restored.securityWriteResult, 'success');
+    expect(restored.thread, 'main');
+    expect(restored.callSource, 'user_start_pairing');
+    expect(restored.teardownReason, 'requested');
     expect(restored.securityGattStatusObserved, isTrue);
     expect(restored.attemptId, 'request-1:3:7:1000');
     expect(restored.writeApiAccepted, isTrue);
@@ -176,6 +229,18 @@ void main() {
       'gatt_operation_failed': ProvisioningErrorCode.bleGattOperationFailed,
       'ble_security_recovery_failed': ProvisioningErrorCode.bleSecurityRecoveryFailed,
       'location_service_disabled': ProvisioningErrorCode.locationServicesDisabled,
+      'bond_start_failed': ProvisioningErrorCode.bleBondStartFailed,
+      'gatt_busy': ProvisioningErrorCode.bleOperationBusy,
+      'bond_timeout': ProvisioningErrorCode.blePairingTimeout,
+      'bond_rejected': ProvisioningErrorCode.blePairingRejected,
+      'bond_lost': ProvisioningErrorCode.bleBondLost,
+      'bond_state_unknown': ProvisioningErrorCode.bleBondStateUnknown,
+      'bluetooth_permission_denied': ProvisioningErrorCode.bluetoothPermissionDenied,
+      'bluetooth_unavailable': ProvisioningErrorCode.bluetoothUnavailable,
+      'ble_gatt_recovery_failed': ProvisioningErrorCode.bleGattRecoveryFailed,
+      'ble_encrypted_retry_failed': ProvisioningErrorCode.bleEncryptedRetryFailed,
+      'location_settings_unavailable': ProvisioningErrorCode.locationSettingsUnavailable,
+      'unexpected_native_failure': ProvisioningErrorCode.bleGattOperationFailed,
     };
 
     for (final entry in expected.entries) {

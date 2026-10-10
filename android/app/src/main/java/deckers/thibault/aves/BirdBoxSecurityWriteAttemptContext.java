@@ -33,6 +33,36 @@ final class BirdBoxSecurityWriteAttemptContext {
     private String stateAfter;
     private String terminalOutcome;
     private String cleanupOutcome;
+    private long bondStartedAtMs = -1L;
+    private long bondFinishedAtMs = -1L;
+    private int createBondCallCount;
+
+    void beginPairing(String request, int connection, int generation, long nowMs) {
+        begin(request, connection, generation,
+                UUID.fromString("6f7d0005-7a66-4c45-a1b9-5f4d2e3c1000"), nowMs);
+        startedAtMs = -1L;
+        bondStartedAtMs = nowMs;
+    }
+
+    void beginWriteChild(int generation, UUID uuid, long nowMs) {
+        if (attemptId == null) throw new IllegalStateException("No pairing attempt");
+        gattGeneration = generation;
+        characteristicUuid = uuid;
+        startedAtMs = nowMs;
+        active = true;
+        apiAccepted = false;
+        callbackReceived = false;
+        trigger = Trigger.NONE;
+    }
+
+    int createBondCallCount() { return createBondCallCount; }
+    void finishBond(long nowMs) {
+        if (bondFinishedAtMs < 0L) bondFinishedAtMs = nowMs;
+    }
+    long bondElapsedMs(long nowMs) {
+        return bondStartedAtMs < 0 ? -1 : Math.max(0,
+                (bondFinishedAtMs < 0 ? nowMs : bondFinishedAtMs) - bondStartedAtMs);
+    }
 
     void begin(
             String nextRequestId,
@@ -70,6 +100,9 @@ final class BirdBoxSecurityWriteAttemptContext {
         stateAfter = null;
         terminalOutcome = null;
         cleanupOutcome = null;
+        bondStartedAtMs = -1L;
+        bondFinishedAtMs = -1L;
+        createBondCallCount = 0;
     }
 
     boolean markApiAccepted(
@@ -166,6 +199,7 @@ final class BirdBoxSecurityWriteAttemptContext {
 
     /** Records the side-effect boundary before BluetoothDevice.createBond() is invoked. */
     void recordCreateBondInvoked(String before) {
+        if (!createBondInvoked) createBondCallCount++;
         createBondInvoked = true;
         createBondStateBefore = before;
     }
@@ -316,6 +350,9 @@ final class BirdBoxSecurityWriteAttemptContext {
         stateAfter = null;
         terminalOutcome = null;
         cleanupOutcome = null;
+        bondStartedAtMs = -1L;
+        bondFinishedAtMs = -1L;
+        createBondCallCount = 0;
     }
 
     private boolean matches(

@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/features/connection/domain/ble_pairing_progress.dart';
 import 'dart:async';
 
 import 'package:aves/bird_companion/core/session/client_identity_store.dart';
@@ -17,7 +18,7 @@ import 'package:aves/bird_companion/features/connection/domain/request_id_factor
 
 /// Production owner of rc4 identifiers, authorization, operation correlation,
 /// Android routing and transient secret lifetime.
-final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository, ProvisioningNetworkStatusVerifier, BleScanDiagnosticsRepository {
+final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository, ProvisioningNetworkStatusVerifier, BleScanDiagnosticsRepository, BleProvisioningControl {
   factory ProvisioningRepositoryImpl({
     required BirdBoxBleDataSource ble,
     required BirdBoxWifiPlatform wifi,
@@ -121,6 +122,62 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
   String? _lastTrustedDeviceId;
   bool _networkStatusResumeRequired = false;
 
+  BleProvisioningControl? get _bleControl => _ble is BleProvisioningControl ? _ble as BleProvisioningControl : null;
+  Object? _sessionOwner;
+  @override
+  Object claimSession() => _sessionOwner = _bleControl?.claimSession() ?? Object();
+  @override
+  bool ownsSession(Object owner) => !_disposed && identical(owner, _sessionOwner) && (_bleControl?.ownsSession(owner) ?? true);
+  @override
+  Future<void> endSession(Object owner) async {
+    if (!ownsSession(owner)) return;
+    final control = _bleControl;
+    if (control != null) {
+      await control.endSession(owner);
+    } else {
+      await _ble.stopScan();
+      if (!ownsSession(owner)) return;
+      await _ble.disconnect();
+    }
+    if (!identical(owner, _sessionOwner)) return;
+    _clearTransientState();
+    await _wifi.releaseNetwork();
+  }
+
+  @override
+  Future<void> pauseDiscovery(Object owner) async {
+    if (!ownsSession(owner)) return;
+    final control = _bleControl;
+    if (control != null) {
+      await control.pauseDiscovery(owner);
+    } else {
+      await _ble.stopScan();
+    }
+  }
+
+  @override
+  Future<void> resumeDiscovery(Object owner) async {
+    if (ownsSession(owner)) await _bleControl?.resumeDiscovery(owner);
+  }
+
+  @override
+  Future<void> openLocationSettings(Object owner) async {
+    if (!ownsSession(owner)) return;
+    final control = _bleControl;
+    if (control == null) throw const ProvisioningException(code: ProvisioningErrorCode.locationSettingsUnavailable, retryable: false);
+    await control.openLocationSettings(owner);
+  }
+
+  @override
+  Future<void> locationSettingsReturned(Object owner, {required bool enabled}) async {
+    if (ownsSession(owner)) await _bleControl?.locationSettingsReturned(owner, enabled: enabled);
+  }
+
+  @override
+  Future<BleScanEnvironment> readScanEnvironment() async => await _bleControl?.readScanEnvironment() ?? const BleScanEnvironment.unknown();
+  @override
+  Stream<BlePairingProgress> get pairingProgress => _bleControl?.pairingProgress ?? const Stream.empty();
+
   /// Final de-duplicated scan snapshots for B-owned selection pages.
   Stream<List<WifiScanNetwork>> get wifiScanResults => _wifiScanResults.stream;
 
@@ -158,14 +215,18 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
   @override
   Future<ProvisioningDeviceInfo> connect(ProvisioningDevice device) async {
     _checkNotDisposed();
+    final owner = _sessionOwner;
     await _ble.connect(device.advertisement);
+    _checkOwner(owner);
     try {
       final info = await _ble.readDeviceInfo();
       await _ble.subscribeRequiredNotifications();
       final clientId = await _clientIdentityStore.readOrCreate();
+      _checkOwner(owner);
       _deviceInfo = info;
       _clientId = clientId;
       final stored = await _credentialStore.read(info.deviceId);
+      _checkOwner(owner);
       if (stored != null && stored.clientId == clientId && stored.isUsableAt(_clock())) {
         _credential = stored;
       } else {
@@ -179,9 +240,10 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
       _lastTrustedDeviceId = info.deviceId;
       final status = reconnecting ? await _networkStatusAfterReconnect() : await _ble.readNetworkStatus();
       _resumeOperation(status);
+      _checkOwner(owner);
       return info;
     } catch (_) {
-      await _ble.disconnect();
+      if (identical(owner, _sessionOwner)) await _ble.disconnect();
       rethrow;
     }
   }
@@ -399,6 +461,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     Map<String, dynamic> payload = const {},
     String? requestId,
   }) async {
+    final owner = _sessionOwner;
     final info = _requireDeviceInfo();
     final clientId = _requireClientId();
     final request = BleCommandRequest(
@@ -409,11 +472,12 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     );
     _requestTypes[request.requestId] = type;
     try {
-      // Transport/security recovery and the one permitted byte-identical retry
+      // Transport/security recovery and the one permitted same-command retry
       // are owned by BirdBoxBleDataSource.writeCommand. Retrying the complete
       // command here would stack a second retry on top of that state machine
       // and could deliver open_pairing more than twice.
       final response = await _ble.writeCommand(request);
+      _checkOwner(owner);
       if (response.deviceId != info.deviceId) {
         throw const ProvisioningException(
           code: ProvisioningErrorCode.deviceIdMismatch,
@@ -430,6 +494,10 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     } finally {
       if (!_isAsynchronous(type)) _requestTypes.remove(request.requestId);
     }
+  }
+
+  void _checkOwner(Object? owner) {
+    if (!identical(owner, _sessionOwner)) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOperationFailed, retryable: true, diagnosticMessage: 'Superseded provisioning session');
   }
 
   Future<ProvisioningAuthorization> _authorization() async {

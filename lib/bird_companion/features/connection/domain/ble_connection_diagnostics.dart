@@ -2,9 +2,19 @@
 final class BleConnectionDiagnosticEvent {
   const BleConnectionDiagnosticEvent({
     required this.traceId,
+    this.recordSequence,
+    this.flowId,
     required this.occurredAt,
     required this.eventType,
     required this.source,
+    this.systemBondAttempted,
+    this.createBondCallCount,
+    this.bondElapsedMs,
+    this.securityWriteAttemptCount,
+    this.securityWriteResult,
+    this.thread,
+    this.callSource,
+    this.teardownReason,
     this.deviceAddressHash,
     this.manufacturer,
     this.model,
@@ -16,6 +26,9 @@ final class BleConnectionDiagnosticEvent {
     this.appVersionName,
     this.appVersionCode,
     this.gitCommit,
+    this.buildDirty,
+    this.buildId,
+    this.sourceFingerprint,
     this.apkSha256,
     this.gattInstanceId,
     this.gattGeneration,
@@ -70,9 +83,19 @@ final class BleConnectionDiagnosticEvent {
   });
 
   final String traceId;
+  final int? recordSequence;
+  final String? flowId;
   final DateTime occurredAt;
   final String eventType;
   final String source;
+  final bool? systemBondAttempted;
+  final int? createBondCallCount;
+  final int? bondElapsedMs;
+  final int? securityWriteAttemptCount;
+  final String? securityWriteResult;
+  final String? thread;
+  final String? callSource;
+  final String? teardownReason;
   final String? deviceAddressHash;
   final String? manufacturer;
   final String? model;
@@ -84,6 +107,9 @@ final class BleConnectionDiagnosticEvent {
   final String? appVersionName;
   final String? appVersionCode;
   final String? gitCommit;
+  final bool? buildDirty;
+  final String? buildId;
+  final String? sourceFingerprint;
   final String? apkSha256;
   final int? gattInstanceId;
   final int? gattGeneration;
@@ -137,8 +163,19 @@ final class BleConnectionDiagnosticEvent {
   final String? sanitizedMessage;
 
   Map<String, Object?> toJson() => {
-    'schema_version': 3,
+    'schema_version': 4,
+    if (systemBondAttempted != null) 'system_bond_attempted': systemBondAttempted,
+    if (createBondCallCount != null) 'create_bond_call_count': createBondCallCount,
+    if (bondElapsedMs != null) 'bond_elapsed_ms': bondElapsedMs,
+    if (securityWriteAttemptCount != null) 'security_write_attempt_count': securityWriteAttemptCount,
+    if (securityWriteResult != null) 'security_write_result': securityWriteResult,
+    if (thread != null) 'thread': thread,
+    if (callSource != null) 'call_source': callSource,
+    if (teardownReason != null) 'teardown_reason': teardownReason,
+
     'trace_id': traceId,
+    if (recordSequence != null) 'record_sequence': recordSequence,
+    if (flowId != null) 'flow_id': flowId,
     'occurred_at': occurredAt.toUtc().toIso8601String(),
     'event_type': eventType,
     'source': source,
@@ -153,6 +190,9 @@ final class BleConnectionDiagnosticEvent {
     if (appVersionName != null) 'app_version_name': appVersionName,
     if (appVersionCode != null) 'app_version_code': appVersionCode,
     if (gitCommit != null) 'git_commit': gitCommit,
+    if (buildDirty != null) 'build_dirty': buildDirty,
+    if (buildId != null) 'build_id': buildId,
+    if (sourceFingerprint != null) 'source_fingerprint': sourceFingerprint,
     if (apkSha256 != null) 'apk_sha256': apkSha256,
     if (gattInstanceId != null) 'gatt_instance_id': gattInstanceId,
     if (gattGeneration != null) 'gatt_generation': gattGeneration,
@@ -208,9 +248,19 @@ final class BleConnectionDiagnosticEvent {
 
   factory BleConnectionDiagnosticEvent.fromJson(Map<String, dynamic> value) => BleConnectionDiagnosticEvent(
     traceId: value['trace_id'] as String,
+    recordSequence: value['record_sequence'] as int?,
+    flowId: value['flow_id'] as String?,
     occurredAt: DateTime.parse(value['occurred_at'] as String),
     eventType: value['event_type'] as String,
     source: value['source'] as String,
+    systemBondAttempted: value['system_bond_attempted'] as bool?,
+    createBondCallCount: value['create_bond_call_count'] as int?,
+    bondElapsedMs: value['bond_elapsed_ms'] as int?,
+    securityWriteAttemptCount: value['security_write_attempt_count'] as int?,
+    securityWriteResult: value['security_write_result'] as String?,
+    thread: value['thread'] as String?,
+    callSource: value['call_source'] as String?,
+    teardownReason: value['teardown_reason'] as String?,
     deviceAddressHash: value['device_address_hash'] as String?,
     manufacturer: value['manufacturer'] as String?,
     model: value['model'] as String?,
@@ -222,6 +272,9 @@ final class BleConnectionDiagnosticEvent {
     appVersionName: value['app_version_name'] as String?,
     appVersionCode: value['app_version_code']?.toString(),
     gitCommit: value['git_commit'] as String?,
+    buildDirty: value['build_dirty'] as bool?,
+    buildId: value['build_id'] as String?,
+    sourceFingerprint: value['source_fingerprint'] as String?,
     apkSha256: value['apk_sha256'] as String?,
     gattInstanceId: value['gatt_instance_id'] as int?,
     gattGeneration: (value['gatt_generation'] ?? value['gatt_instance_id']) as int?,
@@ -289,9 +342,18 @@ final class BleConnectionDiagnosticEvent {
     final occurredAtMs = value['occurredAtMs'];
     return BleConnectionDiagnosticEvent(
       traceId: traceId,
+      flowId: value['flowId'] as String?,
       occurredAt: occurredAtMs is int ? DateTime.fromMillisecondsSinceEpoch(occurredAtMs, isUtc: true) : DateTime.now().toUtc(),
       eventType: eventType,
       source: 'android',
+      systemBondAttempted: value['systemBondAttempted'] as bool?,
+      createBondCallCount: value['createBondCallCount'] as int?,
+      bondElapsedMs: value['bondElapsedMs'] as int?,
+      securityWriteAttemptCount: value['securityWriteAttemptCount'] as int?,
+      securityWriteResult: value['securityWriteResult'] as String?,
+      thread: value['thread'] as String?,
+      callSource: value['callSource'] as String?,
+      teardownReason: value['teardownReason'] as String?,
       deviceAddressHash: value['deviceAddressHash'] as String?,
       manufacturer: value['manufacturer'] as String?,
       model: value['model'] as String?,
@@ -303,6 +365,9 @@ final class BleConnectionDiagnosticEvent {
       appVersionName: value['appVersionName'] as String?,
       appVersionCode: value['appVersionCode']?.toString(),
       gitCommit: _knownBuildValue(value['gitCommit']),
+      buildDirty: value['buildDirty'] as bool?,
+      buildId: value['buildId'] as String?,
+      sourceFingerprint: value['sourceFingerprint'] as String?,
       apkSha256: _knownBuildValue(value['apkSha256']),
       gattInstanceId: value['gattInstanceId'] as int?,
       gattGeneration: (value['gattGeneration'] ?? value['gattInstanceId']) as int?,

@@ -132,12 +132,17 @@ void main() {
     await tester.tap(find.text('复制短摘要'));
     await tester.pumpAndSettle();
     expect(clipboard, export.summaryJson);
+    await tester.tap(find.text('分段复制备用'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('复制当前段'));
     await tester.tap(find.text('复制当前段'));
     await tester.pumpAndSettle();
     expect(clipboard, export.parts[0]);
     expect(find.text('完整记录：第 1 / ${export.parts.length} 段'), findsOneWidget);
+    await tester.ensureVisible(find.text('下一段'));
     await tester.tap(find.text('下一段'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('复制当前段'));
     await tester.tap(find.text('复制当前段'));
     await tester.pumpAndSettle();
     expect(clipboard, export.parts[1]);
@@ -145,6 +150,7 @@ void main() {
       if (call.method == 'Clipboard.setData') throw PlatformException(code: 'clipboard_unavailable');
       return null;
     });
+    await tester.ensureVisible(find.text('复制当前段'));
     await tester.tap(find.text('复制当前段'));
     await tester.pumpAndSettle();
     expect(find.text('复制失败，请重试'), findsOneWidget);

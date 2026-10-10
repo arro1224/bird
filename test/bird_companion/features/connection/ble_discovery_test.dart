@@ -13,6 +13,63 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 
 void main() {
+  test('permission denial survives a permission-dialog background transition', () async {
+    final platform = _PendingPermissionPlatform();
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+    final owner = dataSource.claimSession();
+    final errors = <Object>[];
+    final done = Completer<void>();
+    dataSource.scan().listen((_) {}, onError: errors.add, onDone: done.complete);
+    await Future<void>.delayed(Duration.zero);
+    await dataSource.pauseDiscovery(owner);
+    platform.permissionResult.complete(false);
+    await done.future;
+    expect(errors.single, isA<ProvisioningException>().having((error) => error.code, 'code', ProvisioningErrorCode.bluetoothPermissionDenied));
+    expect(platform.startedScanSessionId, isNull);
+  });
+
+  test('grant while still backgrounded never starts a native scan', () async {
+    final platform = _PendingPermissionPlatform();
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+    final owner = dataSource.claimSession();
+    final result = dataSource.scan().toList();
+    await Future<void>.delayed(Duration.zero);
+    await dataSource.pauseDiscovery(owner);
+    platform.permissionResult.complete(true);
+    expect(await result, isEmpty);
+    expect(platform.startedScanSessionId, isNull);
+  });
+
+  test('return from permission dialog continues the same scan after grant', () async {
+    final platform = _PendingPermissionPlatform();
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+    final owner = dataSource.claimSession();
+    final result = dataSource.scan(timeout: const Duration(milliseconds: 20)).toList();
+    await Future<void>.delayed(Duration.zero);
+    await dataSource.pauseDiscovery(owner);
+    await dataSource.resumeDiscovery(owner);
+    platform.permissionResult.complete(true);
+    await Future<void>.delayed(Duration.zero);
+    expect(platform.startedScanSessionId, isNotNull);
+    platform.emitAdvertisement(_advertisement('permission-return'));
+    expect(await result, hasLength(1));
+  });
+
+  test('page cancellation invalidates a late permission result', () async {
+    final platform = _PendingPermissionPlatform();
+    final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(dataSource.dispose);
+    final result = dataSource.scan().toList();
+    await Future<void>.delayed(Duration.zero);
+    await dataSource.stopScan();
+    platform.permissionResult.complete(true);
+    await Future<void>.delayed(Duration.zero);
+    expect(await result, isEmpty);
+    expect(platform.startedScanSessionId, isNull);
+  });
   test('compact, full and malformed optional advertisements remain candidates', () async {
     final platform = _FakeBlePlatform();
     final dataSource = PlatformBirdBoxBleDataSource(platform: platform);
@@ -156,7 +213,7 @@ void main() {
       'raw_results_observed',
     );
     expect(diagnostic.strategyEvents.last.rawResultCount, 2);
-    expect(diagnostic.toJson()['schema_version'], 3);
+    expect(diagnostic.toJson()['schema_version'], 4);
     expect(sink.sessions.single.toJson(), diagnostic.toJson());
     expect(diagnostic.toJson().toString(), isNot(contains('handle-accepted')));
   });
@@ -373,7 +430,7 @@ void main() {
         isA<ProvisioningException>().having(
           (error) => error.code,
           'code',
-          ProvisioningErrorCode.networkOperationBusy,
+          ProvisioningErrorCode.bleOperationBusy,
         ),
       ),
     );
@@ -718,6 +775,12 @@ final class _Write {
 
   final String characteristicUuid;
   final Uint8List value;
+}
+
+final class _PendingPermissionPlatform extends _FakeBlePlatform {
+  final permissionResult = Completer<bool>();
+  @override
+  Future<bool> ensurePermissions() => permissionResult.future;
 }
 
 final class _FakeBlePlatform implements BirdBoxBlePlatform {

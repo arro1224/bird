@@ -56,19 +56,23 @@ void main() {
         ),
       ),
     );
-    await ble.writeCommand(const BleCommandRequest(
-      type: BleCommandType.startDirectAp,
-      requestId: 'request-sim',
-      clientId: 'client-sim',
-    ));
+    await ble.writeCommand(
+      const BleCommandRequest(
+        type: BleCommandType.startDirectAp,
+        requestId: 'request-sim',
+        clientId: 'client-sim',
+      ),
+    );
     ble.simulateDisconnect();
     expect(ble.isConnected, isFalse);
 
     final wifi = FakeBirdBoxWifiPlatform();
-    wifi.queueJoinResult(const WifiJoinResult(
-      outcome: WifiJoinOutcome.joined,
-      network: BirdBoxWifiNetwork(handle: 'opaque-network', ssid: 'BirdBox-SIM'),
-    ));
+    wifi.queueJoinResult(
+      const WifiJoinResult(
+        outcome: WifiJoinOutcome.joined,
+        network: BirdBoxWifiNetwork(handle: 'opaque-network', ssid: 'BirdBox-SIM'),
+      ),
+    );
     final joined = await wifi.joinDirectAp(ssid: 'BirdBox-SIM', passphrase: 'synthetic-only');
     await wifi.bindProcessToNetwork(joined.network!);
     expect(wifi.boundNetwork, isNotNull);

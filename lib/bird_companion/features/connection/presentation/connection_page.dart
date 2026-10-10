@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/features/connection/domain/ble_pairing_progress.dart';
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
@@ -30,11 +31,11 @@ import 'package:aves/bird_companion/features/connection/presentation/widgets/pai
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
-import 'package:aves/bird_companion/features/connection/domain/ble_diagnostic_export.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/ble_diagnostic_export_dialog.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class ConnectionPage extends StatelessWidget {
   const ConnectionPage({
@@ -99,27 +100,28 @@ class _BleConnectionHost extends StatefulWidget {
 
 class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBindingObserver {
   var _completing = false;
-  var _handoffCommitted = false;
+  late final ProvisioningCubit _provisioningCubit;
 
   @override
   void initState() {
     super.initState();
+    _provisioningCubit = ProvisioningCubit(widget.repository, permissionSettingsOpener: openAppSettings)..discover();
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused || state == AppLifecycleState.hidden || state == AppLifecycleState.detached) {
-      unawaited(widget.repository.stopDiscovery());
+      unawaited(_provisioningCubit.onAppBackgrounded());
+    } else if (state == AppLifecycleState.resumed) {
+      unawaited(_provisioningCubit.onAppResumed());
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (!_handoffCommitted) {
-      unawaited(widget.repository.disconnect());
-    }
+    unawaited(_provisioningCubit.close());
     super.dispose();
   }
 
@@ -144,7 +146,7 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
         ),
       );
       if (!mounted) return;
-      _handoffCommitted = true;
+      _provisioningCubit.retainSession = true;
       unawaited(
         Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
           BirdRoutes.shell,
@@ -167,9 +169,7 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
     data: AppTheme.light(),
     child: MultiBlocProvider(
       providers: [
-        BlocProvider(
-          create: (_) => ProvisioningCubit(widget.repository)..discover(),
-        ),
+        BlocProvider.value(value: _provisioningCubit),
         BlocProvider(
           create: (_) => NetworkProvisioningCubit(widget.repository),
         ),
@@ -258,7 +258,8 @@ class _BleConnectionView extends StatelessWidget {
               networkState,
               onCopyDiagnostic: _diagnosticCopyAction(context, state),
             ),
-            ProvisioningPhase.connecting || ProvisioningPhase.authorizing => const _BleLoadingView(),
+            ProvisioningPhase.connecting => const _BleLoadingView(),
+            ProvisioningPhase.authorizing => _BlePairingProgressView(progress: state.pairingProgress, onCancel: cubit.reset),
             _ => _BleDiscoveryView(
               devices: state.devices,
               searching: state.phase == ProvisioningPhase.discovering,
@@ -267,7 +268,11 @@ class _BleConnectionView extends StatelessWidget {
               developerDiagnostic: developerDiagnostic,
               onDiscover: cubit.discover,
               onSelectDevice: cubit.selectDevice,
-              onRetry: cubit.retry,
+              onRetry: switch (state.error) {
+                ProvisioningException(code: ProvisioningErrorCode.locationServicesDisabled) => cubit.openLocationSettings,
+                ProvisioningException(code: ProvisioningErrorCode.bluetoothPermissionDenied) => cubit.openPermissionSettings,
+                _ => cubit.retry,
+              },
               onCopyDiagnostic: state.latestScanDiagnostic == null
                   ? null
                   : () => _copyBleDiagnostic(
@@ -388,13 +393,16 @@ class _BleConnectionView extends StatelessWidget {
       BirdFeedback.error(context, '当前环境无法读取诊断记录');
       return;
     }
-    final scanSessions = dependencies.bleScanDiagnosticStore.readAll().where((session) => session.scanSessionId == traceId).map((session) => session.toJson()).toList(growable: false);
-    final connectionEvents = dependencies.bleConnectionDiagnosticStore.readAll(traceId: traceId).reversed.map((event) => event.toJson()).toList(growable: false);
-    final export = BleDiagnosticExport(traceId: traceId, scans: scanSessions, events: connectionEvents, generatedAt: DateTime.now());
-    await showDialog<void>(
-      context: context,
-      builder: (_) => BleDiagnosticExportDialog(export: export),
-    );
+    try {
+      final export = await dependencies.bleDiagnosticSnapshotService.capture(traceId);
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => BleDiagnosticExportDialog(export: export, files: dependencies.bleDiagnosticFilePlatform),
+      );
+    } catch (_) {
+      if (context.mounted) BirdFeedback.error(context, '诊断快照读取失败，请重试');
+    }
   }
 
   VoidCallback? _diagnosticCopyAction(
@@ -494,14 +502,14 @@ class _BleDiscoveryView extends StatelessWidget {
         const SizedBox(height: AppSpacing.sm),
         BirdButton(
           key: const Key('ble-copy-diagnostic-json'),
-          label: '复制诊断 JSON',
+          label: '导出完整诊断',
           onPressed: onCopyDiagnostic,
           icon: const Icon(Icons.copy_all_outlined),
           variant: BirdButtonVariant.outlined,
         ),
       ],
       const SizedBox(height: AppSpacing.xl),
-      if (devices.isEmpty && !searching)
+      if (devices.isEmpty && !searching && error == null)
         BirdCard(
           child: Column(
             children: [
@@ -621,6 +629,41 @@ class _TrustedDeviceView extends StatelessWidget {
       ),
     ],
   );
+}
+
+class _BlePairingProgressView extends StatelessWidget {
+  const _BlePairingProgressView({required this.progress, required this.onCancel});
+  final BlePairingProgress? progress;
+  final VoidCallback onCancel;
+  @override
+  Widget build(BuildContext context) {
+    final message = switch (progress?.stage) {
+      BlePairingStage.systemBond => '正在完成系统蓝牙配对，请确认手机的系统提示',
+      BlePairingStage.reconnecting => '系统绑定已完成，正在重新连接盒子',
+      BlePairingStage.restoringNotifications => '正在恢复盒子通知',
+      BlePairingStage.writing => '正在安全发送配对请求',
+      BlePairingStage.retrying => '正在重试加密请求',
+      BlePairingStage.waitingResponse => '正在等待盒子确认',
+      _ => '正在准备安全连接',
+    };
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.pageHorizontal),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: AppSpacing.lg),
+            Text(message, key: const Key('ble-pairing-stage'), textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.md),
+            const Text('系统蓝牙配对与盒子的 App 配对码是两个步骤。请按系统提示操作，随后再输入盒子配对码。', textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.lg),
+            BirdButton(label: '取消配对', onPressed: onCancel, variant: BirdButtonVariant.outlined),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _BleLoadingView extends StatelessWidget {

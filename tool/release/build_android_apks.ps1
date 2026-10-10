@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet("Normal", "HuaweiAB", "Simulation")]
     [string]$Mode = "Normal",
 
@@ -20,6 +20,44 @@ function Get-Sha256Hex([string]$Path) {
         $hasher.Dispose()
         $stream.Dispose()
     }
+}
+
+function Get-BuildSourceIdentity([string]$repositoryRoot) {
+$sourcePaths = @(
+    & git -C $repositoryRoot -c core.quotepath=false ls-files --cached --others --exclude-standard |
+        Where-Object {
+            $_ -notmatch '^(docs|doc|\.run)/' -and $_ -notmatch '(^|/)README\.md$'
+        }
+)
+if ($LASTEXITCODE -ne 0 -or $sourcePaths.Count -eq 0) {
+    throw "Unable to enumerate the tracked and non-ignored source files."
+}
+$ordinalSourcePaths = [System.Collections.Generic.List[string]]::new()
+foreach ($relativePath in $sourcePaths) { $ordinalSourcePaths.Add([string]$relativePath) }
+$ordinalSourcePaths.Sort([System.StringComparer]::Ordinal)
+$sourcePaths = $ordinalSourcePaths.ToArray()
+$sourceFingerprintLines = foreach ($relativePath in $sourcePaths) {
+    $sourcePath = Join-Path $repositoryRoot $relativePath
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        # A tracked deletion is part of the source state too. Preserve it in the fingerprint
+        # rather than treating the deliberate rename/removal as a build-script failure.
+        "{0}`t<deleted>" -f $relativePath.Replace('\', '/')
+        continue
+    }
+    "{0}`t{1}" -f $relativePath.Replace('\', '/'), (Get-Sha256Hex $sourcePath)
+}
+$sourceFingerprintBytes = [System.Text.Encoding]::UTF8.GetBytes(
+    (($sourceFingerprintLines -join "`n") + "`n")
+)
+$sourceFingerprintHasher = [System.Security.Cryptography.SHA256]::Create()
+try {
+    $sourceFingerprint = ([BitConverter]::ToString(
+        $sourceFingerprintHasher.ComputeHash($sourceFingerprintBytes)
+    ) -replace '-', '').ToLowerInvariant()
+} finally {
+    $sourceFingerprintHasher.Dispose()
+}
+    return [PSCustomObject]@{fingerprint=$sourceFingerprint; paths=$sourcePaths; lines=$sourceFingerprintLines}
 }
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
@@ -102,36 +140,9 @@ if ($LASTEXITCODE -ne 0 -or $gitSha -notmatch '^[0-9a-f]{40}$') {
     throw "Unable to resolve the source Git SHA."
 }
 $workingTreeClean = [string]::IsNullOrWhiteSpace((& git -C $repositoryRoot status --porcelain) -join "`n")
-$sourcePaths = @(
-    & git -C $repositoryRoot -c core.quotepath=false ls-files --cached --others --exclude-standard |
-        Where-Object {
-            $_ -notmatch '^(docs|doc|\.run)/' -and $_ -notmatch '(^|/)README\.md$'
-        }
-)
-if ($LASTEXITCODE -ne 0 -or $sourcePaths.Count -eq 0) {
-    throw "Unable to enumerate the tracked and non-ignored source files."
-}
-$sourceFingerprintLines = foreach ($relativePath in $sourcePaths | Sort-Object) {
-    $sourcePath = Join-Path $repositoryRoot $relativePath
-    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
-        # A tracked deletion is part of the source state too. Preserve it in the fingerprint
-        # rather than treating the deliberate rename/removal as a build-script failure.
-        "{0}`t<deleted>" -f $relativePath.Replace('\', '/')
-        continue
-    }
-    "{0}`t{1}" -f $relativePath.Replace('\', '/'), (Get-Sha256Hex $sourcePath)
-}
-$sourceFingerprintBytes = [System.Text.Encoding]::UTF8.GetBytes(
-    (($sourceFingerprintLines -join "`n") + "`n")
-)
-$sourceFingerprintHasher = [System.Security.Cryptography.SHA256]::Create()
-try {
-    $sourceFingerprint = ([BitConverter]::ToString(
-        $sourceFingerprintHasher.ComputeHash($sourceFingerprintBytes)
-    ) -replace '-', '').ToLowerInvariant()
-} finally {
-    $sourceFingerprintHasher.Dispose()
-}
+$sourceIdentity = Get-BuildSourceIdentity $repositoryRoot
+$sourceFingerprint = $sourceIdentity.fingerprint
+$sourcePaths = $sourceIdentity.paths
 
 $variants = switch ($Mode) {
     "Normal" {
@@ -187,6 +198,13 @@ $deliveryDirectory = Join-Path $repositoryRoot (
 )
 New-Item -ItemType Directory -Path $deliveryDirectory -Force | Out-Null
 
+$buildId = "ble-{0}-{1}" -f [DateTimeOffset]::UtcNow.ToString("yyyyMMddTHHmmssfffZ"), $sourceFingerprint.Substring(0, 12)
+$buildEnvironmentNames = @('AVES_GIT_SHA', 'AVES_SOURCE_FINGERPRINT', 'AVES_BUILD_ID')
+$previousBuildEnvironment = @{}
+foreach ($name in $buildEnvironmentNames) { $previousBuildEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
+$env:AVES_GIT_SHA = $gitSha
+$env:AVES_SOURCE_FINGERPRINT = $sourceFingerprint
+$env:AVES_BUILD_ID = $buildId
 $artifacts = @()
 Push-Location $repositoryRoot
 try {
@@ -208,6 +226,12 @@ try {
         }
         if ($LASTEXITCODE -ne 0) {
             throw "Flutter build failed for flavor $($variant.flavor)."
+        }
+
+        $afterBuildIdentity = Get-BuildSourceIdentity $repositoryRoot
+        $afterBuildGitSha = (& git -C $repositoryRoot rev-parse HEAD).Trim()
+        if ($afterBuildIdentity.fingerprint -ne $sourceFingerprint -or $afterBuildGitSha -ne $gitSha) {
+            throw "Source changed during the build; rebuild before generating a delivery manifest."
         }
 
         $sourceName = "app-{0}-{1}.apk" -f $variant.flavor.ToLowerInvariant(), $buildTypeValue
@@ -234,6 +258,7 @@ try {
     }
 } finally {
     Pop-Location
+    foreach ($name in $buildEnvironmentNames) { [Environment]::SetEnvironmentVariable($name, $previousBuildEnvironment[$name], 'Process') }
 }
 
 $manifest = [ordered]@{
@@ -245,6 +270,9 @@ $manifest = [ordered]@{
     source = [ordered]@{
         git_sha = $gitSha
         working_tree_clean = $workingTreeClean
+        build_dirty = -not $workingTreeClean
+        build_id = $buildId
+        source_fingerprint = $sourceFingerprint
         build_input_source_fingerprint = $sourceFingerprint
         build_input_file_count = $sourcePaths.Count
         version_name = $versionName
@@ -253,6 +281,7 @@ $manifest = [ordered]@{
     releasable = $Mode -eq "Normal" -and $BuildType -eq "Release" -and $workingTreeClean
     artifacts = $artifacts
 }
+[IO.File]::WriteAllText((Join-Path $deliveryDirectory "source-files.sha256"), (($sourceIdentity.lines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
 $manifestPath = Join-Path $deliveryDirectory "build-manifest.json"
 $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding utf8
 

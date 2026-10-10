@@ -9,6 +9,28 @@ import java.util.UUID;
 import org.junit.Test;
 
 public final class BirdBoxSecurityWriteAttemptContextTest {
+    @Test
+    public void pairingFactsSurviveGattRebuildAndWriteChildren() {
+        final BirdBoxSecurityWriteAttemptContext context = new BirdBoxSecurityWriteAttemptContext();
+        context.beginPairing("parent", 3, 7, 1000L);
+        final String attempt = context.attemptId();
+        assertEquals(-1L, context.elapsedMs(2000L));
+        context.recordCreateBondInvoked("not_bonded");
+        context.recordCreateBondResult(true, "bonding");
+        context.finishBond(4000L);
+        context.beginWriteChild(8, CHARACTERISTIC_UUID, 5000L);
+        assertEquals(attempt, context.attemptId());
+        assertEquals(Boolean.TRUE, context.createBondReturned());
+        assertEquals(1, context.createBondCallCount());
+        assertEquals(3000L, context.bondElapsedMs(9000L));
+        assertEquals(2000L, context.elapsedMs(7000L));
+        assertTrue(context.markApiAccepted("parent",3,8,CHARACTERISTIC_UUID));
+        assertFalse(context.completeFromCallback(3,7,CHARACTERISTIC_UUID,false));
+        assertTrue(context.completeFromCallback(3,8,CHARACTERISTIC_UUID,false));
+        context.beginWriteChild(9,CHARACTERISTIC_UUID,8000L);
+        assertEquals(attempt,context.attemptId());
+        assertTrue(context.createBondInvoked());
+    }
     private static final UUID CHARACTERISTIC_UUID =
             UUID.fromString("6f7d0005-7a66-4c45-a1b9-5f4d2e3c1000");
 

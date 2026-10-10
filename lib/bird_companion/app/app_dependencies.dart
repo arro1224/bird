@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:aves/bird_companion/features/connection/data/ble/ble_diagnostic_snapshot_service.dart';
+import 'package:aves/bird_companion/features/connection/data/platform/birdbox_ble_diagnostic_file_platform.dart';
 import 'package:aves/bird_companion/features/recognition/recognition_repository.dart';
 
 import 'package:aves/bird_companion/core/network/api_client.dart';
@@ -133,6 +135,8 @@ class BirdCompanionDependencies {
   final MediaAssetService mediaAssetService;
   final BleScanDiagnosticStore bleScanDiagnosticStore;
   final BleConnectionDiagnosticStore bleConnectionDiagnosticStore;
+  final bleDiagnosticFilePlatform = const MethodChannelBirdBoxBleDiagnosticFilePlatform();
+  late final bleDiagnosticSnapshotService = BleDiagnosticSnapshotService(bleScanDiagnosticStore, bleConnectionDiagnosticStore, bleDiagnosticFilePlatform);
 
   static Future<BirdCompanionDependencies> create({
     bool connectEnvironmentTestEndpoint = true,

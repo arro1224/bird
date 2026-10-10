@@ -1,8 +1,9 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:aves/bird_companion/core/storage/cache_schema_migrator.dart';
 import 'dart:convert';
+import 'package:aves/bird_companion/core/storage/diagnostic_storage.dart';
 
-class LocalCache {
+class LocalCache implements DiagnosticStorage {
   LocalCache._(this._box);
 
   static const _boxName = 'bird_companion_cache';
@@ -18,12 +19,15 @@ class LocalCache {
     return LocalCache._(box);
   }
 
+  @override
   T? read<T>(String key) => _box.get(key) as T?;
 
   List<String> keysWithPrefix(String prefix) => _box.keys.map((key) => key.toString()).where((key) => key.startsWith(prefix)).toList(growable: false);
 
+  @override
   Future<void> write(String key, Object? value) => _box.put(key, value);
 
+  @override
   Future<void> remove(String key) => _box.delete(key);
 
   Future<void> clearImageMetadata() async {

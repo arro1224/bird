@@ -29,6 +29,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelUuid;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
@@ -130,6 +131,60 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     private boolean securityBondingObserved;
     private boolean systemPairingInteraction;
     private boolean gattRebuilt;
+    private boolean pairingMetadataResult;
+    private boolean systemBondAttempted;
+    private volatile long operationToken;
+    private int securedGattGeneration = -1;
+    private int notificationIndex;
+    private String preparationStep;
+    private UUID pendingCharacteristicUuid;
+    private Runnable bondTimeout;
+    private Runnable preparationTimeout;
+    private int scanRawResultCount;
+    private boolean locationCompatibilityObserved;
+    private final List<UUID> enabledNotifications = new ArrayList<>();
+    private final BirdBoxPairingCoordinator pairingCoordinator = new BirdBoxPairingCoordinator(
+            securityWriteStateMachine, new BirdBoxPairingCoordinator.Platform() {
+        public int bondState() { return connectedDevice == null ? BluetoothDevice.ERROR : connectedDevice.getBondState(); }
+        public void cancelOldWaits() {
+            cancelSecurityWriteCallbackGuard();
+            cancelConditionalBondFallback();
+            cancelPendingOperationTimeout();
+            cancelPreparationTimeout();
+            emitDiagnostic("security_old_timers_cancelled", "preparePairing", -1, null, "complete");
+        }
+        public void registerReceiver(long owner) { registerBondStateReceiver(connectedDevice); }
+        public boolean createBond() {
+            securityWriteAttemptContext.recordCreateBondInvoked(bondStateName());
+            try {
+                boolean value = connectedDevice.createBond();
+                securityWriteAttemptContext.recordCreateBondResult(value, bondStateName());
+                return value;
+            } catch (RuntimeException error) {
+                securityWriteAttemptContext.recordCreateBondException(error.getClass().getSimpleName(), bondStateName());
+                throw error;
+            }
+        }
+        public void startBondTimeout(long owner, long milliseconds) {
+            cancelBondTimeout();
+            bondTimeout = () -> pairingCoordinator.timeout(owner);
+            mainHandler.postDelayed(bondTimeout, milliseconds);
+        }
+        public void cancelBondTimeout() { BirdBoxBleChannel.this.cancelBondTimeout(); }
+        public void rebuildGatt() { reconnectGattAfterSecurity(); }
+        public void event(String name, String result) {
+            if ("create_bond_invoked".equals(name)) {
+                systemBondAttempted = true;
+                bondInitiationSource = "user_start_pairing";
+                securityWriteAttemptContext.recordCreateBondInvoked(bondStateName());
+            }
+            if ("system_bond_result".equals(name))
+                securityWriteAttemptContext.finishBond(SystemClock.uptimeMillis());
+            emitDiagnostic(name, "preparePairing", -1, null, result);
+            emitSecurityPhase(result);
+        }
+        public void fail(String code) { failNativePreparation(code); }
+    });
     private boolean scanning;
     private boolean firstScanCallbackEmitted;
     private int currentMtu = 23;
@@ -160,6 +215,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
 
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(() -> onMethodCall(call, result));
+            return;
+        }
         if (disposed && !"dispose".equals(call.method)) {
             returnError(result, call.method, "invalid_state", "BLE bridge is disposed.");
             return;
@@ -179,9 +238,23 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 result.success(null);
                 break;
             case "connect":
+                if (activeSecurityRequestId != null) {
+                    returnError(result, call.method, "gatt_busy", "Cancel the owned pairing before replacing its connection.");
+                    break;
+                }
                 connect(call, result);
                 break;
             case "disconnect":
+                final Number requestedGeneration = call.argument("connectionGeneration");
+                if (requestedGeneration != null && requestedGeneration.intValue() != connectionGeneration) {
+                    returnError(result, call.method, "invalid_request", "Disconnect belongs to an older connection.");
+                    break;
+                }
+                if (activeSecurityRequestId != null && call.argument("requestId") == null) {
+                    returnError(result, call.method, "invalid_request", "Disconnect must name the active pairing owner.");
+                    break;
+                }
+                if (call.argument("requestId") != null && !requireSecurityRequest(call, result)) break;
                 disconnectRequested = true;
                 failPendingIfActive(
                         "gatt_operation_failed",
@@ -202,9 +275,27 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             case "writeWithResponse":
                 writeWithResponse(call, result);
                 break;
+            case "openLocationSettings":
+                try {
+                    activity.startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+                    emitDiagnostic("location_settings_opened", "scan", -1, null, "success");
+                    result.success(null);
+                } catch (RuntimeException error) {
+                    returnError(result, call.method, "location_settings_unavailable", "Location settings are unavailable.");
+                }
+                break;
+            case "preparePairing":
+                beginSecurityWrite(call, result);
+                break;
+            case "cancelPairing":
+                if (!requireSecurityRequest(call, result)) break;
+                closeGatt(true, "user_cancelled", BluetoothGatt.GATT_SUCCESS);
+                result.success(null);
+                break;
             case "beginSecurityWrite":
                 beginSecurityWrite(call, result);
                 break;
+            case "recoverPairing":
             case "awaitSecurityReady":
                 awaitSecurityReady(call, result);
                 break;
@@ -221,6 +312,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 failSecurityWrite(call, result);
                 break;
             case "dispose":
+                if (activeSecurityRequestId != null && !requireSecurityRequest(call, result)) break;
                 dispose();
                 result.success(null);
                 break;
@@ -295,12 +387,16 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 requiresLocationPermission(),
                 Manifest.permission.ACCESS_FINE_LOCATION
         ));
+        addLocationFacts(environment);
         environment.put("locationService", locationServiceState());
         environment.put("manufacturer", Build.MANUFACTURER);
         environment.put("model", Build.MODEL);
         environment.put("androidRelease", Build.VERSION.RELEASE);
         environment.put("sdkInt", Build.VERSION.SDK_INT);
         environment.put("gitCommit", BuildConfig.GIT_SHA);
+        environment.put("buildDirty", BuildConfig.BUILD_DIRTY);
+        environment.put("buildId", BuildConfig.BUILD_ID);
+        environment.put("sourceFingerprint", BuildConfig.SOURCE_FINGERPRINT);
         environment.put("apkSha256", apkSha256());
         environment.put("scanPermissionPolicy", BuildConfig.BLE_SCAN_PERMISSION_POLICY);
         environment.put("scanFlavor", BuildConfig.FLAVOR);
@@ -323,9 +419,6 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
 
     @NonNull
     private String locationServiceState() {
-        if (!requiresLocationService()) {
-            return "not_required";
-        }
         final LocationManager manager = (LocationManager) activity.getSystemService(Context.LOCATION_SERVICE);
         if (manager == null) return "unknown";
         try {
@@ -339,6 +432,22 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         } catch (RuntimeException ignored) {
             return "unknown";
         }
+    }
+
+    private boolean knownLocationCompatibility() {
+        return BirdBoxScanCompatibility.knownAffected(Build.MANUFACTURER, Build.MODEL, Build.VERSION.SDK_INT);
+    }
+
+    private void addLocationFacts(Map<String, Object> value) {
+        value.put("locationService", locationServiceState());
+        boolean granted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && activity.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        value.put("locationPermission", granted ? "granted" : requiresLocationPermission() ? "denied" : "not_requested");
+        value.put("locationRequiredByApp", false);
+        value.put("locationPermissionRequiredByPlatform", requiresLocationPermission());
+        value.put("locationRequiredForDeviceCompatibility", knownLocationCompatibility() || locationCompatibilityObserved);
+        value.put("locationCompatibilityRule", knownLocationCompatibility() ? "huawei_mis_al00_sdk31"
+                : locationCompatibilityObserved ? "zero_raw_fallback" : "none");
     }
 
     private boolean usesFullScanPermissionPolicy() {
@@ -375,12 +484,15 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             );
             return false;
         }
-        if (requiresLocationService() && "disabled".equals(locationServiceState())) {
+        if ("startScan".equals(platformMethod) && "disabled".equals(locationServiceState())
+                && (requiresLocationService() || knownLocationCompatibility())) {
+            emitDiagnostic("location_compatibility_required", "scan", -1, null, "location_disabled");
             returnError(
                     result,
                     platformMethod,
                     "location_service_disabled",
-                    "Location services must be enabled for this BLE scan variant."
+                    "Location services are needed for nearby BLE scan compatibility. The App does not read or upload your location.",
+                    scanEnvironment()
             );
             return false;
         }
@@ -420,13 +532,25 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 : scanSessionId;
         activeTraceId = activeScanSessionId;
         firstScanCallbackEmitted = false;
+        scanRawResultCount = 0;
+        locationCompatibilityObserved = false;
         scanning = true;
         final BirdBoxScanStrategyController.Snapshot initialStrategy =
                 scanStrategyController.begin();
         try {
             startActiveScanStrategy(initialStrategy, "session_started");
             emitDiagnostic("scan_started", "scan", -1, null, "success");
-            scanTimeout = this::stopScan;
+            scanTimeout = () -> {
+                if (BirdBoxScanCompatibility.needsLocationGuidance(knownLocationCompatibility(),
+                        locationServiceState(), true, scanRawResultCount)) {
+                    locationCompatibilityObserved = true;
+                    emitDiagnostic("location_compatibility_required", "scan", -1, null, "zero_raw_results");
+                    emitError(scanSink, "location_service_disabled",
+                            "Location services are needed for nearby BLE scan compatibility. The App does not read or upload your location.",
+                            scanEnvironment());
+                }
+                stopScan();
+            };
             mainHandler.postDelayed(scanTimeout, timeout);
             result.success(null);
         } catch (SecurityException error) {
@@ -507,17 +631,18 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         return new ScanCallback() {
             @Override
             public void onScanResult(int callbackType, @NonNull ScanResult result) {
-                emitScanResult(result, generation);
+                mainHandler.post(() -> emitScanResult(result, generation));
             }
 
             @Override
             public void onBatchScanResults(@NonNull List<ScanResult> results) {
-                for (ScanResult result : results) emitScanResult(result, generation);
+                final List<ScanResult> copy = new ArrayList<>(results);
+                mainHandler.post(() -> { for (ScanResult result : copy) emitScanResult(result, generation); });
             }
 
             @Override
             public void onScanFailed(int errorCode) {
-                handleScanFailure(generation, errorCode);
+                mainHandler.post(() -> handleScanFailure(generation, errorCode));
             }
         };
     }
@@ -613,6 +738,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         if (!scanStrategyController.accepts(generation)) return;
         final ScanRecord record = result.getScanRecord();
         if (sink == null) return;
+        scanRawResultCount++;
         if (!firstScanCallbackEmitted) {
             firstScanCallbackEmitted = true;
             emitDiagnostic("scan_first_callback", "scan", -1, null, "success");
@@ -777,6 +903,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         diagnostic.put("scanSessionId", activeScanSessionId == null ? "native-unknown" : activeScanSessionId);
         diagnostic.put("scanFlavor", BuildConfig.FLAVOR);
         diagnostic.put("scanPermissionPolicy", BuildConfig.BLE_SCAN_PERMISSION_POLICY);
+        addLocationFacts(diagnostic);
         diagnostic.put("locationService", locationServiceState());
         diagnostic.put("strategyFallbackEnabled", BuildConfig.BLE_SCAN_STRATEGY_FALLBACK_ENABLED);
         diagnostic.put("strategyIndex", strategy.index);
@@ -947,6 +1074,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         final BluetoothGatt current = requireGatt("readCharacteristic", result);
         if (current == null || !beginOperation("read", result)) return;
         final BluetoothGattCharacteristic characteristic = characteristic(call.argument("characteristicUuid"));
+        pendingCharacteristicUuid = characteristic == null ? null : characteristic.getUuid();
         if (characteristic == null) {
             failPending("invalid_request", "Required GATT characteristic is unavailable.");
             return;
@@ -965,6 +1093,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         final Boolean enabledValue = call.argument("enabled");
         final boolean enabled = Boolean.TRUE.equals(enabledValue);
         pendingNotificationEnabled = enabled;
+        pendingCharacteristicUuid = characteristic == null ? null : characteristic.getUuid();
         if (characteristic == null) {
             failPending("invalid_request", "Required GATT characteristic is unavailable.");
             return;
@@ -999,400 +1128,185 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
 
     private void writeWithResponse(MethodCall call, MethodChannel.Result result) {
         final BluetoothGatt current = requireGatt("writeWithResponse", result);
-        if (current == null || !beginOperation("write", result)) return;
+        if (current == null) return;
         final BluetoothGattCharacteristic characteristic = characteristic(call.argument("characteristicUuid"));
         final byte[] value = call.argument("value");
-        if (characteristic == null || value == null || value.length == 0) {
-            failPending("invalid_request", "A writable characteristic and non-empty value are required.");
+        if (characteristic == null || value == null || value.length == 0
+                || value.length > currentMtu - 3) {
+            returnError(result, call.method, "invalid_request", "The write must fit the current ATT MTU.");
             return;
         }
-        final boolean sensitiveWrite = WIFI_CONFIG_UUID.equals(characteristic.getUuid())
+        final boolean sensitive = WIFI_CONFIG_UUID.equals(characteristic.getUuid())
                 || PROVISIONING_COMMAND_UUID.equals(characteristic.getUuid());
-        if (sensitiveWrite && activeSecurityRequestId == null) {
-            failPending(
-                    "ble_gatt_not_ready",
-                    "An encrypted BirdBox request must start a security-write session first.",
-                    gattFailureDetails(-1, characteristic.getUuid())
-            );
+        if (sensitive && (activeSecurityRequestId == null || !linkReady
+                || securedGattGeneration != gattGeneration
+                || !securityWriteStateMachine.canWrite(gattGeneration)
+                || !enabledNotifications.contains(NETWORK_STATUS_UUID)
+                || !enabledNotifications.contains(SCAN_RESULTS_UUID))) {
+            returnError(result, call.method, "ble_gatt_not_ready", "The current secured GATT and notifications must be ready.");
             return;
         }
-        if (sensitiveWrite) prepareSecurityWriteAttempt(characteristic.getUuid());
         try {
-            final boolean started;
+            if (sensitive && connectedDevice.getBondState() != BluetoothDevice.BOND_BONDED) {
+                returnError(result, call.method, "bond_lost", "System Bluetooth binding was lost.");
+                return;
+            }
+            if (!beginOperation("write", result)) return;
+            pendingCharacteristicUuid = characteristic.getUuid();
+            if (sensitive) {
+                securityWriteStateMachine.beginProtectedWrite(gattGeneration);
+                securityWriteAttemptContext.beginWriteChild(gattGeneration, characteristic.getUuid(), SystemClock.uptimeMillis());
+                emitDiagnostic("security_write_started", "write", -1, characteristic.getUuid(), "submitted");
+            }
+            boolean accepted;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                started = current.writeCharacteristic(characteristic, value, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothGatt.GATT_SUCCESS;
+                accepted = current.writeCharacteristic(characteristic, value,
+                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothGatt.GATT_SUCCESS;
             } else {
                 characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
                 characteristic.setValue(value);
-                started = current.writeCharacteristic(characteristic);
+                accepted = current.writeCharacteristic(characteristic);
             }
-            if (!started) {
-                if (sensitiveWrite) {
-                    cancelSecurityWriteCallbackGuard();
-                    securityWriteAttemptContext.reset();
-                }
-                if (sensitiveWrite
-                        && securityWriteStateMachine.phase()
-                        == BirdBoxSecurityWriteStateMachine.Phase.RETRYING_ENCRYPTED_WRITE) {
-                    securityWriteStateMachine.onEncryptedRetryFailed();
-                    failPending(
-                            "ble_encrypted_retry_failed",
-                            "The encrypted BirdBox request retry could not start.",
-                            gattFailureDetails(-1, characteristic.getUuid())
-                    );
-                } else if (sensitiveWrite
-                        && connectedDevice != null
-                        && connectedDevice.getBondState() != BluetoothDevice.BOND_BONDED) {
-                    securityWriteStateMachine.onSecurityRequired();
-                    securityFailureObserved = true;
-                    failPending(
-                            "ble_link_not_encrypted",
-                            "The encrypted write started BLE link security.",
-                            gattFailureDetails(-1, characteristic.getUuid())
-                    );
-                } else {
-                    failPending("gatt_operation_failed", "GATT write was rejected.");
-                }
-            } else if (sensitiveWrite) {
-                startSecurityWriteCallbackGuard(characteristic.getUuid());
-            }
+            if (!accepted) {
+                failPending("ble_gatt_operation_failed", "GATT rejected the write.", gattFailureDetails(-1, characteristic.getUuid()));
+            } else if (sensitive) startSecurityWriteCallbackGuard(characteristic.getUuid());
         } catch (SecurityException error) {
-            if (sensitiveWrite) {
-                cancelSecurityWriteCallbackGuard();
-                securityWriteAttemptContext.reset();
-            }
-            failPending("bluetooth_permission_denied", "Bluetooth connect permission is missing.");
+            if (pendingOperationResult == result) failPending("bluetooth_permission_denied", "Bluetooth connect permission is missing.");
+            else returnError(result, call.method, "bluetooth_permission_denied", "Bluetooth connect permission is missing.");
+        } catch (RuntimeException error) {
+            if (pendingOperationResult == result) failPending("ble_gatt_operation_failed", "GATT write could not start.");
+            else returnError(result, call.method, "ble_gatt_operation_failed", "GATT write could not start.");
         }
-    }
-
-    private void prepareSecurityWriteAttempt(@NonNull UUID characteristicUuid) {
-        cancelSecurityWriteCallbackGuard();
-        final String requestId = activeSecurityRequestId;
-        if (requestId == null) return;
-        securityWriteAttemptContext.begin(
-                requestId,
-                connectionGeneration,
-                gattGeneration,
-                characteristicUuid,
-                SystemClock.uptimeMillis()
-        );
-        securityWriteAttemptContext.recordStateTransition(
-                "gatt_ready",
-                securityWriteStateMachine.phase().name().toLowerCase(Locale.ROOT)
-        );
     }
 
     private void beginSecurityWrite(MethodCall call, MethodChannel.Result result) {
-        if (!requireBluetooth("beginSecurityWrite", result)) return;
-        final String requestId = call.argument("requestId");
-        final String commandType = call.argument("commandType");
-        if (requestId == null || requestId.isEmpty()
-                || commandType == null || commandType.isEmpty()) {
-            returnError(
-                    result,
-                    "beginSecurityWrite",
-                    "invalid_request",
-                    "A request_id and command type are required."
-            );
+        if (!requireBluetooth(call.method, result)) return;
+        final String request = call.argument("requestId");
+        final String command = call.argument("commandType");
+        if (request == null || request.isEmpty() || command == null || command.isEmpty()) {
+            returnError(result, call.method, "invalid_request", "A request_id and command type are required.");
             return;
         }
         if (gatt == null || connectedDevice == null || !linkReady) {
-            returnError(
-                    result,
-                    "beginSecurityWrite",
-                    "ble_gatt_not_ready",
-                    "BirdBox services and notifications must be ready before the security write."
-            );
+            returnError(result, call.method, "ble_gatt_not_ready", "Read and validate BirdBox Device Info before pairing.");
             return;
         }
         if (pendingOperationResult != null || securityWriteStateMachine.isActive()) {
-            returnError(
-                    result,
-                    "beginSecurityWrite",
-                    "gatt_busy",
-                    "Another GATT or security-write operation is active."
-            );
+            returnError(result, call.method, "gatt_busy", "Another pairing or GATT operation is active.");
             return;
         }
+        activeSecurityRequestId = request;
+        activeSecurityCommandType = command;
+        pairingMetadataResult = "preparePairing".equals(call.method);
+        systemBondAttempted = false;
+        bondInitiationSource = "none";
+        securityWriteAttemptContext.beginPairing(request, connectionGeneration, gattGeneration, SystemClock.uptimeMillis());
+        if ("open_pairing".equals(command))
+            emitDiagnostic("user_start_pairing", call.method, -1, null, "requested");
+        if (!beginOperation("preparePairing", result)) return;
+        // Later commands reuse a confirmed secure GATT rather than bonding/rebuilding each time.
         try {
-            cancelSecurityWriteCallbackGuard();
-            securityWriteAttemptContext.reset();
-            securityWriteStateMachine.markGattReady(gattGeneration);
-            securityWriteStateMachine.beginSecurityWrite(requestId, gattGeneration);
-            activeSecurityRequestId = requestId;
-            activeSecurityCommandType = commandType;
-            conditionalBondFallbackPolicy.begin(requestId, connectionGeneration);
-            securityBondingObserved = false;
-            securityFailureObserved = false;
-            securityGattStatusObserved = false;
-            systemPairingInteraction = false;
-            bondInitiationSource = "none";
+            if (!"open_pairing".equals(command) && securedGattGeneration == gattGeneration
+                    && connectedDevice.getBondState() == BluetoothDevice.BOND_BONDED
+                    && enabledNotifications.containsAll(Arrays.asList(NETWORK_STATUS_UUID, SCAN_RESULTS_UUID))) {
+                securityWriteStateMachine.markGattReady(gattGeneration);
+                securityWriteStateMachine.beginReadyRequest(request, gattGeneration);
+                succeedPending(pairingMetadataResult ? securityReadyMetadata() : null);
+                return;
+            }
             gattRebuilt = false;
-            registerBondStateReceiver(connectedDevice);
-            emitSecurityPhase("encrypted_characteristic_write");
-            result.success(null);
-        } catch (SecurityException error) {
-            activeSecurityRequestId = null;
-            activeSecurityCommandType = null;
-            securityWriteStateMachine.reset();
-            conditionalBondFallbackPolicy.reset();
-            securityWriteAttemptContext.reset();
-            unregisterBondStateReceiver();
-            returnError(
-                    result,
-                    "beginSecurityWrite",
-                    "bluetooth_permission_denied",
-                    "Bluetooth connect permission is missing."
-            );
-        } catch (IllegalArgumentException | IllegalStateException error) {
-            activeSecurityRequestId = null;
-            activeSecurityCommandType = null;
-            securityWriteStateMachine.reset();
-            conditionalBondFallbackPolicy.reset();
-            securityWriteAttemptContext.reset();
-            unregisterBondStateReceiver();
-            returnError(
-                    result,
-                    "beginSecurityWrite",
-                    "ble_gatt_not_ready",
-                    error.getMessage()
-            );
+            pairingCoordinator.start(request, gattGeneration);
         } catch (RuntimeException error) {
-            activeSecurityRequestId = null;
-            activeSecurityCommandType = null;
-            securityWriteStateMachine.reset();
-            conditionalBondFallbackPolicy.reset();
-            securityWriteAttemptContext.reset();
-            unregisterBondStateReceiver();
-            returnError(
-                    result,
-                    "beginSecurityWrite",
-                    "ble_gatt_not_ready",
-                    "Android could not register the BLE pairing listener."
-            );
+            failNativePreparation(error instanceof SecurityException
+                    ? "bluetooth_permission_denied" : "bond_start_failed");
         }
     }
 
-    private void startSecurityWriteCallbackGuard(@NonNull UUID characteristicUuid) {
+    private void startSecurityWriteCallbackGuard(@NonNull UUID uuid) {
         cancelSecurityWriteCallbackGuard();
-        final String expectedRequestId = activeSecurityRequestId;
-        final BluetoothDevice expectedDevice = connectedDevice;
-        if (expectedRequestId == null || expectedDevice == null) return;
-        final int expectedConnectionGeneration = connectionGeneration;
-        final int expectedGattGeneration = gattGeneration;
-        final long acceptedAtMs = SystemClock.uptimeMillis();
-        if (!securityWriteAttemptContext.markApiAccepted(
-                expectedRequestId,
-                expectedConnectionGeneration,
-                expectedGattGeneration,
-                characteristicUuid)) return;
-        if (!securityWriteAttemptContext.isWaitingForCallback(
-                expectedRequestId,
-                expectedConnectionGeneration,
-                expectedGattGeneration,
-                characteristicUuid)) return;
+        final String request = activeSecurityRequestId;
+        final int connection = connectionGeneration, generation = gattGeneration;
+        final long token = operationToken;
+        if (!securityWriteAttemptContext.markApiAccepted(request, connection, generation, uuid)) return;
         securityWriteCallbackGuard = () -> {
+            if (token != operationToken || !"write".equals(pendingOperation)
+                    || !securityWriteAttemptContext.completeFromCallbackTimeout(request, connection, generation, uuid)) return;
             securityWriteCallbackGuard = null;
-            if (connectedDevice != expectedDevice
-                    || !"write".equals(pendingOperation)
-                    || !securityWriteAttemptContext.completeFromCallbackTimeout(
-                    expectedRequestId,
-                    expectedConnectionGeneration,
-                    expectedGattGeneration,
-                    characteristicUuid)) {
-                return;
-            }
-            securityFailureObserved = true;
-            securityWriteAttemptContext.recordTriggerBondState(
-                    bondStateName(expectedDevice.getBondState())
-            );
-            emitDiagnostic(
-                    "security_write_callback_timeout",
-                    "write",
-                    -1,
-                    characteristicUuid,
-                    "callback_missing"
-            );
-            try {
-                securityWriteStateMachine.onWriteCallbackTimeout();
-                if (securityWriteStateMachine.phase()
-                        == BirdBoxSecurityWriteStateMachine.Phase.FAILED) {
-                    failPending(
-                            "ble_encrypted_retry_failed",
-                            "The encrypted BirdBox request retry received no write callback.",
-                            gattFailureDetails(-1, characteristicUuid)
-                    );
-                    return;
-                }
-                final BirdBoxConditionalBondFallbackPolicy.Decision decision =
-                        conditionalBondFallbackPolicy.arm(
-                                expectedRequestId,
-                                expectedConnectionGeneration,
-                                SystemClock.uptimeMillis(),
-                                false,
-                                securityWriteStateMachine.phase()
-                                        == BirdBoxSecurityWriteStateMachine.Phase.BONDING,
-                                securityWriteAttemptContext.trigger(),
-                                securityBondingObserved,
-                                conditionalBondState(expectedDevice.getBondState())
-                        );
-                final boolean waitingForSecurity;
-                if (decision
-                        == BirdBoxConditionalBondFallbackPolicy.Decision.RECOVER_BONDED) {
-                    bondInitiationSource = "system";
-                    securityBondingObserved = true;
-                    securityWriteStateMachine.onBonded(false);
-                    waitingForSecurity = true;
-                } else if (decision
-                        == BirdBoxConditionalBondFallbackPolicy.Decision.OBSERVE_SYSTEM_BONDING) {
-                    bondInitiationSource = "system";
-                    securityBondingObserved = true;
-                    securityWriteStateMachine.onBonding();
-                    waitingForSecurity = true;
-                } else if (decision
-                        == BirdBoxConditionalBondFallbackPolicy.Decision.START_CONDITIONAL_FALLBACK) {
-                    waitingForSecurity = startConditionalBondFallback(expectedDevice, false);
-                } else {
-                    waitingForSecurity = false;
-                }
-                if (waitingForSecurity && "write".equals(pendingOperation)) {
-                    failPending(
-                            "ble_link_not_encrypted",
-                            "The accepted encrypted write received no Android callback and started BLE link security.",
-                            gattFailureDetails(-1, characteristicUuid)
-                    );
-                }
-            } catch (SecurityException error) {
-                failPending(
-                        "bluetooth_permission_denied",
-                        "Bluetooth connect permission is missing.",
-                        gattFailureDetails(-1, characteristicUuid)
-                );
-            } catch (IllegalStateException error) {
-                failPending(
-                        "ble_gatt_recovery_failed",
-                        error.getMessage(),
-                        gattFailureDetails(-1, characteristicUuid)
-                );
-            }
+            emitDiagnostic("security_write_callback_timeout", "write", -1, uuid, "callback_missing");
+            failProtectedWrite(-1, uuid);
         };
-        emitDiagnostic(
-                "security_write_callback_guard_started",
-                "write",
-                -1,
-                characteristicUuid,
-                "await_callback"
-        );
-        mainHandler.postAtTime(
-                securityWriteCallbackGuard,
-                acceptedAtMs + SECURITY_WRITE_CALLBACK_GUARD_MS
-        );
+        mainHandler.postDelayed(securityWriteCallbackGuard, SECURITY_WRITE_CALLBACK_GUARD_MS);
     }
 
     private void cancelSecurityWriteCallbackGuard() {
-        if (securityWriteCallbackGuard != null) {
-            mainHandler.removeCallbacks(securityWriteCallbackGuard);
-            securityWriteCallbackGuard = null;
+        if (securityWriteCallbackGuard != null) mainHandler.removeCallbacks(securityWriteCallbackGuard);
+        securityWriteCallbackGuard = null;
+    }
+
+    private void failProtectedWrite(int status, UUID uuid) {
+        cancelSecurityWriteCallbackGuard();
+        try {
+            if (connectedDevice == null || connectedDevice.getBondState() != BluetoothDevice.BOND_BONDED) {
+                securityWriteStateMachine.failAttempt(BirdBoxSecurityWriteStateMachine.Failure.PAIRING_REJECTED);
+                failPending("bond_lost", "Bluetooth binding was lost.", gattFailureDetails(status, uuid));
+                closeGatt(true, "bond_lost", status);
+                return;
+            }
+            if (securityWriteStateMachine.phase() == BirdBoxSecurityWriteStateMachine.Phase.RETRYING_ENCRYPTED_WRITE) {
+                securityWriteStateMachine.onEncryptedRetryFailed();
+                emitDiagnostic("security_write_retry_result", "write", status, uuid, "failed");
+                failPending("ble_encrypted_retry_failed", "The single bound write retry failed.", gattFailureDetails(status, uuid));
+                closeGatt(true, "encrypted_retry_failed", status);
+                return;
+            }
+            securityWriteStateMachine.beginBondedRecovery();
+            // Isolate missing/late callbacks before admitting another request on the same UUID.
+            final BluetoothGatt old = gatt;
+            if (old != null) closeGattForSecurity(old);
+            securedGattGeneration = -1;
+            enabledNotifications.clear();
+            failPending("ble_link_not_encrypted", "The bound GATT requires its single recovery.", gattFailureDetails(status, uuid));
+        } catch (SecurityException error) {
+            failPending("bluetooth_permission_denied", "Bluetooth connect permission is missing.");
+            closeGatt(true, "permission_revoked", status);
         }
     }
 
     private void awaitSecurityReady(MethodCall call, MethodChannel.Result result) {
         if (!requireSecurityRequest(call, result)) return;
+        if (securityWriteStateMachine.phase() != BirdBoxSecurityWriteStateMachine.Phase.BONDED_RECOVERING_GATT) {
+            returnError(result, call.method, "ble_encrypted_retry_failed", "No bound recovery is permitted.");
+            return;
+        }
+        pairingMetadataResult = "recoverPairing".equals(call.method);
         if (!beginOperation("securityRecovery", result)) return;
-        emitSecurityPhase("await_bond_and_gatt");
-        if (securityWriteStateMachine.phase() == BirdBoxSecurityWriteStateMachine.Phase.FAILED) {
-            final BirdBoxSecurityWriteStateMachine.Failure failure =
-                    securityWriteStateMachine.failure();
-            final boolean rejected = failure
-                    == BirdBoxSecurityWriteStateMachine.Failure.PAIRING_REJECTED;
-            final boolean pairingNotStarted = failure
-                    == BirdBoxSecurityWriteStateMachine.Failure.LE_PAIRING_NOT_STARTED;
-            final boolean pairingTimedOut = failure
-                    == BirdBoxSecurityWriteStateMachine.Failure.PAIRING_TIMEOUT;
-            failPending(
-                    rejected
-                            ? "ble_pairing_rejected"
-                            : pairingTimedOut
-                            ? "ble_pairing_timeout"
-                            : pairingNotStarted
-                            ? "ble_le_pairing_not_started"
-                            : "ble_gatt_recovery_failed",
-                    rejected
-                            ? "BLE link pairing was rejected or cancelled."
-                            : pairingTimedOut
-                            ? "Android LE pairing did not complete before the timeout."
-                            : pairingNotStarted
-                            ? "Android LE pairing did not start after the encrypted write."
-                            : "Security recovery had already failed.",
-                    gattFailureDetails(-1, null)
-            );
-            return;
-        }
-        final BluetoothDevice device = connectedDevice;
-        if (device == null) {
-            failSecurityRecovery("ble_gatt_recovery_failed", "BirdBox device is unavailable after security negotiation.");
-            return;
-        }
         try {
-            final int bondState = device.getBondState();
-            if (bondState == BluetoothDevice.BOND_BONDED
-                    && (securityWriteStateMachine.phase()
-                    == BirdBoxSecurityWriteStateMachine.Phase.SECURITY_WRITE_STARTING
-                    || securityWriteStateMachine.phase()
-                    == BirdBoxSecurityWriteStateMachine.Phase.BONDING)) {
-                cancelConditionalBondFallback();
-                bondInitiationSource = "system";
-                securityBondingObserved = true;
-                securityWriteStateMachine.onBonded(false);
-            } else if (bondState == BluetoothDevice.BOND_BONDING) {
-                cancelConditionalBondFallback();
-                bondInitiationSource = "system";
-                securityBondingObserved = true;
-                securityWriteStateMachine.onBonding();
-            } else {
-                scheduleConditionalBondFallback(device);
+            if (connectedDevice == null || connectedDevice.getBondState() != BluetoothDevice.BOND_BONDED) {
+                failNativePreparation("bond_lost");
+                return;
             }
-            continueSecurityRecovery();
-        } catch (SecurityException error) {
-            failPending(
-                    "bluetooth_permission_denied",
-                    "Bluetooth connect permission is missing.",
-                    gattFailureDetails(-1, null)
-            );
-        } catch (IllegalStateException error) {
-            failSecurityRecovery("ble_gatt_recovery_failed", error.getMessage());
+            emitDiagnostic("security_write_retry_started", "securityRecovery", -1, null, "single_rebuild");
+            reconnectGattAfterSecurity();
+        } catch (RuntimeException error) {
+            failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed");
         }
     }
 
     private void beginSecurityRetry(MethodCall call, MethodChannel.Result result) {
         if (!requireSecurityRequest(call, result)) return;
-        if (gatt == null || !linkReady) {
-            returnError(
-                    result,
-                    "beginSecurityRetry",
-                    "ble_gatt_recovery_failed",
-                    "Recovered GATT is not ready."
-            );
+        if (securedGattGeneration != gattGeneration || !linkReady
+                || securityWriteStateMachine.phase() != BirdBoxSecurityWriteStateMachine.Phase.RETRYING_ENCRYPTED_WRITE) {
+            returnError(result, call.method, "ble_encrypted_retry_failed", "The single retry GATT is not ready.");
             return;
         }
-        try {
-            securityWriteStateMachine.onNotificationsRestored();
-            emitSecurityPhase("notifications_restored");
-            result.success(null);
-        } catch (IllegalStateException error) {
-            returnError(
-                    result,
-                    "beginSecurityRetry",
-                    "ble_gatt_recovery_failed",
-                    error.getMessage()
-            );
-        }
+        result.success(null);
     }
 
     private void markSecurityWriteSent(MethodCall call, MethodChannel.Result result) {
         if (!requireSecurityRequest(call, result)) return;
         try {
             securityWriteStateMachine.onWriteSucceeded();
+            emitDiagnostic("security_write_result", "write_command", 0, null, "success");
             emitSecurityPhase("write_with_response_succeeded");
             result.success(null);
         } catch (IllegalStateException error) {
@@ -1464,12 +1378,15 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             // Cleanup is still required when Dart reports a terminal error after a racing callback.
         }
         emitSecurityPhase(errorCode == null ? "failed" : errorCode);
+        final boolean wasPreparing = preparing();
+        failPendingIfActive(errorCode == null ? "invalid_state" : errorCode,
+                "The owned security request was cancelled or failed.");
         if (securityWriteAttemptContext.attemptId() != null) {
             securityWriteAttemptContext.markTerminal(
                     errorCode == null ? "failed" : stableErrorCode(errorCode)
             );
         }
-        if (isTerminalTransportFailure(errorCode)) {
+        if (wasPreparing || isTerminalTransportFailure(errorCode)) {
             disconnectRequested = true;
             closeGatt(true, "security_failure", BluetoothGatt.GATT_FAILURE);
         } else {
@@ -1492,419 +1409,185 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 || "pairing_open_timeout".equals(errorCode);
     }
 
-    private void registerBondStateReceiver(@NonNull BluetoothDevice expectedDevice) {
+    private void registerBondStateReceiver(@NonNull BluetoothDevice device) {
         unregisterBondStateReceiver();
+        final long owner = pairingCoordinator.owner();
+        final int connection = connectionGeneration;
+        final String request = activeSecurityRequestId;
         bondStateReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
+            @Override public void onReceive(Context context, Intent intent) {
                 if (!BluetoothDevice.ACTION_BOND_STATE_CHANGED.equals(intent.getAction())) return;
                 final BluetoothDevice changed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                         ? intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice.class)
                         : intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                if (changed == null || !expectedDevice.getAddress().equals(changed.getAddress())) return;
                 final int state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR);
                 final int previous = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.ERROR);
-                previousBondState = bondStateName(previous);
-                final boolean bondReleasedPendingWrite =
-                        (state == BluetoothDevice.BOND_BONDING
-                                || state == BluetoothDevice.BOND_BONDED)
-                                && securityWriteAttemptContext.completeFromSystemBondState(
-                                connectionGeneration,
-                                gattGeneration
-                        );
-                if (bondReleasedPendingWrite) {
-                    cancelSecurityWriteCallbackGuard();
-                    securityFailureObserved = true;
-                    securityWriteAttemptContext.recordTriggerBondState(
-                            bondStateName(state)
-                    );
-                }
-                if (state == BluetoothDevice.BOND_BONDING || state == BluetoothDevice.BOND_BONDED) {
-                    cancelConditionalBondFallback();
-                    systemPairingInteraction = true;
-                    bondInitiationSource = securityWriteStateMachine.conditionalBondFallbackAttempted()
-                            ? "conditional_fallback"
-                            : "system";
-                }
-                emitDiagnostic(
-                        "bond_state_changed",
-                        "security_write",
-                        -1,
-                        null,
-                        bondStateName(previous) + "_to_" + bondStateName(state)
-                );
-                if (state == BluetoothDevice.BOND_BONDED) {
-                    securityFailureObserved = false;
-                    securityBondingObserved = true;
-                    final BirdBoxSecurityWriteStateMachine.Phase previousPhase =
-                            securityWriteStateMachine.phase();
+                mainHandler.post(() -> {
+                    if (!pairingCoordinator.owns(owner) || connection != connectionGeneration
+                            || !request.equals(activeSecurityRequestId) || changed == null || !device.equals(changed)) return;
+                    previousBondState = bondStateName(previous);
+                    emitDiagnostic("bond_state_changed", "preparePairing", -1, null,
+                            bondStateName(previous) + "_to_" + bondStateName(state));
+                    // Protected system broadcast plus actual state prevents stale transitions.
                     try {
-                        securityWriteStateMachine.onBonded(false);
-                        emitSecurityPhase("bonded");
-                        if ("securityRecovery".equals(pendingOperation)
-                                && (previousPhase
-                                == BirdBoxSecurityWriteStateMachine.Phase.SECURITY_WRITE_STARTING
-                                || previousPhase
-                                == BirdBoxSecurityWriteStateMachine.Phase.BONDING)) {
-                            continueSecurityRecovery();
+                        if (changed.getBondState() != state) return;
+                        if (state == BluetoothDevice.BOND_NONE && previous == BluetoothDevice.BOND_BONDED) {
+                            failPendingIfActive("bond_lost", "Bluetooth binding was lost.");
+                            closeGatt(true, "bond_lost", BluetoothGatt.GATT_FAILURE);
+                            return;
                         }
-                    } catch (IllegalStateException ignored) {
-                        // A terminal request may receive a duplicate vendor Bond broadcast.
-                    }
-                    if (bondReleasedPendingWrite) {
-                        releasePendingSecurityWriteForBond(state);
-                    }
-                } else if (state == BluetoothDevice.BOND_BONDING) {
-                    securityBondingObserved = true;
-                    try {
-                        securityWriteStateMachine.onBonding();
-                        emitSecurityPhase("bonding");
-                    } catch (IllegalStateException ignored) {
-                        // Ignore stale callbacks after the request has completed.
-                    }
-                    if (bondReleasedPendingWrite) {
-                        releasePendingSecurityWriteForBond(state);
-                    }
-                } else if (state == BluetoothDevice.BOND_NONE
-                        && previous == BluetoothDevice.BOND_BONDING) {
-                    try {
-                        securityWriteStateMachine.onPairingRejected();
-                    } catch (IllegalStateException ignored) {
-                        // failPending below still releases a waiting bridge call.
-                    }
-                    failPending(
-                            "ble_pairing_rejected",
-                            "BLE link pairing was rejected or cancelled.",
-                            gattFailureDetails(-1, null)
-                    );
-                }
+                        pairingCoordinator.bondChanged(owner, state, previous);
+                    } catch (SecurityException error) { failNativePreparation("bluetooth_permission_denied"); }
+                });
             }
         };
         final IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            activity.registerReceiver(bondStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            activity.registerReceiver(bondStateReceiver, filter);
-        }
+            activity.getApplicationContext().registerReceiver(bondStateReceiver, filter, Context.RECEIVER_EXPORTED);
+        } else activity.getApplicationContext().registerReceiver(bondStateReceiver, filter);
+        emitDiagnostic("bond_receiver_registered", "preparePairing", -1, null, "before_create_bond");
     }
 
     private void unregisterBondStateReceiver() {
-        final BroadcastReceiver receiver = bondStateReceiver;
+        final BroadcastReceiver old = bondStateReceiver;
         bondStateReceiver = null;
-        if (receiver == null) return;
-        try {
-            activity.unregisterReceiver(receiver);
-        } catch (IllegalArgumentException ignored) {
-            // Receiver may already have been removed during Activity teardown.
+        if (old != null) {
+            try { activity.getApplicationContext().unregisterReceiver(old); }
+            catch (IllegalArgumentException ignored) { }
         }
-    }
-
-    private void releasePendingSecurityWriteForBond(int state) {
-        if (!"write".equals(pendingOperation)) return;
-        final UUID characteristicUuid = securityWriteAttemptContext.characteristicUuid();
-        emitDiagnostic(
-                "security_write_released_by_bond_state",
-                "write",
-                -1,
-                characteristicUuid,
-                bondStateName(state)
-        );
-        failPending(
-                "ble_link_not_encrypted",
-                state == BluetoothDevice.BOND_BONDED
-                        ? "Android completed BLE pairing before returning the encrypted write callback."
-                        : "Android started BLE pairing before returning the encrypted write callback.",
-                gattFailureDetails(-1, characteristicUuid)
-        );
-    }
-
-    private void continueSecurityRecovery() {
-        final BirdBoxSecurityWriteStateMachine.Phase phase = securityWriteStateMachine.phase();
-        if (phase == BirdBoxSecurityWriteStateMachine.Phase.SECURITY_WRITE_STARTING
-                || phase == BirdBoxSecurityWriteStateMachine.Phase.BONDING) {
-            return;
-        }
-        if (phase == BirdBoxSecurityWriteStateMachine.Phase.BONDED_RECOVERING_GATT) {
-            reconnectGattAfterSecurity();
-            return;
-        }
-        if (phase != BirdBoxSecurityWriteStateMachine.Phase.RESTORING_NOTIFICATIONS) {
-            failSecurityRecovery("ble_gatt_recovery_failed", "Security recovery entered an invalid state.");
-            return;
-        }
-        final BluetoothGatt current = gatt;
-        if (current == null || !linkReady) {
-            try {
-                securityWriteStateMachine.onGattLostAfterBond();
-                reconnectGattAfterSecurity();
-            } catch (IllegalStateException error) {
-                failSecurityRecovery("ble_gatt_recovery_failed", error.getMessage());
-            }
-            return;
-        }
-        try {
-            linkReady = false;
-            if (!current.discoverServices()) {
-                failSecurityRecovery(
-                        "ble_gatt_recovery_failed",
-                        "GATT service confirmation after pairing could not start."
-                );
-            }
-        } catch (SecurityException error) {
-            failPending(
-                    "bluetooth_permission_denied",
-                    "Bluetooth connect permission is missing.",
-                    gattFailureDetails(-1, null)
-            );
-        }
-    }
-
-    private void scheduleConditionalBondFallback(@NonNull BluetoothDevice expectedDevice) {
-        if (conditionalBondFallback != null) return;
-        final String expectedRequestId = activeSecurityRequestId;
-        if (expectedRequestId == null) return;
-        final int expectedConnectionGeneration = connectionGeneration;
-        final long fallbackScheduledAtMs = SystemClock.uptimeMillis();
-        final BirdBoxConditionalBondFallbackPolicy.Decision armDecision =
-                conditionalBondFallbackPolicy.arm(
-                        expectedRequestId,
-                        expectedConnectionGeneration,
-                        fallbackScheduledAtMs,
-                        "securityRecovery".equals(pendingOperation),
-                        securityWriteStateMachine.phase()
-                                == BirdBoxSecurityWriteStateMachine.Phase.BONDING,
-                        securityWriteAttemptContext.trigger(),
-                        securityBondingObserved,
-                        conditionalBondState(expectedDevice.getBondState())
-                );
-        if (armDecision == BirdBoxConditionalBondFallbackPolicy.Decision.RECOVER_BONDED) {
-            bondInitiationSource = "system";
-            securityBondingObserved = true;
-            securityWriteStateMachine.onBonded(false);
-            continueSecurityRecovery();
-            return;
-        }
-        if (armDecision
-                == BirdBoxConditionalBondFallbackPolicy.Decision.OBSERVE_SYSTEM_BONDING) {
-            bondInitiationSource = "system";
-            securityBondingObserved = true;
-            securityWriteStateMachine.onBonding();
-            return;
-        }
-        if (armDecision != BirdBoxConditionalBondFallbackPolicy.Decision.WAIT_FOR_SYSTEM) {
-            return;
-        }
-        conditionalBondFallback = () -> {
-            conditionalBondFallback = null;
-            if (connectedDevice != expectedDevice
-                    || !expectedRequestId.equals(activeSecurityRequestId)
-                    || expectedConnectionGeneration != connectionGeneration) return;
-            try {
-                final int stateBeforeFallback = expectedDevice.getBondState();
-                final BirdBoxConditionalBondFallbackPolicy.Decision decision =
-                        conditionalBondFallbackPolicy.evaluate(
-                                expectedRequestId,
-                                expectedConnectionGeneration,
-                                SystemClock.uptimeMillis(),
-                                "securityRecovery".equals(pendingOperation),
-                                securityWriteStateMachine.phase()
-                                        == BirdBoxSecurityWriteStateMachine.Phase.BONDING,
-                                securityWriteAttemptContext.trigger(),
-                                securityBondingObserved,
-                                conditionalBondState(stateBeforeFallback)
-                        );
-                if (decision
-                        == BirdBoxConditionalBondFallbackPolicy.Decision.RECOVER_BONDED) {
-                    bondInitiationSource = "system";
-                    securityBondingObserved = true;
-                    securityWriteStateMachine.onBonded(false);
-                    continueSecurityRecovery();
-                    return;
-                }
-                if (decision
-                        == BirdBoxConditionalBondFallbackPolicy.Decision.OBSERVE_SYSTEM_BONDING) {
-                    bondInitiationSource = "system";
-                    securityBondingObserved = true;
-                    securityWriteStateMachine.onBonding();
-                    return;
-                }
-                if (decision
-                        != BirdBoxConditionalBondFallbackPolicy.Decision.START_CONDITIONAL_FALLBACK) {
-                    return;
-                }
-                startConditionalBondFallback(expectedDevice, true);
-            } catch (SecurityException error) {
-                failPending(
-                        "bluetooth_permission_denied",
-                        "Bluetooth connect permission is missing.",
-                        gattFailureDetails(-1, null)
-                );
-            } catch (RuntimeException error) {
-                try {
-                    securityWriteStateMachine.onPairingNotStartedTimeout();
-                } catch (IllegalStateException ignored) {
-                    // The pending operation still receives the deterministic platform error.
-                }
-                failPending(
-                        "ble_le_pairing_not_started",
-                        "Android could not start the conditional LE pairing fallback.",
-                        gattFailureDetails(-1, null)
-                );
-            }
-        };
-        emitDiagnostic(
-                "conditional_bond_fallback_scheduled",
-                "security_write",
-                -1,
-                null,
-                "await_system_pairing"
-        );
-        mainHandler.postAtTime(
-                conditionalBondFallback,
-                fallbackScheduledAtMs + CONDITIONAL_BOND_FALLBACK_DELAY_MS
-        );
-    }
-
-    private boolean startConditionalBondFallback(
-            @NonNull BluetoothDevice expectedDevice,
-            boolean continueRecoveryWhenReady) {
-        if (!securityWriteAttemptContext.tryMarkFallbackStarted()) return false;
-        if (!securityWriteStateMachine.tryMarkConditionalBondFallbackAttempted()) return false;
-        bondInitiationSource = "conditional_fallback";
-        emitDiagnostic(
-                "conditional_bond_fallback_started",
-                "security_write",
-                -1,
-                securityWriteAttemptContext.characteristicUuid(),
-                securityWriteAttemptContext.trigger().name().toLowerCase(Locale.ROOT)
-        );
-        try {
-            final int stateBeforeFallback = expectedDevice.getBondState();
-            securityWriteAttemptContext.recordCreateBondInvoked(
-                    bondStateName(stateBeforeFallback)
-            );
-            final boolean started = expectedDevice.createBond();
-            final int stateAfterFallback = expectedDevice.getBondState();
-            securityWriteAttemptContext.recordCreateBondResult(
-                    started,
-                    bondStateName(stateAfterFallback)
-            );
-            emitDiagnostic(
-                    "conditional_bond_fallback_result",
-                    "security_write",
-                    -1,
-                    securityWriteAttemptContext.characteristicUuid(),
-                    started ? "started" : bondStateName(stateAfterFallback)
-            );
-            if (stateAfterFallback == BluetoothDevice.BOND_BONDED) {
-                securityBondingObserved = true;
-                securityWriteStateMachine.onBonded(false);
-                if (continueRecoveryWhenReady) continueSecurityRecovery();
-                return true;
-            }
-            if (stateAfterFallback == BluetoothDevice.BOND_BONDING) {
-                securityBondingObserved = true;
-                securityWriteStateMachine.onBonding();
-                return true;
-            }
-            if (started) return true;
-            securityWriteStateMachine.onPairingNotStartedTimeout();
-            failPending(
-                    "ble_le_pairing_not_started",
-                    "Android rejected the conditional LE pairing fallback.",
-                    gattFailureDetails(-1, securityWriteAttemptContext.characteristicUuid())
-            );
-        } catch (SecurityException error) {
-            securityWriteAttemptContext.recordCreateBondException(
-                    error.getClass().getSimpleName(),
-                    null
-            );
-            failPending(
-                    "bluetooth_permission_denied",
-                    "Bluetooth connect permission is missing.",
-                    gattFailureDetails(-1, securityWriteAttemptContext.characteristicUuid())
-            );
-        } catch (RuntimeException error) {
-            securityWriteAttemptContext.recordCreateBondException(
-                    error.getClass().getSimpleName(),
-                    null
-            );
-            try {
-                securityWriteStateMachine.onPairingNotStartedTimeout();
-            } catch (IllegalStateException ignored) {
-                // The pending operation still receives the deterministic platform error.
-            }
-            failPending(
-                    "ble_le_pairing_not_started",
-                    "Android could not start the conditional LE pairing fallback.",
-                    gattFailureDetails(-1, securityWriteAttemptContext.characteristicUuid())
-            );
-        }
-        return false;
     }
 
     private void cancelConditionalBondFallback() {
-        if (conditionalBondFallback != null) {
-            mainHandler.removeCallbacks(conditionalBondFallback);
-            conditionalBondFallback = null;
-        }
+        if (conditionalBondFallback != null) mainHandler.removeCallbacks(conditionalBondFallback);
+        conditionalBondFallback = null;
         conditionalBondFallbackPolicy.cancelPending();
     }
 
-    @NonNull
-    private static BirdBoxConditionalBondFallbackPolicy.BondState conditionalBondState(
-            int state) {
-        return switch (state) {
-            case BluetoothDevice.BOND_NONE ->
-                    BirdBoxConditionalBondFallbackPolicy.BondState.NONE;
-            case BluetoothDevice.BOND_BONDING ->
-                    BirdBoxConditionalBondFallbackPolicy.BondState.BONDING;
-            case BluetoothDevice.BOND_BONDED ->
-                    BirdBoxConditionalBondFallbackPolicy.BondState.BONDED;
-            default -> BirdBoxConditionalBondFallbackPolicy.BondState.UNKNOWN;
+    private void cancelBondTimeout() {
+        if (bondTimeout != null) mainHandler.removeCallbacks(bondTimeout);
+        bondTimeout = null;
+    }
+
+    private void cancelPreparationTimeout() {
+        if (preparationTimeout != null) mainHandler.removeCallbacks(preparationTimeout);
+        preparationTimeout = null;
+    }
+
+    private boolean preparing() {
+        return "preparePairing".equals(pendingOperation) || "securityRecovery".equals(pendingOperation);
+    }
+
+    private void setPreparationStep(String step) {
+        cancelPreparationTimeout();
+        preparationStep = step;
+        final long token = operationToken;
+        final int connection = connectionGeneration, generation = gattGeneration;
+        preparationTimeout = () -> {
+            if (token != operationToken || connection != connectionGeneration || generation != gattGeneration
+                    || !preparing() || !step.equals(preparationStep)) return;
+            failNativePreparation("ble_gatt_recovery_failed");
         };
+        mainHandler.postDelayed(preparationTimeout, 15_000L);
+        emitSecurityPhase(step);
+    }
+
+    private void failNativePreparation(String code) {
+        securityWriteAttemptContext.markTerminal(code);
+        if (securityWriteStateMachine.phase() != BirdBoxSecurityWriteStateMachine.Phase.FAILED)
+            securityWriteStateMachine.failAttempt(BirdBoxSecurityWriteStateMachine.Failure.GATT_RECOVERY_FAILED);
+        emitDiagnostic("security_preparation_failed", pendingOperation, -1, null, code);
+        failPending(code, "Bluetooth preparation failed at " + (preparationStep == null ? "system_bond" : preparationStep),
+                gattFailureDetails(-1, null));
+        closeGatt(true, code, BluetoothGatt.GATT_FAILURE);
     }
 
     private void reconnectGattAfterSecurity() {
+        cancelBondTimeout();
+        cancelSecurityWriteCallbackGuard();
+        cancelConditionalBondFallback();
+        if (!preparing() || connectedDevice == null) { failNativePreparation("ble_gatt_recovery_failed"); return; }
         final BluetoothDevice device = connectedDevice;
-        if (device == null) {
-            failSecurityRecovery("ble_gatt_recovery_failed", "BirdBox device is unavailable after pairing.");
+        try {
+            if (device.getBondState() != BluetoothDevice.BOND_BONDED) { failNativePreparation("bond_lost"); return; }
+            emitDiagnostic("gatt_rebuild_started", pendingOperation, -1, null, "bonded");
+            final BluetoothGatt old = gatt;
+            gatt = null;
+            linkReady = false;
+            securedGattGeneration = -1;
+            enabledNotifications.clear();
+            currentMtu = 23;
+            gattRebuilt = false;
+            if (old != null) {
+                emitDiagnostic("gatt_disconnect_requested", pendingOperation, -1, null, "rebuild_old_gatt");
+                try { old.disconnect(); } finally { old.close(); }
+            }
+            gattGeneration++;
+            setPreparationStep("gatt_connect");
+            gatt = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                    ? device.connectGatt(activity.getApplicationContext(), false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+                    : device.connectGatt(activity.getApplicationContext(), false, gattCallback);
+            if (gatt == null) failNativePreparation("ble_gatt_recovery_failed");
+        } catch (RuntimeException error) {
+            failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed");
+        }
+    }
+
+    private void subscribePreparedNotifications() {
+        if (notificationIndex >= 2) {
+            cancelPreparationTimeout();
+            securityWriteStateMachine.onNotificationsRestored();
+            linkReady = true;
+            securedGattGeneration = gattGeneration;
+            gattRebuilt = true;
+            emitDiagnostic("gatt_rebuild_completed", pendingOperation, BluetoothGatt.GATT_SUCCESS, null, "notifications_ready");
+            emitSecurityPhase("security_ready");
+            succeedPending(pairingMetadataResult ? securityReadyMetadata()
+                    : "securityRecovery".equals(pendingOperation) ? Boolean.TRUE : null);
             return;
         }
-        emitSecurityPhase("gatt_reconnect_started");
-        gattRebuilt = true;
-        final BluetoothGatt previous = gatt;
-        gatt = null;
-        linkReady = false;
-        if (previous != null) {
-            try {
-                previous.disconnect();
-            } catch (SecurityException ignored) {
-                // Reconnect still continues using the retained BluetoothDevice.
-            }
-            previous.close();
-        }
+        final UUID uuid = notificationIndex == 0 ? NETWORK_STATUS_UUID : SCAN_RESULTS_UUID;
+        final BluetoothGattCharacteristic c = characteristic(uuid.toString());
+        final BluetoothGattDescriptor descriptor = c == null ? null : c.getDescriptor(CLIENT_CONFIGURATION_UUID);
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                gatt = device.connectGatt(activity, false, gattCallback, BluetoothDevice.TRANSPORT_LE);
-            } else {
-                gatt = device.connectGatt(activity, false, gattCallback);
+            if (descriptor == null || !gatt.setCharacteristicNotification(c, true)) {
+                failNativePreparation("ble_gatt_recovery_failed"); return;
             }
-            if (gatt == null) {
-                failSecurityRecovery("ble_gatt_recovery_failed", "GATT reconnect after pairing could not start.");
+            final byte[] value = (c.getProperties() & BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0
+                    ? BluetoothGattDescriptor.ENABLE_INDICATION_VALUE : BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE;
+            pendingCharacteristicUuid = uuid;
+            setPreparationStep("notification_" + notificationIndex);
+            boolean accepted;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                accepted = gatt.writeDescriptor(descriptor, value) == BluetoothGatt.GATT_SUCCESS;
             } else {
-                gattGeneration++;
+                descriptor.setValue(value);
+                accepted = gatt.writeDescriptor(descriptor);
             }
-        } catch (SecurityException error) {
-            failPending("bluetooth_permission_denied", "Bluetooth connect permission is missing.");
+            if (!accepted) failNativePreparation("ble_gatt_recovery_failed");
         } catch (RuntimeException error) {
-            failSecurityRecovery("ble_gatt_recovery_failed", "GATT reconnect after pairing could not start.");
+            failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed");
         }
+    }
+
+    private Map<String, Object> securityReadyMetadata() {
+        final Map<String, Object> value = new LinkedHashMap<>();
+        value.put("requestId", activeSecurityRequestId);
+        value.put("attemptId", securityWriteAttemptContext.attemptId());
+        value.put("connectionGeneration", connectionGeneration);
+        value.put("gattGeneration", gattGeneration);
+        value.put("mtu", currentMtu);
+        value.put("notificationsReady", linkReady && securedGattGeneration == gattGeneration);
+        value.put("gattRebuilt", gattRebuilt);
+        return value;
     }
 
     private boolean requireSecurityRequest(MethodCall call, MethodChannel.Result result) {
         final String requestId = call.argument("requestId");
-        if (requestId == null || !requestId.equals(activeSecurityRequestId)) {
+        final String attempt = call.argument("attemptId");
+        final Number connection = call.argument("connectionGeneration");
+        if (requestId == null || !requestId.equals(activeSecurityRequestId)
+                || (attempt != null && !attempt.equals(securityWriteAttemptContext.attemptId()))
+                || (connection != null && connection.intValue() != connectionGeneration)) {
             returnError(
                     result,
                     call.method,
@@ -1914,19 +1597,6 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             return false;
         }
         return true;
-    }
-
-    private void failSecurityRecovery(@NonNull String code, @NonNull String message) {
-        try {
-            final BirdBoxSecurityWriteStateMachine.Phase phase = securityWriteStateMachine.phase();
-            if (phase == BirdBoxSecurityWriteStateMachine.Phase.BONDED_RECOVERING_GATT
-                    || phase == BirdBoxSecurityWriteStateMachine.Phase.RESTORING_NOTIFICATIONS) {
-                securityWriteStateMachine.onGattRecoveryFailed();
-            }
-        } catch (IllegalStateException ignored) {
-            // The platform error remains authoritative for the waiting Dart call.
-        }
-        failPending(code, message, gattFailureDetails(-1, null));
     }
 
     private void finishSecuritySession(@NonNull String terminalOutcome) {
@@ -1946,6 +1616,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         }
         cancelSecurityWriteCallbackGuard();
         cancelConditionalBondFallback();
+        pairingCoordinator.cancel();
+        cancelPreparationTimeout();
+        preparationStep = null;
         unregisterBondStateReceiver();
         if (hadAttempt) {
             securityWriteAttemptContext.markCleanup("complete");
@@ -1975,12 +1648,13 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         securityWriteAttemptContext.reset();
         conditionalBondFallbackPolicy.reset();
         securityWriteStateMachine.reset();
+        systemBondAttempted = false;
     }
 
     @Nullable
     private BluetoothGatt requireGatt(@NonNull String platformMethod, MethodChannel.Result result) {
         if (!requireBluetooth(platformMethod, result)) return null;
-        if (gatt == null) {
+        if (gatt == null || preparing()) {
             returnError(
                     result,
                     platformMethod,
@@ -2005,63 +1679,25 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
 
     private synchronized boolean beginOperation(String operation, MethodChannel.Result result) {
         if (pendingOperationResult != null) {
-            returnError(
-                    result,
-                    platformMethodName(operation),
-                    "gatt_busy",
-                    "Another GATT operation is active."
-            );
+            returnError(result, platformMethodName(operation), "gatt_busy", "Another GATT operation is active.");
             return false;
         }
         pendingOperation = operation;
         pendingOperationResult = result;
+        pendingCharacteristicUuid = null;
+        final long token = ++operationToken;
+        final int connection = connectionGeneration;
+        final BluetoothGatt expectedGatt = gatt;
         emitDiagnostic("operation_started", operation, -1, null, null);
+        // Preparation owns separate bond and per-stage GATT deadlines, never a generic 60s timer.
+        if ("preparePairing".equals(operation) || "securityRecovery".equals(operation)) return true;
         pendingOperationTimeout = () -> {
-            final boolean connectionTimedOut = "connect".equals(pendingOperation);
-            final boolean securityRecoveryTimedOut = "securityRecovery".equals(pendingOperation);
-            if (securityRecoveryTimedOut) {
-                final String code;
-                final String message;
-                try {
-                    final BirdBoxSecurityWriteStateMachine.Phase phase = securityWriteStateMachine.phase();
-                    if ((phase == BirdBoxSecurityWriteStateMachine.Phase.SECURITY_WRITE_STARTING
-                            || phase == BirdBoxSecurityWriteStateMachine.Phase.BONDING)
-                            && !securityBondingObserved) {
-                        securityWriteStateMachine.onPairingNotStartedTimeout();
-                        code = "ble_le_pairing_not_started";
-                        message = "The encrypted write did not start Android LE pairing within 60 seconds.";
-                    } else if (phase == BirdBoxSecurityWriteStateMachine.Phase.SECURITY_WRITE_STARTING
-                            || phase == BirdBoxSecurityWriteStateMachine.Phase.BONDING) {
-                        securityWriteStateMachine.onPairingTimeout();
-                        code = "ble_pairing_timeout";
-                        message = "Android LE pairing did not complete within 60 seconds.";
-                    } else {
-                        securityWriteStateMachine.onGattRecoveryFailed();
-                        code = "ble_gatt_recovery_failed";
-                        message = "GATT recovery after pairing timed out.";
-                    }
-                } catch (IllegalStateException error) {
-                    failPending(
-                            "ble_gatt_recovery_failed",
-                            "Security recovery timed out in an invalid state.",
-                            gattFailureDetails(-1, null)
-                    );
-                    return;
-                }
-                failPending(code, message, gattFailureDetails(-1, null));
-            } else {
-                failPending(
-                        "gatt_operation_failed",
-                        "GATT operation timed out.",
-                        gattFailureDetails(-1, null)
-                );
-            }
-            if (connectionTimedOut) closeGatt(false, "timeout", BluetoothGatt.GATT_FAILURE);
+            if (token != operationToken || connection != connectionGeneration || pendingOperationResult != result
+                    || !operation.equals(pendingOperation) || gatt != expectedGatt) return;
+            failPending("ble_gatt_operation_failed", "GATT operation timed out.");
+            closeGatt(true, "operation_timeout", BluetoothGatt.GATT_FAILURE);
         };
-        final long timeoutMs = "securityRecovery".equals(operation)
-                ? 60000L
-                : "connect".equals(operation) ? 15000L : 10000L;
-        mainHandler.postDelayed(pendingOperationTimeout, timeoutMs);
+        mainHandler.postDelayed(pendingOperationTimeout, "connect".equals(operation) ? 15_000L : 10_000L);
         return true;
     }
 
@@ -2077,6 +1713,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         pendingOperationResult = null;
         pendingOperation = null;
         pendingNotificationEnabled = null;
+        pendingCharacteristicUuid = null;
         if (result != null) mainHandler.post(() -> result.success(value));
     }
 
@@ -2137,6 +1774,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         pendingOperationResult = null;
         pendingOperation = null;
         pendingNotificationEnabled = null;
+        pendingCharacteristicUuid = null;
         if (result != null) {
             mainHandler.post(() -> result.error(stableCode, message, failureDetails));
         }
@@ -2148,288 +1786,174 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     }
 
     private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
-        @Override
-        public void onConnectionStateChange(@NonNull BluetoothGatt callbackGatt, int status, int newState) {
-            if (callbackGatt != gatt) {
-                callbackGatt.close();
-                return;
-            }
-            emitDiagnostic(
-                    "gatt_connection_state_changed",
-                    pendingOperation,
-                    status,
-                    null,
-                    connectionStateName(newState)
-            );
-            if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
-                try {
-                    callbackGatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
-                    if ("securityRecovery".equals(pendingOperation)) {
-                        emitSecurityPhase("gatt_connected");
-                    }
-                    if (!callbackGatt.discoverServices()) {
-                        if ("securityRecovery".equals(pendingOperation)) {
-                            failSecurityRecovery(
-                                    "ble_gatt_recovery_failed",
-                                    "Service discovery after pairing could not start."
-                            );
-                        } else {
-                            failPending("gatt_operation_failed", "Service discovery could not start.");
-                        }
-                    }
-                } catch (SecurityException error) {
-                    failPending("bluetooth_permission_denied", "Bluetooth connect permission is missing.");
-                }
-                return;
-            }
-            if (newState == BluetoothProfile.STATE_DISCONNECTED || status != BluetoothGatt.GATT_SUCCESS) {
-                if (activeSecurityRequestId != null
-                        && securityWriteStateMachine.isActive()
-                        && securityWriteStateMachine.phase()
-                        != BirdBoxSecurityWriteStateMachine.Phase.WAITING_RESPONSE) {
-                    final BirdBoxSecurityWriteStateMachine.Phase phase =
-                            securityWriteStateMachine.phase();
-                    if ("write".equals(pendingOperation)
-                            && phase != BirdBoxSecurityWriteStateMachine.Phase.RETRYING_ENCRYPTED_WRITE) {
-                        securityFailureObserved = true;
-                        securityGattStatusObserved |= isGattSecurityFailure(status);
-                        if (isGattSecurityFailure(status)) {
-                            securityWriteAttemptContext.completeFromGattSecurityStatus(
-                                    connectionGeneration,
-                                    gattGeneration
-                            );
-                            securityWriteAttemptContext.recordTriggerBondState(
-                                    bondStateName()
-                            );
-                            cancelSecurityWriteCallbackGuard();
-                        }
-                    }
-                    closeGattForSecurity(callbackGatt);
-                    try {
-                        if (phase == BirdBoxSecurityWriteStateMachine.Phase.RETRYING_ENCRYPTED_WRITE) {
-                            securityWriteStateMachine.onEncryptedRetryFailed();
-                        } else if (phase == BirdBoxSecurityWriteStateMachine.Phase.RESTORING_NOTIFICATIONS) {
-                            securityWriteStateMachine.onGattLostAfterBond();
-                        } else if (connectedDevice != null
-                                && connectedDevice.getBondState() == BluetoothDevice.BOND_BONDED) {
-                            securityWriteStateMachine.onBonded(false);
-                        } else {
-                            securityWriteStateMachine.onSecurityRequired();
-                        }
-                    } catch (IllegalStateException ignored) {
-                        // The operation-specific failure below remains deterministic.
-                    }
-                    final String interruptedOperation = pendingOperation;
-                    if ("write".equals(interruptedOperation)) {
-                        final boolean retry = phase
-                                == BirdBoxSecurityWriteStateMachine.Phase.RETRYING_ENCRYPTED_WRITE;
-                        failPending(
-                                retry ? "ble_encrypted_retry_failed" : "ble_link_not_encrypted",
-                                retry
-                                        ? "The encrypted request retry lost its GATT connection."
-                                        : "The security-trigger write interrupted the GATT connection.",
-                                gattFailureDetails(status, null)
-                        );
-                    } else if ("requestMtu".equals(interruptedOperation)
-                            || "descriptor".equals(interruptedOperation)) {
-                        failPending(
-                                "ble_gatt_recovery_failed",
-                                "GATT disconnected while restoring the secured connection.",
-                                gattFailureDetails(status, null)
-                        );
-                    }
-                    if ("securityRecovery".equals(interruptedOperation)
-                            && connectedDevice != null
-                            && connectedDevice.getBondState() == BluetoothDevice.BOND_BONDED) {
-                        continueSecurityRecovery();
-                    }
-                    return;
-                }
-                final boolean connecting = "connect".equals(pendingOperation);
-                final boolean wasReady = linkReady;
-                final boolean expected = disconnectRequested;
-                final Map<String, Object> details = gattFailureDetails(status, null);
-                if (connecting) failPending(gattErrorCode(status), "BirdBox GATT connection failed.", details);
-                else failPending(gattErrorCode(status), "BirdBox GATT disconnected during an operation.", details);
-                closeGatt(false, expected ? "requested" : "link_lost", status);
-                if (wasReady && !expected) emitDisconnect("link_lost", status, true);
-            }
+        @Override public void onConnectionStateChange(BluetoothGatt current, int status, int state) {
+            mainHandler.post(() -> handleConnectionState(current, status, state));
         }
-
-        @Override
-        public void onServicesDiscovered(@NonNull BluetoothGatt callbackGatt, int status) {
-            if (callbackGatt != gatt
-                    || !("connect".equals(pendingOperation)
-                    || "securityRecovery".equals(pendingOperation))) return;
-            emitDiagnostic(
-                    "gatt_services_discovered",
-                    pendingOperation,
-                    status,
-                    null,
-                    status == BluetoothGatt.GATT_SUCCESS ? "success" : "failed"
-            );
-            if (status != BluetoothGatt.GATT_SUCCESS) {
-                if ("securityRecovery".equals(pendingOperation)) {
-                    failSecurityRecovery(
-                            "ble_gatt_recovery_failed",
-                            "GATT service discovery after pairing failed."
-                    );
-                    closeGattForSecurity(callbackGatt);
-                } else {
-                    failGattStatus(status, "GATT service discovery failed.");
-                    closeGatt(false, "service_discovery_failed", status);
-                }
-                return;
-            }
-            final BluetoothGattService service = callbackGatt.getService(SERVICE_UUID);
-            if (service == null) {
-                if ("securityRecovery".equals(pendingOperation)) {
-                    failSecurityRecovery("ble_gatt_recovery_failed", "BirdBox network service is unavailable after pairing.");
-                    closeGattForSecurity(callbackGatt);
-                } else {
-                    failPending("invalid_request", "BirdBox network service is unavailable.");
-                    closeGatt(false, "service_unavailable", status);
-                }
-                return;
-            }
-            for (UUID uuid : REQUIRED_CHARACTERISTICS) {
-                if (service.getCharacteristic(uuid) == null) {
-                    if ("securityRecovery".equals(pendingOperation)) {
-                        failSecurityRecovery(
-                                "ble_gatt_recovery_failed",
-                                "A required BirdBox characteristic is unavailable after pairing."
-                        );
-                        closeGattForSecurity(callbackGatt);
-                    } else {
-                        failPending("invalid_request", "A required BirdBox characteristic is unavailable.");
-                        closeGatt(false, "service_invalid", status);
-                    }
-                    return;
-                }
-            }
-            linkReady = true;
-            if ("securityRecovery".equals(pendingOperation)) {
-                securityFailureObserved = false;
-                if (securityWriteStateMachine.phase()
-                        == BirdBoxSecurityWriteStateMachine.Phase.BONDED_RECOVERING_GATT) {
-                    securityWriteStateMachine.onGattRecovered(gattGeneration);
-                }
-                emitSecurityPhase("services_ready");
-                succeedPending(gattRebuilt);
-            } else {
-                securityWriteStateMachine.markGattReady(gattGeneration);
-                succeedPending(connectionGeneration);
-            }
+        @Override public void onServicesDiscovered(BluetoothGatt current, int status) {
+            mainHandler.post(() -> handleServices(current, status));
         }
-
-        @Override
-        public void onMtuChanged(@NonNull BluetoothGatt callbackGatt, int mtu, int status) {
-            if (callbackGatt != gatt || !"requestMtu".equals(pendingOperation)) return;
-            emitDiagnostic(
-                    "gatt_mtu_changed",
-                    pendingOperation,
-                    status,
-                    null,
-                    status == BluetoothGatt.GATT_SUCCESS ? "success" : "failed"
-            );
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                currentMtu = mtu;
-                succeedPending(mtu);
-            }
-            else failGattStatus(status, "MTU negotiation failed.");
-        }
-
-        @Override
-        public void onCharacteristicRead(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattCharacteristic characteristic, int status) {
-            if (callbackGatt != gatt || !"read".equals(pendingOperation)) return;
-            completeRead(characteristic.getValue(), status);
-        }
-
-        @Override
-        public void onCharacteristicRead(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattCharacteristic characteristic, @NonNull byte[] value, int status) {
-            if (callbackGatt != gatt || !"read".equals(pendingOperation)) return;
-            completeRead(value, status);
-        }
-
-        @Override
-        public void onCharacteristicWrite(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattCharacteristic characteristic, int status) {
-            if (callbackGatt != gatt || !"write".equals(pendingOperation)) return;
-            final boolean sensitiveWrite = WIFI_CONFIG_UUID.equals(characteristic.getUuid())
-                    || PROVISIONING_COMMAND_UUID.equals(characteristic.getUuid());
-            if (sensitiveWrite) {
-                if (!securityWriteAttemptContext.completeFromCallback(
-                        connectionGeneration,
-                        gattGeneration,
-                        characteristic.getUuid(),
-                        isGattSecurityFailure(status))) {
-                    return;
+        @Override public void onMtuChanged(BluetoothGatt current, int mtu, int status) {
+            final long token = operationToken;
+            mainHandler.post(() -> {
+                if (current != gatt || token != operationToken) return;
+                if (preparing() && "mtu".equals(preparationStep)) {
+                    // Failed negotiation retains the confirmed default ATT MTU; a missing
+                    // callback instead terminates via this stage's deadline.
+                    if (status == BluetoothGatt.GATT_SUCCESS) currentMtu = Math.max(23, mtu);
+                    emitDiagnostic("gatt_mtu_changed", pendingOperation, status, null, "prepared");
+                    notificationIndex = 0;
+                    subscribePreparedNotifications();
+                } else if ("requestMtu".equals(pendingOperation)) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) { currentMtu = mtu; succeedPending(mtu); }
+                    else failGattStatus(status, "MTU negotiation failed.");
                 }
+            });
+        }
+        @Override public void onCharacteristicRead(BluetoothGatt current, BluetoothGattCharacteristic c, int status) {
+            byte[] value = c.getValue();
+            dispatchRead(current, c.getUuid(), value == null ? null : Arrays.copyOf(value, value.length), status);
+        }
+        @Override public void onCharacteristicRead(BluetoothGatt current, BluetoothGattCharacteristic c, byte[] value, int status) {
+            dispatchRead(current, c.getUuid(), Arrays.copyOf(value, value.length), status);
+        }
+        @Override public void onCharacteristicWrite(BluetoothGatt current, BluetoothGattCharacteristic c, int status) {
+            final UUID uuid = c.getUuid();
+            final long token = operationToken;
+            mainHandler.post(() -> {
+                if (current != gatt || token != operationToken || !"write".equals(pendingOperation) || !uuid.equals(pendingCharacteristicUuid)) return;
+                final boolean sensitive = WIFI_CONFIG_UUID.equals(uuid) || PROVISIONING_COMMAND_UUID.equals(uuid);
+                if (sensitive && !securityWriteAttemptContext.completeFromCallback(
+                        connectionGeneration, gattGeneration, uuid, isGattSecurityFailure(status))) return;
                 cancelSecurityWriteCallbackGuard();
-                if (isGattSecurityFailure(status)) {
-                    securityWriteAttemptContext.recordTriggerBondState(bondStateName());
+                emitDiagnostic("gatt_characteristic_write", "write", status, uuid,
+                        status == BluetoothGatt.GATT_SUCCESS ? "success" : gattErrorCode(status));
+                emitDiagnostic(sensitive ? "security_write_callback_received" : "gatt_characteristic_write",
+                        "write", status, uuid, status == BluetoothGatt.GATT_SUCCESS ? "success" : gattErrorCode(status));
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    if (sensitive && securityWriteStateMachine.encryptedRetryCount() > 0)
+                        emitDiagnostic("security_write_retry_result", "write", status, uuid, "success");
+                    succeedPending(null);
+                } else if (sensitive && isGattSecurityFailure(status)) {
+                    failProtectedWrite(status, uuid);
+                } else failGattStatus(status, "GATT write failed.", uuid);
+            });
+        }
+        @Override public void onDescriptorWrite(BluetoothGatt current, BluetoothGattDescriptor d, int status) {
+            final UUID uuid = d.getCharacteristic().getUuid(), descriptorUuid = d.getUuid();
+            final long token = operationToken;
+            mainHandler.post(() -> {
+                if (current != gatt || token != operationToken || !CLIENT_CONFIGURATION_UUID.equals(descriptorUuid)
+                        || !uuid.equals(pendingCharacteristicUuid)) return;
+                emitDiagnostic("gatt_notification_descriptor_write", pendingOperation, status, uuid,
+                        status == BluetoothGatt.GATT_SUCCESS ? "success" : "failed");
+                if (preparing() && preparationStep != null && preparationStep.startsWith("notification_")) {
+                    if (status != BluetoothGatt.GATT_SUCCESS) { failNativePreparation("ble_gatt_recovery_failed"); return; }
+                    if (!enabledNotifications.contains(uuid)) enabledNotifications.add(uuid);
+                    notificationIndex++;
+                    subscribePreparedNotifications();
+                } else if ("descriptor".equals(pendingOperation)) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        if (Boolean.TRUE.equals(pendingNotificationEnabled)) {
+                            if (!enabledNotifications.contains(uuid)) enabledNotifications.add(uuid);
+                        } else enabledNotifications.remove(uuid);
+                        succeedPending(null);
+                    } else failGattStatus(status, "Notification descriptor write failed.", uuid);
                 }
-            }
-            emitDiagnostic(
-                    "gatt_characteristic_write",
-                    pendingOperation,
-                    status,
-                    characteristic.getUuid(),
-                    status == BluetoothGatt.GATT_SUCCESS ? "success" : gattErrorCode(status)
-            );
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                succeedPending(null);
-            } else if (activeSecurityRequestId != null && sensitiveWrite) {
-                securityFailureObserved |= isGattSecurityFailure(status);
-                securityGattStatusObserved |= isGattSecurityFailure(status);
-                if (securityWriteStateMachine.phase()
-                        == BirdBoxSecurityWriteStateMachine.Phase.RETRYING_ENCRYPTED_WRITE) {
-                    securityWriteStateMachine.onEncryptedRetryFailed();
-                    failPending(
-                            "ble_encrypted_retry_failed",
-                            "The encrypted BirdBox request retry failed.",
-                            gattFailureDetails(status, characteristic.getUuid())
-                    );
-                } else if (isGattSecurityFailure(status)) {
-                    securityWriteStateMachine.onSecurityRequired();
-                    failPending(
-                            "ble_link_not_encrypted",
-                            "The encrypted write requires BLE link security.",
-                            gattFailureDetails(status, characteristic.getUuid())
-                    );
-                } else {
-                    failGattStatus(status, "GATT write failed.", characteristic.getUuid());
-                }
-            } else {
-                failGattStatus(status, "GATT write failed.", characteristic.getUuid());
-            }
+            });
         }
-
-        @Override
-        public void onDescriptorWrite(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattDescriptor descriptor, int status) {
-            if (callbackGatt != gatt || !"descriptor".equals(pendingOperation)) return;
-            emitDiagnostic(
-                    "gatt_notification_descriptor_write",
-                    pendingOperation,
-                    status,
-                    descriptor.getCharacteristic().getUuid(),
-                    status == BluetoothGatt.GATT_SUCCESS ? "success" : gattErrorCode(status)
-            );
-            if (status == BluetoothGatt.GATT_SUCCESS) succeedPending(null);
-            else failGattStatus(status, "Notification descriptor write failed.", descriptor.getCharacteristic().getUuid());
+        @Override public void onCharacteristicChanged(BluetoothGatt current, BluetoothGattCharacteristic c) {
+            byte[] value = c.getValue();
+            dispatchNotification(current, c.getUuid(), value == null ? null : Arrays.copyOf(value, value.length));
         }
-
-        @Override
-        public void onCharacteristicChanged(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattCharacteristic characteristic) {
-            if (callbackGatt != gatt || !linkReady) return;
-            emitNotification(characteristic.getUuid(), characteristic.getValue());
-        }
-
-        @Override
-        public void onCharacteristicChanged(@NonNull BluetoothGatt callbackGatt, @NonNull BluetoothGattCharacteristic characteristic, @NonNull byte[] value) {
-            if (callbackGatt != gatt || !linkReady) return;
-            emitNotification(characteristic.getUuid(), value);
+        @Override public void onCharacteristicChanged(BluetoothGatt current, BluetoothGattCharacteristic c, byte[] value) {
+            dispatchNotification(current, c.getUuid(), Arrays.copyOf(value, value.length));
         }
     };
+
+    private void dispatchRead(BluetoothGatt current, UUID uuid, byte[] value, int status) {
+        final long token = operationToken;
+        mainHandler.post(() -> {
+            if (current == gatt && token == operationToken && "read".equals(pendingOperation) && uuid.equals(pendingCharacteristicUuid))
+                completeRead(value, status);
+        });
+    }
+
+    private void dispatchNotification(BluetoothGatt current, UUID uuid, byte[] value) {
+        mainHandler.post(() -> { if (current == gatt && linkReady) emitNotification(uuid, value); });
+    }
+
+    private void handleConnectionState(BluetoothGatt current, int status, int state) {
+        if (current != gatt) {
+            if (state == BluetoothProfile.STATE_DISCONNECTED) {
+                try { current.close(); } catch (RuntimeException ignored) { }
+            }
+            return;
+        }
+        emitDiagnostic("gatt_connection_state_changed", pendingOperation, status, null, connectionStateName(state));
+        if (status == BluetoothGatt.GATT_SUCCESS && state == BluetoothProfile.STATE_CONNECTED) {
+            try {
+                current.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+                if (preparing()) setPreparationStep("services");
+                if (!current.discoverServices()) {
+                    if (preparing()) failNativePreparation("ble_gatt_recovery_failed");
+                    else { failPending("ble_gatt_operation_failed", "Service discovery could not start."); closeGatt(true, "service_discovery_failed", status); }
+                }
+            } catch (RuntimeException error) {
+                if (preparing()) failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed");
+                else { failPending("ble_gatt_operation_failed", "Service discovery failed."); closeGatt(true, "service_discovery_failed", status); }
+            }
+        } else if (state == BluetoothProfile.STATE_DISCONNECTED || status != BluetoothGatt.GATT_SUCCESS) {
+            emitDiagnostic("gatt_disconnected", pendingOperation, status, null, "link_lost");
+            if (preparing()) {
+                if (securityWriteStateMachine.isWaitingForBond()) {
+                    // System bond can outlive the old ordinary GATT. Keep the device and its
+                    // bond deadline; its successful broadcast will build a fresh connection.
+                    closeGattForSecurity(current);
+                } else failNativePreparation("ble_gatt_recovery_failed");
+            } else if ("write".equals(pendingOperation) && isGattSecurityFailure(status)) {
+                failProtectedWrite(status, pendingCharacteristicUuid);
+            } else {
+                failPendingIfActive("ble_gatt_operation_failed", "GATT disconnected.");
+                closeGatt(true, disconnectRequested ? "requested" : "link_lost", status);
+            }
+        }
+    }
+
+    private boolean validService(BluetoothGattService service) {
+        if (service == null) return false;
+        for (UUID uuid : REQUIRED_CHARACTERISTICS) if (service.getCharacteristic(uuid) == null) return false;
+        if ((service.getCharacteristic(DEVICE_INFO_UUID).getProperties() & BluetoothGattCharacteristic.PROPERTY_READ) == 0) return false;
+        for (UUID uuid : Arrays.asList(WIFI_CONFIG_UUID, PROVISIONING_COMMAND_UUID))
+            if ((service.getCharacteristic(uuid).getProperties() & BluetoothGattCharacteristic.PROPERTY_WRITE) == 0) return false;
+        for (UUID uuid : Arrays.asList(NETWORK_STATUS_UUID, SCAN_RESULTS_UUID)) {
+            BluetoothGattCharacteristic c = service.getCharacteristic(uuid);
+            if ((c.getProperties() & (BluetoothGattCharacteristic.PROPERTY_NOTIFY | BluetoothGattCharacteristic.PROPERTY_INDICATE)) == 0
+                    || c.getDescriptor(CLIENT_CONFIGURATION_UUID) == null) return false;
+        }
+        return true;
+    }
+
+    private void handleServices(BluetoothGatt current, int status) {
+        if (current != gatt || !(preparing() || "connect".equals(pendingOperation))) return;
+        if (preparing() && !"services".equals(preparationStep)) return;
+        emitDiagnostic("gatt_services_discovered", pendingOperation, status, null, status == 0 ? "success" : "failed");
+        if (status != BluetoothGatt.GATT_SUCCESS || !validService(current.getService(SERVICE_UUID))) {
+            if (preparing()) failNativePreparation("ble_gatt_recovery_failed");
+            else { failPending("invalid_request", "BirdBox service or characteristic properties are invalid."); closeGatt(true, "service_invalid", status); }
+            return;
+        }
+        if (preparing()) {
+            securityWriteStateMachine.onGattRecovered(gattGeneration);
+            setPreparationStep("mtu");
+            try {
+                if (!current.requestMtu(517)) { notificationIndex = 0; subscribePreparedNotifications(); }
+            } catch (RuntimeException error) { failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed"); }
+        } else {
+            linkReady = true;
+            securityWriteStateMachine.markGattReady(gattGeneration);
+            succeedPending(connectionGeneration);
+        }
+    }
 
     private void completeRead(@Nullable byte[] value, int status) {
         if (status == BluetoothGatt.GATT_SUCCESS && value != null) succeedPending(value);
@@ -2507,7 +2031,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     private static String stableErrorCode(@NonNull String code) {
         return switch (code) {
             case "gatt_operation_failed" -> "ble_gatt_operation_failed";
-            case "ble_bond_timeout" -> "ble_pairing_timeout";
+
             default -> code;
         };
     }
@@ -2670,6 +2194,8 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         final Map<String, Object> event = new LinkedHashMap<>();
         event.put("characteristicUuid", characteristicUuid.toString().toLowerCase(Locale.ROOT));
         event.put("value", Arrays.copyOf(value, value.length));
+        event.put("connectionGeneration", connectionGeneration);
+        event.put("gattGeneration", gattGeneration);
         emitSuccess(notificationSink, event);
     }
 
@@ -2689,6 +2215,8 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         final BluetoothGatt current = gatt;
         gatt = null;
         linkReady = false;
+        securedGattGeneration = -1;
+        enabledNotifications.clear();
         if (current != null) {
             try {
                 current.disconnect();
@@ -2766,6 +2294,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         event.put("androidRelease", Build.VERSION.RELEASE);
         event.put("sdkInt", Build.VERSION.SDK_INT);
         event.put("gitCommit", BuildConfig.GIT_SHA);
+        event.put("buildDirty", BuildConfig.BUILD_DIRTY);
+        event.put("buildId", BuildConfig.BUILD_ID);
+        event.put("sourceFingerprint", BuildConfig.SOURCE_FINGERPRINT);
         event.put("apkSha256", apkSha256());
         if (connectedDeviceAddressHash != null) {
             event.put("deviceAddressHash", connectedDeviceAddressHash);
@@ -2795,6 +2326,12 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 securityWriteStateMachine.conditionalBondFallbackAttempted()
         );
         event.put("bondInitiationSource", bondInitiationSource);
+        event.put("systemBondAttempted", systemBondAttempted);
+        event.put("securityWriteAttemptCount", securityWriteStateMachine.writeAttemptCount());
+        event.put("thread", Thread.currentThread().getName());
+        event.put("callSource", operationName == null ? "native_callback" : platformMethodName(operationName));
+        if (eventType.startsWith("teardown") || "gatt_disconnect_requested".equals(eventType)) event.put("teardownReason", resultCode);
+        addLocationFacts(event);
         event.put("securityGattStatusObserved", securityGattStatusObserved);
         addSecurityWriteAttemptFacts(event);
         if (activeSecurityRequestId != null) {
@@ -2804,6 +2341,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             event.put("commandType", activeSecurityCommandType);
         }
         event.put("mtu", currentMtu);
+        if ("security_write_result".equals(eventType)) event.put("securityWriteResult", resultCode);
         if ("gatt_connection_state_changed".equals(eventType) && resultCode != null) {
             event.put("connectionState", resultCode);
         }
@@ -2860,6 +2398,8 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             target.put("bondStateAtTrigger", securityWriteAttemptContext.bondStateAtTrigger());
         }
         target.put("createBondInvoked", securityWriteAttemptContext.createBondInvoked());
+        target.put("createBondCallCount", securityWriteAttemptContext.createBondCallCount());
+        target.put("bondElapsedMs", securityWriteAttemptContext.bondElapsedMs(SystemClock.uptimeMillis()));
         if (securityWriteAttemptContext.createBondReturned() != null) {
             target.put("createBondReturned", securityWriteAttemptContext.createBondReturned());
         }
@@ -2948,6 +2488,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     }
 
     public void dispose() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(this::dispose);
+            return;
+        }
         if (disposed) return;
         disposed = true;
         failPendingIfActive("invalid_state", "BLE bridge was disposed.");

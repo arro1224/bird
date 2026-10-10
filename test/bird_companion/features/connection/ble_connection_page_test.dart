@@ -7,11 +7,38 @@ import 'package:aves/bird_companion/features/connection/presentation/network_pro
 import 'package:aves/bird_companion/features/connection/presentation/pages/connection_method_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart';
 import 'fakes/fake_provisioning_repository.dart';
+import 'fakes/controlled_provisioning_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('Bluetooth unavailable offers another scan rather than returning to device selection', (tester) async {
+    final repository = FakeProvisioningRepository(
+      discoverError: const ProvisioningException(code: ProvisioningErrorCode.bluetoothUnavailable, retryable: true),
+    );
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: ConnectionPage(provisioningRepository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('手机蓝牙未开启或不可用'), findsOneWidget);
+    expect(find.text('重新搜索'), findsOneWidget);
+    expect(find.text('返回上一步'), findsNothing);
+    expect(find.text('暂未发现盒子'), findsNothing);
+    final scansBefore = repository.calls.where((call) => call == 'discover').length;
+    await tester.ensureVisible(find.text('重新搜索'));
+    await tester.runAsync(() async {
+      await tester.tap(find.text('重新搜索'));
+      // Stream.error cancellation completes on the event queue.
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pumpAndSettle();
+    expect(repository.calls.where((call) => call == 'discover').length, scansBefore + 1);
+  });
   testWidgets(
     'BLE connection page shows discovered boxes before network methods',
     (tester) async {
@@ -107,7 +134,7 @@ void main() {
 
     expect(find.text('本次扫描诊断编号：scan-b7-page'), findsOneWidget);
     expect(find.byKey(const Key('ble-copy-diagnostic-json')), findsOneWidget);
-    expect(find.text('复制诊断 JSON'), findsOneWidget);
+    expect(find.text('导出完整诊断'), findsOneWidget);
     expect(find.textContaining('android'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -151,7 +178,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('ble-copy-diagnostic-json')), findsOneWidget);
-    expect(find.text('复制诊断 JSON'), findsOneWidget);
+    expect(find.text('导出完整诊断'), findsOneWidget);
   });
 
   testWidgets('pairing and completed pages keep the trace export action', (
@@ -241,7 +268,7 @@ void main() {
   });
 
   testWidgets('leaving unfinished BLE provisioning releases transport and network binding', (tester) async {
-    final repository = FakeProvisioningRepository(
+    final repository = ControlledProvisioningRepository(
       devices: [_device()],
       deviceInfo: _deviceInfo(),
     );
@@ -258,6 +285,7 @@ void main() {
 
     await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
     await tester.pump();
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
 
     expect(repository.calls, contains('disconnect'));
   });

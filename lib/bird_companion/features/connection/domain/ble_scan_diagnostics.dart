@@ -1,4 +1,4 @@
-enum BleScanPermissionState { unknown, notRequired, granted, denied }
+enum BleScanPermissionState { unknown, notRequired, notRequested, granted, denied }
 
 enum BleAdapterState { unknown, unavailable, disabled, enabled }
 
@@ -22,6 +22,10 @@ final class BleScanEnvironment {
     this.connectPermission = BleScanPermissionState.unknown,
     this.locationPermission = BleScanPermissionState.unknown,
     this.locationService = BleLocationServiceState.unknown,
+    this.locationRequiredByApp,
+    this.locationPermissionRequiredByPlatform,
+    this.locationRequiredForDeviceCompatibility,
+    this.locationCompatibilityRule,
     this.manufacturer,
     this.model,
     this.androidRelease,
@@ -32,6 +36,9 @@ final class BleScanEnvironment {
     this.appVersionName,
     this.appVersionCode,
     this.gitCommit,
+    this.buildDirty,
+    this.buildId,
+    this.sourceFingerprint,
     this.apkSha256,
     this.scanPermissionPolicy,
     this.scanFlavor,
@@ -46,6 +53,10 @@ final class BleScanEnvironment {
       connectPermission = BleScanPermissionState.unknown,
       locationPermission = BleScanPermissionState.unknown,
       locationService = BleLocationServiceState.unknown,
+      locationRequiredByApp = null,
+      locationPermissionRequiredByPlatform = null,
+      locationRequiredForDeviceCompatibility = null,
+      locationCompatibilityRule = null,
       manufacturer = null,
       model = null,
       androidRelease = null,
@@ -56,6 +67,9 @@ final class BleScanEnvironment {
       appVersionName = null,
       appVersionCode = null,
       gitCommit = null,
+      buildDirty = null,
+      buildId = null,
+      sourceFingerprint = null,
       apkSha256 = null,
       scanPermissionPolicy = null,
       scanFlavor = null,
@@ -68,6 +82,10 @@ final class BleScanEnvironment {
   final BleScanPermissionState connectPermission;
   final BleScanPermissionState locationPermission;
   final BleLocationServiceState locationService;
+  final bool? locationRequiredByApp;
+  final bool? locationPermissionRequiredByPlatform;
+  final bool? locationRequiredForDeviceCompatibility;
+  final String? locationCompatibilityRule;
   final String? manufacturer;
   final String? model;
   final String? androidRelease;
@@ -78,6 +96,9 @@ final class BleScanEnvironment {
   final String? appVersionName;
   final String? appVersionCode;
   final String? gitCommit;
+  final bool? buildDirty;
+  final String? buildId;
+  final String? sourceFingerprint;
   final String? apkSha256;
   final String? scanPermissionPolicy;
   final String? scanFlavor;
@@ -99,6 +120,10 @@ final class BleScanEnvironment {
       connectPermission: _permissionFromValue(value['connectPermission']),
       locationPermission: _permissionFromValue(value['locationPermission']),
       locationService: _locationServiceFromValue(value['locationService']),
+      locationRequiredByApp: value['locationRequiredByApp'] as bool?,
+      locationPermissionRequiredByPlatform: value['locationPermissionRequiredByPlatform'] as bool?,
+      locationRequiredForDeviceCompatibility: value['locationRequiredForDeviceCompatibility'] as bool?,
+      locationCompatibilityRule: value['locationCompatibilityRule'] as String?,
       manufacturer: value['manufacturer'] as String?,
       model: value['model'] as String?,
       androidRelease: value['androidRelease'] as String?,
@@ -109,6 +134,9 @@ final class BleScanEnvironment {
       appVersionName: value['appVersionName'] as String?,
       appVersionCode: value['appVersionCode']?.toString(),
       gitCommit: _knownBuildValue(value['gitCommit']),
+      buildDirty: value['buildDirty'] as bool?,
+      buildId: value['buildId'] as String?,
+      sourceFingerprint: value['sourceFingerprint'] as String?,
       apkSha256: _knownBuildValue(value['apkSha256']),
       scanPermissionPolicy: value['scanPermissionPolicy'] as String?,
       scanFlavor: value['scanFlavor'] as String?,
@@ -125,6 +153,7 @@ final class BleScanEnvironment {
 
   static BleScanPermissionState _permissionFromValue(Object? value) => switch (value) {
     'not_required' => BleScanPermissionState.notRequired,
+    'not_requested' || 'notRequested' => BleScanPermissionState.notRequested,
     'granted' || true => BleScanPermissionState.granted,
     'denied' || false => BleScanPermissionState.denied,
     _ => BleScanPermissionState.unknown,
@@ -291,6 +320,10 @@ final class BleScanStrategyDiagnostic {
 final class BleScanDiagnosticSession {
   const BleScanDiagnosticSession({
     required this.scanSessionId,
+    this.recordSequence,
+    this.flowId,
+    this.scanTrigger,
+    this.previousScanSessionId,
     required this.startedAt,
     required this.endedAt,
     required this.permissionBefore,
@@ -314,6 +347,10 @@ final class BleScanDiagnosticSession {
     this.locationPermissionAfter = BleScanPermissionState.unknown,
     this.locationServiceBefore = BleLocationServiceState.unknown,
     this.locationServiceAfter = BleLocationServiceState.unknown,
+    this.locationRequiredByApp,
+    this.locationPermissionRequiredByPlatform,
+    this.locationRequiredForDeviceCompatibility,
+    this.locationCompatibilityRule,
     this.manufacturer,
     this.model,
     this.androidRelease,
@@ -324,6 +361,9 @@ final class BleScanDiagnosticSession {
     this.appVersionName,
     this.appVersionCode,
     this.gitCommit,
+    this.buildDirty,
+    this.buildId,
+    this.sourceFingerprint,
     this.apkSha256,
     this.scanPermissionPolicy,
     this.scanFlavor,
@@ -335,6 +375,10 @@ final class BleScanDiagnosticSession {
   });
 
   final String scanSessionId;
+  final int? recordSequence;
+  final String? flowId;
+  final String? scanTrigger;
+  final String? previousScanSessionId;
   final DateTime startedAt;
   final DateTime? nativeStartedAt;
   final DateTime? firstRawResultAt;
@@ -352,6 +396,10 @@ final class BleScanDiagnosticSession {
   final BleScanPermissionState locationPermissionAfter;
   final BleLocationServiceState locationServiceBefore;
   final BleLocationServiceState locationServiceAfter;
+  final bool? locationRequiredByApp;
+  final bool? locationPermissionRequiredByPlatform;
+  final bool? locationRequiredForDeviceCompatibility;
+  final String? locationCompatibilityRule;
   final String? manufacturer;
   final String? model;
   final String? androidRelease;
@@ -362,6 +410,9 @@ final class BleScanDiagnosticSession {
   final String? appVersionName;
   final String? appVersionCode;
   final String? gitCommit;
+  final bool? buildDirty;
+  final String? buildId;
+  final String? sourceFingerprint;
   final String? apkSha256;
   final String? scanPermissionPolicy;
   final String? scanFlavor;
@@ -380,9 +431,18 @@ final class BleScanDiagnosticSession {
   Duration get duration => endedAt.difference(startedAt);
 
   Map<String, Object?> toJson() => {
-    'schema_version': 3,
+    'schema_version': 4,
+    if (locationRequiredByApp != null) 'location_required_by_app': locationRequiredByApp,
+    if (locationPermissionRequiredByPlatform != null) 'location_permission_required_by_platform': locationPermissionRequiredByPlatform,
+    if (locationRequiredForDeviceCompatibility != null) 'location_required_for_device_compatibility': locationRequiredForDeviceCompatibility,
+    if (locationCompatibilityRule != null) 'location_compatibility_rule': locationCompatibilityRule,
+
     'trace_id': scanSessionId,
     'scan_session_id': scanSessionId,
+    if (recordSequence != null) 'record_sequence': recordSequence,
+    if (flowId != null) 'flow_id': flowId,
+    if (scanTrigger != null) 'scan_trigger': scanTrigger,
+    if (previousScanSessionId != null) 'previous_scan_session_id': previousScanSessionId,
     'started_at': startedAt.toUtc().toIso8601String(),
     'native_started_at': nativeStartedAt?.toUtc().toIso8601String(),
     'first_raw_result_at': firstRawResultAt?.toUtc().toIso8601String(),
@@ -411,6 +471,9 @@ final class BleScanDiagnosticSession {
     if (appVersionName != null) 'app_version_name': appVersionName,
     if (appVersionCode != null) 'app_version_code': appVersionCode,
     if (gitCommit != null) 'git_commit': gitCommit,
+    if (buildDirty != null) 'build_dirty': buildDirty,
+    if (buildId != null) 'build_id': buildId,
+    if (sourceFingerprint != null) 'source_fingerprint': sourceFingerprint,
     if (apkSha256 != null) 'apk_sha256': apkSha256,
     if (scanPermissionPolicy != null) 'scan_permission_policy': scanPermissionPolicy,
     if (scanFlavor != null) 'scan_flavor': scanFlavor,
@@ -422,6 +485,9 @@ final class BleScanDiagnosticSession {
     'filtered_count': filteredCount,
     'reason_counts': reasonCounts,
     'observations': observations.map((item) => item.toJson()).toList(),
+    'observations_total': rawResultCount,
+    'observations_retained': observations.length,
+    'observations_dropped': (rawResultCount - observations.length).clamp(0, rawResultCount),
     'strategy_events': strategyEvents.map((item) => item.toJson()).toList(),
     'end_reason': endReason.name,
     'android_scan_error_code': androidScanErrorCode,
@@ -429,6 +495,10 @@ final class BleScanDiagnosticSession {
 
   factory BleScanDiagnosticSession.fromJson(Map<String, dynamic> value) => BleScanDiagnosticSession(
     scanSessionId: value['scan_session_id'] as String,
+    recordSequence: value['record_sequence'] as int?,
+    flowId: value['flow_id'] as String?,
+    scanTrigger: value['scan_trigger'] as String?,
+    previousScanSessionId: value['previous_scan_session_id'] as String?,
     startedAt: DateTime.parse(value['started_at'] as String),
     nativeStartedAt: _date(value['native_started_at']),
     firstRawResultAt: _date(value['first_raw_result_at']),
@@ -462,6 +532,10 @@ final class BleScanDiagnosticSession {
       value['location_service_after'],
       BleLocationServiceState.unknown,
     ),
+    locationRequiredByApp: value['location_required_by_app'] as bool?,
+    locationPermissionRequiredByPlatform: value['location_permission_required_by_platform'] as bool?,
+    locationRequiredForDeviceCompatibility: value['location_required_for_device_compatibility'] as bool?,
+    locationCompatibilityRule: value['location_compatibility_rule'] as String?,
     manufacturer: value['manufacturer'] as String?,
     model: value['model'] as String?,
     androidRelease: value['android_release'] as String?,
@@ -472,6 +546,9 @@ final class BleScanDiagnosticSession {
     appVersionName: value['app_version_name'] as String?,
     appVersionCode: value['app_version_code']?.toString(),
     gitCommit: value['git_commit'] as String?,
+    buildDirty: value['build_dirty'] as bool?,
+    buildId: value['build_id'] as String?,
+    sourceFingerprint: value['source_fingerprint'] as String?,
     apkSha256: value['apk_sha256'] as String?,
     scanPermissionPolicy: value['scan_permission_policy'] as String?,
     scanFlavor: value['scan_flavor'] as String?,

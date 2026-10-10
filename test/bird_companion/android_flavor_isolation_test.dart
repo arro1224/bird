@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('production, simulation, and diagnostic flavors stay isolated', () {
-    final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+    final gradle = File('android/app/build.gradle.kts').readAsStringSync().replaceAll('\r\n', '\n');
     final birdName = File(
       'android/app/src/bird/res/values/strings.xml',
     ).readAsStringSync();

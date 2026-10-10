@@ -22,7 +22,7 @@ final class FakeStaConfigObservation {
   final bool passwordProvided;
 }
 
-final class FakeProvisioningRepository implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository, BleScanDiagnosticsRepository {
+class FakeProvisioningRepository implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository, BleScanDiagnosticsRepository {
   FakeProvisioningRepository({
     Iterable<ProvisioningDevice> devices = const [],
     this.deviceInfo,

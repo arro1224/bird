@@ -324,12 +324,30 @@ abstract final class UserMessageMapper {
           message: '请在系统设置中允许蓝牙和附近设备权限，然后返回继续。',
           actionLabel: '前往设置',
         );
+      case ProvisioningErrorCode.bluetoothUnavailable:
+        return const UserMessage(
+          title: '手机蓝牙未开启或不可用',
+          message: '请在手机系统设置中开启蓝牙，然后返回重新搜索。若蓝牙已开启，请关闭再打开后重试。',
+          actionLabel: '重新搜索',
+        );
       case ProvisioningErrorCode.locationServicesDisabled:
         return const UserMessage(
           title: '需要开启定位服务',
-          message: '当前扫描模式需要系统定位服务。请开启定位服务后返回重新搜索。',
-          actionLabel: '前往设置',
+          message: '用于兼容附近蓝牙设备扫描，App 不读取或上传您的位置。请开启系统位置服务后返回重新搜索。',
+          actionLabel: '去开启位置信息',
         );
+      case ProvisioningErrorCode.bleBondStartFailed:
+        return const UserMessage(title: '系统配对未启动', message: '手机未能发起系统蓝牙配对，请检查蓝牙状态后重试。', actionLabel: '重试');
+      case ProvisioningErrorCode.bleBondLost:
+        return const UserMessage(title: '系统绑定已丢失', message: '手机与盒子的蓝牙绑定已丢失，请重新连接并完成系统配对。', actionLabel: '重新配对');
+      case ProvisioningErrorCode.bleBondStateUnknown:
+        return const UserMessage(title: '无法确认系统绑定', message: '手机未能确认蓝牙绑定状态，请检查蓝牙及附近设备权限后重试。', actionLabel: '重试');
+      case ProvisioningErrorCode.bleOperationBusy:
+        return const UserMessage(title: '蓝牙操作正在进行', message: '请等待当前蓝牙连接或配对完成后再试。', actionLabel: '重试');
+      case ProvisioningErrorCode.bleCommandResponseTimeout:
+        return const UserMessage(title: '盒子蓝牙响应超时', message: '请求已发送，但盒子未及时返回蓝牙确认，请重新连接后重试。', actionLabel: '重新连接');
+      case ProvisioningErrorCode.locationSettingsUnavailable:
+        return const UserMessage(title: '无法打开位置设置', message: '请手动打开手机系统设置中的位置服务，再返回重新搜索。', actionLabel: '重新搜索');
       case ProvisioningErrorCode.bleGattNotReady:
         return const UserMessage(
           title: '盒子连接尚未准备好',
@@ -345,7 +363,7 @@ abstract final class UserMessageMapper {
       case ProvisioningErrorCode.blePairingTimeout:
         return const UserMessage(
           title: '安全配对超时',
-          message: '配对长时间未完成，请检查系统配对界面后重试。',
+          message: '系统蓝牙绑定未在规定时间内完成，请确认系统配对提示后重试。',
           actionLabel: '重试',
         );
       case ProvisioningErrorCode.blePairingRejected:
@@ -375,7 +393,7 @@ abstract final class UserMessageMapper {
       case ProvisioningErrorCode.bleEncryptedRetryFailed:
         return const UserMessage(
           title: '盒子未接受配对请求',
-          message: '安全连接已建立，但盒子未接受配对请求。',
+          message: '系统绑定已完成，但加密写入重试失败，请重新连接后重试。',
           actionLabel: '重试',
         );
       case ProvisioningErrorCode.pairingOpenTimeout:

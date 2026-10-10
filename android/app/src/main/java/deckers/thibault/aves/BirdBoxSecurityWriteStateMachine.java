@@ -5,14 +5,17 @@ import java.util.Objects;
 /**
  * Framework-free contract for one encrypted BirdBox request.
  *
- * <p>The platform bridge owns one instance and uses it to serialize the security-trigger write,
- * Bond observation, GATT recovery, notification restoration and the single exact retry required
- * by RC4-HF-BLE-02.</p>
+ * <p>The platform bridge starts with beginPairing: system bond, GATT rebuild and confirmed
+ * notifications precede the first protected write. Legacy write-trigger transitions remain
+ * for compatibility tests; production writes also enforce the native bond/readiness gate.</p>
  */
 final class BirdBoxSecurityWriteStateMachine {
     enum Phase {
         IDLE,
         GATT_READY,
+        SYSTEM_BOND_STARTING,
+        SYSTEM_BOND_WAITING,
+        SECURITY_READY,
         SECURITY_WRITE_STARTING,
         BONDING,
         BONDED_RECOVERING_GATT,
@@ -40,6 +43,57 @@ final class BirdBoxSecurityWriteStateMachine {
     private long gattGeneration = -1L;
     private int encryptedRetryCount;
     private boolean conditionalBondFallbackAttempted;
+    private boolean bondFirst;
+    private int writeAttemptCount;
+
+    int writeAttemptCount() { return writeAttemptCount; }
+
+    void beginPairing(String nextRequestId, long generation, int bondState) {
+        beginSecurityWrite(nextRequestId, generation);
+        if (phase == Phase.FAILED) return;
+        bondFirst = true;
+        phase = bondState == BirdBoxPairingCoordinator.BONDED ? Phase.BONDED_RECOVERING_GATT
+                : bondState == BirdBoxPairingCoordinator.BONDING ? Phase.SYSTEM_BOND_WAITING : Phase.SYSTEM_BOND_STARTING;
+    }
+
+    void beginReadyRequest(String nextRequestId, long generation) {
+        beginSecurityWrite(nextRequestId, generation);
+        if (phase != Phase.FAILED) {
+            bondFirst = true;
+            phase = Phase.SECURITY_READY;
+        }
+    }
+
+    boolean isWaitingForBond() {
+        return phase == Phase.SYSTEM_BOND_STARTING || phase == Phase.SYSTEM_BOND_WAITING;
+    }
+
+    boolean canWrite(long generation) {
+        return acceptsGattCallback(generation) && (phase == Phase.SECURITY_READY
+                || phase == Phase.SECURITY_WRITE_STARTING || phase == Phase.RETRYING_ENCRYPTED_WRITE);
+    }
+
+    void beginProtectedWrite(long generation) {
+        if (!canWrite(generation)) throw new IllegalStateException("Protected GATT is not ready");
+        if (phase == Phase.SECURITY_READY) {
+            writeAttemptCount = 1;
+            phase = Phase.SECURITY_WRITE_STARTING;
+        } else if (phase == Phase.RETRYING_ENCRYPTED_WRITE) {
+            writeAttemptCount = 2;
+        }
+    }
+
+    void beginBondedRecovery() {
+        requirePhase("recover bound write", Phase.SECURITY_WRITE_STARTING);
+        if (encryptedRetryCount != 0) {
+            fail(Failure.ENCRYPTED_RETRY_FAILED);
+            return;
+        }
+        encryptedRetryCount = 1;
+        phase = Phase.BONDED_RECOVERING_GATT;
+    }
+
+    void failAttempt(Failure reason) { fail(reason); }
 
     Phase phase() {
         return phase;
@@ -80,6 +134,8 @@ final class BirdBoxSecurityWriteStateMachine {
         conditionalBondFallbackAttempted = false;
         failure = Failure.NONE;
         phase = Phase.GATT_READY;
+        bondFirst = false;
+        writeAttemptCount = 0;
     }
 
     void beginSecurityWrite(String nextRequestId, long generation) {
@@ -100,11 +156,14 @@ final class BirdBoxSecurityWriteStateMachine {
         encryptedRetryCount = 0;
         conditionalBondFallbackAttempted = false;
         phase = Phase.SECURITY_WRITE_STARTING;
+        bondFirst = false;
+        writeAttemptCount = 0;
     }
 
     void onBonding() {
-        requirePhase("observe bonding", Phase.SECURITY_WRITE_STARTING, Phase.BONDING);
-        phase = Phase.BONDING;
+        requirePhase("observe bonding", Phase.SECURITY_WRITE_STARTING, Phase.BONDING,
+                Phase.SYSTEM_BOND_STARTING, Phase.SYSTEM_BOND_WAITING);
+        phase = bondFirst ? Phase.SYSTEM_BOND_WAITING : Phase.BONDING;
     }
 
     void onSecurityRequired() {
@@ -149,7 +208,8 @@ final class BirdBoxSecurityWriteStateMachine {
     void onBonded(boolean currentGattUsable) {
         if (phase == Phase.BONDED_RECOVERING_GATT
                 || phase == Phase.RESTORING_NOTIFICATIONS) return;
-        requirePhase("complete bonding", Phase.SECURITY_WRITE_STARTING, Phase.BONDING);
+        requirePhase("complete bonding", Phase.SECURITY_WRITE_STARTING, Phase.BONDING,
+                Phase.SYSTEM_BOND_STARTING, Phase.SYSTEM_BOND_WAITING);
         phase = currentGattUsable
                 ? Phase.RESTORING_NOTIFICATIONS
                 : Phase.BONDED_RECOVERING_GATT;
@@ -180,6 +240,10 @@ final class BirdBoxSecurityWriteStateMachine {
 
     void onNotificationsRestored() {
         requirePhase("restore notifications", Phase.RESTORING_NOTIFICATIONS);
+        if (bondFirst) {
+            phase = encryptedRetryCount == 0 ? Phase.SECURITY_READY : Phase.RETRYING_ENCRYPTED_WRITE;
+            return;
+        }
         if (encryptedRetryCount != 0) {
             fail(Failure.ENCRYPTED_RETRY_FAILED);
             return;
@@ -223,6 +287,8 @@ final class BirdBoxSecurityWriteStateMachine {
         gattGeneration = -1L;
         encryptedRetryCount = 0;
         conditionalBondFallbackAttempted = false;
+        bondFirst = false;
+        writeAttemptCount = 0;
     }
 
     private void fail(Failure reason) {

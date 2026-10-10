@@ -41,9 +41,24 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.ble_diagnostics"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/ble_diagnostic_file_paths" />
+        </provider>
     </application>
 
     <queries>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="application/json" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="application/zip" />
+        </intent>
         <intent>
             <action android:name="android.settings.PROCESS_WIFI_EASY_CONNECT_URI" />
             <data android:scheme="DPP" />

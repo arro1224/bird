@@ -18,6 +18,12 @@ enum ProvisioningErrorCode {
   tokenExpired,
   authorizationRequired,
   authorizationFailed,
+  bleBondStartFailed,
+  bleBondLost,
+  bleBondStateUnknown,
+  bleOperationBusy,
+  bleCommandResponseTimeout,
+  locationSettingsUnavailable,
   bleGattNotReady,
   bleLePairingNotStarted,
   blePairingTimeout,
@@ -49,6 +55,7 @@ enum ProvisioningErrorCode {
   networkRecoveryFailed,
   networkInternalError,
   bluetoothPermissionDenied,
+  bluetoothUnavailable,
   locationServicesDisabled,
   localNetworkPermissionDenied,
   systemWifiJoinDenied,
@@ -83,6 +90,12 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.tokenExpired => 'TOKEN_EXPIRED',
     ProvisioningErrorCode.authorizationRequired => 'AUTHORIZATION_REQUIRED',
     ProvisioningErrorCode.authorizationFailed => 'AUTHORIZATION_FAILED',
+    ProvisioningErrorCode.bleBondStartFailed => 'BLE_BOND_START_FAILED',
+    ProvisioningErrorCode.bleBondLost => 'BLE_BOND_LOST',
+    ProvisioningErrorCode.bleBondStateUnknown => 'BLE_BOND_STATE_UNKNOWN',
+    ProvisioningErrorCode.bleOperationBusy => 'BLE_OPERATION_BUSY',
+    ProvisioningErrorCode.bleCommandResponseTimeout => 'BLE_COMMAND_RESPONSE_TIMEOUT',
+    ProvisioningErrorCode.locationSettingsUnavailable => 'LOCATION_SETTINGS_UNAVAILABLE',
     ProvisioningErrorCode.bleGattNotReady => 'BLE_GATT_NOT_READY',
     ProvisioningErrorCode.bleLePairingNotStarted => 'BLE_LE_PAIRING_NOT_STARTED',
     ProvisioningErrorCode.blePairingTimeout => 'BLE_PAIRING_TIMEOUT',
@@ -114,6 +127,7 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.networkRecoveryFailed => 'NETWORK_RECOVERY_FAILED',
     ProvisioningErrorCode.networkInternalError => 'NETWORK_INTERNAL_ERROR',
     ProvisioningErrorCode.bluetoothPermissionDenied => 'BLUETOOTH_PERMISSION_DENIED',
+    ProvisioningErrorCode.bluetoothUnavailable => 'BLUETOOTH_UNAVAILABLE',
     ProvisioningErrorCode.locationServicesDisabled => 'LOCATION_SERVICES_DISABLED',
     ProvisioningErrorCode.localNetworkPermissionDenied => 'LOCAL_NETWORK_PERMISSION_DENIED',
     ProvisioningErrorCode.systemWifiJoinDenied => 'SYSTEM_WIFI_JOIN_DENIED',
@@ -131,7 +145,14 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
 
   ProvisioningErrorOrigin get origin => switch (this) {
     ProvisioningErrorCode.bluetoothPermissionDenied ||
+    ProvisioningErrorCode.bluetoothUnavailable ||
     ProvisioningErrorCode.locationServicesDisabled ||
+    ProvisioningErrorCode.bleBondStartFailed ||
+    ProvisioningErrorCode.bleBondLost ||
+    ProvisioningErrorCode.bleBondStateUnknown ||
+    ProvisioningErrorCode.bleOperationBusy ||
+    ProvisioningErrorCode.bleCommandResponseTimeout ||
+    ProvisioningErrorCode.locationSettingsUnavailable ||
     ProvisioningErrorCode.bleGattNotReady ||
     ProvisioningErrorCode.bleLePairingNotStarted ||
     ProvisioningErrorCode.blePairingTimeout ||

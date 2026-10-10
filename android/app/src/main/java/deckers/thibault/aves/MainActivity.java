@@ -44,11 +44,13 @@ public final class MainActivity extends FlutterActivity {
     private BirdBoxBleChannel birdBoxBleChannel;
     private BirdBoxWifiChannel birdBoxWifiChannel;
     private BirdBoxDppChannel birdBoxDppChannel;
+    private BirdBoxBleDiagnosticFileChannel birdBoxBleDiagnosticFileChannel;
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
         super.configureFlutterEngine(flutterEngine);
         birdBoxBleChannel = new BirdBoxBleChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
+        birdBoxBleDiagnosticFileChannel = new BirdBoxBleDiagnosticFileChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
         birdBoxWifiChannel = new BirdBoxWifiChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
         birdBoxDppChannel = new BirdBoxDppChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), DISCOVERY_CHANNEL)
@@ -67,6 +69,7 @@ public final class MainActivity extends FlutterActivity {
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (birdBoxBleDiagnosticFileChannel != null && birdBoxBleDiagnosticFileChannel.onActivityResult(requestCode, resultCode, data)) return;
         final boolean handledByDpp = birdBoxDppChannel != null
                 && birdBoxDppChannel.onActivityResult(requestCode, resultCode);
         if (!handledByDpp) {
@@ -85,6 +88,7 @@ public final class MainActivity extends FlutterActivity {
 
     @Override
     public void cleanUpFlutterEngine(@NonNull FlutterEngine flutterEngine) {
+        if (birdBoxBleDiagnosticFileChannel != null) { birdBoxBleDiagnosticFileChannel.dispose(); birdBoxBleDiagnosticFileChannel = null; }
         if (birdBoxBleChannel != null) {
             birdBoxBleChannel.dispose();
             birdBoxBleChannel = null;

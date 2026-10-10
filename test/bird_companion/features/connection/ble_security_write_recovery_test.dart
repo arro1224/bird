@@ -122,6 +122,127 @@ void main() {
     expect(platform.completeSecurityWriteCalls, 0);
     expect(platform.disposeCalls, 1);
   });
+
+  test('secure preparation blocks writes and uses the rebuilt MTU', () async {
+    final platform = _PreparedPlatform()..preparation = Completer<BlePairingReady>();
+    final source = await _connectedDataSource(platform);
+    addTearDown(source.dispose);
+    final result = source.writeCommand(request);
+    await Future<void>.delayed(Duration.zero);
+    expect(platform.writeAttempts, isEmpty);
+    expect(platform.beginRequestIds, [request.requestId]);
+    platform.preparation!.complete(platform.ready(request.requestId, 23));
+    await platform.sent.future;
+    expect(platform.writeAttempts.length, greaterThan(1));
+    expect(platform.writeAttempts.every((packet) => packet.length <= 20), isTrue);
+    _emitNetworkStatus(platform);
+    await result;
+    expect(platform.notifyCalls, 2); // Only the initial unprotected connection.
+    expect(platform.mtuCalls, 1); // Preparation owns the rebuilt native MTU.
+  });
+
+  test('preparation failure sends zero bytes and preserves the bond error', () async {
+    final platform = _PreparedPlatform()..preparation = Completer<BlePairingReady>();
+    final source = await _connectedDataSource(platform);
+    addTearDown(source.dispose);
+    final expectation = expectLater(source.writeCommand(request), throwsA(isA<ProvisioningException>().having((e) => e.code, 'code', ProvisioningErrorCode.bleBondStartFailed)));
+    await Future<void>.delayed(Duration.zero);
+    platform.preparation!.completeError(const ProvisioningException(code: ProvisioningErrorCode.bleBondStartFailed, retryable: true));
+    await expectation;
+    expect(platform.writeAttempts, isEmpty);
+  });
+
+  test('single native recovery refragments the same command at a smaller MTU', () async {
+    final platform = _PreparedPlatform(failures: 1)..preparedMtu = 517;
+    final source = await _connectedDataSource(platform);
+    addTearDown(source.dispose);
+    final result = source.writeCommand(request);
+    await platform.sent.future;
+    expect(platform.recoveryCalls, 1);
+    final initial = platform.writeAttempts.first;
+    final retry = platform.writeAttempts.skip(1).toList();
+    expect(initial.length, greaterThan(20));
+    expect(retry.every((packet) => packet.length <= 20), isTrue);
+    final decoder = BleFragmentReassembler();
+    Uint8List? decoded;
+    for (final packet in retry) {
+      decoded = decoder.add(packet);
+    }
+    final envelope = jsonDecode(utf8.decode(decoded!)) as Map;
+    expect(envelope['request_id'], request.requestId);
+    expect(envelope['type'], 'get_network_status');
+    expect(platform.notifyCalls, 2);
+    expect(platform.mtuCalls, 1);
+    _emitNetworkStatus(platform);
+    await result;
+  });
+
+  test('cancel while preparing names its request and rejects late readiness', () async {
+    final platform = _PreparedPlatform()..preparation = Completer<BlePairingReady>();
+    final source = await _connectedDataSource(platform);
+    addTearDown(source.dispose);
+    final owner = source.claimSession();
+    final expectation = expectLater(source.writeCommand(request), throwsA(isA<ProvisioningException>().having((e) => e.code, 'code', ProvisioningErrorCode.bleGattOperationFailed)));
+    await Future<void>.delayed(Duration.zero);
+    await source.endSession(owner);
+    expect(platform.disconnectOwners.last, request.requestId);
+    platform.preparation!.complete(platform.ready(request.requestId, 23));
+    await expectation;
+    expect(platform.writeAttempts, isEmpty);
+  });
+
+  test('stale page owner cannot disconnect an active newer session', () async {
+    final platform = _PreparedPlatform();
+    final source = await _connectedDataSource(platform);
+    addTearDown(source.dispose);
+    final old = source.claimSession();
+    final current = source.claimSession();
+    final disconnects = platform.disconnectOwners.length;
+    await source.endSession(old);
+    expect(platform.disconnectOwners.length, disconnects);
+    expect(source.ownsSession(current), isTrue);
+    expect(source.isConnected, isTrue);
+  });
+
+  test('new scan compatibility facts survive source builder and persisted JSON', () async {
+    final platform = _PreparedPlatform();
+    final source = PlatformBirdBoxBleDataSource(platform: platform);
+    addTearDown(source.dispose);
+    final diagnostic = source.scanDiagnostics.first;
+    await source.scan(timeout: const Duration(milliseconds: 1)).drain<void>();
+    final restored = BleScanDiagnosticSession.fromJson((await diagnostic).toJson());
+    expect(restored.locationRequiredByApp, isFalse);
+    expect(restored.locationPermissionRequiredByPlatform, isFalse);
+    expect(restored.locationRequiredForDeviceCompatibility, isTrue);
+    expect(restored.locationCompatibilityRule, 'huawei_mis_al00_sdk31');
+    expect(restored.locationPermissionAfter, BleScanPermissionState.notRequested);
+    expect(restored.locationServiceAfter, BleLocationServiceState.disabled);
+  });
+
+  test('settings departure and rescan retain one flow and distinct scan IDs', () async {
+    final platform = _PreparedPlatform();
+    final diagnostics = _RecordingConnectionDiagnosticSink();
+    final source = PlatformBirdBoxBleDataSource(platform: platform, connectionDiagnosticSink: diagnostics);
+    addTearDown(source.dispose);
+    final owner = source.claimSession();
+    final scans = <BleScanDiagnosticSession>[];
+    final subscription = source.scanDiagnostics.listen(scans.add);
+    addTearDown(subscription.cancel);
+    await source.scan(timeout: const Duration(milliseconds: 1)).drain<void>();
+    await source.openLocationSettings(owner);
+    await source.locationSettingsReturned(owner, enabled: true);
+    await source.scan(timeout: const Duration(milliseconds: 1)).drain<void>();
+    expect(scans, hasLength(2));
+    final first = BleScanDiagnosticSession.fromJson(scans.first.toJson());
+    final second = BleScanDiagnosticSession.fromJson(scans.last.toJson());
+    expect(second.flowId, first.flowId);
+    expect(second.scanSessionId, isNot(first.scanSessionId));
+    expect(second.previousScanSessionId, first.scanSessionId);
+    expect(second.scanTrigger, 'location_settings_return');
+    final settings = diagnostics.events.where((e) => e.eventType.startsWith('location_settings'));
+    expect(settings.map((e) => e.eventType), ['location_settings_open_requested', 'location_settings_opened', 'location_settings_returned']);
+    expect(settings.every((e) => e.flowId == first.flowId), isTrue);
+  });
 }
 
 Future<PlatformBirdBoxBleDataSource> _connectedDataSource(
@@ -172,7 +293,7 @@ void _emitNetworkStatus(_RecoveryPlatform platform) {
   }
 }
 
-final class _RecoveryPlatform implements BirdBoxBlePlatform {
+class _RecoveryPlatform implements BirdBoxBlePlatform {
   _RecoveryPlatform({
     required this.securityFailures,
     this.securityReadyError,
@@ -295,6 +416,60 @@ final class _RecoveryPlatform implements BirdBoxBlePlatform {
     await _notifications.close();
     await _diagnostics.close();
     await _disconnects.close();
+  }
+}
+
+class _PreparedPlatform extends _RecoveryPlatform implements BirdBoxPairingPlatform {
+  _PreparedPlatform({int failures = 0}) : super(securityFailures: failures);
+  Completer<BlePairingReady>? preparation;
+  final sent = Completer<void>();
+  int preparedMtu = 23, recoveryCalls = 0, mtuCalls = 0, notifyCalls = 0;
+  final disconnectOwners = <String?>[];
+  @override
+  Future<BleScanEnvironment> readScanEnvironment() async => BleScanEnvironment.fromPlatform({
+    'permissionGranted': true,
+    'adapterState': 'enabled',
+    'locationRequiredByApp': false,
+    'locationPermissionRequiredByPlatform': false,
+    'locationRequiredForDeviceCompatibility': true,
+    'locationCompatibilityRule': 'huawei_mis_al00_sdk31',
+    'locationPermission': 'not_requested',
+    'locationService': 'disabled',
+  });
+  BlePairingReady ready(String requestId, int mtu) => BlePairingReady(requestId: requestId, attemptId: 'stable-attempt', connectionGeneration: 1, gattGeneration: 2 + recoveryCalls, mtu: mtu);
+  @override
+  Future<BlePairingReady> preparePairing(String requestId, String commandType) async {
+    beginRequestIds.add(requestId);
+    return preparation == null ? ready(requestId, preparedMtu) : await preparation!.future;
+  }
+
+  @override
+  Future<BlePairingReady> recoverPairing(String requestId) async {
+    recoveryCalls++;
+    return ready(requestId, 23);
+  }
+
+  @override
+  Future<void> disconnectOwned(String? requestId, BlePairingReady? ready, int? connectionGeneration) async {
+    disconnectOwners.add(requestId);
+  }
+
+  @override
+  Future<void> openLocationSettings() async {}
+  @override
+  Future<int> requestMtu(int mtu) async {
+    mtuCalls++;
+    return 517;
+  }
+
+  @override
+  Future<void> setNotify(String uuid, {required bool enabled}) async {
+    notifyCalls++;
+  }
+
+  @override
+  Future<void> markSecurityWriteSent(String requestId) async {
+    if (!sent.isCompleted) sent.complete();
   }
 }
 
