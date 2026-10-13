@@ -1,6 +1,7 @@
 import 'package:aves/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart';
 import 'package:aves/bird_companion/features/connection/domain/ble_connection_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
+import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,6 +14,27 @@ void main() {
 
   tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(methodChannel, null);
+  });
+
+  test('lifecycle error preserves native stage and gives a reconnect action', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      methodChannel,
+      (_) async => throw PlatformException(code: 'ble_session_ended', details: {
+        'teardownReason': 'engine_destroyed',
+        'preparationStep': 'notification_1',
+        'failurePhase': 'restoring_notifications',
+      }),
+    );
+    try {
+      await MethodChannelBirdBoxBlePlatform().preparePairing('request', 'open_pairing');
+      fail('Expected an ended native session');
+    } on ProvisioningException catch (error) {
+      expect(error.code, ProvisioningErrorCode.bleSessionEnded);
+      expect(error.code.origin, ProvisioningErrorOrigin.app);
+      expect(error.diagnosticMessage, contains('preparationStep=notification_1'));
+      expect(error.diagnosticMessage, contains('teardownReason=engine_destroyed'));
+      expect(UserMessageMapper.fromProvisioningError(error).actionLabel, '重新连接');
+    }
   });
 
   test('MethodChannel preparation and retry carry readiness and stable owner', () async {
@@ -231,6 +253,8 @@ void main() {
       'location_service_disabled': ProvisioningErrorCode.locationServicesDisabled,
       'bond_start_failed': ProvisioningErrorCode.bleBondStartFailed,
       'gatt_busy': ProvisioningErrorCode.bleOperationBusy,
+      'ble_session_ended': ProvisioningErrorCode.bleSessionEnded,
+      'ble_host_unavailable': ProvisioningErrorCode.bleHostUnavailable,
       'bond_timeout': ProvisioningErrorCode.blePairingTimeout,
       'bond_rejected': ProvisioningErrorCode.blePairingRejected,
       'bond_lost': ProvisioningErrorCode.bleBondLost,

@@ -1,5 +1,12 @@
 enum ProvisioningErrorOrigin { box, app, protocol }
 
+/// Local storage stage; never serialized as a box protocol error code.
+final class ProvisioningCredentialSaveException implements Exception {
+  const ProvisioningCredentialSaveException();
+  @override
+  String toString() => 'ProvisioningCredentialSaveException';
+}
+
 enum ProvisioningErrorCode {
   protocolVersionUnsupported,
   invalidRequest,
@@ -22,6 +29,8 @@ enum ProvisioningErrorCode {
   bleBondLost,
   bleBondStateUnknown,
   bleOperationBusy,
+  bleSessionEnded,
+  bleHostUnavailable,
   bleCommandResponseTimeout,
   locationSettingsUnavailable,
   bleGattNotReady,
@@ -94,6 +103,8 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.bleBondLost => 'BLE_BOND_LOST',
     ProvisioningErrorCode.bleBondStateUnknown => 'BLE_BOND_STATE_UNKNOWN',
     ProvisioningErrorCode.bleOperationBusy => 'BLE_OPERATION_BUSY',
+    ProvisioningErrorCode.bleSessionEnded => 'BLE_SESSION_ENDED',
+    ProvisioningErrorCode.bleHostUnavailable => 'BLE_HOST_UNAVAILABLE',
     ProvisioningErrorCode.bleCommandResponseTimeout => 'BLE_COMMAND_RESPONSE_TIMEOUT',
     ProvisioningErrorCode.locationSettingsUnavailable => 'LOCATION_SETTINGS_UNAVAILABLE',
     ProvisioningErrorCode.bleGattNotReady => 'BLE_GATT_NOT_READY',
@@ -151,6 +162,8 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.bleBondLost ||
     ProvisioningErrorCode.bleBondStateUnknown ||
     ProvisioningErrorCode.bleOperationBusy ||
+    ProvisioningErrorCode.bleSessionEnded ||
+    ProvisioningErrorCode.bleHostUnavailable ||
     ProvisioningErrorCode.bleCommandResponseTimeout ||
     ProvisioningErrorCode.locationSettingsUnavailable ||
     ProvisioningErrorCode.bleGattNotReady ||

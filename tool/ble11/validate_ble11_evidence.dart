@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'local_capture_validator.dart';
 
 import 'ble11_evidence_validator.dart';
 
@@ -22,12 +23,13 @@ void main(List<String> arguments) {
     return;
   }
   final validation = validateBle11Evidence(Map<String, dynamic>.from(decoded));
-  if (!validation.passed) {
-    for (final error in validation.errors) {
+  final errors = [...validation.errors, ...validateLocalBluetoothCaptures(Map<String, dynamic>.from(decoded), file.parent)];
+  if (errors.isNotEmpty) {
+    for (final error in errors) {
       stderr.writeln('FAIL: $error');
     }
     exitCode = 1;
     return;
   }
-  stdout.writeln('BLE-11 simulated evidence passed fail-closed validation.');
+  stdout.writeln('Virtual BirdBox evidence passed fail-closed validation (hardware pending).');
 }

@@ -302,7 +302,19 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform, BirdB
       if (details['bondStateAtTrigger'] != null) 'bondStateAtTrigger=${details['bondStateAtTrigger']}',
       if (details['createBondInvoked'] != null) 'createBondInvoked=${details['createBondInvoked']}',
       if (details['createBondReturned'] != null) 'createBondReturned=${details['createBondReturned']}',
-      for (final key in const ['systemBondAttempted', 'bondInitiationSource', 'createBondCallCount', 'bondElapsedMs', 'securityWriteAttemptCount', 'securityWriteResult', 'thread', 'callSource', 'teardownReason'])
+      for (final key in const [
+        'systemBondAttempted',
+        'bondInitiationSource',
+        'createBondCallCount',
+        'bondElapsedMs',
+        'securityWriteAttemptCount',
+        'securityWriteResult',
+        'thread',
+        'callSource',
+        'teardownReason',
+        'preparationStep',
+        'failurePhase',
+      ])
         if (details[key] != null) '$key=${details[key]}',
       if (details['operationName'] != null) 'operation=${details['operationName']}',
       if (details['deviceAddressHash'] != null) 'deviceAddressHash=${details['deviceAddressHash']}',
@@ -320,6 +332,8 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform, BirdB
         'bond_state_unknown' => ProvisioningErrorCode.bleBondStateUnknown,
         'location_settings_unavailable' => ProvisioningErrorCode.locationSettingsUnavailable,
         'gatt_busy' => ProvisioningErrorCode.bleOperationBusy,
+        'ble_session_ended' => ProvisioningErrorCode.bleSessionEnded,
+        'ble_host_unavailable' => ProvisioningErrorCode.bleHostUnavailable,
         'ble_gatt_not_ready' => ProvisioningErrorCode.bleGattNotReady,
         'ble_le_pairing_not_started' => ProvisioningErrorCode.bleLePairingNotStarted,
         'bond_timeout' || 'ble_pairing_timeout' || 'ble_bond_timeout' => ProvisioningErrorCode.blePairingTimeout,
@@ -337,6 +351,8 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform, BirdB
       retryable: const {
         'bluetooth_unavailable',
         'gatt_busy',
+        'ble_session_ended',
+        'ble_host_unavailable',
         'bond_start_failed',
         'bond_timeout',
         'bond_rejected',
@@ -391,6 +407,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     this._connectionDiagnosticSink,
     DateTime Function()? clock,
     this._scanSessionIdFactory,
+    this._maximumWriteFragmentBytes = 512,
   }) : _platform = platform ?? MethodChannelBirdBoxBlePlatform(),
        _clock = clock ?? DateTime.now,
        _fragmentCodec = const BleFragmentCodec(),
@@ -412,6 +429,11 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   final String Function()? _scanSessionIdFactory;
   final BleFragmentCodec _fragmentCodec;
   final BleMessageCodec _messageCodec;
+  // Integration tests can use smaller legal ATT fragments without faking MTU,
+  // native pairing results, or the platform transport. Production uses 512.
+  final int _maximumWriteFragmentBytes;
+  int _writeFragmentBytes() =>
+      (_negotiatedMtu - 3).clamp(BleProtocolConstants.fragmentHeaderLength + 1, 512).clamp(BleProtocolConstants.fragmentHeaderLength + 1, _maximumWriteFragmentBytes.clamp(BleProtocolConstants.fragmentHeaderLength + 1, 512));
   final StreamController<ProvisioningEvent> _events = StreamController<ProvisioningEvent>.broadcast(sync: true);
   final StreamController<void> _disconnects = StreamController<void>.broadcast(sync: true);
   final StreamController<BleScanDiagnosticSession> _scanDiagnostics = StreamController<BleScanDiagnosticSession>.broadcast(sync: true);
@@ -927,11 +949,15 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   Future<ProvisioningDeviceInfo> readDeviceInfo() async {
     final message = await _readMessage(BleProtocolConstants.deviceInfoCharacteristicUuid);
     try {
-      return _messageCodec.decodeDeviceInfo(message);
+      final info = _messageCodec.decodeDeviceInfo(message);
+      _trustedResponseDeviceId = info.deviceId;
+      return info;
     } finally {
       message.fillRange(0, message.length, 0);
     }
   }
+
+  String? _trustedResponseDeviceId;
 
   @override
   Future<ProvisioningNetworkStatus> readNetworkStatus() async {
@@ -1010,7 +1036,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       }
       if (_activeSecurityRequest != request.requestId || !_connected) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOperationFailed, retryable: true);
       final characteristicUuid = request.writesWifiCredentials ? BleProtocolConstants.wifiConfigCharacteristicUuid : BleProtocolConstants.provisioningCommandCharacteristicUuid;
-      final maximumFragmentBytes = (_negotiatedMtu - 3).clamp(BleProtocolConstants.fragmentHeaderLength + 1, 514);
+      final maximumFragmentBytes = _writeFragmentBytes();
       final messageId = _allocateMessageId();
       packets = _fragmentCodec.fragment(message, messageId: messageId, maximumFragmentBytes: maximumFragmentBytes);
       try {
@@ -1025,7 +1051,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
           for (final packet in packets) {
             packet.fillRange(0, packet.length, 0);
           }
-          packets = _fragmentCodec.fragment(message, messageId: messageId, maximumFragmentBytes: (_negotiatedMtu - 3).clamp(BleProtocolConstants.fragmentHeaderLength + 1, 514));
+          packets = _fragmentCodec.fragment(message, messageId: messageId, maximumFragmentBytes: _writeFragmentBytes());
         }
         await _recordConnectionDiagnostic(
           eventType: 'security_write_retrying',
@@ -1040,6 +1066,9 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         try {
           await _writePackets(request.requestId, characteristicUuid, packets);
         } catch (error) {
+          if (error is ProvisioningException && (error.code == ProvisioningErrorCode.bleSessionEnded || error.code == ProvisioningErrorCode.bleHostUnavailable)) {
+            rethrow;
+          }
           throw ProvisioningException(
             code: ProvisioningErrorCode.bleEncryptedRetryFailed,
             retryable: true,
@@ -1158,6 +1187,8 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         'requestId=${request.requestId} ${error.diagnosticMessage ?? error.code.wireValue}',
       );
       if (error.code == ProvisioningErrorCode.bleBondLost ||
+          error.code == ProvisioningErrorCode.bleSessionEnded ||
+          error.code == ProvisioningErrorCode.bleHostUnavailable ||
           error.code == ProvisioningErrorCode.bluetoothUnavailable ||
           error.code == ProvisioningErrorCode.bluetoothPermissionDenied ||
           error.code == ProvisioningErrorCode.bleBondStateUnknown ||
@@ -1215,12 +1246,15 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       if (message == null) return;
       try {
         final response = _messageCodec.decodeResponse(message);
+        if (_trustedResponseDeviceId != null && response.deviceId != _trustedResponseDeviceId) {
+          throw const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false);
+        }
         if (response is BleFailureResponse) {
           final pending = _pendingCommands[response.requestId];
           if (pending != null && !pending.isCompleted) {
             pending.completeError(response.error);
           } else {
-            _events.addError(response.error);
+            _events.addError(BleOperationFailure(requestId: response.requestId, deviceId: response.deviceId, error: response.error));
           }
           return;
         }
@@ -1288,6 +1322,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   }
 
   void _markDisconnected([String reason = 'unknown']) {
+    _trustedResponseDeviceId = null;
     _connected = false;
     _activeConnectionGeneration = null;
     _activeGattGeneration = null;
@@ -1297,7 +1332,11 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       reassembler.reset();
     }
     _notificationReassemblers.clear();
-    final error = ProvisioningException(code: ProvisioningErrorCode.bleGattOperationFailed, retryable: true, diagnosticMessage: 'BLE disconnected before the command response: $reason');
+    final error = ProvisioningException(
+      code: const {'engine_destroyed', 'bridge_disposed'}.contains(reason) ? ProvisioningErrorCode.bleSessionEnded : ProvisioningErrorCode.bleGattOperationFailed,
+      retryable: true,
+      diagnosticMessage: 'BLE disconnected before the command response: $reason',
+    );
     for (final completer in _pendingCommands.values) {
       if (!completer.isCompleted) completer.completeError(error);
     }

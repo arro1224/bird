@@ -5,6 +5,7 @@ import 'package:aves/bird_companion/core/session/client_identity_store.dart';
 import 'package:aves/bird_companion/core/session/secure_session_store.dart';
 import 'package:aves/bird_companion/core/session/session_coordinator.dart';
 import 'package:aves/bird_companion/core/session/session_credential.dart';
+import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/birdbox_ble_data_source.dart';
 import 'package:aves/bird_companion/features/connection/data/health_api.dart';
 import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
@@ -63,7 +64,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     this._requestIds,
     this._clock,
   ) {
-    _bleEventSubscription = _ble.events.asyncMap(_processBleEvent).where((event) => event != null).cast<ProvisioningEvent>().listen(_events.add, onError: _events.addError);
+    _bleEventSubscription = _ble.events.asyncMap(_processBleEvent).where((event) => event != null).cast<ProvisioningEvent>().listen(_events.add, onError: _processBleError);
     _disconnectSubscription = _ble.disconnects.listen((_) {
       _clearTransientState();
       _disconnects.add(null);
@@ -104,6 +105,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
   final StreamController<List<WifiScanNetwork>> _wifiScanResults = StreamController<List<WifiScanNetwork>>.broadcast(sync: true);
   final Map<String, BleCommandType> _requestTypes = {};
   final Map<String, BleCommandType> _operations = {};
+  final Map<String, String> _operationRequests = {};
   final Map<int, WifiScanBatch> _scanBatches = {};
   final Set<String> _activeDppLaunches = {};
 
@@ -113,6 +115,8 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
   ProvisioningDeviceInfo? _deviceInfo;
   String? _clientId;
   SessionCredential? _credential;
+  SessionCredential? _pendingCredential;
+  int _connectionEpoch = 0;
   _TransientPairingSession? _pairingSession;
   int? _expectedScanBatchCount;
   bool _scanSawComplete = false;
@@ -347,6 +351,8 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
   void _resumeOperation(ProvisioningNetworkStatus status) {
     final operationId = status.operationId;
     if (operationId == null || !status.busy) return;
+    _operations.clear();
+    _operationRequests.clear();
     _operations[operationId] = switch (status.operationState) {
       NetworkOperationState.stoppingAp => BleCommandType.stopDirectAp,
       NetworkOperationState.scanning || NetworkOperationState.scanComplete => BleCommandType.scanWifi,
@@ -451,9 +457,17 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
       );
     }
     final accepted = event.payload as CommandAccepted;
-    _operations[accepted.operationId] = type;
+    _registerOperation(accepted.operationId, type, event.requestId);
     _requestTypes.remove(event.requestId);
     return accepted;
+  }
+
+  void _registerOperation(String operationId, BleCommandType type, String requestId) {
+    if (type != BleCommandType.scanWifi) _activeScanRequestId = null;
+    _operations.clear();
+    _operationRequests.clear();
+    _operations[operationId] = type;
+    _operationRequests[operationId] = requestId;
   }
 
   Future<ProvisioningEvent> _send(
@@ -492,7 +506,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
       }
       return response;
     } finally {
-      if (!_isAsynchronous(type)) _requestTypes.remove(request.requestId);
+      _requestTypes.remove(request.requestId);
     }
   }
 
@@ -511,7 +525,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
       }
       _pairingSession = null;
     }
-    final credential = _credential;
+    final credential = _pendingCredential ?? _credential;
     if (credential != null && credential.isUsableAt(_clock())) {
       return ProvisioningAuthorization(
         type: ProvisioningAuthorizationType.bearerToken,
@@ -538,10 +552,8 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     if (event.payload is CommandAccepted) {
       final accepted = event.payload as CommandAccepted;
       final type = _requestTypes[event.requestId];
-      if (type != null) {
-        _operations[accepted.operationId] = type;
-        _requestTypes.remove(event.requestId);
-      }
+      if (type == null) return null;
+      _registerOperation(accepted.operationId, type, event.requestId);
       return event;
     }
     if (event.type == ProvisioningEventType.wifiScanResults) {
@@ -550,50 +562,75 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
       return event;
     }
 
-    if (event.payload case final ProvisioningNetworkStatus status) {
-      _resumeOperation(status);
-    }
+    // Only explicit, request-correlated status reads may restore ownership.
+    // Unsolicited snapshots must not revive a superseded operation.
+    if (event.type == ProvisioningEventType.networkStatus) return null;
 
     final operationId = event.operationId;
     if (operationId != null && event.type != ProvisioningEventType.networkStatus && !_operations.containsKey(operationId)) {
       return null;
     }
+    final expectedRequest = _operationRequests[operationId];
+    if (expectedRequest != null && event.requestId != expectedRequest) return null;
+    final epoch = _connectionEpoch;
 
-    switch (event.payload) {
-      case DirectApReady ready:
-        await _joinAndValidateDirectAp(ready);
-      case StaConnected connected:
-        await _wifi.releaseNetwork();
-        await _validateAndExchange(
-          connected.baseUri,
-          ProvisioningNetworkMode.infrastructureSta,
-        );
-      case DppBootstrapReady ready:
-        if (_operations[ready.operationId] != BleCommandType.startDppProvisioning) {
-          return null;
-        }
-        if (_activeDppLaunches.add(ready.operationId)) {
-          unawaited(
-            _launchDppSystemFlow(ready)
-                .catchError((Object error, StackTrace stackTrace) {
-                  if (!_disposed) _events.addError(error, stackTrace);
-                })
-                .whenComplete(
-                  () => _activeDppLaunches.remove(ready.operationId),
-                ),
+    try {
+      switch (event.payload) {
+        case DirectApReady ready:
+          await _joinAndValidateDirectAp(ready);
+        case StaConnected connected:
+          await _wifi.releaseNetwork();
+          await _validateAndExchange(
+            connected.baseUri,
+            ProvisioningNetworkMode.infrastructureSta,
+            operationId: connected.operationId,
           );
-        }
-      case NetworkRecovered recovered:
-        await _applyRecovery(recovered);
-      case DirectApStopped _:
-        await _wifi.releaseNetwork();
-      default:
-        break;
+        case DppBootstrapReady ready:
+          if (_operations[ready.operationId] != BleCommandType.startDppProvisioning) {
+            return null;
+          }
+          if (_activeDppLaunches.add(ready.operationId)) {
+            unawaited(
+              _launchDppSystemFlow(ready)
+                  .catchError((Object error, StackTrace stackTrace) {
+                    if (!_disposed) _events.addError(error, stackTrace);
+                  })
+                  .whenComplete(
+                    () => _activeDppLaunches.remove(ready.operationId),
+                  ),
+            );
+          }
+        case NetworkRecovered recovered:
+          await _applyRecovery(recovered);
+        case DirectApStopped _:
+          await _wifi.releaseNetwork();
+        default:
+          break;
+      }
+    } catch (_) {
+      if (epoch != _connectionEpoch || (operationId != null && !_operations.containsKey(operationId))) return null;
+      rethrow;
     }
+    if (epoch != _connectionEpoch || (operationId != null && !_operations.containsKey(operationId))) return null;
     if (operationId != null && event.terminal) {
       _operations.remove(operationId);
+      _operationRequests.remove(operationId);
     }
     return event;
+  }
+
+  void _processBleError(Object error, StackTrace stack) {
+    if (error is BleOperationFailure) {
+      if (error.deviceId != _deviceInfo?.deviceId || !_operationRequests.containsValue(error.requestId)) return;
+      _operationRequests.removeWhere((id, request) {
+        if (request != error.requestId) return false;
+        _operations.remove(id);
+        return true;
+      });
+      _events.addError(error.error, stack);
+      return;
+    }
+    _events.addError(error, stack);
   }
 
   void _acceptScanBatch(WifiScanBatch batch) {
@@ -624,6 +661,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     }
     final sorted = networks.values.toList()..sort((left, right) => right.rssiDbm.compareTo(left.rssiDbm));
     _wifiScanResults.add(List.unmodifiable(sorted));
+    _activeScanRequestId = null;
   }
 
   Future<void> _joinAndValidateDirectAp(DirectApReady ready) async {
@@ -644,6 +682,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
       await _validateAndExchange(
         ready.baseUri,
         ProvisioningNetworkMode.directAp,
+        operationId: ready.operationId,
       );
     } catch (_) {
       await _wifi.releaseNetwork();
@@ -719,18 +758,30 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
 
   Future<void> _validateAndExchange(
     Uri baseUri,
-    ProvisioningNetworkMode mode,
-  ) async {
+    ProvisioningNetworkMode mode, {
+    String? operationId,
+  }) async {
     final info = _requireDeviceInfo();
+    final epoch = _connectionEpoch;
+    void checkConnection() {
+      if (_disposed || epoch != _connectionEpoch || !identical(info, _deviceInfo) || (operationId != null && !_operations.containsKey(operationId))) {
+        throw const ProvisioningException(code: ProvisioningErrorCode.bleSessionEnded, retryable: true);
+      }
+    }
+
     await _healthApi.waitForDevice(
       baseUri,
       expectedDeviceId: info.deviceId,
     );
+    checkConnection();
     await _rememberDynamicAddress?.call(info.deviceId, baseUri, mode);
+    checkConnection();
     final session = _pairingSession;
     if (session == null) {
-      final credential = _credential;
-      if (credential == null || !credential.isUsableAt(_clock())) return;
+      final credential = _pendingCredential ?? _credential;
+      if (credential == null || !credential.isUsableAt(_clock())) {
+        throw const ProvisioningException(code: ProvisioningErrorCode.authorizationRequired, retryable: false);
+      }
       final relocated = SessionCredential(
         deviceId: credential.deviceId,
         baseUri: baseUri,
@@ -739,7 +790,9 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
         apiVersion: credential.apiVersion,
         clientId: credential.clientId,
       );
-      await _credentialStore.write(relocated);
+      await _saveCredential(relocated);
+      checkConnection();
+      _pendingCredential = null;
       _credential = relocated;
       await _sessionCoordinator?.activate(relocated, persist: false);
       return;
@@ -751,19 +804,47 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
         retryable: false,
       );
     }
-    final credential = await _pairingApi.exchangeSession(
-      baseUri,
-      deviceId: info.deviceId,
-      clientId: _requireClientId(),
-      pairingSessionId: session.value,
-      clock: _clock,
-    );
+    // Once sent, a transport failure may hide a successful server redemption.
+    // Require fresh application authorization instead of replaying a one-use session.
+    _pairingSession = null;
+    final SessionCredential credential;
+    try {
+      credential = await _pairingApi.exchangeSession(
+        baseUri,
+        deviceId: info.deviceId,
+        clientId: _requireClientId(),
+        pairingSessionId: session.value,
+        clock: _clock,
+      );
+    } catch (error) {
+      checkConnection();
+      final code = error is ApiException ? error.code : null;
+      final authorizationCode = switch (code) {
+        'PAIRING_SESSION_EXPIRED' => ProvisioningErrorCode.pairingSessionExpired,
+        'PAIRING_SESSION_USED' => ProvisioningErrorCode.pairingSessionUsed,
+        'PAIRING_SESSION_INVALID' => ProvisioningErrorCode.pairingSessionInvalid,
+        _ => ProvisioningErrorCode.authorizationRequired,
+      };
+      if (error is ProvisioningException) rethrow;
+      throw ProvisioningException(code: authorizationCode, retryable: false, diagnosticMessage: 'HTTP session exchange failed: ${error.runtimeType}');
+    }
     // HTTP success consumes the pairing session even if local persistence
     // subsequently fails, so it must never be reused.
-    _pairingSession = null;
-    await _credentialStore.write(credential);
+    checkConnection();
+    _pendingCredential = credential;
+    await _saveCredential(credential);
+    checkConnection();
+    _pendingCredential = null;
     _credential = credential;
     await _sessionCoordinator?.activate(credential, persist: false);
+  }
+
+  Future<void> _saveCredential(SessionCredential credential) async {
+    try {
+      await _credentialStore.write(credential);
+    } catch (_) {
+      throw const ProvisioningCredentialSaveException();
+    }
   }
 
   Future<void> _launchDppSystemFlow(DppBootstrapReady ready) async {
@@ -850,8 +931,10 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
   }
 
   void _clearTransientState() {
+    _connectionEpoch++;
     _pairingSession = null;
     _operations.clear();
+    _operationRequests.clear();
     _requestTypes.clear();
     _scanBatches.clear();
     _expectedScanBatchCount = null;
@@ -862,6 +945,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     _deviceInfo = null;
     _clientId = null;
     _credential = null;
+    _pendingCredential = null;
   }
 
   void _checkNotDisposed() {
@@ -891,8 +975,3 @@ final class _TransientPairingSession {
   final String value;
   final DateTime expiresAt;
 }
-
-bool _isAsynchronous(BleCommandType type) => switch (type) {
-  BleCommandType.startDirectAp || BleCommandType.stopDirectAp || BleCommandType.scanWifi || BleCommandType.setStaConfig || BleCommandType.startDppProvisioning || BleCommandType.cancelNetworkOperation => true,
-  _ => false,
-};

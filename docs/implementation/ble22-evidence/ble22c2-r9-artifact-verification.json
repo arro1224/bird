@@ -1,0 +1,49 @@
+{
+  "candidate_round": "ble22-c2-20261013-r9",
+  "status": "artifact_identity_verified_not_phone_accepted",
+  "source_fingerprint": "51ede4943e9e6cfce8c4946573507bcaed253908c4b94dab41598db9e8877a87",
+  "artifacts": [
+    {
+      "role": "transport",
+      "file": "apks/transport-debug.apk",
+      "bytes": 228588203,
+      "apk_sha256": "0c48bb68a73dec1305b781321add8cbf47ad679d88c8ef7206d7a1c911966768",
+      "file_hash_verified": true,
+      "kernel_sha256": "d7bf688a2602007a37272a00b77a0504ae6189a5a31af75959101a13a0de015b",
+      "transport_entry_marker": true,
+      "native_build_id_verified": true,
+      "native_source_fingerprint_verified": true
+    },
+    {
+      "role": "virtual",
+      "file": "apks/virtual-debug.apk",
+      "bytes": 988855,
+      "apk_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400",
+      "file_hash_verified": true
+    },
+    {
+      "role": "simulation",
+      "file": "apks/simulation-debug.apk",
+      "bytes": 215507563,
+      "apk_sha256": "814fa250f6b2bfcd1df85de111451f143c3571fd3de89b1131675bf895e6b60b",
+      "file_hash_verified": true,
+      "kernel_sha256": "33268ef0702ed535fb26e8035ccba9d43cd66a91d37bbe35f67070001b013dd7",
+      "transport_entry_marker": false,
+      "native_build_id_verified": true,
+      "native_source_fingerprint_verified": true
+    },
+    {
+      "role": "formal",
+      "file": "apks/formal-debug.apk",
+      "bytes": 228588203,
+      "apk_sha256": "48e99c04cb30869cad4ee550c0974413c6f18d90b6635302aae6f3b9490a02a0",
+      "file_hash_verified": true,
+      "kernel_sha256": "2d62dd0d337ac8232d40f65a2fc93dab21cc8b53542062247c19b9af59de64f3",
+      "transport_entry_marker": false,
+      "native_build_id_verified": true,
+      "native_source_fingerprint_verified": true
+    }
+  ],
+  "hardware_status": "pending",
+  "releasable": false
+}

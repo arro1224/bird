@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/session/client_identity_store.dart';
 import 'package:aves/bird_companion/core/session/secure_session_store.dart';
+import 'package:aves/bird_companion/core/session/session_credential.dart';
+import 'package:aves/bird_companion/features/connection/data/ble/birdbox_ble_data_source.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_protocol_constants.dart';
 import 'package:aves/bird_companion/features/connection/data/health_api.dart';
 import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
@@ -12,6 +14,7 @@ import 'package:aves/bird_companion/features/connection/data/provisioning_reposi
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/request_id_factory.dart';
+import 'package:aves/bird_companion/features/connection/presentation/network_provisioning_cubit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../../tool/mock_box_server/mock_box_server.dart';
@@ -29,6 +32,205 @@ const _scanRequest = '10000000-0000-4000-8000-000000000004';
 const _staRequest = '10000000-0000-4000-8000-000000000005';
 
 void main() {
+  group('BLE-21 redemption and event ownership', () {
+    test('Cubit retries the credential save stage without a new network command', () async {
+      final store = _FailOnceStore();
+      final harness = await _Harness.create(credentialStore: store);
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      final cubit = NetworkProvisioningCubit(harness.repository);
+      addTearDown(cubit.close);
+      harness.ble.queueResponse(
+        BleCommandType.startDirectAp,
+        _event(ProvisioningEventType.commandAccepted, _apRequest, {
+          'operation_id': 'op_direct_ap_setup',
+          'desired_mode': 'direct_ap',
+          'provisioning_method': null,
+        }),
+      );
+      harness.wifi.queueJoinResult(
+        const WifiJoinResult(
+          outcome: WifiJoinOutcome.joined,
+          network: BirdBoxWifiNetwork(handle: 'test', ssid: 'BirdBox-82F41C9E'),
+        ),
+      );
+      await cubit.startDirectAp(harness.ble.deviceInfo);
+      store.failNextWrite = true;
+      final failed = cubit.stream.firstWhere((state) => state.phase == NetworkProvisioningPhase.failure);
+      harness.ble.emitEvent(harness.apReady());
+      expect((await failed).error, isA<ProvisioningCredentialSaveException>());
+      final json = _fixture('ble-network-status.rc4.json');
+      json['request_id'] = _scanRequest;
+      (json['payload'] as Map)['operation_id'] = 'op_direct_ap_setup';
+      (json['payload'] as Map)['base_uri'] = harness.baseUri.toString();
+      harness.ble.queueResponse(BleCommandType.getNetworkStatus, ProvisioningEvent.fromJson(json));
+      await cubit.retryCredentialSave();
+      expect(cubit.state.phase, NetworkProvisioningPhase.success);
+      expect(harness.server.pairingExchangeCount, 1);
+      expect(harness.ble.requests.where((r) => r.type == BleCommandType.startDirectAp), hasLength(1));
+    });
+    test('save failure retries persistence without redeeming a consumed session', () async {
+      final store = _FailOnceStore();
+      final harness = await _Harness.create(credentialStore: store);
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      store.failNextWrite = true;
+      await expectLater(harness.completeDirectApExchange(), throwsA(isA<ProvisioningCredentialSaveException>()));
+      expect(harness.server.pairingExchangeCount, 1);
+      expect(await store.read(_deviceId), isNull);
+      await harness.repository.verifyNetworkStatus(harness.terminalStatus());
+      expect(await store.read(_deviceId), isNotNull);
+      expect(harness.server.pairingExchangeCount, 1);
+    });
+
+    test('same operation with stale request and duplicate terminal have no side effects', () async {
+      final harness = await _Harness.create();
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      await harness.startAp();
+      final events = <ProvisioningEvent>[];
+      final subscription = harness.repository.events.listen(events.add);
+      addTearDown(subscription.cancel);
+      harness.ble.emitEvent(harness.apReady(requestId: _scanRequest));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(harness.wifi.requestedSsids, isEmpty);
+      expect(harness.server.pairingExchangeCount, 0);
+      final ready = harness.repository.events.first;
+      harness.ble.emitEvent(harness.apReady());
+      await ready;
+      harness.ble.emitEvent(harness.apReady());
+      harness.ble.emitEvent(
+        _event(ProvisioningEventType.commandAccepted, _apRequest, {
+          'operation_id': 'op_direct_ap_setup',
+          'desired_mode': 'direct_ap',
+          'provisioning_method': null,
+        }),
+      );
+      harness.ble.emitEvent(harness.apReady());
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(events.where((event) => event.terminal), hasLength(1));
+      expect(harness.server.pairingExchangeCount, 1);
+    });
+
+    test('superseded operation cannot redeem or overwrite the current one', () async {
+      final harness = await _Harness.create();
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      await harness.startAp();
+      harness.ble.queueResponse(
+        BleCommandType.startDirectAp,
+        _event(ProvisioningEventType.commandAccepted, _scanRequest, {
+          'operation_id': 'op_new_ap',
+          'desired_mode': 'direct_ap',
+          'provisioning_method': null,
+        }),
+      );
+      await harness.repository.startDirectAp();
+      harness.ble.emitEvent(harness.apReady());
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(harness.server.pairingExchangeCount, 0);
+      final ready = harness.repository.events.first;
+      harness.ble.emitEvent(harness.apReady(requestId: _scanRequest, operationId: 'op_new_ap'));
+      await ready;
+      expect(harness.server.pairingExchangeCount, 1);
+    });
+
+    test('HTTP failure requires fresh authorization instead of replaying session', () async {
+      final harness = await _Harness.create();
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      harness.server.failNextPairingExchange = true;
+      await expectLater(harness.completeDirectApExchange(), throwsA(isA<Exception>()));
+      expect(harness.server.pairingExchangeCount, 1);
+      await expectLater(
+        harness.repository.verifyNetworkStatus(harness.terminalStatus()),
+        throwsA(
+          isA<ProvisioningException>().having((e) => e.code, 'code', ProvisioningErrorCode.authorizationRequired),
+        ),
+      );
+      expect(harness.server.pairingExchangeCount, 1);
+      harness.ble.queueResponse(
+        BleCommandType.openPairing,
+        _event(ProvisioningEventType.pairingOpened, _scanRequest, {
+          'pairing_code_mode': 'fixed_dev',
+          'code_expires_in': 600,
+          'attempts_remaining': 3,
+        }),
+      );
+      harness.ble.queueResponse(
+        BleCommandType.authorizePairing,
+        _event(ProvisioningEventType.pairingAuthorized, _staRequest, {
+          'pairing_session_id': _pairingSessionId,
+          'expires_in': 600,
+        }),
+      );
+      await harness.repository.openPairing();
+      await harness.repository.authorizePairing('246810');
+      await harness.repository.verifyNetworkStatus(harness.terminalStatus());
+      expect(harness.server.pairingExchangeCount, 2);
+      expect(await harness.credentials.read(_deviceId), isNotNull);
+    });
+
+    test('HTTP identity mismatch fails before redemption', () async {
+      final harness = await _Harness.create(httpDeviceId: 'bbx-11111111111111111111111111111111');
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      await expectLater(
+        harness.completeDirectApExchange(),
+        throwsA(
+          isA<ProvisioningException>().having((e) => e.code, 'code', ProvisioningErrorCode.deviceIdMismatch),
+        ),
+      );
+      expect(harness.server.pairingExchangeCount, 0);
+    });
+
+    test('saved credential reconnects without a second HTTP redemption', () async {
+      final harness = await _Harness.create();
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      await harness.completeDirectApExchange();
+      await harness.repository.disconnect();
+      await harness.connect();
+      expect(harness.repository.networkStatusResumeRequired, isTrue);
+      await harness.repository.verifyNetworkStatus(harness.terminalStatus());
+      expect(harness.server.pairingExchangeCount, 1);
+    });
+
+    test('unsolicited stale status and stale business failure cannot revive an operation', () async {
+      final harness = await _Harness.create();
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      await harness.startAp();
+      final errors = <Object>[];
+      final subscription = harness.repository.events.listen((_) {}, onError: errors.add);
+      addTearDown(subscription.cancel);
+      harness.ble.emitError(
+        const BleOperationFailure(
+          requestId: _scanRequest,
+          deviceId: _deviceId,
+          error: ProvisioningException(code: ProvisioningErrorCode.apStartFailed, retryable: true),
+        ),
+      );
+      final status = _fixture('ble-network-status.rc4.json');
+      (status['payload'] as Map)['busy'] = true;
+      (status['payload'] as Map)['operation_id'] = 'op_stale';
+      harness.ble.emitEvent(ProvisioningEvent.fromJson(status));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(errors, isEmpty);
+      final ready = harness.repository.events.first;
+      harness.ble.emitEvent(harness.apReady());
+      await ready;
+      expect(harness.server.pairingExchangeCount, 1);
+    });
+  });
   group('A3 pairing ownership', () {
     late _Harness harness;
 
@@ -361,10 +563,10 @@ final class _Harness {
   final MemorySecureSessionStore credentials;
   final ProvisioningRepositoryImpl repository;
 
-  static Future<_Harness> create() async {
+  static Future<_Harness> create({MemorySecureSessionStore? credentialStore, String httpDeviceId = _deviceId}) async {
     final server = MockBoxServer(
       logRequests: false,
-      deviceId: _deviceId,
+      deviceId: httpDeviceId,
       pairingSessionId: _pairingSessionId,
     );
     final baseUri = await server.start();
@@ -389,7 +591,7 @@ final class _Harness {
       advertisements: [advertisement],
     );
     final wifi = FakeBirdBoxWifiPlatform();
-    final credentials = MemorySecureSessionStore();
+    final credentials = credentialStore ?? MemorySecureSessionStore();
     final repository = ProvisioningRepositoryImpl(
       ble: ble,
       wifi: wifi,
@@ -423,6 +625,62 @@ final class _Harness {
   Future<void> connect() async {
     final device = await repository.discoverDevices().first;
     await repository.connect(device);
+  }
+
+  Future<void> authorize() async {
+    ble.queueResponse(
+      BleCommandType.openPairing,
+      _event(ProvisioningEventType.pairingOpened, _openRequest, {
+        'pairing_code_mode': 'fixed_dev',
+        'code_expires_in': 600,
+        'attempts_remaining': 3,
+      }),
+    );
+    ble.queueResponse(
+      BleCommandType.authorizePairing,
+      _event(ProvisioningEventType.pairingAuthorized, _authorizeRequest, {
+        'pairing_session_id': _pairingSessionId,
+        'expires_in': 600,
+      }),
+    );
+    await repository.openPairing();
+    await repository.authorizePairing('246810');
+  }
+
+  Future<void> startAp() async {
+    ble.queueResponse(
+      BleCommandType.startDirectAp,
+      _event(ProvisioningEventType.commandAccepted, _apRequest, {
+        'operation_id': 'op_direct_ap_setup',
+        'desired_mode': 'direct_ap',
+        'provisioning_method': null,
+      }),
+    );
+    wifi.queueJoinResult(
+      const WifiJoinResult(
+        outcome: WifiJoinOutcome.joined,
+        network: BirdBoxWifiNetwork(handle: 'test', ssid: 'BirdBox-82F41C9E'),
+      ),
+    );
+    await repository.startDirectAp();
+  }
+
+  ProvisioningEvent apReady({String requestId = _apRequest, String operationId = 'op_direct_ap_setup'}) => _event(ProvisioningEventType.directApReady, requestId, {
+    'operation_id': operationId,
+    'active_mode': 'direct_ap',
+    'ssid': 'BirdBox-82F41C9E',
+    'security': 'wpa2_personal',
+    'passphrase': 'TEST_ONLY_NOT_A_REAL_SECRET',
+    'gateway_ipv4': '192.168.82.1',
+    'prefix_length': 24,
+    'base_uri': baseUri.toString(),
+  });
+
+  ProvisioningNetworkStatus terminalStatus() {
+    final json = _fixture('ble-network-status.rc4.json');
+    (json['payload'] as Map)['base_uri'] = baseUri.toString();
+    (json['payload'] as Map)['operation_id'] = 'op_direct_ap_setup';
+    return ProvisioningEvent.fromJson(json).payload as ProvisioningNetworkStatus;
   }
 
   Future<void> completeDirectApExchange() async {
@@ -505,4 +763,16 @@ final class _SequenceRequestIdFactory implements RequestIdFactory {
 
   @override
   String create() => _values[_index++];
+}
+
+final class _FailOnceStore extends MemorySecureSessionStore {
+  bool failNextWrite = false;
+  @override
+  Future<void> write(SessionCredential credential) async {
+    if (failNextWrite) {
+      failNextWrite = false;
+      throw StateError('simulated secure storage failure');
+    }
+    await super.write(credential);
+  }
 }

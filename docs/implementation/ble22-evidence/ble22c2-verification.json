@@ -1,0 +1,1132 @@
+{
+  "schema_version": 1,
+  "batch": "BLE-22C-2",
+  "generated_at": "2026-10-13T08:51:13.952912Z",
+  "status": "implementation_verified_phone_blockers_open",
+  "parent_batch_status": "in_progress",
+  "latest_candidate": "ble22-c2-20261013-r9",
+  "hardware_status": "pending",
+  "releasable": false,
+  "candidate_results_may_be_merged": false,
+  "automated_checks": {
+    "app_native_passed": 166,
+    "app_native_failures": 0,
+    "app_native_errors": 0,
+    "flutter_targeted_passed": 11,
+    "powershell_checks_passed": 82,
+    "powershell_scripts_parsed": 10,
+    "python_passed": 15,
+    "dart_analysis": "no_issues"
+  },
+  "candidates": [
+    {
+      "round_id": "ble22-c1-20261013-r1",
+      "status": "built_not_phone_accepted",
+      "source_fingerprint": "5709c68148699efb589bd2d82ae71b6e072d01175fb958d8ef0815a4ca36649b",
+      "app_sha256": "f10363ebd2f1837bacbb007d080328e101ea700fa6748dce4653d36c8e0738fb",
+      "box_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400"
+    },
+    {
+      "round_id": "ble22-c2-20261013-r1",
+      "status": "built_not_phone_accepted",
+      "source_fingerprint": "ded3603d6e7e8be3f88a69f60656e221574007416885de4417eae0a99881ff3f",
+      "app_sha256": "030f17c42d15fc3c32390c7f8e456fd7dc6d480983ed4c6f7ec7ffa5290b1028",
+      "box_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400"
+    },
+    {
+      "round_id": "ble22-c2-20261013-r2",
+      "status": "built_not_phone_accepted",
+      "source_fingerprint": "c0225b74b5c135024c90c1a1663ebfbbde3088cd83f294a6a0cbc7ede0629bbb",
+      "app_sha256": "434b94172ef4a82b4b6ea3acaad26050f2b6388b379b55a295245b08bff43c46",
+      "box_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400"
+    },
+    {
+      "round_id": "ble22-c2-20261013-r3",
+      "status": "built_not_phone_accepted",
+      "source_fingerprint": "738148eb604d1a171c51957c148d038e508fd9e9ac81d0d65033bb8d58baa4b1",
+      "app_sha256": "ef5058509348afc4446b284ca74508e72f4fabacf13429868642554200f817c7",
+      "box_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400"
+    },
+    {
+      "round_id": "ble22-c2-20261013-r4",
+      "status": "built_not_phone_accepted",
+      "source_fingerprint": "03632c58fcf917f21950f4b8e495309f2ac4c81ea70ebb3c04fcf5cfa0768009",
+      "app_sha256": "64538807ff081c930dc32ab037e0fcf06d8773da4f12f8c0868a064396108ad6",
+      "box_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400"
+    },
+    {
+      "round_id": "ble22-c2-20261013-r5",
+      "status": "built_not_phone_accepted",
+      "source_fingerprint": "8887cc10c58123a3595fb9c1c8641083f104dbda7cbfcab8fd4d64a2dcf2ee42",
+      "app_sha256": "5c06e98f295c0e7933bde79f6f326f3aedaf50f02928db32a54158d02e5fea8d",
+      "box_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400"
+    },
+    {
+      "round_id": "ble22-c2-20261013-r6",
+      "status": "built_not_phone_accepted",
+      "source_fingerprint": "c7ce501bc85b14388a11226bce4ba69035755032cbccdd79be04b6fc97e8eff1",
+      "app_sha256": "895d8c9c0aff9fb564378b8086744f4298a7d8d79e11df0f8c7bd25388ea3aa1",
+      "box_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400"
+    },
+    {
+      "round_id": "ble22-c2-20261013-r7",
+      "status": "built_not_phone_accepted",
+      "source_fingerprint": "8337f790f811a153d21bba62ccc65bb21cb6c9ee870a72a6b0dc93b1a685e023",
+      "app_sha256": "9bce1ef8de6dc6a7f613eeaddb138fc54b43af1b15c9a39ceebd6bf82a62ff61",
+      "box_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400"
+    },
+    {
+      "round_id": "ble22-c2-20261013-r8",
+      "status": "built_not_phone_accepted",
+      "source_fingerprint": "340231b07d34b6ab6259cb54d1285bce3367266656f2948f5214ae2720b0ac46",
+      "app_sha256": "1c8aff7bde94f321710205228db770ed272c6533c262f44579e2ef0debca2597",
+      "box_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400"
+    },
+    {
+      "round_id": "ble22-c2-20261013-r9",
+      "status": "built_not_phone_accepted",
+      "source_fingerprint": "51ede4943e9e6cfce8c4946573507bcaed253908c4b94dab41598db9e8877a87",
+      "app_sha256": "0c48bb68a73dec1305b781321add8cbf47ad679d88c8ef7206d7a1c911966768",
+      "box_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400"
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "20261013-092033-P2-bond_first-1-178b28",
+      "role": "P2",
+      "scenario": "bond_first",
+      "run_status": "startup_failed",
+      "last_stage": "install",
+      "test_invoked": false,
+      "test_exit_code": null,
+      "validation_exit_code": null,
+      "export_status": null,
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": null,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c1-20261013-r1",
+      "evidence_path": "outputs/ble22/ble22-c1-20261013-r1/20261013-092033-P2-bond_first-1-178b28/evidence.json",
+      "evidence_sha256": "c9954bef458dbec853a7515116cadbfa41bd584f46fa9cfae26c8b806d886345",
+      "actual_app_evidence_present": false,
+      "initial_bond_state": null,
+      "failure_code": null,
+      "response_type": null,
+      "create_bond_invocations": null,
+      "protected_att_invocations": null,
+      "cleanup_errors": [],
+      "runner_failure": {
+        "stage": "install",
+        "reason": "APK installation failed or timed out (exit=1).",
+        "kind": "RuntimeException"
+      },
+      "native_logs": null,
+      "preparation_failures": [],
+      "receiver_report_path": null
+    },
+    {
+      "run_id": "20261013-092452-P2-bond_first-2-96f33e",
+      "role": "P2",
+      "scenario": "bond_first",
+      "run_status": "test_failed",
+      "last_stage": "integration",
+      "test_invoked": true,
+      "test_exit_code": null,
+      "validation_exit_code": null,
+      "export_status": null,
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": null,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c1-20261013-r1",
+      "evidence_path": "outputs/ble22/ble22-c1-20261013-r1/20261013-092452-P2-bond_first-2-96f33e/evidence.json",
+      "evidence_sha256": "0e91c80ba180ba84358f2ed79e30112c4b3d8d68802f9d2ddfcc43fdf8d494f6",
+      "actual_app_evidence_present": false,
+      "initial_bond_state": null,
+      "failure_code": null,
+      "response_type": null,
+      "create_bond_invocations": null,
+      "protected_att_invocations": null,
+      "cleanup_errors": [],
+      "runner_failure": {
+        "kind": "CommandNotFoundException",
+        "reason": "The term 'Read-BoxEvents' is not recognized as a name of a cmdlet, function, script file, or executable program.\r\nCheck the spelling of the name, or if a path was included, verify that the path is correct and try again.",
+        "stage": "integration"
+      },
+      "native_logs": null,
+      "preparation_failures": [],
+      "receiver_report_path": null
+    },
+    {
+      "run_id": "20261013-093135-P2-bond_first-1-49f4de",
+      "role": "P2",
+      "scenario": "bond_first",
+      "run_status": "test_failed",
+      "last_stage": "export_retrieval",
+      "test_invoked": true,
+      "test_exit_code": 1,
+      "validation_exit_code": null,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r1",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r1/20261013-093135-P2-bond_first-1-49f4de/evidence.json",
+      "evidence_sha256": "90eb7443f0db5a2543e18d827a528a2d7cbc8313a362effcd8b8f69cd2096c6e",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "not_bonded",
+      "failure_code": "BLE_PAIRING_TIMEOUT",
+      "response_type": null,
+      "create_bond_invocations": 1,
+      "protected_att_invocations": 0,
+      "cleanup_errors": [],
+      "runner_failure": {
+        "reason": "Integration test failed; actual App result was retained.",
+        "stage": "export_retrieval",
+        "kind": "RuntimeException"
+      },
+      "native_logs": {
+        "box": {
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "tag": "BluetoothGattServer",
+          "status": "empty",
+          "path": "box-native.log"
+        },
+        "app": {
+          "sha256": "69916cf08c90ec2eacb410ad1ff30ab9d77d07ee8db1c831e127c9f00b8a3bf4",
+          "tag": "BluetoothGatt",
+          "status": "collected",
+          "path": "app-native.log"
+        }
+      },
+      "preparation_failures": [
+        {
+          "event_type": "security_preparation_failed",
+          "gatt_status": null,
+          "preparation_step": null,
+          "result_code": "bond_timeout",
+          "gatt_generation": 1
+        }
+      ],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r1/20261013-093135-P2-bond_first-1-49f4de/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-093532-P2-bond_first-2-bb183f",
+      "role": "P2",
+      "scenario": "bond_first",
+      "run_status": "test_failed",
+      "last_stage": "export_retrieval",
+      "test_invoked": true,
+      "test_exit_code": 1,
+      "validation_exit_code": null,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r1",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r1/20261013-093532-P2-bond_first-2-bb183f/evidence.json",
+      "evidence_sha256": "6e0082da2344af4c3b1e8541227bceb2ab7c3149866e612cdfabfb13e8b77d8f",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "not_bonded",
+      "failure_code": "BLE_PAIRING_TIMEOUT",
+      "response_type": null,
+      "create_bond_invocations": 1,
+      "protected_att_invocations": 0,
+      "cleanup_errors": [],
+      "runner_failure": {
+        "stage": "export_retrieval",
+        "kind": "RuntimeException",
+        "reason": "Integration test failed; actual App result was retained."
+      },
+      "native_logs": {
+        "box": {
+          "tag": "BluetoothGattServer",
+          "path": "box-native.log",
+          "status": "empty",
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+        },
+        "app": {
+          "tag": "BluetoothGatt",
+          "path": "app-native.log",
+          "status": "collected",
+          "sha256": "7ecdf0538ea998454584cd6a3d2ac2f41af070fe558fee87c256eb7e16d2bde6"
+        }
+      },
+      "preparation_failures": [
+        {
+          "event_type": "security_preparation_failed",
+          "gatt_status": null,
+          "preparation_step": null,
+          "result_code": "bond_timeout",
+          "gatt_generation": 1
+        }
+      ],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r1/20261013-093532-P2-bond_first-2-bb183f/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-094131-P2-bond_first-3-89e3f3",
+      "role": "P2",
+      "scenario": "bond_first",
+      "run_status": "test_failed",
+      "last_stage": "integration",
+      "test_invoked": true,
+      "test_exit_code": null,
+      "validation_exit_code": null,
+      "export_status": null,
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": null,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r1",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r1/20261013-094131-P2-bond_first-3-89e3f3/evidence.json",
+      "evidence_sha256": "e326d1c05f2aa5bfa28f927b7d1df5256fa96daaeb6fb60841cc12411a2e407b",
+      "actual_app_evidence_present": false,
+      "initial_bond_state": null,
+      "failure_code": null,
+      "response_type": null,
+      "create_bond_invocations": null,
+      "protected_att_invocations": null,
+      "cleanup_errors": [],
+      "runner_failure": {
+        "reason": "UI action blocked: unrecognized_or_ambiguous_pairing_peer",
+        "kind": "RuntimeException",
+        "stage": "integration"
+      },
+      "native_logs": {
+        "app": {
+          "tag": "BluetoothGatt",
+          "sha256": "54f01060ce10140a6895fcc51c3f4731099c1fec4e85bdb7bf9a4edef2bfaab3",
+          "status": "collected",
+          "path": "app-native.log"
+        },
+        "box": {
+          "tag": "BluetoothGattServer",
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "status": "empty",
+          "path": "box-native.log"
+        }
+      },
+      "preparation_failures": [],
+      "receiver_report_path": null
+    },
+    {
+      "run_id": "20261013-094917-P2-bond_first-1-44e66c",
+      "role": "P2",
+      "scenario": "bond_first",
+      "run_status": "test_failed",
+      "last_stage": "export_retrieval",
+      "test_invoked": true,
+      "test_exit_code": 1,
+      "validation_exit_code": null,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r2",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r2/20261013-094917-P2-bond_first-1-44e66c/evidence.json",
+      "evidence_sha256": "37f178ad365edacd5610d98fdfb909a1a560ca8e99865763404ffd86c52d689f",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "not_bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "create_bond_invocations": 1,
+      "protected_att_invocations": 1,
+      "cleanup_errors": [],
+      "runner_failure": {
+        "reason": "Integration test failed; actual App result was retained.",
+        "stage": "export_retrieval",
+        "kind": "RuntimeException"
+      },
+      "native_logs": {
+        "app": {
+          "sha256": "c5e2d5c37d48a1162a5d3459343607c93193e9999ad0edee919ffaaa627a2ce5",
+          "path": "app-native.log",
+          "status": "collected",
+          "tag": "BluetoothGatt"
+        },
+        "box": {
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "path": "box-native.log",
+          "status": "empty",
+          "tag": "BluetoothGattServer"
+        }
+      },
+      "preparation_failures": [],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r2/20261013-094917-P2-bond_first-1-44e66c/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-101613-P2-already_bonded-1-1dd0c2",
+      "role": "P2",
+      "scenario": "already_bonded",
+      "run_status": "passed",
+      "last_stage": "completed",
+      "test_invoked": true,
+      "test_exit_code": 0,
+      "validation_exit_code": 0,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r3",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-101613-P2-already_bonded-1-1dd0c2/evidence.json",
+      "evidence_sha256": "33b091e0fee3e41a79a03a94d15c339f0ac979ae334fcff4cd7df20624689973",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "create_bond_invocations": 0,
+      "protected_att_invocations": 1,
+      "cleanup_errors": [],
+      "runner_failure": null,
+      "native_logs": {
+        "app": {
+          "sha256": "adb4ce6fbf134c6a58b5f8d6c39bc5e8afd597c7b1b9eabd16f4cfd64ab1fc78",
+          "tag": "BluetoothGatt",
+          "path": "app-native.log",
+          "status": "collected"
+        },
+        "box": {
+          "sha256": "6a38bd390cd67cb04f6d19e1e2b514d12cdbd9f96a48d1b6b13261b073880688",
+          "tag": "BluetoothGattServer",
+          "path": "box-native.log",
+          "status": "collected"
+        }
+      },
+      "preparation_failures": [],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-101613-P2-already_bonded-1-1dd0c2/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-101857-P2-auth_once-1-ff1804",
+      "role": "P2",
+      "scenario": "auth_once",
+      "run_status": "passed",
+      "last_stage": "completed",
+      "test_invoked": true,
+      "test_exit_code": 0,
+      "validation_exit_code": 0,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r3",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-101857-P2-auth_once-1-ff1804/evidence.json",
+      "evidence_sha256": "0afa8e8a8a1d54759364d2e929635937ec358be5bf7c8d512e1ee6a190d43e05",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "create_bond_invocations": 0,
+      "protected_att_invocations": 2,
+      "cleanup_errors": [],
+      "runner_failure": null,
+      "native_logs": {
+        "app": {
+          "status": "collected",
+          "sha256": "4703926fe6ad0eb1b861f71e411dc4585572a5911a5606126fa1ec1f404c5fdc",
+          "tag": "BluetoothGatt",
+          "path": "app-native.log"
+        },
+        "box": {
+          "status": "collected",
+          "sha256": "5ca0c2cf04fa4aaf4f95dd116ec5e6a4bdf07d9e10a0cc7602a6b97b87722025",
+          "tag": "BluetoothGattServer",
+          "path": "box-native.log"
+        }
+      },
+      "preparation_failures": [],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-101857-P2-auth_once-1-ff1804/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-101944-P2-auth_persistent-1-931eaf",
+      "role": "P2",
+      "scenario": "auth_persistent",
+      "run_status": "passed",
+      "last_stage": "completed",
+      "test_invoked": true,
+      "test_exit_code": 0,
+      "validation_exit_code": 0,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r3",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-101944-P2-auth_persistent-1-931eaf/evidence.json",
+      "evidence_sha256": "5a05f0ca74207596cfa82ea206e626c04f92c04036a45ce7bd7702489a5bed4e",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "bonded",
+      "failure_code": "BLE_ENCRYPTED_RETRY_FAILED",
+      "response_type": null,
+      "create_bond_invocations": 0,
+      "protected_att_invocations": 2,
+      "cleanup_errors": [],
+      "runner_failure": null,
+      "native_logs": {
+        "app": {
+          "status": "collected",
+          "sha256": "59f178dd35082afcf9c3f6b602ea59b1b5dd7d297fa4746c4db0d3801f36080a",
+          "tag": "BluetoothGatt",
+          "path": "app-native.log"
+        },
+        "box": {
+          "status": "collected",
+          "sha256": "47537aa8f0e906bba3a6f29ad072ee188052f72bc106ce8eb4320e3beaaeb45d",
+          "tag": "BluetoothGattServer",
+          "path": "box-native.log"
+        }
+      },
+      "preparation_failures": [],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-101944-P2-auth_persistent-1-931eaf/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-102032-P2-att_timeout_first-1-d5f5eb",
+      "role": "P2",
+      "scenario": "att_timeout_first",
+      "run_status": "passed",
+      "last_stage": "completed",
+      "test_invoked": true,
+      "test_exit_code": 0,
+      "validation_exit_code": 0,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r3",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-102032-P2-att_timeout_first-1-d5f5eb/evidence.json",
+      "evidence_sha256": "5893a82d913154232e2e7c694f31086f2ff64551965dd60fb9a61dadfe01aa9f",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "create_bond_invocations": 0,
+      "protected_att_invocations": 22,
+      "cleanup_errors": [],
+      "runner_failure": null,
+      "native_logs": {
+        "app": {
+          "status": "collected",
+          "sha256": "90d8d0313056994ffb060e283dc0920cd889a3160731268b6bf8aa139c6ad267",
+          "tag": "BluetoothGatt",
+          "path": "app-native.log"
+        },
+        "box": {
+          "status": "collected",
+          "sha256": "2dba57b819f7f7baf470a05e27231db4deb0c6741f9d2821d9e8257234a8ce54",
+          "tag": "BluetoothGattServer",
+          "path": "box-native.log"
+        }
+      },
+      "preparation_failures": [],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-102032-P2-att_timeout_first-1-d5f5eb/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-102135-P2-att_timeout_middle-1-94e2aa",
+      "role": "P2",
+      "scenario": "att_timeout_middle",
+      "run_status": "passed",
+      "last_stage": "completed",
+      "test_invoked": true,
+      "test_exit_code": 0,
+      "validation_exit_code": 0,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r3",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-102135-P2-att_timeout_middle-1-94e2aa/evidence.json",
+      "evidence_sha256": "077a9a87d8a2fa385b15d7871619d3e5cc380bc4c01d99085ad4f07faf31cb04",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "create_bond_invocations": 0,
+      "protected_att_invocations": 32,
+      "cleanup_errors": [],
+      "runner_failure": null,
+      "native_logs": {
+        "app": {
+          "status": "collected",
+          "sha256": "5dd014e1dbcd4d2e7601b0028d4866b55c163a01a62409d7c781350825148cce",
+          "tag": "BluetoothGatt",
+          "path": "app-native.log"
+        },
+        "box": {
+          "status": "collected",
+          "sha256": "410a230e1d12103907c896695a075c26910592c8afbdcf284c58811db9cd615d",
+          "tag": "BluetoothGattServer",
+          "path": "box-native.log"
+        }
+      },
+      "preparation_failures": [],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-102135-P2-att_timeout_middle-1-94e2aa/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-102248-P2-att_timeout_last-1-f2933b",
+      "role": "P2",
+      "scenario": "att_timeout_last",
+      "run_status": "passed",
+      "last_stage": "completed",
+      "test_invoked": true,
+      "test_exit_code": 0,
+      "validation_exit_code": 0,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r3",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-102248-P2-att_timeout_last-1-f2933b/evidence.json",
+      "evidence_sha256": "175dfbfcfafaf5fd557a0b13a5c4bfcd9d430fed19ecdd36ae6878c8966a8566",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "create_bond_invocations": 0,
+      "protected_att_invocations": 42,
+      "cleanup_errors": [],
+      "runner_failure": null,
+      "native_logs": {
+        "app": {
+          "status": "collected",
+          "sha256": "ecb3d619664611f15e0706da0195bc590cd76c1632ea4fc14773757f4c413d6b",
+          "tag": "BluetoothGatt",
+          "path": "app-native.log"
+        },
+        "box": {
+          "status": "collected",
+          "sha256": "6b1c584c1b9f601983f148db26ed8f7b5a315f4c5b260feb81b9edaadf2c6169",
+          "tag": "BluetoothGattServer",
+          "path": "box-native.log"
+        }
+      },
+      "preparation_failures": [],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-102248-P2-att_timeout_last-1-f2933b/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-102414-P2-notification_failure-1-c62484",
+      "role": "P2",
+      "scenario": "notification_failure",
+      "run_status": "passed",
+      "last_stage": "completed",
+      "test_invoked": true,
+      "test_exit_code": 0,
+      "validation_exit_code": 0,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r3",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-102414-P2-notification_failure-1-c62484/evidence.json",
+      "evidence_sha256": "22c245940b390741a929666e3fd4c5815965e0548a479cfe42b336305178735c",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "bonded",
+      "failure_code": "BLE_GATT_RECOVERY_FAILED",
+      "response_type": null,
+      "create_bond_invocations": 0,
+      "protected_att_invocations": 0,
+      "cleanup_errors": [],
+      "runner_failure": null,
+      "native_logs": {
+        "app": {
+          "status": "collected",
+          "sha256": "2dd9089c70a8a818cf0d895ce72f0b264cb76508496d101afd6733b5221cda38",
+          "tag": "BluetoothGatt",
+          "path": "app-native.log"
+        },
+        "box": {
+          "status": "empty",
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "tag": "BluetoothGattServer",
+          "path": "box-native.log"
+        }
+      },
+      "preparation_failures": [
+        {
+          "event_type": "security_preparation_failed",
+          "gatt_status": null,
+          "preparation_step": "notification_1",
+          "result_code": "ble_gatt_recovery_failed",
+          "gatt_generation": 2
+        }
+      ],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r3/20261013-102414-P2-notification_failure-1-c62484/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-140734-P2-bond_first-1-ef5b43",
+      "role": "P2",
+      "scenario": "bond_first",
+      "run_status": "test_failed",
+      "last_stage": "export_retrieval",
+      "test_invoked": true,
+      "test_exit_code": 1,
+      "validation_exit_code": null,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": {
+        "platform_semantics": "enabled_before_test_baseline",
+        "production_accessibility_coverage": false
+      },
+      "candidate": "ble22-c2-20261013-r6",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r6/20261013-140734-P2-bond_first-1-ef5b43/evidence.json",
+      "evidence_sha256": "f592cd47a957bae516b739623eb57a406323090d497e749906b1fc723f5ab540",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "not_bonded",
+      "failure_code": "BLE_GATT_RECOVERY_FAILED",
+      "response_type": null,
+      "create_bond_invocations": 1,
+      "protected_att_invocations": 0,
+      "cleanup_errors": [],
+      "runner_failure": {
+        "reason": "Integration test failed; actual App result was retained.",
+        "kind": "RuntimeException",
+        "stage": "export_retrieval"
+      },
+      "native_logs": {
+        "app": {
+          "path": "app-native.log",
+          "sha256": "4d0cdd3333fdfa254fd70389fa9e8c2d277feee665a97b521820e3db10758ac6",
+          "tag": "BluetoothGatt",
+          "status": "collected"
+        },
+        "box": {
+          "path": "box-native.log",
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "tag": "BluetoothGattServer",
+          "status": "empty"
+        }
+      },
+      "preparation_failures": [
+        {
+          "event_type": "security_preparation_failed",
+          "gatt_status": null,
+          "preparation_step": "gatt_connect",
+          "result_code": "ble_gatt_recovery_failed",
+          "gatt_generation": 2
+        }
+      ],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r6/20261013-140734-P2-bond_first-1-ef5b43/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-142515-P2-bond_first-2-9492c8",
+      "role": "P2",
+      "scenario": "bond_first",
+      "run_status": "passed",
+      "last_stage": "completed",
+      "test_invoked": true,
+      "test_exit_code": 0,
+      "validation_exit_code": 0,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": {
+        "platform_semantics": "enabled_before_test_baseline",
+        "production_accessibility_coverage": false
+      },
+      "candidate": "ble22-c2-20261013-r6",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r6/20261013-142515-P2-bond_first-2-9492c8/evidence.json",
+      "evidence_sha256": "a368c7b6d00c93e89b1dbbd019c53527b07eb07459f8dbf00828f6bc9103910a",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "not_bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "create_bond_invocations": 1,
+      "protected_att_invocations": 1,
+      "cleanup_errors": [],
+      "runner_failure": null,
+      "native_logs": {
+        "box": {
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "path": "box-native.log",
+          "tag": "BluetoothGattServer",
+          "status": "empty"
+        },
+        "app": {
+          "sha256": "fa75987851505fc2085c29cc499977a9e4b75a928523cb6f4b0cb4c694ec0f44",
+          "path": "app-native.log",
+          "tag": "BluetoothGatt",
+          "status": "collected"
+        }
+      },
+      "preparation_failures": [],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r6/20261013-142515-P2-bond_first-2-9492c8/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-142854-P2-bond_first-3-fd200a",
+      "role": "P2",
+      "scenario": "bond_first",
+      "run_status": "test_failed",
+      "last_stage": "export_retrieval",
+      "test_invoked": true,
+      "test_exit_code": 1,
+      "validation_exit_code": null,
+      "export_status": "prepared",
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": {
+        "platform_semantics": "enabled_before_test_baseline",
+        "production_accessibility_coverage": false
+      },
+      "candidate": "ble22-c2-20261013-r6",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r6/20261013-142854-P2-bond_first-3-fd200a/evidence.json",
+      "evidence_sha256": "bbc38ca702dc9c65c87f6d737ee5aa120f4d967818449ea92411752855631425",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "not_bonded",
+      "failure_code": "BLE_PAIRING_TIMEOUT",
+      "response_type": null,
+      "create_bond_invocations": 1,
+      "protected_att_invocations": 0,
+      "cleanup_errors": [],
+      "runner_failure": {
+        "kind": "RuntimeException",
+        "reason": "Integration test failed; actual App result was retained.",
+        "stage": "export_retrieval"
+      },
+      "native_logs": {
+        "app": {
+          "sha256": "98cd7059e543dedcda4e29209cc4ae064dc531f70387781d1e3aa92a4aa5a97f",
+          "tag": "BluetoothGatt",
+          "path": "app-native.log",
+          "status": "collected"
+        },
+        "box": {
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "tag": "BluetoothGattServer",
+          "path": "box-native.log",
+          "status": "empty"
+        }
+      },
+      "preparation_failures": [
+        {
+          "event_type": "security_preparation_failed",
+          "gatt_status": null,
+          "preparation_step": null,
+          "result_code": "bond_timeout",
+          "gatt_generation": 1
+        }
+      ],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r6/20261013-142854-P2-bond_first-3-fd200a/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-143412-P1-bond_first-1-ffe0e1",
+      "role": "P1",
+      "scenario": "bond_first",
+      "run_status": "test_failed",
+      "last_stage": "integration",
+      "test_invoked": true,
+      "test_exit_code": 124,
+      "validation_exit_code": null,
+      "export_status": null,
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": null,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r6",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r6/20261013-143412-P1-bond_first-1-ffe0e1/evidence.json",
+      "evidence_sha256": "d755c6c31403240bd9f0e6990a6960a8f9df28cb2e7f0369d1613e728d7287da",
+      "actual_app_evidence_present": false,
+      "initial_bond_state": null,
+      "failure_code": null,
+      "response_type": null,
+      "create_bond_invocations": null,
+      "protected_att_invocations": null,
+      "cleanup_errors": [],
+      "runner_failure": {
+        "kind": "RuntimeException",
+        "stage": "integration",
+        "reason": "Integration ended without an App evidence record."
+      },
+      "native_logs": {
+        "box": {
+          "status": "collected",
+          "sha256": "c9cd9585f00aa03d26762491fcbf891436cfee7caf9c080b1572feee0613ba88",
+          "path": "box-native.log",
+          "tag": "BluetoothGattServer"
+        },
+        "app": {
+          "status": "empty",
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "path": "app-native.log",
+          "tag": "BluetoothGatt"
+        }
+      },
+      "preparation_failures": [],
+      "receiver_report_path": null
+    },
+    {
+      "run_id": "20261013-144356-P1-bond_first-2-fd4390",
+      "role": "P1",
+      "scenario": "bond_first",
+      "run_status": "test_failed",
+      "last_stage": "integration",
+      "test_invoked": true,
+      "test_exit_code": 124,
+      "validation_exit_code": null,
+      "export_status": null,
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": null,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r6",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r6/20261013-144356-P1-bond_first-2-fd4390/evidence.json",
+      "evidence_sha256": "e67bbf8009745b0a683f18d7884bc5ef6e202fc4b5a0e88f4a15a1e38000f0fc",
+      "actual_app_evidence_present": false,
+      "initial_bond_state": null,
+      "failure_code": null,
+      "response_type": null,
+      "create_bond_invocations": null,
+      "protected_att_invocations": null,
+      "cleanup_errors": [],
+      "runner_failure": {
+        "stage": "integration",
+        "reason": "Integration ended without an App evidence record.",
+        "kind": "RuntimeException"
+      },
+      "native_logs": {
+        "box": {
+          "path": "box-native.log",
+          "status": "collected",
+          "sha256": "6a3d70f537f314f912165470aef29036f51c81ff5ab0f7df61d332eafc021275",
+          "tag": "BluetoothGattServer"
+        },
+        "app": {
+          "path": "app-native.log",
+          "status": "empty",
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "tag": "BluetoothGatt"
+        }
+      },
+      "preparation_failures": [],
+      "receiver_report_path": null
+    },
+    {
+      "run_id": "20261013-145702-P1-bond_first-1-f0e914",
+      "role": "P1",
+      "scenario": "bond_first",
+      "run_status": "test_failed",
+      "last_stage": "export_retrieval",
+      "test_invoked": true,
+      "test_exit_code": 1,
+      "validation_exit_code": null,
+      "export_status": "prepared",
+      "export_stage": "finished",
+      "export_failure_stage": null,
+      "export_received": true,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": {
+        "platform_semantics": "enabled_before_test_baseline",
+        "production_accessibility_coverage": false
+      },
+      "candidate": "ble22-c2-20261013-r7",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r7/20261013-145702-P1-bond_first-1-f0e914/evidence.json",
+      "evidence_sha256": "db2f738c66e2a5df198d41fd42efeb06799ad2c22f82f6ac461225298c03443f",
+      "actual_app_evidence_present": true,
+      "initial_bond_state": "not_bonded",
+      "failure_code": "BLE_PAIRING_TIMEOUT",
+      "response_type": null,
+      "create_bond_invocations": 1,
+      "protected_att_invocations": 0,
+      "cleanup_errors": [],
+      "runner_failure": {
+        "kind": "RuntimeException",
+        "reason": "Integration test failed; actual App result was retained.",
+        "stage": "export_retrieval"
+      },
+      "native_logs": {
+        "app": {
+          "tag": "BluetoothGatt",
+          "status": "empty",
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "path": "app-native.log"
+        },
+        "box": {
+          "tag": "BluetoothGattServer",
+          "status": "collected",
+          "sha256": "8c0a2ada32872f72d916dc6ed10f33c7a87f419b259ba81cd8407b79b6cfeded",
+          "path": "box-native.log"
+        }
+      },
+      "preparation_failures": [
+        {
+          "event_type": "security_preparation_failed",
+          "gatt_status": null,
+          "preparation_step": null,
+          "result_code": "bond_timeout",
+          "gatt_generation": 1
+        }
+      ],
+      "receiver_report_path": "outputs/ble22/ble22-c2-20261013-r7/20261013-145702-P1-bond_first-1-f0e914/receiver-verification.json"
+    },
+    {
+      "run_id": "20261013-151053-P1-bond_first-1-2b3ab0",
+      "role": "P1",
+      "scenario": "bond_first",
+      "run_status": "test_failed",
+      "last_stage": "integration",
+      "test_invoked": true,
+      "test_exit_code": null,
+      "validation_exit_code": null,
+      "export_status": null,
+      "export_stage": null,
+      "export_failure_stage": null,
+      "export_received": null,
+      "pairing_expected_outcome": "Confirm",
+      "test_harness": null,
+      "candidate": "ble22-c2-20261013-r8",
+      "evidence_path": "outputs/ble22/ble22-c2-20261013-r8/20261013-151053-P1-bond_first-1-2b3ab0/evidence.json",
+      "evidence_sha256": "562894c78d67446136de7e51f7f04ddbfbd222e2a47cfd1ddb278ab154d6ad35",
+      "actual_app_evidence_present": false,
+      "initial_bond_state": null,
+      "failure_code": null,
+      "response_type": null,
+      "create_bond_invocations": null,
+      "protected_att_invocations": null,
+      "cleanup_errors": [],
+      "runner_failure": {
+        "reason": "ADB operation failed (exit=1).",
+        "kind": "RuntimeException",
+        "stage": "integration"
+      },
+      "native_logs": {
+        "app": {
+          "tag": "BluetoothGatt",
+          "path": "app-native.log",
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "status": "empty"
+        },
+        "box": {
+          "tag": "BluetoothGattServer",
+          "path": "box-native.log",
+          "sha256": "657c64edb820a047457e9af15890750fdf203aed30548a9c35adb1b17627617d",
+          "status": "collected"
+        }
+      },
+      "preparation_failures": [],
+      "receiver_report_path": null
+    }
+  ],
+  "open_issues": [
+    {
+      "issue": "vivo_first_bond_fresh_gatt_status_133",
+      "reference_run_id": "20261012-213905-P2-bond_first-3-c18f4b",
+      "status": "open_not_proven_closed"
+    },
+    {
+      "issue": "fresh_gatt_connect_callback_missing_after_bond",
+      "run_id": "20261013-140734-P2-bond_first-1-ef5b43",
+      "observed_status_133": false,
+      "status": "open"
+    },
+    {
+      "issue": "system_pairing_prompt_not_observed_on_some_runs",
+      "status": "open_unattributed"
+    },
+    {
+      "issue": "p1_result_collection_incomplete",
+      "status": "localized_checkpoint_and_foreground_tools_implemented_automatic_phone_recheck_incomplete"
+    }
+  ],
+  "environment_restoration": {
+    "hardware_status": "pending",
+    "generated_at": "2026-10-13T08:28:49.5142276Z",
+    "releasable": false,
+    "screen_timeouts": [
+      {
+        "original": "1800000",
+        "serial": "b502aabb",
+        "status": "restored_verified"
+      },
+      {
+        "original": "600000",
+        "serial": "2TX9K24619004426",
+        "status": "restored_verified"
+      }
+    ],
+    "errors": [],
+    "phones": [
+      {
+        "owned_apps_stop_verified": true,
+        "serial": "b502aabb",
+        "online": true
+      },
+      {
+        "owned_apps_stop_verified": true,
+        "serial": "2TX9K24619004426",
+        "online": true
+      }
+    ],
+    "status": "restored_verified",
+    "log_tags": [
+      {
+        "original": "",
+        "serial": "b502aabb",
+        "tag": "BluetoothGatt",
+        "status": "restored_verified"
+      },
+      {
+        "original": "",
+        "serial": "2TX9K24619004426",
+        "tag": "BluetoothGattServer",
+        "status": "restored_verified"
+      },
+      {
+        "original": "",
+        "serial": "2TX9K24619004426",
+        "tag": "BluetoothGatt",
+        "status": "restored_verified"
+      },
+      {
+        "original": "",
+        "serial": "b502aabb",
+        "tag": "BluetoothGattServer",
+        "status": "restored_verified"
+      }
+    ]
+  },
+  "remaining_acceptance": [
+    "same_final_candidate_affected_P1_P2_matrix",
+    "first_bond_stability",
+    "actual_pair_cancel_and_timeout",
+    "BLE-22D_counts_and_lifecycle",
+    "BLE-22E_formal_UI_HTTP_and_full_diagnostic_file_actions"
+  ],
+  "phone_execution_status": "stopped_by_user",
+  "stop_reason": "User ended physical phone testing and requested desktop handoff documents, workspace cleanup and thirdtime upload.",
+  "portable_samples": "docs/implementation/ble22-evidence/handoff-samples",
+  "r9_artifact_manifest": "docs/implementation/ble22-evidence/ble22c2-r9-builds.json",
+  "source_handoff_note": "Cleanup may change source fingerprint; rebuild and freeze uploaded source before later phone acceptance. r9 has no phone acceptance.",
+  "handoff_checks": "docs/implementation/ble22-evidence/handoff-local-checks-20261013.json",
+  "workspace_cleanup": "docs/implementation/ble22-evidence/workspace-cleanup-20261013.json",
+  "handoff_source_fingerprint": "d696a28a74714fe7e7d3d3217aea2facb32a50bc053011f7e3a1812a02eaee4b",
+  "handoff_branch": "thirdtime",
+  "handoff_phone_acceptance": "not_run_user_stopped"
+}

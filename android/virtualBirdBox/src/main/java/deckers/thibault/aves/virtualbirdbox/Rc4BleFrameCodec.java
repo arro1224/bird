@@ -99,7 +99,8 @@ final class Rc4BleFrameCodec {
             final ByteArrayOutputStream output = new ByteArrayOutputStream(message.totalBytes);
             for (byte[] payload : message.fragments) {
                 if (payload == null) throw new IllegalArgumentException("missing fragment");
-                output.writeBytes(payload);
+                // writeBytes(byte[]) is unavailable on older Android phones.
+                output.write(payload, 0, payload.length);
             }
             pending.remove(frame.messageId());
             return output.toByteArray();

@@ -10,6 +10,27 @@ import org.junit.Test;
 
 public final class BirdBoxSecurityWriteAttemptContextTest {
     @Test
+    public void countsActualCallsAndFragmentsInsteadOfBooleanDeduplication() {
+        final BirdBoxSecurityWriteAttemptContext context = newContext();
+        context.recordCreateBondInvoked("not_bonded");
+        context.recordCreateBondInvoked("not_bonded");
+        assertEquals(2, context.createBondCallCount());
+        context.recordCommandAttemptStarted(1);
+        assertEquals(1, context.commandAttemptCount());
+        assertEquals(0, context.attWriteCallCount());
+        context.recordAttWriteInvoked(1);
+        context.recordAttWriteInvoked(1);
+        context.recordAttWriteInvoked(2);
+        assertEquals(3, context.attWriteCallCount());
+        assertEquals(2, context.commandAttemptCount());
+        assertEquals(1, context.writeFragmentIndex());
+        context.begin("next", 4, 9, CHARACTERISTIC_UUID, 3000L);
+        assertEquals(0, context.createBondCallCount());
+        assertEquals(0, context.attWriteCallCount());
+        assertEquals(0, context.commandAttemptCount());
+        assertEquals(0, context.writeFragmentIndex());
+    }
+    @Test
     public void pairingFactsSurviveGattRebuildAndWriteChildren() {
         final BirdBoxSecurityWriteAttemptContext context = new BirdBoxSecurityWriteAttemptContext();
         context.beginPairing("parent", 3, 7, 1000L);

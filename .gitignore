@@ -12,6 +12,10 @@ Desktop.ini
 *.swo
 *~
 
+# One-off local UI snapshots; not app resources or regression fixtures.
+/codex_current_window.xml
+/device_page_captures/
+
 # ============================================================
 # IDEs and editors
 # ============================================================
@@ -79,4 +83,9 @@ __pycache__/
 .svn/
 .swiftpm/
 migrate_working_dir/
+
+# Local BLE simulations include raw Bluetooth PCAP; retain outside source control.
+outputs/ble11/
+outputs/ble20-phones/
+outputs/ble22/
 

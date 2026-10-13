@@ -38,6 +38,9 @@ abstract final class UserMessageMapper {
   }
 
   static UserMessage fromError(Object error) {
+    if (error is ProvisioningCredentialSaveException) {
+      return const UserMessage(title: '连接凭据未保存', message: '设备授权已完成，但手机未能保存连接凭据。请重试保存。', actionLabel: '重试保存连接');
+    }
     if (error is ProvisioningException) return fromProvisioningError(error);
     if (error is SignedAssetDownloadException) {
       return error.isExpired
@@ -344,6 +347,10 @@ abstract final class UserMessageMapper {
         return const UserMessage(title: '无法确认系统绑定', message: '手机未能确认蓝牙绑定状态，请检查蓝牙及附近设备权限后重试。', actionLabel: '重试');
       case ProvisioningErrorCode.bleOperationBusy:
         return const UserMessage(title: '蓝牙操作正在进行', message: '请等待当前蓝牙连接或配对完成后再试。', actionLabel: '重试');
+      case ProvisioningErrorCode.bleSessionEnded:
+        return const UserMessage(title: '蓝牙会话已结束', message: '应用运行环境已关闭，请重新连接盒子并开始配对。', actionLabel: '重新连接');
+      case ProvisioningErrorCode.bleHostUnavailable:
+        return const UserMessage(title: '请返回配网页面', message: '应用页面正在恢复，请返回后重试蓝牙权限或系统设置操作。', actionLabel: '重试');
       case ProvisioningErrorCode.bleCommandResponseTimeout:
         return const UserMessage(title: '盒子蓝牙响应超时', message: '请求已发送，但盒子未及时返回蓝牙确认，请重新连接后重试。', actionLabel: '重新连接');
       case ProvisioningErrorCode.locationSettingsUnavailable:
@@ -381,8 +388,8 @@ abstract final class UserMessageMapper {
       case ProvisioningErrorCode.bleGattRecoveryFailed:
         return const UserMessage(
           title: '盒子重新连接失败',
-          message: '安全连接已建立，但重新连接盒子失败。',
-          actionLabel: '重试',
+          message: '蓝牙连接未能恢复，请重新连接后重试。',
+          actionLabel: '重新连接',
         );
       case ProvisioningErrorCode.bleSecurityRecoveryFailed:
         return const UserMessage(

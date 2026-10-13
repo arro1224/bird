@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "ble20_execution_summary",
+  "endpoint_kind": "virtual_birdbox",
+  "hardware_status": "pending",
+  "full_candidate_frozen": false,
+  "full_radio_matrix_status": "pending",
+  "two_phone_status": "not_executed",
+  "native_app_test_count": 126,
+  "virtual_endpoint_test_count": 31,
+  "dart_test_count": 50,
+  "related_analysis_issues": 0,
+  "runs": [
+    {
+      "scenario": "bond_first",
+      "status": "passed",
+      "evidence_file": "outputs/ble11/20261011-210722-bond_first/bond_first.evidence.json",
+      "evidence_sha256": "84fcd1e5fa70978f1d250dc1c1c2dbd17bed4dbdbf67d216fb19dccacff4f185",
+      "builds": {
+        "app": {
+          "apk_sha256": "14f2b22e029b2be0ad8b4b622f911ecc83a4e27c029b2e56d6d789acce8d5e53"
+        },
+        "box": {
+          "apk_sha256": "9cdfa3a8d2603dc4643f07de12f9c286bcd29442177070b165233b7d1772d1f3"
+        }
+      },
+      "source_fingerprint": "c27b16d90180e2b58bdd5e469f5a4deb2ee8f6314a7c7b19eeffb804c4f27a03",
+      "create_bond_calls": 1,
+      "command_attempts": 1,
+      "att_write_calls": 1,
+      "security_recovery_count": 0,
+      "gatt_rebuild_count": 1,
+      "business_operation_count": 1,
+      "fault_response_count": 0,
+      "endpoint_startup_retry_count": null,
+      "pcap_files": [
+        {
+          "sha256": "8696c5a6ccd8e4a0185b93dd74f8dd246fdfcd6abaf82c501f149cfc43586662",
+          "transport": "bluetooth",
+          "path": "netsimd/pcaps/netsim-2-ble11_box_api36-BLUETOOTH.pcap"
+        },
+        {
+          "sha256": "0740fc78b983673d60b61a38bf747605b128bb4dfa92e7a5dc995b3c4018bc27",
+          "transport": "bluetooth",
+          "path": "netsimd/pcaps/netsim-4-ble11_app_api36-BLUETOOTH.pcap"
+        }
+      ]
+    },
+    {
+      "scenario": "auth_once",
+      "status": "passed",
+      "evidence_file": "outputs/ble11/20261011-221817-auth_once/auth_once.evidence.json",
+      "evidence_sha256": "c8acd4eb6020e6158ca132f6f41d7084c346dc2934ad61a1efc98d921dfeaf89",
+      "builds": {
+        "app": {
+          "apk_sha256": "16908eb7a71704f5d5f5ffb3feb3d406de54400d1d652f9189a174b61277bb2d"
+        },
+        "box": {
+          "apk_sha256": "0bab30ca56bb3dd5ada53ff62e7d9b57c680770c3b9099eec06b0ee2b9aea73b"
+        }
+      },
+      "source_fingerprint": "19f16db3686dace1e04d76da944d32b2a70a36c0e38ae93378880463da63efa6",
+      "create_bond_calls": 1,
+      "command_attempts": 2,
+      "att_write_calls": 2,
+      "security_recovery_count": 1,
+      "gatt_rebuild_count": 2,
+      "business_operation_count": 1,
+      "fault_response_count": 1,
+      "endpoint_startup_retry_count": 0,
+      "pcap_files": [
+        {
+          "transport": "bluetooth",
+          "path": "netsimd/pcaps/netsim-1-ble11_box_api36-BLUETOOTH.pcap",
+          "sha256": "5f23e3d44707e2cc24ed4f7e776ea55436402015130bf6df67cb798d9c206d9e"
+        },
+        {
+          "transport": "bluetooth",
+          "path": "netsimd/pcaps/netsim-5-ble11_app_api36-BLUETOOTH.pcap",
+          "sha256": "ec1e121b5769d6e56f5297722f64ffbf6d4e0127b18661f773f7bcbdb45b2fdf"
+        }
+      ]
+    }
+  ]
+}

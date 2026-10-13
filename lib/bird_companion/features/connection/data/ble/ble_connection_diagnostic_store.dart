@@ -5,12 +5,14 @@ import 'package:aves/bird_companion/features/connection/data/ble/ble_diagnostic_
 import 'package:aves/bird_companion/features/connection/domain/ble_connection_diagnostics.dart';
 
 final class BleConnectionDiagnosticStore implements BleConnectionDiagnosticSink {
-  BleConnectionDiagnosticStore(DiagnosticStorage cache, {this.maximumEvents = 500})
-    : _journal = BleDiagnosticJournal(cache, key: cacheKey, legacyKeys: const [v2CacheKey, legacyCacheKey], maximumRecords: maximumEvents, pinCurrentAttempt: true);
+  BleConnectionDiagnosticStore(DiagnosticStorage cache, {this.maximumEvents = 500, this.maximumBytes = 2 * 1024 * 1024, this.maximumProtectedRequests = 4})
+    : _journal = BleDiagnosticJournal(cache, key: cacheKey, legacyKeys: const [v2CacheKey, legacyCacheKey], maximumRecords: maximumEvents, pinCurrentAttempt: true,
+        maximumBytes: maximumBytes, maximumProtectedRequests: maximumProtectedRequests);
   static const cacheKey = 'diagnostics:ble_connection_events:v4';
   static const v2CacheKey = 'diagnostics:ble_connection_events:v2';
   static const legacyCacheKey = 'diagnostics:ble_connection_events:v1';
   final int maximumEvents;
+  final int maximumBytes, maximumProtectedRequests;
   final BleDiagnosticJournal _journal;
   final _records = StreamController<BleConnectionDiagnosticEvent>.broadcast(sync: true);
   Stream<BleConnectionDiagnosticEvent> get records => _records.stream;

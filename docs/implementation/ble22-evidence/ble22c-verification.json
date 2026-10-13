@@ -1,0 +1,873 @@
+{
+  "schema_version": 1,
+  "batch": "BLE-22C",
+  "status": "in_progress_first_bond_stability_recheck",
+  "hardware_status": "pending",
+  "releasable": false,
+  "candidate_round": "ble22-20261012-round18",
+  "build_id": "ble22-20261012-round18",
+  "source_fingerprint": "1f56b24b97a057fde0f62435e28e772c892f11141152fc8f4a0b2eccbd7f34b6",
+  "app_sha256": "ea1c49ef767b36ec05511392247010735626b9443f61f3a3ffc9aa419e884a0d",
+  "box_sha256": "142aa0c5e2527cff2b1d04067fed6017125b8281b9c246394f94fcc20a9db564",
+  "matrix": [
+    {
+      "run_id": "20261012-192110-P1-already_bonded-2-2f99fa",
+      "role": "P1",
+      "scenario": "already_bonded",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112140_ble20-virtual-already_bonded_b673e524.json",
+        "mime_type": "application/json",
+        "bytes": 125661,
+        "sha256": "c158167938db9d21fd4b1522f97b4a46a501bb5e7683d7e5ca8fd0cd54fb3db5",
+        "payload_sha256": "c158167938db9d21fd4b1522f97b4a46a501bb5e7683d7e5ca8fd0cd54fb3db5"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112140_ble20-virtual-already_bonded_b673e524.json",
+        "bytes": 125661,
+        "file_sha256": "c158167938db9d21fd4b1522f97b4a46a501bb5e7683d7e5ca8fd0cd54fb3db5",
+        "payload_sha256": "c158167938db9d21fd4b1522f97b4a46a501bb5e7683d7e5ca8fd0cd54fb3db5",
+        "trace_id": "ble20-virtual-already_bonded",
+        "retained_events": 72,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-192110-P1-already_bonded-2-2f99fa",
+        "role": "P1",
+        "scenario": "already_bonded",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-192145-P1-auth_once-2-b48718",
+      "role": "P1",
+      "scenario": "auth_once",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112219_ble20-virtual-auth_once_2d7a31e0.json",
+        "mime_type": "application/json",
+        "bytes": 191136,
+        "sha256": "727ae2125edfca7f69558186b25e5d95d495b26d09a26e6392a291612f2f5211",
+        "payload_sha256": "727ae2125edfca7f69558186b25e5d95d495b26d09a26e6392a291612f2f5211"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112219_ble20-virtual-auth_once_2d7a31e0.json",
+        "bytes": 191136,
+        "file_sha256": "727ae2125edfca7f69558186b25e5d95d495b26d09a26e6392a291612f2f5211",
+        "payload_sha256": "727ae2125edfca7f69558186b25e5d95d495b26d09a26e6392a291612f2f5211",
+        "trace_id": "ble20-virtual-auth_once",
+        "retained_events": 104,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-192145-P1-auth_once-2-b48718",
+        "role": "P1",
+        "scenario": "auth_once",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-192223-P1-auth_persistent-2-f414cb",
+      "role": "P1",
+      "scenario": "auth_persistent",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": "BLE_ENCRYPTED_RETRY_FAILED",
+      "response_type": null,
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112255_ble20-virtual-auth_persistent_95c012f2.json",
+        "mime_type": "application/json",
+        "bytes": 194716,
+        "sha256": "7c223be1aecf472bf2aa6d3ed071a2741ea1d5315dff88a022d0008c38d9b494",
+        "payload_sha256": "7c223be1aecf472bf2aa6d3ed071a2741ea1d5315dff88a022d0008c38d9b494"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112255_ble20-virtual-auth_persistent_95c012f2.json",
+        "bytes": 194716,
+        "file_sha256": "7c223be1aecf472bf2aa6d3ed071a2741ea1d5315dff88a022d0008c38d9b494",
+        "payload_sha256": "7c223be1aecf472bf2aa6d3ed071a2741ea1d5315dff88a022d0008c38d9b494",
+        "trace_id": "ble20-virtual-auth_persistent",
+        "retained_events": 107,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-192223-P1-auth_persistent-2-f414cb",
+        "role": "P1",
+        "scenario": "auth_persistent",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-192300-P1-att_timeout_first-2-1a82ca",
+      "role": "P1",
+      "scenario": "att_timeout_first",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112337_ble20-virtual-att_timeout_first_fb68898c.zip",
+        "mime_type": "application/zip",
+        "bytes": 12575,
+        "sha256": "2ad2fa022fb7a5e39c33078879fe5bcec5ee18effbd8cb398e8e5bfb573fde29",
+        "payload_sha256": "232d535e86ce5723492ef820df92a63d6da303b210db92e0ab23f4f07f189b4c"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112337_ble20-virtual-att_timeout_first_fb68898c.zip",
+        "bytes": 12575,
+        "file_sha256": "2ad2fa022fb7a5e39c33078879fe5bcec5ee18effbd8cb398e8e5bfb573fde29",
+        "payload_sha256": "232d535e86ce5723492ef820df92a63d6da303b210db92e0ab23f4f07f189b4c",
+        "trace_id": "ble20-virtual-att_timeout_first",
+        "retained_events": 243,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-192300-P1-att_timeout_first-2-1a82ca",
+        "role": "P1",
+        "scenario": "att_timeout_first",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-192342-P1-att_timeout_middle-2-b36f17",
+      "role": "P1",
+      "scenario": "att_timeout_middle",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112421_ble20-virtual-att_timeout_middle_c01ad4e8.zip",
+        "mime_type": "application/zip",
+        "bytes": 14746,
+        "sha256": "291787dd716734b20635fd60a62efee3b6c6f38f02615683584dc6f85cbd007e",
+        "payload_sha256": "d588de52087a7a2924740d014af89d13f1402f3b1b1d00b530f740323332f84b"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112421_ble20-virtual-att_timeout_middle_c01ad4e8.zip",
+        "bytes": 14746,
+        "file_sha256": "291787dd716734b20635fd60a62efee3b6c6f38f02615683584dc6f85cbd007e",
+        "payload_sha256": "d588de52087a7a2924740d014af89d13f1402f3b1b1d00b530f740323332f84b",
+        "trace_id": "ble20-virtual-att_timeout_middle",
+        "retained_events": 303,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-192342-P1-att_timeout_middle-2-b36f17",
+        "role": "P1",
+        "scenario": "att_timeout_middle",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-192426-P1-att_timeout_last-2-06ec92",
+      "role": "P1",
+      "scenario": "att_timeout_last",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112513_ble20-virtual-att_timeout_last_8c61edfa.zip",
+        "mime_type": "application/zip",
+        "bytes": 16529,
+        "sha256": "a7582c558dc4d946fd6ac342ecc7014452025c7cc9a66f83745f334d89fd85e5",
+        "payload_sha256": "057e59d0fa759ff0a2675e39b98265683635c40e1b442aff5a5ad631dcfeb05a"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112513_ble20-virtual-att_timeout_last_8c61edfa.zip",
+        "bytes": 16529,
+        "file_sha256": "a7582c558dc4d946fd6ac342ecc7014452025c7cc9a66f83745f334d89fd85e5",
+        "payload_sha256": "057e59d0fa759ff0a2675e39b98265683635c40e1b442aff5a5ad631dcfeb05a",
+        "trace_id": "ble20-virtual-att_timeout_last",
+        "retained_events": 363,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-192426-P1-att_timeout_last-2-06ec92",
+        "role": "P1",
+        "scenario": "att_timeout_last",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-192519-P1-notification_failure-2-2d8ae4",
+      "role": "P1",
+      "scenario": "notification_failure",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": "BLE_GATT_RECOVERY_FAILED",
+      "response_type": null,
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112547_ble20-virtual-notification_failure_6adc673b.json",
+        "mime_type": "application/json",
+        "bytes": 113021,
+        "sha256": "2eba464ca696ed6d44488052729a8d9a247d9f600150048555f08ac4e7ffb1c7",
+        "payload_sha256": "2eba464ca696ed6d44488052729a8d9a247d9f600150048555f08ac4e7ffb1c7"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112547_ble20-virtual-notification_failure_6adc673b.json",
+        "bytes": 113021,
+        "file_sha256": "2eba464ca696ed6d44488052729a8d9a247d9f600150048555f08ac4e7ffb1c7",
+        "payload_sha256": "2eba464ca696ed6d44488052729a8d9a247d9f600150048555f08ac4e7ffb1c7",
+        "trace_id": "ble20-virtual-notification_failure",
+        "retained_events": 68,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-192519-P1-notification_failure-2-2d8ae4",
+        "role": "P1",
+        "scenario": "notification_failure",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-211400-P2-already_bonded-5-621e0e",
+      "role": "P2",
+      "scenario": "already_bonded",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_131446_ble20-virtual-already_bonded_f623374d.json",
+        "mime_type": "application/json",
+        "bytes": 136157,
+        "sha256": "bf163a44daaa4306baf232a29de6c7f672c0d8d7115cc89c9a7ec17df93bdcad",
+        "payload_sha256": "bf163a44daaa4306baf232a29de6c7f672c0d8d7115cc89c9a7ec17df93bdcad"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_131446_ble20-virtual-already_bonded_f623374d.json",
+        "bytes": 136157,
+        "file_sha256": "bf163a44daaa4306baf232a29de6c7f672c0d8d7115cc89c9a7ec17df93bdcad",
+        "payload_sha256": "bf163a44daaa4306baf232a29de6c7f672c0d8d7115cc89c9a7ec17df93bdcad",
+        "trace_id": "ble20-virtual-already_bonded",
+        "retained_events": 77,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-211400-P2-already_bonded-5-621e0e",
+        "role": "P2",
+        "scenario": "already_bonded",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-211453-P2-auth_once-5-bc3e4a",
+      "role": "P2",
+      "scenario": "auth_once",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_131535_ble20-virtual-auth_once_59ae7649.json",
+        "mime_type": "application/json",
+        "bytes": 212391,
+        "sha256": "0e52d898464fbe3a779cf9181d651ac5ae8e6d60282fc7da422a68bc6b710af3",
+        "payload_sha256": "0e52d898464fbe3a779cf9181d651ac5ae8e6d60282fc7da422a68bc6b710af3"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_131535_ble20-virtual-auth_once_59ae7649.json",
+        "bytes": 212391,
+        "file_sha256": "0e52d898464fbe3a779cf9181d651ac5ae8e6d60282fc7da422a68bc6b710af3",
+        "payload_sha256": "0e52d898464fbe3a779cf9181d651ac5ae8e6d60282fc7da422a68bc6b710af3",
+        "trace_id": "ble20-virtual-auth_once",
+        "retained_events": 114,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-211453-P2-auth_once-5-bc3e4a",
+        "role": "P2",
+        "scenario": "auth_once",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-211543-P2-auth_persistent-5-90c8bf",
+      "role": "P2",
+      "scenario": "auth_persistent",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": "BLE_ENCRYPTED_RETRY_FAILED",
+      "response_type": null,
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_131632_ble20-virtual-auth_persistent_bc16affd.json",
+        "mime_type": "application/json",
+        "bytes": 216115,
+        "sha256": "88a7df93ad6fb8b28aff3c85b6a6f54f222bbe55cb00d9174eaea37992ce16ec",
+        "payload_sha256": "88a7df93ad6fb8b28aff3c85b6a6f54f222bbe55cb00d9174eaea37992ce16ec"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_131632_ble20-virtual-auth_persistent_bc16affd.json",
+        "bytes": 216115,
+        "file_sha256": "88a7df93ad6fb8b28aff3c85b6a6f54f222bbe55cb00d9174eaea37992ce16ec",
+        "payload_sha256": "88a7df93ad6fb8b28aff3c85b6a6f54f222bbe55cb00d9174eaea37992ce16ec",
+        "trace_id": "ble20-virtual-auth_persistent",
+        "retained_events": 117,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-211543-P2-auth_persistent-5-90c8bf",
+        "role": "P2",
+        "scenario": "auth_persistent",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-211644-P2-att_timeout_first-5-67002b",
+      "role": "P2",
+      "scenario": "att_timeout_first",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_131739_ble20-virtual-att_timeout_first_aebd762f.zip",
+        "mime_type": "application/zip",
+        "bytes": 14344,
+        "sha256": "b6c0e36fc5bb78a1dfcda58209625b7da7307f2b0d02bc97837ba708d7d10028",
+        "payload_sha256": "6ddcffd5a944b12b8d06a621ee59fc264ba6d490d6436e3b241445bc4e7b31b8"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_131739_ble20-virtual-att_timeout_first_aebd762f.zip",
+        "bytes": 14344,
+        "file_sha256": "b6c0e36fc5bb78a1dfcda58209625b7da7307f2b0d02bc97837ba708d7d10028",
+        "payload_sha256": "6ddcffd5a944b12b8d06a621ee59fc264ba6d490d6436e3b241445bc4e7b31b8",
+        "trace_id": "ble20-virtual-att_timeout_first",
+        "retained_events": 253,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-211644-P2-att_timeout_first-5-67002b",
+        "role": "P2",
+        "scenario": "att_timeout_first",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-211817-P2-att_timeout_middle-5-a8165a",
+      "role": "P2",
+      "scenario": "att_timeout_middle",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_131910_ble20-virtual-att_timeout_middle_6d78ae38.zip",
+        "mime_type": "application/zip",
+        "bytes": 16550,
+        "sha256": "d43b08808cfdb53fe9c7925c0acda4b5065079e34b4d50e7a1639b6fa0b0e206",
+        "payload_sha256": "6e4be2a9fe578a3349f2b62fa7b9ef8a67c209e353f7f95f2a7cda3f7baa2f9d"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_131910_ble20-virtual-att_timeout_middle_6d78ae38.zip",
+        "bytes": 16550,
+        "file_sha256": "d43b08808cfdb53fe9c7925c0acda4b5065079e34b4d50e7a1639b6fa0b0e206",
+        "payload_sha256": "6e4be2a9fe578a3349f2b62fa7b9ef8a67c209e353f7f95f2a7cda3f7baa2f9d",
+        "trace_id": "ble20-virtual-att_timeout_middle",
+        "retained_events": 313,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-211817-P2-att_timeout_middle-5-a8165a",
+        "role": "P2",
+        "scenario": "att_timeout_middle",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-211920-P2-att_timeout_last-5-f4b6f4",
+      "role": "P2",
+      "scenario": "att_timeout_last",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_132016_ble20-virtual-att_timeout_last_670d87a0.zip",
+        "mime_type": "application/zip",
+        "bytes": 18621,
+        "sha256": "01f7cf7377107633356d5dd28ce477436bfd0283e3ab8ec009e788eda52ccce8",
+        "payload_sha256": "401d60b58bbaf275e9115cd591c0c26b3748fea39cbd5a39d173ab15f7751310"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_132016_ble20-virtual-att_timeout_last_670d87a0.zip",
+        "bytes": 18621,
+        "file_sha256": "01f7cf7377107633356d5dd28ce477436bfd0283e3ab8ec009e788eda52ccce8",
+        "payload_sha256": "401d60b58bbaf275e9115cd591c0c26b3748fea39cbd5a39d173ab15f7751310",
+        "trace_id": "ble20-virtual-att_timeout_last",
+        "retained_events": 373,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-211920-P2-att_timeout_last-5-f4b6f4",
+        "role": "P2",
+        "scenario": "att_timeout_last",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-212032-P2-notification_failure-5-af48df",
+      "role": "P2",
+      "scenario": "notification_failure",
+      "status": "passed",
+      "initial_bond_state": "bonded",
+      "failure_code": "BLE_GATT_RECOVERY_FAILED",
+      "response_type": null,
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_132104_ble20-virtual-notification_failure_bffb68cc.json",
+        "mime_type": "application/json",
+        "bytes": 121423,
+        "sha256": "f4c48a559586714923fcddf4ab2926aa09f5b76551021e7196b0b79d02349787",
+        "payload_sha256": "f4c48a559586714923fcddf4ab2926aa09f5b76551021e7196b0b79d02349787"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_132104_ble20-virtual-notification_failure_bffb68cc.json",
+        "bytes": 121423,
+        "file_sha256": "f4c48a559586714923fcddf4ab2926aa09f5b76551021e7196b0b79d02349787",
+        "payload_sha256": "f4c48a559586714923fcddf4ab2926aa09f5b76551021e7196b0b79d02349787",
+        "trace_id": "ble20-virtual-notification_failure",
+        "retained_events": 72,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-212032-P2-notification_failure-5-af48df",
+        "role": "P2",
+        "scenario": "notification_failure",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    }
+  ],
+  "first_bond_success": [
+    {
+      "run_id": "20261012-191903-P1-bond_first-6-89e427",
+      "role": "P1",
+      "scenario": "bond_first",
+      "status": "passed",
+      "initial_bond_state": "not_bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112005_ble20-virtual-bond_first_d11c9eea.json",
+        "mime_type": "application/json",
+        "bytes": 149245,
+        "sha256": "d2a0a1fb5f00b2cb643d0190c5925eb57db6af92a5e49b6a003c5344505f7383",
+        "payload_sha256": "d2a0a1fb5f00b2cb643d0190c5925eb57db6af92a5e49b6a003c5344505f7383"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_112005_ble20-virtual-bond_first_d11c9eea.json",
+        "bytes": 149245,
+        "file_sha256": "d2a0a1fb5f00b2cb643d0190c5925eb57db6af92a5e49b6a003c5344505f7383",
+        "payload_sha256": "d2a0a1fb5f00b2cb643d0190c5925eb57db6af92a5e49b6a003c5344505f7383",
+        "trace_id": "ble20-virtual-bond_first",
+        "retained_events": 81,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-191903-P1-bond_first-6-89e427",
+        "role": "P1",
+        "scenario": "bond_first",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    },
+    {
+      "run_id": "20261012-203716-P2-bond_first-2-6704e4",
+      "role": "P2",
+      "scenario": "bond_first",
+      "status": "passed",
+      "initial_bond_state": "not_bonded",
+      "failure_code": null,
+      "response_type": "pairing_opened",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_123826_ble20-virtual-bond_first_783c0f84.json",
+        "mime_type": "application/json",
+        "bytes": 160159,
+        "sha256": "5b44f133c328808eb22c0fb11e23c8ce1d627535b71aa07895450c41b9dd3490",
+        "payload_sha256": "5b44f133c328808eb22c0fb11e23c8ce1d627535b71aa07895450c41b9dd3490"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_123826_ble20-virtual-bond_first_783c0f84.json",
+        "bytes": 160159,
+        "file_sha256": "5b44f133c328808eb22c0fb11e23c8ce1d627535b71aa07895450c41b9dd3490",
+        "payload_sha256": "5b44f133c328808eb22c0fb11e23c8ce1d627535b71aa07895450c41b9dd3490",
+        "trace_id": "ble20-virtual-bond_first",
+        "retained_events": 86,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-203716-P2-bond_first-2-6704e4",
+        "role": "P2",
+        "scenario": "bond_first",
+        "test_exit_code": 0,
+        "run_status": "passed"
+      }
+    }
+  ],
+  "pairing_stop_checks": [
+    {
+      "run_id": "20261012-221344-P1-bond_first-7-16b6f9",
+      "role": "P1",
+      "check": "system_pairing_cancel",
+      "expected_failure_code": "BLE_PAIRING_REJECTED",
+      "check_status": "passed",
+      "original_run_status": "test_failed",
+      "reason_original_test_failed": "Frozen bond_first entry expects success; expected cancellation/timeout is assessed separately without rewriting its result.",
+      "elapsed_seconds": 7.39,
+      "protected_att_write_calls": 0,
+      "system_bond_calls": 1,
+      "actor": "human_confirmed_system_cancel",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_141414_ble20-virtual-bond_first_b8a1888f.json",
+        "mime_type": "application/json",
+        "bytes": 91560,
+        "sha256": "e15e7fba5de4703d1e56f40cac7c22f8934fb9d34fb38b228138d0508b400880",
+        "payload_sha256": "e15e7fba5de4703d1e56f40cac7c22f8934fb9d34fb38b228138d0508b400880"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_141414_ble20-virtual-bond_first_b8a1888f.json",
+        "bytes": 91560,
+        "file_sha256": "e15e7fba5de4703d1e56f40cac7c22f8934fb9d34fb38b228138d0508b400880",
+        "payload_sha256": "e15e7fba5de4703d1e56f40cac7c22f8934fb9d34fb38b228138d0508b400880",
+        "trace_id": "ble20-virtual-bond_first",
+        "retained_events": 58,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-221344-P1-bond_first-7-16b6f9",
+        "role": "P1",
+        "scenario": "bond_first",
+        "test_exit_code": 1,
+        "run_status": "test_failed"
+      }
+    },
+    {
+      "run_id": "20261012-221016-P2-bond_first-6-f1fbf0",
+      "role": "P2",
+      "check": "system_pairing_cancel",
+      "expected_failure_code": "BLE_PAIRING_REJECTED",
+      "check_status": "passed",
+      "original_run_status": "test_failed",
+      "reason_original_test_failed": "Frozen bond_first entry expects success; expected cancellation/timeout is assessed separately without rewriting its result.",
+      "elapsed_seconds": 2.251,
+      "protected_att_write_calls": 0,
+      "system_bond_calls": 1,
+      "actor": "human_confirmed_system_cancel",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_141045_ble20-virtual-bond_first_abe6643e.json",
+        "mime_type": "application/json",
+        "bytes": 91552,
+        "sha256": "077bd9fdc5a6c6931e418ae0db335c87bac51fa73635ca16af28bb85ee042c5b",
+        "payload_sha256": "077bd9fdc5a6c6931e418ae0db335c87bac51fa73635ca16af28bb85ee042c5b"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_141045_ble20-virtual-bond_first_abe6643e.json",
+        "bytes": 91552,
+        "file_sha256": "077bd9fdc5a6c6931e418ae0db335c87bac51fa73635ca16af28bb85ee042c5b",
+        "payload_sha256": "077bd9fdc5a6c6931e418ae0db335c87bac51fa73635ca16af28bb85ee042c5b",
+        "trace_id": "ble20-virtual-bond_first",
+        "retained_events": 58,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-221016-P2-bond_first-6-f1fbf0",
+        "role": "P2",
+        "scenario": "bond_first",
+        "test_exit_code": 1,
+        "run_status": "test_failed"
+      }
+    },
+    {
+      "run_id": "20261012-191517-P1-bond_first-5-e03704",
+      "role": "P1",
+      "check": "system_pairing_timeout",
+      "expected_failure_code": "BLE_PAIRING_TIMEOUT",
+      "check_status": "passed",
+      "original_run_status": "test_failed",
+      "reason_original_test_failed": "Frozen bond_first entry expects success; expected cancellation/timeout is assessed separately without rewriting its result.",
+      "elapsed_seconds": 30.002,
+      "protected_att_write_calls": 0,
+      "system_bond_calls": 1,
+      "actor": "system_request_left_unconfirmed",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_111615_ble20-virtual-bond_first_91ba536f.json",
+        "mime_type": "application/json",
+        "bytes": 89356,
+        "sha256": "350455a849cac2d69ff2a59ba69a15b8d84413f2cce4d4a26782d741d39aa0e4",
+        "payload_sha256": "350455a849cac2d69ff2a59ba69a15b8d84413f2cce4d4a26782d741d39aa0e4"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261012_111615_ble20-virtual-bond_first_91ba536f.json",
+        "bytes": 89356,
+        "file_sha256": "350455a849cac2d69ff2a59ba69a15b8d84413f2cce4d4a26782d741d39aa0e4",
+        "payload_sha256": "350455a849cac2d69ff2a59ba69a15b8d84413f2cce4d4a26782d741d39aa0e4",
+        "trace_id": "ble20-virtual-bond_first",
+        "retained_events": 57,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-191517-P1-bond_first-5-e03704",
+        "role": "P1",
+        "scenario": "bond_first",
+        "test_exit_code": 1,
+        "run_status": "test_failed"
+      }
+    },
+    {
+      "run_id": "20261012-220312-P2-bond_first-5-d9bb01",
+      "role": "P2",
+      "check": "system_pairing_timeout",
+      "expected_failure_code": "BLE_PAIRING_TIMEOUT",
+      "check_status": "passed",
+      "original_run_status": "test_failed",
+      "reason_original_test_failed": "Frozen bond_first entry expects success; expected cancellation/timeout is assessed separately without rewriting its result.",
+      "elapsed_seconds": 29.992,
+      "protected_att_write_calls": 0,
+      "system_bond_calls": 1,
+      "actor": "system_request_left_unconfirmed",
+      "export": {
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_140413_ble20-virtual-bond_first_99c73c50.json",
+        "mime_type": "application/json",
+        "bytes": 89353,
+        "sha256": "35cf6ebe5ed8dfa2242677afba3e832aa98c813687d61e79a7436ee457861abb",
+        "payload_sha256": "35cf6ebe5ed8dfa2242677afba3e832aa98c813687d61e79a7436ee457861abb"
+      },
+      "receiver": {
+        "verified": true,
+        "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_140413_ble20-virtual-bond_first_99c73c50.json",
+        "bytes": 89353,
+        "file_sha256": "35cf6ebe5ed8dfa2242677afba3e832aa98c813687d61e79a7436ee457861abb",
+        "payload_sha256": "35cf6ebe5ed8dfa2242677afba3e832aa98c813687d61e79a7436ee457861abb",
+        "trace_id": "ble20-virtual-bond_first",
+        "retained_events": 57,
+        "retained_scans": 0,
+        "critical_events_missing": false,
+        "critical_missing_reasons": [],
+        "critical_history_unknown": false,
+        "raw_history_complete": false,
+        "evidence_sources": [
+          "android",
+          "dart"
+        ],
+        "run_id": "20261012-220312-P2-bond_first-5-d9bb01",
+        "role": "P2",
+        "scenario": "bond_first",
+        "test_exit_code": 1,
+        "run_status": "test_failed"
+      }
+    }
+  ],
+  "automated_checks": {
+    "native": 164,
+    "flutter_latest_targeted": 51,
+    "powershell": 33,
+    "python": 8
+  },
+  "unresolved": [
+    {
+      "run_id": "20261012-213905-P2-bond_first-3-c18f4b",
+      "issue": "Fresh first-bond GATT connected callback returned status 133 after successful system bond; no protected write; actual file retained."
+    }
+  ],
+  "later_batches_pending": [
+    "BLE-22D",
+    "BLE-22E",
+    "BLE-22F",
+    "BLE-23",
+    "BLE-24"
+  ],
+  "transport_mapping": "outputs/ble22/ble22c-preflight-20261012/vivo-adb-transport-map.json",
+  "environment_cleanup": {
+    "vivo_original_tcp_port_restored": true,
+    "owned_apps_stopped": true,
+    "temporary_owned_files_removed": true,
+    "adb_backend_restore_pending": false,
+    "diagnostic_tags": [
+      {
+        "verified": true,
+        "phone": "vivo",
+        "tag": "log.tag.BluetoothGatt"
+      },
+      {
+        "verified": true,
+        "phone": "huawei",
+        "tag": "log.tag.flutter"
+      },
+      {
+        "verified": true,
+        "phone": "huawei",
+        "tag": "log.tag.DartVM"
+      },
+      {
+        "verified": true,
+        "phone": "huawei",
+        "tag": "log.tag.BluetoothGattServer"
+      }
+    ],
+    "candidate_source_fingerprint_matches": true,
+    "adb_backend_restored": "LIBADBUSB",
+    "two_usb_phones_verified": true,
+    "forward_list_empty": true
+  },
+  "actual_received_files_verified": 26,
+  "current_additional_first_bond_run": {
+    "failure_code": "BLE_PAIRING_TIMEOUT",
+    "reached_fresh_gatt": false,
+    "counts_as_normal_success": false,
+    "run_id": "20261012-221712-P2-bond_first-7-b77e41"
+  }
+}

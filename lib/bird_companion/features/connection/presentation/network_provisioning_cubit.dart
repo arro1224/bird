@@ -304,6 +304,30 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     emit(const NetworkProvisioningState());
   }
 
+  void completionFailed(Object error) {
+    if (isClosed || state.phase != NetworkProvisioningPhase.success) return;
+    emit(state.copyWith(phase: NetworkProvisioningPhase.failure, error: _safePresentationError(error), canCancel: false));
+  }
+
+  Future<void> retryCredentialSave() async {
+    if (state.phase != NetworkProvisioningPhase.failure || state.error is! ProvisioningCredentialSaveException) return;
+    final generation = ++_generation;
+    emit(state.copyWith(phase: NetworkProvisioningPhase.confirmingNetwork, clearError: true));
+    try {
+      final status = await _repository.getNetworkStatus();
+      if (isClosed || generation != _generation) return;
+      final mode = status.activeMode;
+      final terminal =
+          (mode == ProvisioningNetworkMode.directAp && status.operationState == NetworkOperationState.apReady) || (mode == ProvisioningNetworkMode.infrastructureSta && status.operationState == NetworkOperationState.staConnected);
+      if (!terminal || status.busy || status.operationId != state.activeOperationId || status.baseUri == null) throw const NetworkStatusConfirmationException();
+      await _verifyResumedTerminal(status);
+      if (isClosed || generation != _generation) return;
+      emit(state.copyWith(phase: NetworkProvisioningPhase.success, baseUri: status.baseUri, confirmedMode: mode, operationState: status.operationState, clearError: true));
+    } catch (error) {
+      if (!isClosed && generation == _generation) emit(state.copyWith(phase: NetworkProvisioningPhase.failure, error: _safePresentationError(error)));
+    }
+  }
+
   void openWifiProvisioning(ProvisioningDeviceInfo info) {
     final generation = ++_generation;
     _clearScanAccumulator();
@@ -877,7 +901,7 @@ Object _safePresentationError(Object error) {
       retryAfter: error.retryAfter,
     );
   }
-  if (error is NetworkStatusConfirmationException || error is NetworkOperationFailedException) {
+  if (error is NetworkStatusConfirmationException || error is NetworkOperationFailedException || error is ProvisioningCredentialSaveException) {
     return error;
   }
   return const NetworkOperationFailedException();

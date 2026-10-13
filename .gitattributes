@@ -1,0 +1,2 @@
+# Preserve original evidence bytes across Windows/Linux checkouts for SHA checks.
+docs/implementation/ble22-evidence/handoff-samples/** -text whitespace=cr-at-eol

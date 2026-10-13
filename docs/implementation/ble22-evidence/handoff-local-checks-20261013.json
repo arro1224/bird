@@ -1,0 +1,19 @@
+{
+  "python_tests": 15,
+  "schema_version": 1,
+  "flutter_business_failures": 0,
+  "powershell_parsed_scripts": 10,
+  "app_native_reference_tests": 166,
+  "app_native_reference_failures": 0,
+  "virtual_native_tests": 44,
+  "static_analysis": "no_issues",
+  "scope": "local_pre_upload_checks_no_phone_testing",
+  "virtual_native_failures": 0,
+  "portable_sample_integrity": "verified",
+  "flutter_business_tests": 259,
+  "portable_sample_files": 4,
+  "powershell_checks": 82,
+  "contract_validation": "birdbox-v1@1.0.0_pass",
+  "note": "Updated one stale GATT recovery message expectation; no production behavior change during handoff.",
+  "phone_execution": "stopped_by_user"
+}

@@ -1,0 +1,997 @@
+{
+  "status": "completed_verified",
+  "scope": "workspace_generated_or_obsolete_files_only",
+  "phone_test_execution": "stopped_by_user",
+  "deleted_file_count": 123.0,
+  "generated_at": "2026-10-13T08:52:52.4863505Z",
+  "reclaimed_bytes": 12601051740.0,
+  "schema_version": 1,
+  "targets": [
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\codex_current_window.xml",
+      "bytes": 6600,
+      "reason": "obsolete_unreferenced_UI_snapshot",
+      "relative_path": "codex_current_window.xml"
+    },
+    {
+      "file_count": 15,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\device_page_captures",
+      "bytes": 173367,
+      "reason": "obsolete_unreferenced_20260804_UI_snapshots",
+      "relative_path": "device_page_captures"
+    },
+    {
+      "file_count": 0,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\.codex-tmp\\ble-batches-2026-10-06",
+      "bytes": 0,
+      "reason": "empty_BLE_document_temp_directory",
+      "relative_path": ".codex-tmp/ble-batches-2026-10-06"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\build\\ble22-argument-fixture.ps1",
+      "bytes": 46,
+      "reason": "recreatable_tool_argument_fixture",
+      "relative_path": "build/ble22-argument-fixture.ps1"
+    },
+    {
+      "file_count": 2,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\tool\\ble19\\__pycache__",
+      "bytes": 20436,
+      "reason": "generated_Python_bytecode_cache",
+      "relative_path": "tool/ble19/__pycache__"
+    },
+    {
+      "file_count": 3,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\tool\\ble22\\__pycache__",
+      "bytes": 23191,
+      "reason": "generated_Python_bytecode_cache",
+      "relative_path": "tool/ble22/__pycache__"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-012b289bc0154895b6a66ef0d3350845",
+      "bytes": 1474,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-012b289bc0154895b6a66ef0d3350845"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-0e31d1fa039747259d3651aad885a3f7",
+      "bytes": 1671,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-0e31d1fa039747259d3651aad885a3f7"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-12efe8e0971748758e774b13b58a2479",
+      "bytes": 1753,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-12efe8e0971748758e774b13b58a2479"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-26b8d8f5fd4f422cbdbae5f81cc63f25",
+      "bytes": 1753,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-26b8d8f5fd4f422cbdbae5f81cc63f25"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-27c81ec626c34d2591685f53d336989b",
+      "bytes": 1474,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-27c81ec626c34d2591685f53d336989b"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-2b01eb32efdf437f96291dacbe6e0e9d",
+      "bytes": 1753,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-2b01eb32efdf437f96291dacbe6e0e9d"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-2bf4efb4e5ca4072ab5de418b15e20b3",
+      "bytes": 1753,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-2bf4efb4e5ca4072ab5de418b15e20b3"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-38fb48d16b294b6297f4e2fd1c61048b",
+      "bytes": 1671,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-38fb48d16b294b6297f4e2fd1c61048b"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-3d6e618fceed4097afd6cd47f6edabe1",
+      "bytes": 1474,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-3d6e618fceed4097afd6cd47f6edabe1"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-572a925f3c8944bd92b3df314d769204",
+      "bytes": 1474,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-572a925f3c8944bd92b3df314d769204"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-6b7d8c487a2e4bb6a1d6e13f66ab05ea",
+      "bytes": 1693,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-6b7d8c487a2e4bb6a1d6e13f66ab05ea"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-6f939df8dd4e46fa90577057206c0ede",
+      "bytes": 1753,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-6f939df8dd4e46fa90577057206c0ede"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-72a9f62add4749a3bedca5a9882e99c0",
+      "bytes": 1671,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-72a9f62add4749a3bedca5a9882e99c0"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-7478c8313a06458ab19f1f60509ed9a4",
+      "bytes": 1693,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-7478c8313a06458ab19f1f60509ed9a4"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-7f39c80471124286b720752787f4759c",
+      "bytes": 1753,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-7f39c80471124286b720752787f4759c"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-94bf641a986e4972bd727c60e421677f",
+      "bytes": 1474,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-94bf641a986e4972bd727c60e421677f"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-a6704855f038488b8b87f5320a0e3418",
+      "bytes": 1753,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-a6704855f038488b8b87f5320a0e3418"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-a683c264ee134352b4ba348393adfc8c",
+      "bytes": 1558,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-a683c264ee134352b4ba348393adfc8c"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-bedcdbf55fa542209052e7d668493ac9",
+      "bytes": 1474,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-bedcdbf55fa542209052e7d668493ac9"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-ca621c16ce214dc3a04d4b75055ee7f8",
+      "bytes": 1753,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-ca621c16ce214dc3a04d4b75055ee7f8"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-caa3c72f88aa44d0bc2623da2a558a50",
+      "bytes": 1753,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-caa3c72f88aa44d0bc2623da2a558a50"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-d3098e34926843829a9014409f7296da",
+      "bytes": 1474,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-d3098e34926843829a9014409f7296da"
+    },
+    {
+      "file_count": 1,
+      "recursive": true,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\offline-fixture-dd34e81d94734953a276fc4caa5f2ba6",
+      "bytes": 1753,
+      "reason": "recreatable_offline_preflight_failure_fixture_no_phone_test",
+      "relative_path": "outputs/ble22/offline-fixture-dd34e81d94734953a276fc4caa5f2ba6"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261011-round1\\apks\\bird-transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261011-round1/apks/bird-transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261011-round1\\apks\\virtual-manual-debug.apk",
+      "bytes": 953187,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261011-round1/apks/virtual-manual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261011-round2\\apks\\bird-transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261011-round2/apks/bird-transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261011-round2\\apks\\virtual-manual-debug.apk",
+      "bytes": 953187,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261011-round2/apks/virtual-manual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261011-round3\\apks\\bird-transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261011-round3/apks/bird-transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261011-round3\\apks\\virtual-manual-debug.apk",
+      "bytes": 988410,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261011-round3/apks/virtual-manual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round10\\apks\\bird-transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round10/apks/bird-transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round10\\apks\\virtual-manual-debug.apk",
+      "bytes": 988457,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round10/apks/virtual-manual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round11\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round11/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round11\\apks\\simulation-debug.apk",
+      "bytes": 215506631,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round11/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round11\\apks\\transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round11/apks/transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round11\\apks\\virtual-debug.apk",
+      "bytes": 988457,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round11/apks/virtual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round12\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round12/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round12\\apks\\simulation-debug.apk",
+      "bytes": 215506631,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round12/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round12\\apks\\transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round12/apks/transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round12\\apks\\virtual-debug.apk",
+      "bytes": 988457,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round12/apks/virtual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round13\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round13/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round13\\apks\\simulation-debug.apk",
+      "bytes": 215506631,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round13/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round13\\apks\\transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round13/apks/transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round13\\apks\\virtual-debug.apk",
+      "bytes": 988457,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round13/apks/virtual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round14\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round14/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round14\\apks\\simulation-debug.apk",
+      "bytes": 215506631,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round14/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round14\\apks\\transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round14/apks/transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round14\\apks\\virtual-debug.apk",
+      "bytes": 988457,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round14/apks/virtual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round15\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round15/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round15\\apks\\simulation-debug.apk",
+      "bytes": 215505654,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round15/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round15\\apks\\transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round15/apks/transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round15\\apks\\virtual-debug.apk",
+      "bytes": 988457,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round15/apks/virtual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round16\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round16/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round16\\apks\\simulation-debug.apk",
+      "bytes": 215505952,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round16/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round16\\apks\\transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round16/apks/transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round16\\apks\\virtual-debug.apk",
+      "bytes": 988457,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round16/apks/virtual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round17\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round17/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round17\\apks\\simulation-debug.apk",
+      "bytes": 215505841,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round17/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round17\\apks\\transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round17/apks/transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round17\\apks\\virtual-debug.apk",
+      "bytes": 988457,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round17/apks/virtual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round4\\apks\\bird-sim-debug.apk",
+      "bytes": 189899838,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round4/apks/bird-sim-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round4\\apks\\bird-transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round4/apks/bird-transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round4\\apks\\bird-ui-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round4/apks/bird-ui-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round4\\apks\\virtual-manual-debug.apk",
+      "bytes": 988410,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round4/apks/virtual-manual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round5\\apks\\bird-transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round5/apks/bird-transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round5\\apks\\virtual-manual-debug.apk",
+      "bytes": 988410,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round5/apks/virtual-manual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round6\\apks\\bird-transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round6/apks/bird-transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round6\\apks\\virtual-manual-debug.apk",
+      "bytes": 988410,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round6/apks/virtual-manual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round7\\apks\\bird-sim-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round7/apks/bird-sim-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round7\\apks\\bird-transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round7/apks/bird-transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round7\\apks\\bird-ui-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round7/apks/bird-ui-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round7\\apks\\virtual-manual-debug.apk",
+      "bytes": 988410,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round7/apks/virtual-manual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round8\\apks\\bird-sim-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round8/apks/bird-sim-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round8\\apks\\bird-transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round8/apks/bird-transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round8\\apks\\bird-ui-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round8/apks/bird-ui-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round8\\apks\\virtual-manual-debug.apk",
+      "bytes": 988410,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round8/apks/virtual-manual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round9\\apks\\bird-transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round9/apks/bird-transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-20261012-round9\\apks\\virtual-manual-debug.apk",
+      "bytes": 988457,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-20261012-round9/apks/virtual-manual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c1-20261013-r1\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c1-20261013-r1/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c1-20261013-r1\\apks\\simulation-debug.apk",
+      "bytes": 215507563,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c1-20261013-r1/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c1-20261013-r1\\apks\\transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c1-20261013-r1/apks/transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c1-20261013-r1\\apks\\virtual-debug.apk",
+      "bytes": 988855,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c1-20261013-r1/apks/virtual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r1\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r1/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r1\\apks\\simulation-debug.apk",
+      "bytes": 215507563,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r1/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r1\\apks\\transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r1/apks/transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r1\\apks\\virtual-debug.apk",
+      "bytes": 988855,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r1/apks/virtual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r2\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r2/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r2\\apks\\simulation-debug.apk",
+      "bytes": 215507563,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r2/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r4\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r4/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r4\\apks\\simulation-debug.apk",
+      "bytes": 215507563,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r4/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r4\\apks\\transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r4/apks/transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r4\\apks\\virtual-debug.apk",
+      "bytes": 988855,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r4/apks/virtual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r5\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r5/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r5\\apks\\simulation-debug.apk",
+      "bytes": 215507563,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r5/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r5\\apks\\transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r5/apks/transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r5\\apks\\virtual-debug.apk",
+      "bytes": 988855,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r5/apks/virtual-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r7\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r7/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r7\\apks\\simulation-debug.apk",
+      "bytes": 215507563,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r7/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r8\\apks\\formal-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r8/apks/formal-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r8\\apks\\simulation-debug.apk",
+      "bytes": 215507563,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r8/apks/simulation-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r8\\apks\\transport-debug.apk",
+      "bytes": 228588203,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r8/apks/transport-debug.apk"
+    },
+    {
+      "file_count": 1,
+      "recursive": false,
+      "resolved_path": "D:\\Androidstudio2\\project\\4\\outputs\\ble22\\ble22-c2-20261013-r8\\apks\\virtual-debug.apk",
+      "bytes": 988855,
+      "reason": "superseded_intermediate_debug_APK_manifest_and_real_evidence_preserved",
+      "relative_path": "outputs/ble22/ble22-c2-20261013-r8/apks/virtual-debug.apk"
+    }
+  ],
+  "desktop_documents_in_git": false,
+  "retained": [
+    "all_runtime_source_tests_contracts_and_implementation_records",
+    "all_real_phone_run_evidence_and_actual_received_exports",
+    "round18_r3_r6_r9_all_APKs",
+    "r2_r7_transport_and_virtual_APKs",
+    "unrelated_original_documents_and_other_feature_deliverables"
+  ],
+  "deleted": [
+    "codex_current_window.xml",
+    "device_page_captures",
+    ".codex-tmp/ble-batches-2026-10-06",
+    "build/ble22-argument-fixture.ps1",
+    "tool/ble19/__pycache__",
+    "tool/ble22/__pycache__",
+    "outputs/ble22/offline-fixture-012b289bc0154895b6a66ef0d3350845",
+    "outputs/ble22/offline-fixture-0e31d1fa039747259d3651aad885a3f7",
+    "outputs/ble22/offline-fixture-12efe8e0971748758e774b13b58a2479",
+    "outputs/ble22/offline-fixture-26b8d8f5fd4f422cbdbae5f81cc63f25",
+    "outputs/ble22/offline-fixture-27c81ec626c34d2591685f53d336989b",
+    "outputs/ble22/offline-fixture-2b01eb32efdf437f96291dacbe6e0e9d",
+    "outputs/ble22/offline-fixture-2bf4efb4e5ca4072ab5de418b15e20b3",
+    "outputs/ble22/offline-fixture-38fb48d16b294b6297f4e2fd1c61048b",
+    "outputs/ble22/offline-fixture-3d6e618fceed4097afd6cd47f6edabe1",
+    "outputs/ble22/offline-fixture-572a925f3c8944bd92b3df314d769204",
+    "outputs/ble22/offline-fixture-6b7d8c487a2e4bb6a1d6e13f66ab05ea",
+    "outputs/ble22/offline-fixture-6f939df8dd4e46fa90577057206c0ede",
+    "outputs/ble22/offline-fixture-72a9f62add4749a3bedca5a9882e99c0",
+    "outputs/ble22/offline-fixture-7478c8313a06458ab19f1f60509ed9a4",
+    "outputs/ble22/offline-fixture-7f39c80471124286b720752787f4759c",
+    "outputs/ble22/offline-fixture-94bf641a986e4972bd727c60e421677f",
+    "outputs/ble22/offline-fixture-a6704855f038488b8b87f5320a0e3418",
+    "outputs/ble22/offline-fixture-a683c264ee134352b4ba348393adfc8c",
+    "outputs/ble22/offline-fixture-bedcdbf55fa542209052e7d668493ac9",
+    "outputs/ble22/offline-fixture-ca621c16ce214dc3a04d4b75055ee7f8",
+    "outputs/ble22/offline-fixture-caa3c72f88aa44d0bc2623da2a558a50",
+    "outputs/ble22/offline-fixture-d3098e34926843829a9014409f7296da",
+    "outputs/ble22/offline-fixture-dd34e81d94734953a276fc4caa5f2ba6",
+    "outputs/ble22/ble22-20261011-round1/apks/bird-transport-debug.apk",
+    "outputs/ble22/ble22-20261011-round1/apks/virtual-manual-debug.apk",
+    "outputs/ble22/ble22-20261011-round2/apks/bird-transport-debug.apk",
+    "outputs/ble22/ble22-20261011-round2/apks/virtual-manual-debug.apk",
+    "outputs/ble22/ble22-20261011-round3/apks/bird-transport-debug.apk",
+    "outputs/ble22/ble22-20261011-round3/apks/virtual-manual-debug.apk",
+    "outputs/ble22/ble22-20261012-round10/apks/bird-transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round10/apks/virtual-manual-debug.apk",
+    "outputs/ble22/ble22-20261012-round11/apks/formal-debug.apk",
+    "outputs/ble22/ble22-20261012-round11/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-20261012-round11/apks/transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round11/apks/virtual-debug.apk",
+    "outputs/ble22/ble22-20261012-round12/apks/formal-debug.apk",
+    "outputs/ble22/ble22-20261012-round12/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-20261012-round12/apks/transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round12/apks/virtual-debug.apk",
+    "outputs/ble22/ble22-20261012-round13/apks/formal-debug.apk",
+    "outputs/ble22/ble22-20261012-round13/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-20261012-round13/apks/transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round13/apks/virtual-debug.apk",
+    "outputs/ble22/ble22-20261012-round14/apks/formal-debug.apk",
+    "outputs/ble22/ble22-20261012-round14/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-20261012-round14/apks/transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round14/apks/virtual-debug.apk",
+    "outputs/ble22/ble22-20261012-round15/apks/formal-debug.apk",
+    "outputs/ble22/ble22-20261012-round15/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-20261012-round15/apks/transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round15/apks/virtual-debug.apk",
+    "outputs/ble22/ble22-20261012-round16/apks/formal-debug.apk",
+    "outputs/ble22/ble22-20261012-round16/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-20261012-round16/apks/transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round16/apks/virtual-debug.apk",
+    "outputs/ble22/ble22-20261012-round17/apks/formal-debug.apk",
+    "outputs/ble22/ble22-20261012-round17/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-20261012-round17/apks/transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round17/apks/virtual-debug.apk",
+    "outputs/ble22/ble22-20261012-round4/apks/bird-sim-debug.apk",
+    "outputs/ble22/ble22-20261012-round4/apks/bird-transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round4/apks/bird-ui-debug.apk",
+    "outputs/ble22/ble22-20261012-round4/apks/virtual-manual-debug.apk",
+    "outputs/ble22/ble22-20261012-round5/apks/bird-transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round5/apks/virtual-manual-debug.apk",
+    "outputs/ble22/ble22-20261012-round6/apks/bird-transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round6/apks/virtual-manual-debug.apk",
+    "outputs/ble22/ble22-20261012-round7/apks/bird-sim-debug.apk",
+    "outputs/ble22/ble22-20261012-round7/apks/bird-transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round7/apks/bird-ui-debug.apk",
+    "outputs/ble22/ble22-20261012-round7/apks/virtual-manual-debug.apk",
+    "outputs/ble22/ble22-20261012-round8/apks/bird-sim-debug.apk",
+    "outputs/ble22/ble22-20261012-round8/apks/bird-transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round8/apks/bird-ui-debug.apk",
+    "outputs/ble22/ble22-20261012-round8/apks/virtual-manual-debug.apk",
+    "outputs/ble22/ble22-20261012-round9/apks/bird-transport-debug.apk",
+    "outputs/ble22/ble22-20261012-round9/apks/virtual-manual-debug.apk",
+    "outputs/ble22/ble22-c1-20261013-r1/apks/formal-debug.apk",
+    "outputs/ble22/ble22-c1-20261013-r1/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-c1-20261013-r1/apks/transport-debug.apk",
+    "outputs/ble22/ble22-c1-20261013-r1/apks/virtual-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r1/apks/formal-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r1/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r1/apks/transport-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r1/apks/virtual-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r2/apks/formal-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r2/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r4/apks/formal-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r4/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r4/apks/transport-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r4/apks/virtual-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r5/apks/formal-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r5/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r5/apks/transport-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r5/apks/virtual-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r7/apks/formal-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r7/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r8/apks/formal-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r8/apks/simulation-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r8/apks/transport-debug.apk",
+    "outputs/ble22/ble22-c2-20261013-r8/apks/virtual-debug.apk"
+  ],
+  "post_verification_generated_cleanup": [
+    "tool\\ble19\\__pycache__",
+    "tool\\ble22\\__pycache__",
+    "outputs\\ble22\\offline-fixture-5bfe6b49b11244b8a78399d107341aa7",
+    "build\\ble22-argument-fixture.ps1"
+  ],
+  "obsolete_session_helpers_removed": [
+    "build/ble-handoff-cleanup.ps1",
+    "outputs/ble22/ble22c2-20261013-observation/foreground_pairing_settings.ps1",
+    "outputs/ble22/ble22c2-20261013-observation/clear_owned_pair.ps1",
+    "outputs/ble22/ble22c2-20261013-observation/reset_canonical_pair.ps1",
+    "outputs/ble22/ble22c2-20261013-observation/collect_verification.py"
+  ]
+}

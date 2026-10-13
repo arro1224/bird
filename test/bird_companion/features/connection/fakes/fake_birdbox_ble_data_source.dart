@@ -25,6 +25,7 @@ final class FakeBirdBoxBleDataSource implements BirdBoxBleDataSource {
   void queueError(BleCommandType type, Object error) => _responses.putIfAbsent(type, () => []).add(error);
 
   void emitEvent(ProvisioningEvent event) => _eventController.add(event);
+  void emitError(Object error) => _eventController.addError(error);
 
   void emitLateEvent(ProvisioningEvent event) => _eventController.add(event);
 

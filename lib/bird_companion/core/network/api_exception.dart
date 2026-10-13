@@ -27,7 +27,7 @@ class ApiException implements Exception {
     final retryableValue = data['retryable'] ?? nested['retryable'];
     return ApiException(
       message: data['error_message']?.toString() ?? nested['message']?.toString() ?? data['message']?.toString() ?? error.message ?? '无法连接盒子服务。',
-      code: data['error_code']?.toString() ?? nested['code']?.toString(),
+      code: data['error_code']?.toString() ?? nested['code']?.toString() ?? data['code']?.toString(),
       statusCode: statusCode,
       retryable: retryableValue is bool ? retryableValue : _isRetryable(error.type, statusCode),
       details: details,

@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "batch": "BLE-21",
+  "evidence_kind": "local_simulated_business_and_http",
+  "generated_at": "2026-10-11T23:26:54.4581502+08:00",
+  "git_head": "c9aa4fabee60756b2cd2f40474ef06e58bff8f35",
+  "working_tree": "dirty_uncommitted",
+  "app_version": "1.14.11+176",
+  "releasable": false,
+  "real_box_result": "pending",
+  "dual_phone_result": "pending",
+  "ap_sta_routing_result": "pending",
+  "native_tests": {
+    "result": "pass",
+    "count": 40,
+    "suites": [
+      {
+        "name": "deckers.thibault.aves.virtualbirdbox.Ble11ScenarioStateTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "deckers.thibault.aves.virtualbirdbox.Rc4BleFrameCodecTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "deckers.thibault.aves.virtualbirdbox.VirtualBirdBoxPeripheralTest",
+        "tests": 18,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "deckers.thibault.aves.virtualbirdbox.VirtualBirdBoxProtocolTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "deckers.thibault.aves.virtualbirdbox.VirtualRequestLedgerTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0
+      }
+    ]
+  },
+  "flutter_tests": {
+    "result": "pass",
+    "count": 250
+  },
+  "strict_native_message_parser": {
+    "result": "pass",
+    "message_count": 16
+  },
+  "local_http_to_home_route": {
+    "result": "pass",
+    "health": "real_local_http",
+    "pairing_exchange_count": 1,
+    "home_content": "test_route_placeholder"
+  },
+  "static_analysis": "pass",
+  "schemas_and_fixtures": "pass",
+  "reproduction_script": "pass",
+  "strict_board_baseline": {
+    "result": "blocked_external_inputs",
+    "check_errors": 13,
+    "explanation": "Existing board repository/firmware/deployment/database/integration URL and owner contacts are missing. No baseline values were invented."
+  },
+  "virtual_apk": {
+    "path": "build/virtualBirdBox/outputs/apk/debug/virtualBirdBox-debug.apk",
+    "version_name": "ble20",
+    "version_code": 2,
+    "sha256": "3af16eb70d6c83b2d5997e455925a69d297a4e44e8bd15285731786aa8678a85"
+  },
+  "source_hashes": [
+    {
+      "path": "android/virtualBirdBox/src/main/java/deckers/thibault/aves/virtualbirdbox/VirtualBirdBoxProtocol.java",
+      "sha256": "8c13130ba233ec6522f65a594c2b0ee5b33869514dc8c23c857011676ab19267"
+    },
+    {
+      "path": "android/virtualBirdBox/src/main/java/deckers/thibault/aves/virtualbirdbox/VirtualBirdBoxPeripheral.java",
+      "sha256": "9e3c506a8a293d80adb2317e1aede1129033fa6d4e58f9b36cb5b4295baa0d9a"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "sha256": "f917b0add16c0c9664c3a27681294de587ad00cb18b34aa8e49afa0d798ae1ef"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "sha256": "0f581ae3ae63a14d0e160e233b5a16fd22e763e75e58393354e26e83aa41459e"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart",
+      "sha256": "bb6205d8e84fac2313098dc35af5fa36e5670e87df3c0ef9a86109eb2df6a40f"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/network_provisioning_cubit.dart",
+      "sha256": "d5e482f4a8b6df0ff66c15396ea501cc3eff20e5e422fe9d02ada042f685f9cf"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_page.dart",
+      "sha256": "ecc7f27582ef01ca591763813450fcb85ece99da6d9df1f2c296704814d24d75"
+    },
+    {
+      "path": "lib/bird_companion/simulation/simulated_bird_box_debug_app.dart",
+      "sha256": "4da5632f14fc63a1894cffa5bf886274be5b9748d6b9e090fa656ffb07721e68"
+    },
+    {
+      "path": "tool/mock_box_server/mock_box_server.dart",
+      "sha256": "1854324e7da37162867f803f0a226ff74785a1aa67df3b5d046e609cb4084ff4"
+    },
+    {
+      "path": "tool/ble21/run_local_business_checks.ps1",
+      "sha256": "2bfb4d6d4b221e9f66eb08482031733fb615eac2764a96a6c3c62cb2a1286edf"
+    }
+  ],
+  "log_hashes": [
+    {
+      "path": "build/ble21/native.log",
+      "sha256": "8729dfa67890283f2d7166863ebbee1909a35baa638b929743b94be5f9d8c71f"
+    },
+    {
+      "path": "build/ble21/flutter.log",
+      "sha256": "d1a9b7eb51dbb8c33485faf57ee606772dfe93e4a9187bc8634420b56af128f2"
+    },
+    {
+      "path": "build/ble21/analyze.log",
+      "sha256": "4cb4f8fea96e86b71745d689d9b5f1f293b6ec0223515b3cb404c84304a59c39"
+    },
+    {
+      "path": "build/ble21/contracts.log",
+      "sha256": "74f7d735591b40d2daa05dc04568b82bea002980efdce825ddd6b81d3960ac58"
+    },
+    {
+      "path": "build/ble21-repro-run.log",
+      "sha256": "4dd520117a24b5c24a8e5c6905709d7906196002ece2f79a3c44c3d079645ae7"
+    },
+    {
+      "path": "build/ble21-contracts.log",
+      "sha256": "49517c4ec209cce9504c537b3118b60fcbb9d009be1b946e4f0422652e678fc4"
+    }
+  ],
+  "next_batch": "BLE-22"
+}

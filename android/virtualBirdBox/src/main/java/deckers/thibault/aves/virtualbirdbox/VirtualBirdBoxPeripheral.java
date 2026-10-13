@@ -51,12 +51,21 @@ final class VirtualBirdBoxPeripheral {
     static final UUID CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
     private static final int DEFAULT_MTU = 23;
-    private static final int MAXIMUM_ATT_PAYLOAD = 514;
+    private static final int MAXIMUM_ATT_PAYLOAD = 512;
     private static final int COMPANY_IDENTIFIER = 0xFFFF;
 
     private final Context context;
     private final EventSink eventSink;
     private final Ble11ScenarioState scenarioState;
+    private String observationRunId;
+
+    void setObservationRunId(String runId) {
+        if (runId != null && !runId.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,120}")) {
+            throw new IllegalArgumentException("Invalid observation run ID");
+        }
+        observationRunId = runId;
+    }
+    private final VirtualBirdBoxProtocol protocol;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Map<String, Integer> mtuByDevice = new HashMap<>();
     private final Map<String, ArrayDeque<byte[]>> readFrames = new HashMap<>();
@@ -64,6 +73,7 @@ final class VirtualBirdBoxPeripheral {
     private final Map<String, ArrayDeque<byte[]>> notificationQueues = new HashMap<>();
     private final Set<String> notificationInFlight = new HashSet<>();
     private final Set<String> enabledNotifications = new HashSet<>();
+    private final Map<String, Set<UUID>> notificationRestoreWrites = new HashMap<>();
 
     private BluetoothAdapter adapter;
     private BluetoothLeAdvertiser advertiser;
@@ -71,17 +81,24 @@ final class VirtualBirdBoxPeripheral {
     private BluetoothGattCharacteristic networkStatusCharacteristic;
     private AdvertiseCallback advertiseCallback;
     private int responseMessageId = 0xB100;
-    private String rejectedMessageHash;
-    private byte[] staleResponse;
-    private int securityRejectCount;
+    private final VirtualRequestLedger ledger = new VirtualRequestLedger();
+    private final Map<String, Integer> deviceEpochs = new HashMap<>();
 
     VirtualBirdBoxPeripheral(
             Context context,
             Ble11ScenarioState.Scenario scenario,
             EventSink eventSink) {
+        this(context, new Ble11ScenarioState(scenario), eventSink);
+    }
+
+    VirtualBirdBoxPeripheral(Context context, Ble11ScenarioState state, EventSink eventSink) {
+        this(context, state, eventSink, new VirtualBirdBoxProtocol());
+    }
+    VirtualBirdBoxPeripheral(Context context, Ble11ScenarioState state, EventSink eventSink, VirtualBirdBoxProtocol protocol) {
         this.context = context.getApplicationContext();
         this.eventSink = eventSink;
-        scenarioState = new Ble11ScenarioState(scenario);
+        scenarioState = state;
+        this.protocol = protocol;
     }
 
     void start() {
@@ -106,7 +123,13 @@ final class VirtualBirdBoxPeripheral {
             event("startup_failed", "reason", "service_add_rejected");
             throw new IllegalStateException("GATT service registration was rejected");
         }
-        event("server_starting", "scenario", scenarioState.scenario().wireValue());
+        event("server_starting", "encrypted_write_permissions", true,
+                "fault_characteristic", scenarioState.fault().characteristic,
+                "fault_position", scenarioState.fault().position.name().toLowerCase(java.util.Locale.ROOT),
+                "fault_fragment_index", scenarioState.fault().fragmentIndex,
+                "fault_status", scenarioState.fault().status,
+                "att_response_delay_ms", scenarioState.fault().attDelayMs,
+                "business_response_delay_ms", scenarioState.fault().responseDelayMs);
     }
 
     void stop() {
@@ -114,6 +137,7 @@ final class VirtualBirdBoxPeripheral {
             advertiser.stopAdvertising(advertiseCallback);
         }
         advertiseCallback = null;
+        handler.removeCallbacksAndMessages(null);
         if (gattServer != null) {
             gattServer.clearServices();
             gattServer.close();
@@ -124,6 +148,7 @@ final class VirtualBirdBoxPeripheral {
         notificationQueues.clear();
         notificationInFlight.clear();
         enabledNotifications.clear();
+        notificationRestoreWrites.clear();
         event("server_stopped");
     }
 
@@ -208,16 +233,20 @@ final class VirtualBirdBoxPeripheral {
     private final BluetoothGattServerCallback callback = new BluetoothGattServerCallback() {
         @Override
         public void onServiceAdded(int status, BluetoothGattService service) {
+            if (dispatch(() -> callback.onServiceAdded(status, service))) return;
             event("service_added", "status", status, "characteristic_count", service.getCharacteristics().size());
             if (status == BluetoothGatt.GATT_SUCCESS) startAdvertising();
         }
 
         @Override
         public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
+            if (dispatch(() -> callback.onConnectionStateChange(device, status, newState))) return;
             event(
                     "connection_state_changed",
                     "status", status,
                     "state", newState,
+                    "peer_address_hash", observationRunId == null ? JSONObject.NULL
+                            : sha256((observationRunId + ":" + device.getAddress().toUpperCase(java.util.Locale.ROOT)).getBytes(StandardCharsets.UTF_8)),
                     "bond_state", bondState(device.getBondState())
             );
             if (newState == BluetoothProfile.STATE_DISCONNECTED) clearDeviceState(device);
@@ -225,6 +254,7 @@ final class VirtualBirdBoxPeripheral {
 
         @Override
         public void onMtuChanged(BluetoothDevice device, int mtu) {
+            if (dispatch(() -> callback.onMtuChanged(device, mtu))) return;
             mtuByDevice.put(device.getAddress(), mtu);
             event("mtu_changed", "mtu", mtu);
         }
@@ -235,6 +265,7 @@ final class VirtualBirdBoxPeripheral {
                 int requestId,
                 int offset,
                 BluetoothGattCharacteristic characteristic) {
+            if (dispatch(() -> callback.onCharacteristicReadRequest(device, requestId, offset, characteristic))) return;
             if (offset != 0) {
                 gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_INVALID_OFFSET, offset, null);
                 return;
@@ -243,7 +274,7 @@ final class VirtualBirdBoxPeripheral {
             if (DEVICE_INFO_UUID.equals(characteristic.getUuid())) {
                 message = VirtualBirdBoxProtocol.deviceInfo();
             } else if (NETWORK_STATUS_UUID.equals(characteristic.getUuid())) {
-                message = VirtualBirdBoxProtocol.networkStatusRead();
+                message = protocol.networkStatusRead();
             } else {
                 gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_READ_NOT_PERMITTED, 0, null);
                 return;
@@ -274,6 +305,7 @@ final class VirtualBirdBoxPeripheral {
                 int requestId,
                 int offset,
                 BluetoothGattDescriptor descriptor) {
+            if (dispatch(() -> callback.onDescriptorReadRequest(device, requestId, offset, descriptor))) return;
             final String key = notificationKey(device, descriptor.getCharacteristic().getUuid());
             final byte[] value = enabledNotifications.contains(key)
                     ? BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
@@ -290,13 +322,39 @@ final class VirtualBirdBoxPeripheral {
                 boolean responseNeeded,
                 int offset,
                 byte[] value) {
+            if (dispatch(() -> callback.onDescriptorWriteRequest(device, requestId, descriptor, preparedWrite, responseNeeded, offset, value))) return;
+            if (preparedWrite || offset != 0 || !CCCD_UUID.equals(descriptor.getUuid())
+                    || (!java.util.Arrays.equals(value, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                    && !java.util.Arrays.equals(value, BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE))) {
+                if (responseNeeded) gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_REQUEST_NOT_SUPPORTED, offset, null);
+                return;
+            }
             final UUID characteristicUuid = descriptor.getCharacteristic().getUuid();
+            if (scenarioState.rejectNotification(shortUuid(characteristicUuid))) {
+                if (responseNeeded) gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null);
+                event("notification_failure_injected", "characteristic", shortUuid(characteristicUuid), "status", BluetoothGatt.GATT_FAILURE);
+                return;
+            }
             final String key = notificationKey(device, characteristicUuid);
             final boolean enabled = java.util.Arrays.equals(
                     value,
                     BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
             );
             if (enabled) enabledNotifications.add(key); else enabledNotifications.remove(key);
+            final String address = device.getAddress();
+            if (enabled && (NETWORK_STATUS_UUID.equals(characteristicUuid) || SCAN_RESULTS_UUID.equals(characteristicUuid))) {
+                final Set<UUID> restored = notificationRestoreWrites.computeIfAbsent(address, ignored -> new HashSet<>());
+                restored.add(characteristicUuid);
+                if (restored.size() == 2) {
+                    restored.clear();
+                    scenarioState.onGattNotificationsRestored();
+                    deviceEpochs.put(address, deviceEpochs.getOrDefault(address, 0) + 1);
+                    writeReassemblers.keySet().removeIf(partial -> partial.startsWith(address + "/"));
+                    notificationQueues.remove(address);
+                    notificationInFlight.remove(address);
+                    event("notification_round_restored", "bonded", device.getBondState() == BluetoothDevice.BOND_BONDED);
+                }
+            } else if (!enabled) { notificationRestoreWrites.remove(address); }
             if (responseNeeded) {
                 gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, value);
             }
@@ -316,6 +374,7 @@ final class VirtualBirdBoxPeripheral {
                 boolean responseNeeded,
                 int offset,
                 byte[] value) {
+            if (dispatch(() -> callback.onCharacteristicWriteRequest(device, requestId, characteristic, preparedWrite, responseNeeded, offset, value))) return;
             if (preparedWrite || offset != 0 || value == null) {
                 if (responseNeeded) {
                     gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_REQUEST_NOT_SUPPORTED, offset, null);
@@ -329,7 +388,39 @@ final class VirtualBirdBoxPeripheral {
                 }
                 return;
             }
+            final Rc4BleFrameCodec.Frame frame;
+            try { frame = Rc4BleFrameCodec.decode(value); }
+            catch (IllegalArgumentException error) {
+                if (responseNeeded) gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null);
+                event("write_rejected", "reason", "invalid_rc4_frame"); return;
+            }
+            if (value.length > maximumFragmentBytes(device)) {
+                if (responseNeeded) gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_INVALID_ATTRIBUTE_LENGTH, 0, null);
+                event("write_rejected", "reason", "att_mtu_exceeded"); return;
+            }
+            final boolean bonded = device.getBondState() == BluetoothDevice.BOND_BONDED;
+            final Ble11ScenarioState.Action action = scenarioState.onFragment(shortUuid(uuid), frame.index(), frame.count(), bonded);
+            event("write_fragment_received", "characteristic", shortUuid(uuid),
+                    "message_id", frame.messageId(), "fragment_index", frame.index() + 1,
+                    "fragment_count", frame.count(), "frame_bytes", value.length,
+                    "maximum_fragment_bytes", maximumFragmentBytes(device), "bonded", bonded,
+                    "action", action.name().toLowerCase(java.util.Locale.ROOT));
             final String key = device.getAddress() + "/" + uuid;
+            if (action != Ble11ScenarioState.Action.ACCEPT) {
+                writeReassemblers.remove(key);
+                event(action == Ble11ScenarioState.Action.REJECT_SECURITY ? "security_failure_injected"
+                        : action == Ble11ScenarioState.Action.IGNORE_ATT ? "att_response_omitted" : "disconnect_injected",
+                        "characteristic", shortUuid(uuid), "fragment_index", frame.index() + 1,
+                        "fragment_count", frame.count(), "status", scenarioState.fault().status,
+                        "count", scenarioState.faultCount(), "fault_round", scenarioState.faultRoundCount(), "bonded", bonded);
+                if (action == Ble11ScenarioState.Action.REJECT_SECURITY)
+                    ack(device, requestId, responseNeeded, scenarioState.fault().status);
+                else if (action == Ble11ScenarioState.Action.DISCONNECT) {
+                    ack(device, requestId, responseNeeded, BluetoothGatt.GATT_SUCCESS);
+                    gattServer.cancelConnection(device);
+                }
+                return;
+            }
             final Rc4BleFrameCodec.Reassembler reassembler = writeReassemblers.computeIfAbsent(
                     key,
                     ignored -> new Rc4BleFrameCodec.Reassembler()
@@ -346,9 +437,7 @@ final class VirtualBirdBoxPeripheral {
                 return;
             }
             if (message == null) {
-                if (responseNeeded) {
-                    gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null);
-                }
+                ack(device, requestId, responseNeeded, BluetoothGatt.GATT_SUCCESS);
                 return;
             }
             writeReassemblers.remove(key);
@@ -357,12 +446,19 @@ final class VirtualBirdBoxPeripheral {
 
         @Override
         public void onNotificationSent(BluetoothDevice device, int status) {
+            if (dispatch(() -> callback.onNotificationSent(device, status))) return;
             final String key = device.getAddress();
             notificationInFlight.remove(key);
             event("notification_sent", "status", status);
             sendNextNotification(device);
         }
     };
+
+    private boolean dispatch(Runnable callbackWork) {
+        if (Looper.myLooper() == Looper.getMainLooper()) return false;
+        handler.post(() -> { if (gattServer != null) callbackWork.run(); });
+        return true;
+    }
 
     private void handleCompleteWrite(
             BluetoothDevice device,
@@ -384,78 +480,64 @@ final class VirtualBirdBoxPeripheral {
             event("write_rejected", "reason", "invalid_json");
             return;
         }
-        final String messageHash = sha256(message);
-        final boolean bonded = device.getBondState() == BluetoothDevice.BOND_BONDED;
-        final Ble11ScenarioState.Action action = scenarioState.onCompleteMessage(bonded);
-        event(
-                "command_received",
-                "request_id", requestIdValue,
-                "command_type", commandType,
-                "characteristic", shortUuid(characteristicUuid),
-                "payload_sha256", messageHash,
-                "bonded", bonded,
-                "action", action.name().toLowerCase(java.util.Locale.ROOT)
-        );
-        if (action == Ble11ScenarioState.Action.REJECT_SECURITY) {
-            securityRejectCount++;
-            if (rejectedMessageHash == null) rejectedMessageHash = messageHash;
-            if (responseNeeded) {
-                gattServer.sendResponse(
-                        device,
-                        requestId,
-                        BluetoothGatt.GATT_INSUFFICIENT_AUTHENTICATION,
-                        0,
-                        null
-                );
-            }
-            event(
-                    "security_failure_injected",
-                    "count", securityRejectCount,
-                    "payload_sha256", messageHash,
-                    "retry_matches_original", rejectedMessageHash.equals(messageHash)
-            );
-            return;
-        }
-        if (action == Ble11ScenarioState.Action.DISCONNECT) {
-            if (responseNeeded) {
-                gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null);
-            }
-            try {
-                staleResponse = VirtualBirdBoxProtocol.responseFor(request);
-            } catch (JSONException error) {
-                event("response_failed", "reason", "invalid_request");
-            }
-            event("disconnect_injected", "request_id", requestIdValue);
-            handler.postDelayed(() -> gattServer.cancelConnection(device), 80L);
-            return;
-        }
-        if (responseNeeded) {
-            gattServer.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null);
-        }
-        if (rejectedMessageHash != null) {
-            event(
-                    "encrypted_retry_observed",
-                    "payload_sha256", messageHash,
-                    "matches_original", rejectedMessageHash.equals(messageHash),
-                    "bonded", bonded
-            );
-        }
+        final String messageHash = commandType.equals("open_pairing") || commandType.equals("get_network_status") ? sha256(message) : "<redacted>";
+        event("command_received", "request_id", requestIdValue, "command_type", commandType,
+                "characteristic", shortUuid(characteristicUuid), "payload_sha256", messageHash,
+                "bonded", device.getBondState() == BluetoothDevice.BOND_BONDED);
+        ack(device, requestId, responseNeeded, BluetoothGatt.GATT_SUCCESS);
         final byte[] response;
         try {
-            response = VirtualBirdBoxProtocol.responseFor(request);
-        } catch (JSONException error) {
-            event("response_failed", "reason", "invalid_request");
-            return;
+            final VirtualRequestLedger.Outcome outcome = ledger.execute(requestIdValue, message, () -> protocol.responseFor(request));
+            response = outcome.response();
+            event(outcome.duplicate() ? "business_deduplicated" : "business_operation_executed",
+                    "request_id", requestIdValue, "payload_sha256", messageHash);
+        } catch (Exception error) {
+            event("response_failed", "reason", "request_id_conflict"); return;
         }
-        final byte[] delayedStaleResponse = staleResponse;
-        staleResponse = null;
+        if (scenarioState.scenario() == Ble11ScenarioState.Scenario.BUSINESS_TIMEOUT) {
+            event("business_response_omitted", "request_id", requestIdValue); return;
+        }
+        final String address = device.getAddress();
+        final int epoch = deviceEpochs.getOrDefault(address, 0);
         handler.postDelayed(() -> {
-            if (delayedStaleResponse != null) {
-                event("stale_notification_injected", "before_request_id", requestIdValue);
-                enqueueNotifications(device, delayedStaleResponse);
+            if (gattServer == null || deviceEpochs.getOrDefault(address, 0) != epoch) return;
+            byte[] emitted = response;
+            if (scenarioState.scenario() == Ble11ScenarioState.Scenario.RESPONSE_WRONG) {
+                try {
+                    JSONObject wrong = new JSONObject(new String(response, StandardCharsets.UTF_8));
+                    wrong.put("request_id", "00000000-0000-4000-8000-000000000020");
+                    emitted = wrong.toString().getBytes(StandardCharsets.UTF_8);
+                } catch (JSONException error) { throw new IllegalStateException(error); }
+                event("wrong_business_response_injected", "request_id", requestIdValue);
             }
-            enqueueNotifications(device, response);
-        }, 80L);
+            enqueueNotifications(device, emitted);
+            event("business_response_enqueued", "request_id", requestIdValue);
+            // Acknowledgement and simulated terminal state are separate events.
+            handler.postDelayed(() -> {
+                if (gattServer == null || deviceEpochs.getOrDefault(address, 0) != epoch) return;
+                try {
+                    byte[] terminal = protocol.terminalEvent();
+                    if (terminal != null) enqueueNotifications(device, terminal);
+                } catch (JSONException error) { event("response_failed", "reason", "terminal_protocol_error"); }
+            }, 1300);
+            if (scenarioState.scenario() == Ble11ScenarioState.Scenario.RESPONSE_DUPLICATE) {
+                enqueueNotifications(device, response);
+                event("duplicate_business_response_injected", "request_id", requestIdValue);
+            }
+        }, scenarioState.fault().responseDelayMs);
+    }
+
+    private void ack(BluetoothDevice device, int requestId, boolean needed, int status) {
+        if (!needed) return;
+        final String address = device.getAddress();
+        final int epoch = deviceEpochs.getOrDefault(address, 0);
+        Runnable send = () -> {
+            if (gattServer == null || deviceEpochs.getOrDefault(address, 0) != epoch) return;
+            final boolean accepted = gattServer.sendResponse(device, requestId, status, 0, null);
+            event("att_response_sent", "status", status, "accepted", accepted);
+        };
+        if (scenarioState.fault().attDelayMs == 0) send.run();
+        else handler.postDelayed(send, scenarioState.fault().attDelayMs);
     }
 
     private void enqueueNotifications(BluetoothDevice device, byte[] response) {
@@ -511,11 +593,14 @@ final class VirtualBirdBoxPeripheral {
     }
 
     private void clearDeviceState(BluetoothDevice device) {
+        scenarioState.onGattDisconnected();
         final String address = device.getAddress();
+        deviceEpochs.put(address, deviceEpochs.getOrDefault(address, 0) + 1);
         mtuByDevice.remove(address);
         readFrames.keySet().removeIf(key -> key.startsWith(address + "/"));
         writeReassemblers.keySet().removeIf(key -> key.startsWith(address + "/"));
         enabledNotifications.removeIf(key -> key.startsWith(address + "/"));
+        notificationRestoreWrites.remove(address);
         notificationQueues.remove(address);
         notificationInFlight.remove(address);
     }
@@ -553,6 +638,9 @@ final class VirtualBirdBoxPeripheral {
         final JSONObject fields = new JSONObject();
         try {
             fields.put("scenario", scenarioState.scenario().wireValue());
+            if (observationRunId != null) fields.put("run_id", observationRunId);
+            fields.put("security_flow", "bond_first");
+            fields.put("endpoint_kind", "virtual_birdbox");
             for (int index = 0; index + 1 < pairs.length; index += 2) {
                 fields.put(String.valueOf(pairs[index]), pairs[index + 1]);
             }

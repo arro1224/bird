@@ -21,6 +21,181 @@ final device = ProvisioningDevice(
 ProvisioningDeviceInfo info() => ProvisioningDeviceInfo.fromJson(Map<String, dynamic>.from(jsonDecode(File('test/contracts/fixtures/ble-device-info.rc4.json').readAsStringSync()) as Map));
 
 void main() {
+  test('reset invalidates both settings returns and allows opening settings again', () async {
+    for (final location in [false, true]) {
+      var opens = 0;
+      final repository = ControlledProvisioningRepository();
+      final cubit = ProvisioningCubit(
+        repository,
+        permissionSettingsOpener: () async {
+          opens++;
+          return true;
+        },
+      );
+      Future<void> open() => location ? cubit.openLocationSettings() : cubit.openPermissionSettings();
+      await open();
+      await cubit.onAppBackgrounded();
+      await cubit.reset();
+      await cubit.onAppResumed();
+      expect(cubit.state.phase, ProvisioningPhase.idle);
+      expect(repository.environmentReads, 0);
+      expect(repository.calls, isNot(contains('discover')));
+      await open();
+      await cubit.onAppResumed();
+      expect(repository.environmentReads, 0); // No departure for the new request.
+      await cubit.onAppBackgrounded();
+      await cubit.onAppResumed();
+      expect(repository.calls.where((call) => call == 'discover'), hasLength(1));
+      expect(location ? repository.settingsCalls : opens, 2);
+      await cubit.close();
+      await repository.dispose();
+    }
+  });
+
+  test('new discovery invalidates the old settings departure', () async {
+    final repository = ControlledProvisioningRepository();
+    final cubit = ProvisioningCubit(repository, permissionSettingsOpener: () async => true);
+    await cubit.openPermissionSettings();
+    await cubit.onAppBackgrounded();
+    await cubit.discover();
+    await cubit.onAppResumed();
+    expect(repository.environmentReads, 0);
+    expect(repository.calls.where((call) => call == 'discover'), hasLength(1));
+    await cubit.close();
+    await repository.dispose();
+  });
+
+  test('late permission opener failure cannot clear the new settings request', () async {
+    for (final throws in [false, true]) {
+      final oldOpen = Completer<bool>();
+      var opens = 0;
+      final repository = ControlledProvisioningRepository();
+      final cubit = ProvisioningCubit(
+        repository,
+        permissionSettingsOpener: () {
+          opens++;
+          return opens == 1 ? oldOpen.future : Future.value(true);
+        },
+      );
+      final opening = cubit.openPermissionSettings();
+      await cubit.reset();
+      await cubit.openPermissionSettings();
+      if (throws) {
+        oldOpen.completeError(StateError('old settings'));
+      } else {
+        oldOpen.complete(false);
+      }
+      await opening;
+      await cubit.onAppBackgrounded();
+      await cubit.onAppResumed();
+      expect(repository.calls.where((call) => call == 'discover'), hasLength(1));
+      await cubit.close();
+      await repository.dispose();
+    }
+  });
+
+  test('late location opener error cannot fail or clear a new settings request', () async {
+    final oldOpen = Completer<void>();
+    final repository = ControlledProvisioningRepository()..pendingSettings = oldOpen;
+    final cubit = ProvisioningCubit(repository);
+    final opening = cubit.openLocationSettings();
+    await cubit.reset();
+    repository.pendingSettings = null;
+    await cubit.openLocationSettings();
+    oldOpen.completeError(StateError('old location settings'));
+    await opening;
+    expect(cubit.state.phase, ProvisioningPhase.idle);
+    await cubit.onAppBackgrounded();
+    await cubit.onAppResumed();
+    expect(repository.calls.where((call) => call == 'discover'), hasLength(1));
+    await cubit.close();
+    await repository.dispose();
+  });
+
+  test('reset during environment read prevents a late settings scan', () async {
+    for (final location in [false, true]) {
+      final environment = Completer<BleScanEnvironment>();
+      final repository = ControlledProvisioningRepository()..pendingEnvironment = environment;
+      final cubit = ProvisioningCubit(repository, permissionSettingsOpener: () async => true);
+      await (location ? cubit.openLocationSettings() : cubit.openPermissionSettings());
+      await cubit.onAppBackgrounded();
+      final returning = cubit.onAppResumed();
+      await Future<void>.delayed(Duration.zero);
+      expect(repository.environmentReads, 1);
+      await cubit.reset();
+      environment.complete(repository.environment);
+      await returning;
+      expect(repository.calls, isNot(contains('discover')));
+      await cubit.close();
+      await repository.dispose();
+    }
+  });
+
+  test('an old environment read cannot consume a newly opened settings request', () async {
+    final environment = Completer<BleScanEnvironment>();
+    final repository = ControlledProvisioningRepository()..pendingEnvironment = environment;
+    final cubit = ProvisioningCubit(repository, permissionSettingsOpener: () async => true);
+    await cubit.openPermissionSettings();
+    await cubit.onAppBackgrounded();
+    final returning = cubit.onAppResumed();
+    await Future<void>.delayed(Duration.zero);
+    await cubit.openPermissionSettings();
+    environment.complete(repository.environment);
+    await returning;
+    expect(repository.calls, isNot(contains('discover')));
+    repository.pendingEnvironment = null;
+    await cubit.onAppBackgrounded();
+    await cubit.onAppResumed();
+    expect(repository.calls.where((call) => call == 'discover'), hasLength(1));
+    await cubit.close();
+    await repository.dispose();
+  });
+
+  test('failed settings opening permits another attempt without inheriting departure', () async {
+    var opens = 0;
+    final repository = ControlledProvisioningRepository();
+    final cubit = ProvisioningCubit(
+      repository,
+      permissionSettingsOpener: () async {
+        opens++;
+        return opens > 1;
+      },
+    );
+    await cubit.openPermissionSettings();
+    await cubit.onAppBackgrounded();
+    await cubit.openPermissionSettings();
+    await cubit.onAppResumed();
+    expect(repository.environmentReads, 0);
+    await cubit.onAppBackgrounded();
+    await cubit.onAppResumed();
+    expect(repository.calls.where((call) => call == 'discover'), hasLength(1));
+    await cubit.close();
+    await repository.dispose();
+  });
+
+  test('late environment read stays invalid after a newer settings opener fails', () async {
+    final environment = Completer<BleScanEnvironment>();
+    var opens = 0;
+    final repository = ControlledProvisioningRepository()..pendingEnvironment = environment;
+    final cubit = ProvisioningCubit(repository, permissionSettingsOpener: () async => ++opens == 1);
+    await cubit.openPermissionSettings();
+    await cubit.onAppBackgrounded();
+    final returning = cubit.onAppResumed();
+    await Future<void>.delayed(Duration.zero);
+    await cubit.openPermissionSettings();
+    environment.complete(repository.environment);
+    await returning;
+    expect(repository.calls, isNot(contains('discover')));
+    await cubit.close();
+    await repository.dispose();
+  });
+
+  test('GATT recovery message describes an incomplete connection and reconnect action', () {
+    final message = UserMessageMapper.fromError(const ProvisioningException(code: ProvisioningErrorCode.bleGattRecoveryFailed, retryable: true));
+    expect(message.message, '蓝牙连接未能恢复，请重新连接后重试。');
+    expect(message.actionLabel, '重新连接');
+  });
+
   test('permission settings return scans once only after grant and our departure', () async {
     var opens = 0;
     final repository = ControlledProvisioningRepository();

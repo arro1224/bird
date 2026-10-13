@@ -97,7 +97,7 @@ void main() {
       ProvisioningErrorCode.blePairingTimeout: '系统蓝牙绑定未在规定时间内完成，请确认系统配对提示后重试。',
       ProvisioningErrorCode.blePairingRejected: '安全连接未完成，请重新配对。',
       ProvisioningErrorCode.bleGattOperationFailed: '手机与盒子的蓝牙通信中断，请重新连接后重试。',
-      ProvisioningErrorCode.bleGattRecoveryFailed: '安全连接已建立，但重新连接盒子失败。',
+      ProvisioningErrorCode.bleGattRecoveryFailed: '蓝牙连接未能恢复，请重新连接后重试。',
       ProvisioningErrorCode.bleSecurityRecoveryFailed: '手机已尝试恢复安全连接，但流程未能完成。',
       ProvisioningErrorCode.bleEncryptedRetryFailed: '系统绑定已完成，但加密写入重试失败，请重新连接后重试。',
       ProvisioningErrorCode.bleBondStartFailed: '手机未能发起系统蓝牙配对，请检查蓝牙状态后重试。',

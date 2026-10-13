@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "batch": "BLE-22C-2",
+  "run_id": null,
+  "candidate_round": null,
+  "role": null,
+  "scenario": "bond_first",
+  "expected_outcome": "Confirm",
+  "status": "not_started",
+  "hardware_status": "pending",
+  "releasable": false,
+  "phones": {"app": null, "box": null},
+  "builds": {"source_fingerprint": null, "app_sha256": null, "box_sha256": null},
+  "baseline": {"both_online": null, "current_advertising_verified": null, "app_native_bond_state": null, "box_bond_state": null, "unpair_action_log": null},
+  "system_pairing": {"app_confirmation": null, "box_confirmation": null, "action_log": null},
+  "stages": {"initial_connect": null, "system_bond": null, "old_gatt_disconnect": null, "fresh_client_registration": null, "fresh_gatt_connect": null, "mtu": null, "services": null, "notification_0": null, "notification_1": null, "command_terminal": null},
+  "actual": {"failure_code": null, "gatt_status": null, "failure_phase": null, "response_type": null, "raw_test_exit_code": null, "pairing_check_status": null},
+  "evidence": {"native_log": null, "box_events": null, "app_evidence": null, "export_prepared": null, "export_received": null, "receiver_verification": null},
+  "cleanup": {"owned_processes_stopped": null, "owned_forward_removed": null, "verified_cache_release_audit": null, "errors": []},
+  "counts_as_normal_success": false,
+  "unresolved_issue": "First-bond fresh GATT status 133 remains open; record observations without inferring a fix."
+}

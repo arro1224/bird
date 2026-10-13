@@ -21,12 +21,14 @@ class NetworkProvisioningPage extends StatefulWidget {
     required this.onBack,
     this.onCompleted,
     this.onChangeWifi,
+    this.onReauthorize,
     this.completing = false,
   });
 
   final VoidCallback onBack;
   final ValueChanged<Uri>? onCompleted;
   final VoidCallback? onChangeWifi;
+  final VoidCallback? onReauthorize;
   final bool completing;
 
   @override
@@ -84,6 +86,8 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
           error: state.error,
           onBack: widget.onBack,
           onRetry: _canRetryDpp(state) ? () => unawaited(cubit.startDppProvisioning()) : null,
+          onRetrySave: () => unawaited(cubit.retryCredentialSave()),
+          onReauthorize: widget.onReauthorize,
           onScanWifiQr: () => unawaited(_openWifiQrScanner(context, cubit)),
           onChooseNetwork: () => _showConventionalWifiOptions(
             context,
@@ -345,16 +349,41 @@ class _FailureView extends StatelessWidget {
     required this.onScanWifiQr,
     required this.onChooseNetwork,
     this.onRetry,
+    this.onRetrySave,
+    this.onReauthorize,
   });
   final Object? error;
   final VoidCallback onBack;
   final VoidCallback onScanWifiQr;
   final VoidCallback onChooseNetwork;
   final VoidCallback? onRetry;
+  final VoidCallback? onRetrySave;
+  final VoidCallback? onReauthorize;
 
   @override
   Widget build(BuildContext context) {
     final message = UserMessageMapper.fromError(error ?? const NetworkStatusConfirmationException());
+    final needsAuthorization =
+        error is ProvisioningException &&
+        const {
+          ProvisioningErrorCode.authorizationRequired,
+          ProvisioningErrorCode.authorizationFailed,
+          ProvisioningErrorCode.pairingSessionInvalid,
+          ProvisioningErrorCode.pairingSessionExpired,
+          ProvisioningErrorCode.pairingSessionUsed,
+          ProvisioningErrorCode.tokenInvalid,
+          ProvisioningErrorCode.tokenExpired,
+        }.contains((error as ProvisioningException).code);
+    if (error is ProvisioningCredentialSaveException || needsAuthorization) {
+      return ListView(
+        padding: const EdgeInsets.all(AppSpacing.pageHorizontal),
+        children: [
+          ErrorNotice(title: message.title, message: message.message),
+          const SizedBox(height: AppSpacing.md),
+          BirdButton(label: needsAuthorization ? '重新安全授权' : '重试保存连接', onPressed: needsAuthorization ? onReauthorize : onRetrySave),
+        ],
+      );
+    }
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.pageHorizontal),
       children: [

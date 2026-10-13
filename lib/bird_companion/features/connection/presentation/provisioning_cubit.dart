@@ -101,38 +101,45 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   int _actionGeneration = 0;
   bool _closing = false;
   bool retainSession = false;
-  bool _awaitingLocationSettings = false;
-  bool _leftForLocationSettings = false;
-  bool _awaitingPermissionSettings = false;
-  bool _leftForPermissionSettings = false;
+  _SettingsRequest? _settingsRequest;
+  int _settingsSequence = 0;
   bool get _alive => !isClosed && !_closing && (_owner == null || (_control?.ownsSession(_owner!) ?? true));
   bool _current(int generation) => _alive && generation == _actionGeneration;
 
+  int _nextAction() {
+    _settingsRequest = null;
+    return ++_actionGeneration;
+  }
+
+  bool _settingsOwnerCurrent(_SettingsRequest request) => _current(request.generation) && identical(request.owner, _owner) && request.sequence == _settingsSequence;
+
+  void _settingsOpeningFailed(_SettingsRequest request) {
+    if (_settingsOwnerCurrent(request) && identical(request, _settingsRequest)) _settingsRequest = null;
+  }
+
   Future<void> openPermissionSettings() async {
-    if (!_alive || _awaitingPermissionSettings) return;
+    if (!_alive || _settingsRequest != null) return;
     final opener = permissionSettingsOpener;
     if (opener == null) return;
-    _awaitingPermissionSettings = true;
-    _leftForPermissionSettings = false;
-    final generation = _actionGeneration;
+    final request = _SettingsRequest(_SettingsKind.permission, _actionGeneration, _owner, ++_settingsSequence);
+    _settingsRequest = request;
     try {
       final opened = await opener();
-      if (_current(generation) && !opened) _awaitingPermissionSettings = false;
+      if (!opened) _settingsOpeningFailed(request);
     } catch (_) {
-      if (_current(generation)) _awaitingPermissionSettings = false;
+      _settingsOpeningFailed(request);
     }
   }
 
   Future<void> openLocationSettings() async {
-    if (!_alive || _awaitingLocationSettings || _control == null || _owner == null) return;
-    _awaitingLocationSettings = true;
-    _leftForLocationSettings = false;
-    final generation = _actionGeneration;
+    if (!_alive || _settingsRequest != null || _control == null || _owner == null) return;
+    final request = _SettingsRequest(_SettingsKind.location, _actionGeneration, _owner, ++_settingsSequence);
+    _settingsRequest = request;
     try {
-      await _control!.openLocationSettings(_owner!);
+      await _control!.openLocationSettings(request.owner!);
     } catch (error) {
-      _awaitingLocationSettings = false;
-      if (_current(generation)) {
+      if (_settingsOwnerCurrent(request) && identical(request, _settingsRequest)) {
+        _settingsOpeningFailed(request);
         _rootFailure = null;
         _onFailure(error);
       }
@@ -141,8 +148,8 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 
   Future<void> onAppBackgrounded() async {
     if (!_alive) return;
-    if (_awaitingLocationSettings) _leftForLocationSettings = true;
-    if (_awaitingPermissionSettings) _leftForPermissionSettings = true;
+    final request = _settingsRequest;
+    if (request != null && _settingsOwnerCurrent(request)) request.leftApp = true;
     // A system bond dialog may pause the Activity. Preserve its active attempt.
     if (state.phase == ProvisioningPhase.authorizing || state.phase == ProvisioningPhase.connecting) return;
     if (_control != null && _owner != null) {
@@ -154,33 +161,34 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 
   Future<void> onAppResumed() async {
     if (!_alive) return;
-    if (_control != null && _owner != null) await _control!.resumeDiscovery(_owner!);
-    if (_alive && _awaitingPermissionSettings && _leftForPermissionSettings) {
-      _awaitingPermissionSettings = false;
-      _leftForPermissionSettings = false;
-      final generation = _actionGeneration;
+    final generation = _actionGeneration;
+    final owner = _owner;
+    final request = _settingsRequest;
+    if (_control != null && owner != null) await _control!.resumeDiscovery(owner);
+    if (!_current(generation) || !identical(owner, _owner)) return;
+    if (request == null || !identical(request, _settingsRequest) || !request.leftApp || !_settingsOwnerCurrent(request)) return;
+    // Consume this exact return before awaiting the environment. Duplicate
+    // lifecycle callbacks and old opener results must not consume a new request.
+    _settingsRequest = null;
+    if (request.kind == _SettingsKind.permission) {
       if (_control != null) {
         try {
           final environment = await _control!.readScanEnvironment();
-          if (!_current(generation)) return;
+          if (!_settingsOwnerCurrent(request)) return;
           if (environment.permission != BleScanPermissionState.granted) return;
         } catch (error) {
-          if (_current(generation)) _onFailure(error);
+          if (_settingsOwnerCurrent(request) && _settingsRequest == null) _onFailure(error);
           return;
         }
       }
-      if (_current(generation)) await discover();
+      if (_settingsOwnerCurrent(request) && _settingsRequest == null) await discover();
       return;
     }
-    if (!_alive || !_awaitingLocationSettings || !_leftForLocationSettings) return;
-    _awaitingLocationSettings = false;
-    _leftForLocationSettings = false;
-    final generation = _actionGeneration;
     try {
       final environment = await _control!.readScanEnvironment();
-      if (!_current(generation)) return;
-      await _control!.locationSettingsReturned(_owner!, enabled: environment.locationService == BleLocationServiceState.enabled);
-      if (!_current(generation)) return;
+      if (!_settingsOwnerCurrent(request) || _settingsRequest != null) return;
+      await _control!.locationSettingsReturned(request.owner!, enabled: environment.locationService == BleLocationServiceState.enabled);
+      if (!_settingsOwnerCurrent(request) || _settingsRequest != null) return;
       if (environment.locationService == BleLocationServiceState.enabled) {
         await discover();
       } else {
@@ -188,7 +196,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
         _onFailure(const ProvisioningException(code: ProvisioningErrorCode.locationServicesDisabled, retryable: true));
       }
     } catch (error) {
-      if (_current(generation)) {
+      if (_settingsOwnerCurrent(request) && _settingsRequest == null) {
         _rootFailure = null;
         _onFailure(error);
       }
@@ -208,10 +216,8 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 
   Future<void> discover() async {
     if (!_alive || _connectionActionActive || state.phase == ProvisioningPhase.authorizing) return;
-    final generation = ++_actionGeneration;
-    _awaitingLocationSettings = false;
+    final generation = _nextAction();
     _rootFailure = null;
-    _awaitingPermissionSettings = false;
     _lastAction = _ProvisioningAction.discover;
     await _discoverySubscription?.cancel();
     await _repository.stopDiscovery();
@@ -236,7 +242,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   Future<void> selectDevice(ProvisioningDevice device) async {
     if (!_alive || _connectionActionActive) return;
     _connectionActionActive = true;
-    final generation = ++_actionGeneration;
+    final generation = _nextAction();
     _rootFailure = null;
     _lastAction = _ProvisioningAction.connect;
     emit(
@@ -269,8 +275,8 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   }
 
   Future<void> openPairing() async {
-    if (!_alive || state.phase != ProvisioningPhase.trusted || state.deviceInfo == null) return;
-    final generation = ++_actionGeneration;
+    if (!_alive || (state.phase != ProvisioningPhase.trusted && state.phase != ProvisioningPhase.methodSelection) || state.deviceInfo == null) return;
+    final generation = _nextAction();
     _lastAction = _ProvisioningAction.openPairing;
     _rootFailure = null;
     emit(
@@ -298,7 +304,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 
   Future<void> authorizePairing(String pairingCode) async {
     if (!_alive || state.phase != ProvisioningPhase.pairingCode || pairingCode.trim().isEmpty) return;
-    final generation = ++_actionGeneration;
+    final generation = _nextAction();
     _lastAction = _ProvisioningAction.authorizePairing;
     _rootFailure = null;
     emit(
@@ -344,7 +350,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
       return;
     }
     _connectionActionActive = true;
-    final generation = ++_actionGeneration;
+    final generation = _nextAction();
     _rootFailure = null;
     emit(
       state.copyWith(
@@ -380,9 +386,8 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 
   Future<void> reset() async {
     if (!_alive) return;
-    final generation = ++_actionGeneration;
+    final generation = _nextAction();
     _connectionActionActive = false;
-    _awaitingLocationSettings = false;
     final cleanup = _disconnectOwned();
     await _discoverySubscription?.cancel();
     await cleanup;
@@ -426,9 +431,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   Future<void> close() async {
     if (_closing) return;
     _closing = true;
-    _awaitingPermissionSettings = false;
-    ++_actionGeneration;
-    _awaitingLocationSettings = false;
+    _nextAction();
     final cleanup = _control != null && _owner != null && !retainSession
         ? _control!.endSession(_owner!).catchError((Object error) {
             debugPrint('BLE owned page cleanup failed: ${error.runtimeType}');
@@ -447,3 +450,14 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 }
 
 enum _ProvisioningAction { discover, connect, openPairing, authorizePairing }
+
+enum _SettingsKind { permission, location }
+
+final class _SettingsRequest {
+  _SettingsRequest(this.kind, this.generation, this.owner, this.sequence);
+  final _SettingsKind kind;
+  final int generation;
+  final Object? owner;
+  final int sequence;
+  bool leftApp = false;
+}

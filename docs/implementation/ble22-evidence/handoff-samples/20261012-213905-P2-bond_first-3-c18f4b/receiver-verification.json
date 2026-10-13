@@ -1,0 +1,23 @@
+{
+  "verified": true,
+  "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_133959_ble20-virtual-bond_first_5d19941d.json",
+  "bytes": 118408,
+  "file_sha256": "81f088f525cde031d84250084543070c29568a511a248b6ce06191cc509562ce",
+  "payload_sha256": "81f088f525cde031d84250084543070c29568a511a248b6ce06191cc509562ce",
+  "trace_id": "ble20-virtual-bond_first",
+  "retained_events": 70,
+  "retained_scans": 0,
+  "critical_events_missing": false,
+  "critical_missing_reasons": [],
+  "critical_history_unknown": false,
+  "raw_history_complete": false,
+  "evidence_sources": [
+    "android",
+    "dart"
+  ],
+  "run_id": "20261012-213905-P2-bond_first-3-c18f4b",
+  "role": "P2",
+  "scenario": "bond_first",
+  "test_exit_code": 1,
+  "run_status": "test_failed"
+}

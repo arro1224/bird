@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "batch": "BLE-22C-1",
+  "status": "local_implementation_verified_candidate_built",
+  "parent_batch_status": "in_progress_first_bond_stability_recheck",
+  "candidate_round": "ble22-c1-20261013-r1",
+  "source_fingerprint": "5709c68148699efb589bd2d82ae71b6e072d01175fb958d8ef0815a4ca36649b",
+  "reference_candidate": "ble22-20261012-round18",
+  "build_manifest": "outputs/ble22/ble22-c1-20261013-r1/builds.json",
+  "artifact_verification": "outputs/ble22/ble22-c1-20261013-r1/candidate-verification.json",
+  "source_package_verification": "outputs/ble22/ble22-c1-20261013-r1/final-source-package-verification.json",
+  "automated_checks": {"flutter_targeted_passed": 51, "virtual_peripheral_native_passed": 44, "powershell_checks_passed": 58, "powershell_scripts_parsed": 9, "python_passed": 15, "dart_analysis": "no_issues"},
+  "phone_operations": 0,
+  "phone_test_status": "not_started",
+  "normal_phone_success_count": 0,
+  "hardware_status": "pending",
+  "releasable": false,
+  "unresolved": [{"issue": "vivo_first_bond_fresh_gatt_status_133", "reference_run_id": "20261012-213905-P2-bond_first-3-c18f4b", "status": "open_not_retested"}],
+  "next_batch": "BLE-22C-2"
+}

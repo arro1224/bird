@@ -93,6 +93,14 @@ void main() {
     expect(result.errors.join('\n'), contains('APK builds must pass'));
   });
 
+  test('new bond-first candidates cannot reuse the legacy four-scenario matrix', () async {
+    fixture.manifest['security_flow'] = 'bond_first';
+    final result = await fixture.validate();
+    expect(result.passed, isFalse);
+    expect(result.errors.join('\n'), contains('complete scenario matrix'));
+    expect(result.errors.join('\n'), contains('candidate generation'));
+  });
+
   test('rejects a candidate id not derived from the source fingerprint', () async {
     fixture.manifest['candidate_id'] = 'ble12-0000000000000000';
 

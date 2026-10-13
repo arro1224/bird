@@ -141,6 +141,43 @@ void main() {
     expect(platform.mtuCalls, 1); // Preparation owns the rebuilt native MTU.
   });
 
+  test('large MTU frames obey the 512-byte Android attribute bound', () async {
+    final platform = _PreparedPlatform()..preparedMtu = 517;
+    final source = await _connectedDataSource(platform);
+    addTearDown(source.dispose);
+    // Transport boundary fixture only; this synthetic payload is not a board command contract.
+    const identity = '550e8400-e29b-41d4-a716-446655440000';
+    final result = source.writeCommand(BleCommandRequest(type: BleCommandType.getNetworkStatus, requestId: identity, clientId: request.clientId, payload: {'synthetic_test_padding': 'x' * 1000}));
+    await platform.sent.future;
+    expect(platform.writeAttempts.length, greaterThan(2));
+    expect(platform.writeAttempts.every((frame) => frame.length <= 512), isTrue);
+    final assembler = BleFragmentReassembler();
+    Uint8List? complete;
+    for (final frame in platform.writeAttempts) {
+      complete = assembler.add(Uint8List.fromList(frame));
+    }
+    expect((jsonDecode(utf8.decode(complete!)) as Map)['request_id'], identity);
+    _emitNetworkStatus(platform);
+    await result;
+  });
+
+  test('native engine destruction completes a waiting command as a lifecycle error', () async {
+    final platform = _RecoveryPlatform(securityFailures: 0);
+    final source = await _connectedDataSource(platform);
+    addTearDown(source.dispose);
+    final expectation = expectLater(
+      source.writeCommand(request),
+      throwsA(
+        isA<ProvisioningException>().having((e) => e.code, 'code', ProvisioningErrorCode.bleSessionEnded),
+      ),
+    );
+    await _waitForWrites(platform, 1);
+    platform._disconnects.add(const BleDisconnectEvent(reason: 'engine_destroyed', gattStatus: 0, unexpected: true));
+    await expectation;
+    expect(source.isConnected, isFalse);
+    expect(platform.completeSecurityWriteCalls, 0);
+  });
+
   test('preparation failure sends zero bytes and preserves the bond error', () async {
     final platform = _PreparedPlatform()..preparation = Completer<BlePairingReady>();
     final source = await _connectedDataSource(platform);

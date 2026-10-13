@@ -23,7 +23,7 @@ final class BleDiagnosticSnapshotService {
       'scan_sessions': scanSnapshot.retentionFor(flowId, selectedScans.length),
       'connection_events': connectionSnapshot.retentionFor(flowId, events.length),
       'observations_dropped': selectedScans.fold<int>(0, (n, s) => n + (s['observations_dropped'] as int? ?? ((s['raw_result_count'] as int? ?? 0) - (s['observations'] as List? ?? const []).length).clamp(0, 1 << 30))),
-      'retention_policy': 'bounded_history_with_current_attempt_start_and_terminal_anchors',
+      'retention_policy': 'critical_events_first_bounded_requests_records_and_utf8_bytes_v2',
       'snapshot_cutoff': 'records_enqueued_before_joint_queue_barriers',
     };
     Map<String, dynamic>? build;

@@ -1,0 +1,41 @@
+{
+  "phone_acceptance": false,
+  "receiver": "tool/ble19/verify_diagnostic_file.py",
+  "evidence_kind": "synthetic_local_file_pipeline",
+  "reports": {
+    "zip": {
+      "verified": true,
+      "file_name": "BirdBox_BLE_synthetic_local.zip",
+      "bytes": 8193,
+      "file_sha256": "7f8d58f39f77854cc1dbf35f1ac3123383195a8b4cfc34439433477189276509",
+      "payload_sha256": "0bce6bd4300ad8658f7531ff56bf9443c4af7ed364cd8ebde925b062cfc029b7",
+      "trace_id": "flow",
+      "retained_events": 500,
+      "retained_scans": 1,
+      "critical_events_missing": false,
+      "critical_missing_reasons": [],
+      "critical_history_unknown": false,
+      "raw_history_complete": false,
+      "evidence_sources": [
+        "synthetic_local_test"
+      ]
+    },
+    "plain": {
+      "verified": true,
+      "file_name": "BirdBox_BLE_synthetic_local.json",
+      "bytes": 9876,
+      "file_sha256": "14cbc233211938b33762124d6c58dcafc1d47672fdcd7e5384eb40e978365374",
+      "payload_sha256": "14cbc233211938b33762124d6c58dcafc1d47672fdcd7e5384eb40e978365374",
+      "trace_id": "flow",
+      "retained_events": 17,
+      "retained_scans": 1,
+      "critical_events_missing": false,
+      "critical_missing_reasons": [],
+      "critical_history_unknown": false,
+      "raw_history_complete": false,
+      "evidence_sources": [
+        "synthetic_local_test"
+      ]
+    }
+  }
+}

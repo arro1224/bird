@@ -22,6 +22,7 @@ final class BirdBoxPairingCoordinator {
     private long owner;
     private boolean active;
     private boolean invoked;
+    private boolean waitingForBond;
 
     BirdBoxPairingCoordinator(BirdBoxSecurityWriteStateMachine state, Platform platform) {
         this.state = state;
@@ -30,14 +31,19 @@ final class BirdBoxPairingCoordinator {
 
     long owner() { return owner; }
     boolean owns(long candidate) { return active && candidate == owner; }
+    boolean waitingForBond() { return active && waitingForBond; }
 
     void start(String requestId, long gattGeneration) {
         if (active) throw new IllegalStateException("Pairing is already active");
         owner++;
         active = true;
         invoked = false;
+        waitingForBond = true;
         try {
             platform.cancelOldWaits();
+            platform.registerReceiver(owner);
+            // One authoritative read initializes both the phase and the action. In particular,
+            // BONDED -> NONE during registration must not leave a new bond in a GATT phase.
             int bond = platform.bondState();
             if (bond != NONE && bond != BONDING && bond != BONDED) {
                 fail("bond_state_unknown");
@@ -45,10 +51,6 @@ final class BirdBoxPairingCoordinator {
             }
             state.markGattReady(gattGeneration);
             state.beginPairing(requestId, gattGeneration, bond);
-            platform.registerReceiver(owner);
-            // Registration precedes the second read and createBond; rapid broadcasts cannot
-            // leave us waiting for a transition that already happened.
-            bond = platform.bondState();
             if (bond == BONDED) {
                 bonded();
                 return;
@@ -65,6 +67,7 @@ final class BirdBoxPairingCoordinator {
             platform.event("create_bond_invoked", "invoked");
             boolean accepted = platform.createBond();
             platform.event("create_bond_returned", Boolean.toString(accepted));
+            if (!active || !waitingForBond) return;
             if (!accepted) { fail("bond_start_failed"); return; }
             platform.event("system_bond_started", "accepted_waiting_for_broadcast");
             // Some stacks have completed pairing before returning true. Read the actual state.
@@ -82,23 +85,27 @@ final class BirdBoxPairingCoordinator {
 
     void bondChanged(long candidate, int bond, int previous) {
         if (!owns(candidate)) return;
-        if (!state.isWaitingForBond()) return;
+        if (!waitingForBond) return;
         if (bond == BONDED) bonded();
         else if (bond == BONDING) state.onBonding();
         else if (bond == NONE && previous == BONDING) fail("bond_rejected");
+        else if (bond != NONE && bond != BONDING) fail("bond_state_unknown");
     }
 
     void timeout(long candidate) {
-        if (!owns(candidate) || !state.isWaitingForBond()) return;
+        if (!owns(candidate) || !waitingForBond) return;
         fail("bond_timeout");
     }
 
     void cancel() {
         active = false;
+        waitingForBond = false;
         platform.cancelBondTimeout();
     }
 
     private void bonded() {
+        if (!active || !waitingForBond) return;
+        waitingForBond = false;
         platform.cancelBondTimeout();
         if (state.phase() != BirdBoxSecurityWriteStateMachine.Phase.BONDED_RECOVERING_GATT) {
             state.onBonded(false);
@@ -110,6 +117,7 @@ final class BirdBoxPairingCoordinator {
     private void fail(String code) {
         if (!active) return;
         active = false;
+        waitingForBond = false;
         platform.cancelBondTimeout();
         state.failAttempt(code.equals("bond_timeout")
                 ? BirdBoxSecurityWriteStateMachine.Failure.PAIRING_TIMEOUT

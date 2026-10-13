@@ -99,6 +99,18 @@ dart run tool/mock_box_server/server.dart
 
 ## rc4 配网 HTTP 联调
 
+### BLE-21 本地复现与证据范围
+
+执行 `powershell -File tool/ble21/run_local_business_checks.ps1`。可用 `-FlutterRoot`、`-JavaHome` 指定本机运行时；首次运行前需准备项目依赖和离线 Gradle 缓存。脚本依次执行虚拟协议回归、实际 Java 消息的 App 严格解析、生产 Repository/Cubit、模拟页面及真实本机 HTTP 回归、静态分析和既有契约校验。日志保存在 `build/ble21/`。
+
+Debug 模拟页面的应用验证码固定为 **123456**，每个窗口 2 分钟、3 次错误机会；重复打开未过期窗口不会恢复错误次数。原生虚拟外设的应用验证码为 **246810**，窗口 10 分钟、5 次机会。它们都是应用层验证码；系统蓝牙配对界面按 Android 实际提示处理。
+
+Mock 临时会话默认从进程创建起 10 分钟到期，只能兑换一次。完整重跑手机模拟流程前仍需重启 Mock；修改任何一端的设备 ID 时，另一端必须同步修改。Mock 的 `registerPairingSession` 是进程内测试钩子，用于绑定 client_id、到期时间和重新授权；没有新增 HTTP 授权入口。测试使用虚拟外设的同一完整身份 `bbx-b1e11001b1e11001b1e11001b1e11001` 核对 Fake BLE 与 HTTP；真机运行示例的另一合法 ID 仍可继续使用，只要两端一致。
+
+原生虚拟 BLE 与 birdSim HTTP 是两个独立分段：原生端验证窗口、会话授权及 AP/STA/停止操作状态，提供 success/failure/hold 模拟结果；birdSim 使用 Fake BLE/Wi-Fi/DPP 与真实本机 HTTP，验证验证码到首页的业务流程。两段不会共享随机会话、实际网络、Bearer Token 或板端固件状态。原生虚拟端未实现 HTTP Token 校验、扫描与 DPP 业务，按能力声明和 RC4 错误拒绝；其中扫描能力声明为 false，手动 STA 可用。测试用的 `192.0.2.*` 网络参数不代表实际热点。
+
+本批通过不代表 AP 广播、STA 入网、DHCP、Android 网络绑定或真实盒子可达。`adb reverse` 与 Fake 网络事件仅提供业务/HTTP 证据。严格板端基线校验仍需板端仓库、固件和联系人等外部资料；不应为了让本地脚本通过而填入虚构值。
+
 rc4 Schema 要求完整设备身份使用 `bbx-` 加 32 位小写十六进制。启动用于配网契约
 测试的 Mock 时，应显式传入符合约束的设备 ID：
 

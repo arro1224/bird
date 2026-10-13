@@ -12,6 +12,7 @@ class MockBoxServer {
     this.deviceId = 'mock-k7-001',
     this.pairingCode = '2468',
     this.pairingSessionId = 'ps_mock_pairing_session',
+    this.pairingSessionLifetime = const Duration(minutes: 10),
     this.tokenLifetime = const Duration(minutes: 10),
     this.signedUrlLifetime = const Duration(minutes: 2),
     this.progressiveMedia = false,
@@ -22,6 +23,7 @@ class MockBoxServer {
   }) : assetDirectory = assetDirectory ?? Directory('tool/mock_box_server/assets'),
        requestLogSink = requestLogSink ?? ((message) => stdout.writeln(message)) {
     _clock = clock ?? DateTime.now;
+    _pairingSessionExpiresAt = _clock().toUtc().add(pairingSessionLifetime);
     _assetEventsEnabled = emitAssetReadyEvents;
     if (photoCount <= 0) {
       throw ArgumentError.value(photoCount, 'photoCount', '必须大于 0');
@@ -44,6 +46,21 @@ class MockBoxServer {
   final String deviceId;
   final String pairingCode;
   final String pairingSessionId;
+  final Duration pairingSessionLifetime;
+  late DateTime _pairingSessionExpiresAt;
+  String? _pairingSessionClientId;
+  String? _registeredPairingSessionId;
+  int pairingExchangeCount = 0;
+  bool failNextPairingExchange = false;
+
+  /// In-process test adapter hook; never exposed as a production HTTP endpoint.
+  void registerPairingSession(String value, {required String clientId, required Duration lifetime}) {
+    _registeredPairingSessionId = value;
+    _pairingSessionClientId = clientId;
+    _pairingSessionExpiresAt = _clock().toUtc().add(lifetime);
+    _pairingSessionConsumed = false;
+  }
+
   final Duration tokenLifetime;
   final Duration signedUrlLifetime;
   final bool progressiveMedia;
@@ -953,8 +970,7 @@ class MockBoxServer {
   }
 
   Future<void> _serveCopyJobList(HttpRequest request) async {
-    final jobs = _copyJobsV1.values.toList()
-      ..sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
+    final jobs = _copyJobsV1.values.toList()..sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
     await _json(request, HttpStatus.ok, {
       'items': [
         for (final job in jobs) _copyJobListEntry(job),
@@ -1015,9 +1031,7 @@ class MockBoxServer {
     final job = _requireCopyJobV1(request, copyJobId);
     if (job == null) return;
     final afterSeq = int.tryParse(request.uri.queryParameters['after_seq'] ?? '') ?? 0;
-    final events = (job['events'] as List<Map<String, dynamic>>)
-        .where((event) => (event['seq'] as int) > afterSeq)
-        .toList();
+    final events = (job['events'] as List<Map<String, dynamic>>).where((event) => (event['seq'] as int) > afterSeq).toList();
     await _json(request, HttpStatus.ok, {'events': events, 'has_more': false});
   }
 
@@ -1144,9 +1158,7 @@ class MockBoxServer {
     'stats': _copyJobStatsWire(job),
     'source_device': job['source_device'],
     'target_device': job['target_device'],
-    'allowed_actions': _copyJobAllowedActions(job['state'] as String)
-        .map((action) => action)
-        .toList(growable: false),
+    'allowed_actions': _copyJobAllowedActions(job['state'] as String).map((action) => action).toList(growable: false),
     'created_at': job['created_at'],
     'started_at': job['started_at'],
     'finished_at': job['finished_at'],
@@ -1185,18 +1197,16 @@ class MockBoxServer {
       'eta_seconds': _copyJobIsTerminal(state) || total == 0 ? null : max(total - copied - failed, 1) * 2,
       'bytes_per_second': state == 'running' ? itemBytes ~/ 2 : null,
       'current_file': state == 'running'
-          ? (job['items'] as List<Map<String, dynamic>>)
-              .firstWhere(
-                (item) => item['state'] == 'copying' || item['state'] == 'verifying',
-                orElse: () => (job['items'] as List<Map<String, dynamic>>).first,
-              )['target_filename']
+          ? (job['items'] as List<Map<String, dynamic>>).firstWhere(
+              (item) => item['state'] == 'copying' || item['state'] == 'verifying',
+              orElse: () => (job['items'] as List<Map<String, dynamic>>).first,
+            )['target_filename']
           : null,
       'progress_percent': total == 0 ? null : (copied + failed) / total,
     };
   }
 
-  bool _copyJobIsTerminal(String state) =>
-      state == 'completed' || state == 'completed_with_errors' || state == 'cancelled' || state == 'failed';
+  bool _copyJobIsTerminal(String state) => state == 'completed' || state == 'completed_with_errors' || state == 'cancelled' || state == 'failed';
 
   void _copyJobTransition(
     Map<String, dynamic> job,
@@ -1246,17 +1256,17 @@ class MockBoxServer {
         return true;
       case 'running':
         final lastTick = job['running_last_tick'] as String?;
-        job['running_active_ms'] =
-            (job['running_active_ms'] as int) +
-            (lastTick == null ? 0 : now.difference(DateTime.parse(lastTick)).inMilliseconds);
+        job['running_active_ms'] = (job['running_active_ms'] as int) + (lastTick == null ? 0 : now.difference(DateTime.parse(lastTick)).inMilliseconds);
         job['running_last_tick'] = now.toIso8601String();
         _advanceCopyJobItems(job);
-        if ((job['items'] as List<Map<String, dynamic>>).every((item) => const {
-          'copied',
-          'failed',
-          'skipped_conflict',
-          'not_applicable',
-        }.contains(item['state']))) {
+        if ((job['items'] as List<Map<String, dynamic>>).every(
+          (item) => const {
+            'copied',
+            'failed',
+            'skipped_conflict',
+            'not_applicable',
+          }.contains(item['state']),
+        )) {
           _copyJobTransitionTimed(job, 'completed_with_errors', now, '任务部分完成：1 个文件失败');
           return true;
         }
@@ -1329,9 +1339,7 @@ class MockBoxServer {
               events.add({
                 'seq': job['event_seq'],
                 'type': willFail ? 'item_failed' : 'item_copied',
-                'message': willFail
-                    ? '文件 ${item['target_filename']} 校验失败（COPY_HASH_MISMATCH）'
-                    : '文件 ${item['target_filename']} 已复制并通过校验',
+                'message': willFail ? '文件 ${item['target_filename']} 校验失败（COPY_HASH_MISMATCH）' : '文件 ${item['target_filename']} 已复制并通过校验',
                 'created_at': _clock().toIso8601String(),
               });
               progressed = true;
@@ -1979,6 +1987,7 @@ class MockBoxServer {
   }
 
   Future<void> _exchangePairingSession(HttpRequest request) async {
+    pairingExchangeCount++;
     final body = await _requestJson(request);
     lastRc4PairingIncludedCode = body.containsKey('pairing_code');
     lastRc4PairingClientId = body['client_id']?.toString();
@@ -2002,7 +2011,7 @@ class MockBoxServer {
       );
       return;
     }
-    if (body['device_id'] != deviceId || body['pairing_session_id'] != pairingSessionId) {
+    if (body['device_id'] != deviceId || body['pairing_session_id'] != (_registeredPairingSessionId ?? pairingSessionId) || (_pairingSessionClientId != null && body['client_id'] != _pairingSessionClientId)) {
       await _json(
         request,
         HttpStatus.forbidden,
@@ -2028,6 +2037,25 @@ class MockBoxServer {
         },
         envelope: false,
       );
+      return;
+    }
+    if (!_pairingSessionExpiresAt.isAfter(_clock().toUtc())) {
+      await _json(request, HttpStatus.forbidden, {
+        'code': 'PAIRING_SESSION_EXPIRED',
+        'message': 'The pairing session expired.',
+        'retryable': false,
+        'retry_after_ms': 0,
+      }, envelope: false);
+      return;
+    }
+    if (failNextPairingExchange) {
+      failNextPairingExchange = false;
+      await _json(request, HttpStatus.serviceUnavailable, {
+        'code': 'NETWORK_INTERNAL_ERROR',
+        'message': 'Simulated exchange service failure.',
+        'retryable': true,
+        'retry_after_ms': 0,
+      }, envelope: false);
       return;
     }
     final clientId = body['client_id'];

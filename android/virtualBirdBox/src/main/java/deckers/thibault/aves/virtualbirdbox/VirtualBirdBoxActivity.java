@@ -8,6 +8,10 @@ import android.os.Build;
 import android.util.Log;
 import android.view.Gravity;
 import android.widget.TextView;
+import android.widget.LinearLayout;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
 
 import android.app.Activity;
 
@@ -31,6 +35,7 @@ public final class VirtualBirdBoxActivity extends Activity {
     private TextView status;
     private VirtualBirdBoxPeripheral peripheral;
     private Ble11ScenarioState.Scenario scenario;
+    private String observationRunId;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,7 +44,21 @@ public final class VirtualBirdBoxActivity extends Activity {
         status.setGravity(Gravity.CENTER);
         status.setTextSize(20f);
         status.setPadding(48, 48, 48, 48);
-        setContentView(status);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        Spinner selector = new Spinner(this);
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (Ble11ScenarioState.Scenario option : Ble11ScenarioState.Scenario.values()) {
+            if (option == Ble11ScenarioState.Scenario.SUCCESS || option == Ble11ScenarioState.Scenario.AUTO_BOND || option == Ble11ScenarioState.Scenario.FALLBACK_ONCE) continue;
+            names.add(option.wireValue());
+        }
+        selector.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
+        Button start = new Button(this); start.setText("启动所选测试场景");
+        start.setOnClickListener(view -> {
+            stopPeripheral();
+            configure(new Intent().putExtra("scenario", (String) selector.getSelectedItem()).putExtra("reset_log", true));
+        });
+        layout.addView(selector); layout.addView(start); layout.addView(status); setContentView(layout);
         configure(getIntent());
     }
 
@@ -52,8 +71,13 @@ public final class VirtualBirdBoxActivity extends Activity {
     }
 
     private void configure(Intent intent) {
+        setIntent(intent);
         try {
             scenario = Ble11ScenarioState.Scenario.parse(intent.getStringExtra("scenario"));
+            observationRunId = intent.getStringExtra("run_id");
+            if (observationRunId != null && !observationRunId.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,120}")) {
+                throw new IllegalArgumentException("Invalid observation run ID");
+            }
         } catch (IllegalArgumentException error) {
             status.setText(error.getMessage());
             record("startup_failed", field("reason", "invalid_scenario"));
@@ -98,9 +122,25 @@ public final class VirtualBirdBoxActivity extends Activity {
 
     private void startPeripheral() {
         try {
-            peripheral = new VirtualBirdBoxPeripheral(this, scenario, this::record);
+            final Ble11ScenarioState.Fault defaults = Ble11ScenarioState.defaults(scenario);
+            final Intent intent = getIntent();
+            final String position = intent.getStringExtra("fault_position");
+            final Ble11ScenarioState.Fault fault = new Ble11ScenarioState.Fault(
+                    intent.hasExtra("fault_characteristic") ? intent.getStringExtra("fault_characteristic") : defaults.characteristic,
+                    position == null ? defaults.position : Ble11ScenarioState.Position.valueOf(position.toUpperCase(java.util.Locale.ROOT)),
+                    intent.getIntExtra("fault_fragment_index", defaults.fragmentIndex),
+                    intent.getIntExtra("fault_status", defaults.status),
+                    intent.getIntExtra("att_response_delay_ms", defaults.attDelayMs),
+                    intent.getIntExtra("business_response_delay_ms", defaults.responseDelayMs));
+            String businessOutcome = intent.getStringExtra("business_outcome");
+            String businessBaseUri = intent.getStringExtra("business_base_uri");
+            final VirtualBirdBoxProtocol protocol = new VirtualBirdBoxProtocol(System::currentTimeMillis,
+                    businessBaseUri == null ? "http://192.0.2.1:8080" : businessBaseUri,
+                    businessOutcome == null ? "success" : businessOutcome);
+            peripheral = new VirtualBirdBoxPeripheral(this, new Ble11ScenarioState(scenario, fault), this::record, protocol);
+            peripheral.setObservationRunId(observationRunId);
             peripheral.start();
-            status.setText("BLE-11 Virtual BirdBox\n" + scenario.wireValue() + "\nAdvertising BirdBox-B1E11001");
+            status.setText("BLE-20 Virtual BirdBox\n" + scenario.wireValue() + "\n等待广播成功回调");
         } catch (RuntimeException error) {
             status.setText("Virtual BirdBox failed\n" + error.getClass().getSimpleName());
             record("startup_failed", field("reason", error.getClass().getSimpleName()));
@@ -118,11 +158,19 @@ public final class VirtualBirdBoxActivity extends Activity {
         super.onDestroy();
     }
 
-    private void record(String eventType, JSONObject fields) {
+    private synchronized void record(String eventType, JSONObject fields) {
         final JSONObject event = new JSONObject();
         try {
-            event.put("schema_version", 1);
-            event.put("evidence_kind", "simulated");
+            event.put("schema_version", 2);
+            event.put("evidence_kind", "virtual_birdbox_endpoint");
+            event.put("security_flow", "bond_first");
+            event.put("endpoint_kind", "virtual_birdbox");
+            event.put("model", Build.MODEL);
+            event.put("manufacturer", Build.MANUFACTURER);
+            event.put("sdk_int", Build.VERSION.SDK_INT);
+            event.put("package_id", BuildConfig.APPLICATION_ID);
+            event.put("version_name", BuildConfig.VERSION_NAME);
+            event.put("version_code", BuildConfig.VERSION_CODE);
             event.put("event_type", eventType);
             event.put("occurred_at", Instant.now().toString());
             event.put("fields", fields);
@@ -130,6 +178,8 @@ public final class VirtualBirdBoxActivity extends Activity {
             throw new IllegalStateException(error);
         }
         final String line = event + System.lineSeparator();
+        if (eventType.equals("advertising_started")) runOnUiThread(() -> status.setText("BLE-20 Virtual BirdBox\n" + scenario.wireValue() + "\n广播已启动 BirdBox-B1E11001\n加密写权限测试，非真实盒子"));
+        if (eventType.equals("startup_failed") || eventType.equals("advertising_failed")) runOnUiThread(() -> status.setText("Virtual BirdBox 启动失败\n" + fields.optString("reason", fields.optString("error_code"))));
         Log.i(TAG, event.toString());
         try (FileOutputStream output = new FileOutputStream(eventLog(), true)) {
             output.write(line.getBytes(StandardCharsets.UTF_8));

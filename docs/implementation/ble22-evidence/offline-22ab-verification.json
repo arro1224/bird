@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "batch": [
+    "BLE-22A",
+    "BLE-22B"
+  ],
+  "offline_status": "completed",
+  "phone_acceptance_status": "paused_by_user",
+  "phone_operations_this_batch": 0,
+  "hardware_status": "pending",
+  "releasable": false,
+  "handoff_readiness": "blocked",
+  "next_batch": "BLE-22C",
+  "checks": {
+    "native": {
+      "tests": 150,
+      "failures": 0,
+      "errors": 0
+    },
+    "flutter_targeted": {
+      "tests": 58,
+      "status": "passed"
+    },
+    "powershell_tools": {
+      "tests": 24,
+      "status": "passed"
+    },
+    "python_tools": {
+      "tests": 8,
+      "status": "passed"
+    },
+    "dart_analyze": "passed",
+    "historical_failed_run_file": {
+      "round": "ble22-20261012-round9",
+      "received_files": 1,
+      "verified": true,
+      "skipped": [],
+      "failures": [],
+      "scope": "file_integrity_and_actual_retention_only_not_phone_acceptance"
+    }
+  },
+  "prepared_round": {
+    "box_sha256": "142aa0c5e2527cff2b1d04067fed6017125b8281b9c246394f94fcc20a9db564",
+    "build_dirty": true,
+    "box_manual_install_debug": true,
+    "hardware_status": "pending",
+    "phone_test_status": "not_started",
+    "releasable": false,
+    "status": "built_not_phone_accepted",
+    "app_sha256": "50933a458aa4718cbec92a6a8a7a6a15cdc36e0be813eb0bd0c6a7cb0eca6915",
+    "artifacts": {
+      "transport": {
+        "version_name": "1.14.11",
+        "path": "apks/transport-debug.apk",
+        "defines": [],
+        "apk_sha256": "50933a458aa4718cbec92a6a8a7a6a15cdc36e0be813eb0bd0c6a7cb0eca6915",
+        "entrypoint": "integration_test/ble22_phone_test.dart",
+        "package": "deckers.thibault.aves.bird",
+        "version_code": 176
+      },
+      "virtual": {
+        "path": "apks/virtual-debug.apk",
+        "apk_sha256": "142aa0c5e2527cff2b1d04067fed6017125b8281b9c246394f94fcc20a9db564",
+        "package": "deckers.thibault.aves.virtualbirdbox.debug",
+        "manual_install_debug": true
+      },
+      "formal": {
+        "version_name": "1.14.11",
+        "path": "apks/formal-debug.apk",
+        "defines": [],
+        "apk_sha256": "0663ea21bed4564bb548ddea9ae93aae08e6440b090e8a6c94e108bb44d92e32",
+        "entrypoint": "lib/main.dart",
+        "package": "deckers.thibault.aves.bird",
+        "version_code": 176
+      },
+      "simulation": {
+        "version_name": "1.14.11",
+        "path": "apks/simulation-debug.apk",
+        "defines": [
+          "--dart-define=BIRD_SIMULATED_DEVICE_ID=bbx-b1e11001b1e11001b1e11001b1e11001"
+        ],
+        "apk_sha256": "b20481b009730a0c37de31fec4c1d22f574f34f79f604bc676f4e0fd4bda6b56",
+        "entrypoint": "lib/main_bird_simulated.dart",
+        "package": "deckers.thibault.aves.bird.sim",
+        "version_code": 176
+      }
+    },
+    "source_fingerprint": "bef10f80c0e87c429efc3cb538557906f2552a8504981ffa416c6e61090d829b",
+    "round_id": "ble22-20261012-round12",
+    "git_commit": "c9aa4fabee60756b2cd2f40474ef06e58bff8f35",
+    "build_id": "ble22-20261012-round12",
+    "app_entrypoint": "integration_test/ble22_phone_test.dart"
+  },
+  "evidence_directory": "outputs/ble22/ble22-20261012-round12/checks",
+  "limitations": [
+    "SDK27 service discovery settle is not physically verified; vivo blocker still open",
+    "UI matching tests use offline XML; OEM windows pending BLE-22C",
+    "harness export contains connection events; formal scan/save/share pending BLE-22E",
+    "no actual BirdBox; AP/STA/DPP/routes pending BLE-24"
+  ]
+}

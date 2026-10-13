@@ -1,0 +1,38 @@
+[
+  {
+    "test_exit_code": 1,
+    "scope": "actual_bytes_and_evidence_copy_not_new_phone_acceptance",
+    "raw_run_status": "test_failed",
+    "export_sha256": "81f088f525cde031d84250084543070c29568a511a248b6ce06191cc509562ce",
+    "origin": "outputs/ble22/ble22-20261012-round18/20261012-213905-P2-bond_first-3-c18f4b",
+    "portable_path": "docs\\implementation\\ble22-evidence\\handoff-samples\\20261012-213905-P2-bond_first-3-c18f4b",
+    "run_id": "20261012-213905-P2-bond_first-3-c18f4b"
+  },
+  {
+    "test_exit_code": 1,
+    "scope": "actual_bytes_and_evidence_copy_not_new_phone_acceptance",
+    "raw_run_status": "test_failed",
+    "export_sha256": "0a1e6afe2078de5f13b993b0b888395a88ddb57960f6766bd51493a0bc0e27fa",
+    "origin": "outputs/ble22/ble22-c2-20261013-r6/20261013-140734-P2-bond_first-1-ef5b43",
+    "portable_path": "docs\\implementation\\ble22-evidence\\handoff-samples\\20261013-140734-P2-bond_first-1-ef5b43",
+    "run_id": "20261013-140734-P2-bond_first-1-ef5b43"
+  },
+  {
+    "test_exit_code": 0,
+    "scope": "actual_bytes_and_evidence_copy_not_new_phone_acceptance",
+    "raw_run_status": "passed",
+    "export_sha256": "b05f752b147513427fa0bb71330e5e6b35c36c7887ef92f23ab01d8243c6d0e3",
+    "origin": "outputs/ble22/ble22-c2-20261013-r6/20261013-142515-P2-bond_first-2-9492c8",
+    "portable_path": "docs\\implementation\\ble22-evidence\\handoff-samples\\20261013-142515-P2-bond_first-2-9492c8",
+    "run_id": "20261013-142515-P2-bond_first-2-9492c8"
+  },
+  {
+    "test_exit_code": 1,
+    "scope": "actual_bytes_and_evidence_copy_not_new_phone_acceptance",
+    "raw_run_status": "test_failed",
+    "export_sha256": "86ec7802298ad955619b591f42f1c0f5196b9f793bb7808933075eca9beb620b",
+    "origin": "outputs/ble22/ble22-c2-20261013-r7/20261013-145702-P1-bond_first-1-f0e914",
+    "portable_path": "docs\\implementation\\ble22-evidence\\handoff-samples\\20261013-145702-P1-bond_first-1-f0e914",
+    "run_id": "20261013-145702-P1-bond_first-1-f0e914"
+  }
+]

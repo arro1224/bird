@@ -16,6 +16,36 @@ import 'package:flutter_test/flutter_test.dart';
 import 'fakes/fake_provisioning_repository.dart';
 
 void main() {
+  for (final entry in <(Object, String)>[
+    (const ProvisioningCredentialSaveException(), '重试保存连接'),
+    (const ProvisioningException(code: ProvisioningErrorCode.pairingSessionUsed, retryable: false), '重新安全授权'),
+  ]) {
+    testWidgets('BLE-21 failure exposes correct stage: ${entry.$2}', (tester) async {
+      final repository = FakeProvisioningRepository(startDirectApError: entry.$1);
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(cubit.close);
+      addTearDown(repository.dispose);
+      await cubit.startDirectAp(_deviceInfo());
+      var reauthorized = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: BlocProvider.value(
+              value: cubit,
+              child: NetworkProvisioningPage(onBack: () {}, onReauthorize: () => reauthorized = true),
+            ),
+          ),
+        ),
+      );
+      expect(find.text(entry.$2), findsOneWidget);
+      expect(find.text('扫描 Wi-Fi 二维码'), findsNothing);
+      if (entry.$2 == '重新安全授权') {
+        await tester.tap(find.text(entry.$2));
+        expect(reauthorized, isTrue);
+      }
+    });
+  }
   testWidgets('connection methods disable unsupported capabilities', (
     tester,
   ) async {

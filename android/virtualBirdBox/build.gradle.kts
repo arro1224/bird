@@ -17,8 +17,8 @@ android {
         // VirtualBirdBoxActivity; pre-S devices use the legacy manifest permissions.
         minSdk = 21
         targetSdk = 37
-        versionCode = 1
-        versionName = "ble11"
+        versionCode = 2
+        versionName = "ble20"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The normal virtual-box build remains ADB/test-only. A temporary manual
         // install build is produced only with -PvirtualBirdBoxManualInstall=true
@@ -26,6 +26,7 @@ android {
         manifestPlaceholders["virtualBirdBoxTestOnly"] = (!manualInstallBuild.get()).toString()
     }
 
+    buildFeatures { buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -46,4 +47,6 @@ androidComponents {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("org.mockito:mockito-core:5.23.0")
 }

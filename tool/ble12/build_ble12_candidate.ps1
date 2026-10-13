@@ -125,8 +125,8 @@ function Test-Emulator365([string]$version) {
 if (!(Test-Path -LiteralPath $flutter) -or !(Test-Path -LiteralPath $dart)) {
     throw "Flutter SDK is incomplete: $FlutterSdk"
 }
-if (!(Test-Path -LiteralPath $gradle) -or !(Test-Path -LiteralPath $emulator) -or !(Test-Path -LiteralPath $apkAnalyzer)) {
-    throw 'Android build tools, APK analyzer, or emulator are missing.'
+if (!(Test-Path -LiteralPath $gradle) -or !(Test-Path -LiteralPath $apkAnalyzer)) {
+    throw 'Android build tools or APK analyzer are missing.'
 }
 $java21 = Get-ChildItem -Path "$env:USERPROFILE\.gradle\jdks" -Recurse -Filter java.exe -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -match '\\eclipse_adoptium-21[^\\]*\\bin\\java\.exe$' } |
@@ -138,19 +138,16 @@ if ($null -ne $java21) {
 }
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 
-$emulatorLine = (& $emulator -version | Select-Object -First 1)
+$emulatorLine = if (Test-Path -LiteralPath $emulator) { (& $emulator -version | Select-Object -First 1) } else { 'unavailable' }
 $emulatorMatch = [regex]::Match($emulatorLine, '(\d+\.\d+\.\d+(?:\.\d+)?)')
 $emulatorVersion = if ($emulatorMatch.Success) { $emulatorMatch.Groups[1].Value } else { 'unknown' }
 $dualAvdCapable = Test-Emulator365 $emulatorVersion
-$avds = @(& $emulator -list-avds)
+$avds = if (Test-Path -LiteralPath $emulator) { @(& $emulator -list-avds) } else { @() }
 if ($Ble11Evidence.Count -eq 0 -and $dualAvdCapable) {
-    throw 'Emulator 36.5+ is available; run all four BLE-11 scenarios and pass their evidence files to -Ble11Evidence.'
+    throw 'Emulator 36.5+ is available; run all 13 bond-first virtual endpoint scenarios and pass their evidence files to -Ble11Evidence.'
 }
-if ($Ble11Evidence.Count -ne 0 -and $Ble11Evidence.Count -ne 4) {
-    throw 'Exactly four BLE-11 evidence files are required.'
-}
-if ($Ble11Evidence.Count -eq 4 -and !$dualAvdCapable) {
-    throw 'BLE-11 evidence cannot be accepted with an emulator below 36.5.'
+if ($Ble11Evidence.Count -ne 0 -and $Ble11Evidence.Count -ne 13) {
+    throw 'Exactly 13 schema-2 bond-first evidence files are required.'
 }
 
 $gitCommit = (& git rev-parse HEAD).Trim().ToLowerInvariant()
@@ -169,6 +166,7 @@ foreach ($path in @(
     'android/app/src/test/java/deckers/thibault/aves/BirdBoxSecurityWriteStateMachineTest.java',
     'android/app/src/test/java/deckers/thibault/aves/BirdBoxConditionalBondFallbackPolicyTest.java',
     'android/app/src/main/AndroidManifest.xml',
+    'android/app/src/main/java/deckers/thibault/aves/MainActivity.java',
     'android/app/build.gradle.kts',
     'android/settings.gradle.kts',
     'pubspec.yaml',
@@ -180,15 +178,23 @@ foreach ($path in @(
     'test/bird_companion/acceptance/ble11_simulated_evidence_test.dart',
     'test/bird_companion/acceptance/ble11_virtual_box_isolation_test.dart',
     'test/bird_companion/acceptance/ble12_candidate_package_test.dart',
+    'test/bird_companion/acceptance/ble20_bond_first_evidence_test.dart',
+    'test/bird_companion/acceptance/ble20_local_capture_test.dart',
     'test/bird_companion/features/connection/ble_connection_diagnostics_test.dart',
     'test/bird_companion/features/connection/ble_discovery_test.dart',
     'test/bird_companion/features/connection/provisioning_cubit_test.dart'
 )) {
     Add-SourceFile $sourcePaths $path
 }
+foreach ($nativeDirectory in @('android/app/src/main/java/deckers/thibault/aves','android/app/src/test/java/deckers/thibault/aves')) {
+    Get-ChildItem -LiteralPath (Join-Path $repositoryRoot $nativeDirectory) -Filter 'BirdBox*.java' -File | ForEach-Object {
+        Add-SourceFile $sourcePaths ([IO.Path]::GetRelativePath($repositoryRoot, $_.FullName).Replace('\','/'))
+    }
+}
 foreach ($directory in @(
     'lib/bird_companion/features/connection/data/ble',
     'android/virtualBirdBox',
+    'test/bird_companion/features/connection',
     'tool/ble11',
     'tool/ble12'
 )) {
@@ -245,8 +251,6 @@ $steps.Add((Invoke-CandidateStep 'App native BLE regression' {
     Push-Location $androidRoot
     try {
         & $gradle :app:testBirdDebugUnitTest `
-            --tests deckers.thibault.aves.BirdBoxSecurityWriteStateMachineTest `
-            --tests deckers.thibault.aves.BirdBoxConditionalBondFallbackPolicyTest `
             --no-daemon --no-configuration-cache
     } finally {
         Pop-Location
@@ -254,7 +258,17 @@ $steps.Add((Invoke-CandidateStep 'App native BLE regression' {
 } $appNativeLog))
 $appNativeCount = Get-TestCount (Join-Path $repositoryRoot 'build\app\test-results\testBirdDebugUnitTest') @(
     'deckers.thibault.aves.BirdBoxSecurityWriteStateMachineTest',
-    'deckers.thibault.aves.BirdBoxConditionalBondFallbackPolicyTest'
+    'deckers.thibault.aves.BirdBoxConditionalBondFallbackPolicyTest',
+    'deckers.thibault.aves.BirdBoxPairingCoordinatorTest',
+    'deckers.thibault.aves.BirdBoxBleBridgeTest',
+    'deckers.thibault.aves.BirdBoxBleDiagnosticFileChannelTest',
+    'deckers.thibault.aves.BirdBoxDiagnosticFileWriterTest',
+    'deckers.thibault.aves.BirdBoxSecurityWriteAttemptContextTest',
+    'deckers.thibault.aves.BirdBoxScanCompatibilityTest',
+    'deckers.thibault.aves.BirdBoxScanRecordRedactorTest',
+    'deckers.thibault.aves.BirdBoxScanStrategyControllerTest',
+    'deckers.thibault.aves.BirdBoxScanTimingTest',
+    'deckers.thibault.aves.BirdBoxSecurityWriteRecoveryIntegrationTest'
 )
 
 $virtualLog = Join-Path $workRoot 'virtual-birdbox-tests.log'
@@ -269,7 +283,9 @@ $steps.Add((Invoke-CandidateStep 'Virtual BirdBox tests and APK' {
 } $virtualLog))
 $virtualTestCount = Get-TestCount (Join-Path $repositoryRoot 'build\virtualBirdBox\test-results\testDebugUnitTest') @(
     'deckers.thibault.aves.virtualbirdbox.Rc4BleFrameCodecTest',
-    'deckers.thibault.aves.virtualbirdbox.Ble11ScenarioStateTest'
+    'deckers.thibault.aves.virtualbirdbox.Ble11ScenarioStateTest',
+    'deckers.thibault.aves.virtualbirdbox.VirtualRequestLedgerTest',
+    'deckers.thibault.aves.virtualbirdbox.VirtualBirdBoxPeripheralTest'
 )
 
 $previousGitSha = $env:AVES_GIT_SHA
@@ -297,8 +313,8 @@ $null = New-Item -ItemType Directory -Path $packageRoot
 foreach ($directory in @('artifacts', 'reports', 'source', 'evidence\ble11', 'docs', 'templates')) {
     $null = New-Item -ItemType Directory -Path (Join-Path $packageRoot $directory)
 }
-Copy-Item -LiteralPath $appApk -Destination (Join-Path $packageRoot 'artifacts\BirdBox-1.14.8-172-BLE12-debug.apk')
-Copy-Item -LiteralPath $virtualApk -Destination (Join-Path $packageRoot 'artifacts\VirtualBirdBox-BLE11-debug.apk')
+Copy-Item -LiteralPath $appApk -Destination (Join-Path $packageRoot 'artifacts\BirdBox-1.14.11-176-BLE20-debug.apk')
+Copy-Item -LiteralPath $virtualApk -Destination (Join-Path $packageRoot 'artifacts\VirtualBirdBox-BLE20-debug.apk')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'materials\field-integration-manual.zh-CN.md') -Destination (Join-Path $packageRoot 'docs\field-integration-manual.zh-CN.md')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'materials\diagnostic-return-guide.zh-CN.md') -Destination (Join-Path $packageRoot 'docs\diagnostic-return-guide.zh-CN.md')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'materials\ble12-return.template.json') -Destination (Join-Path $packageRoot 'templates\ble12-return.template.json')
@@ -370,8 +386,9 @@ $verification = [ordered]@{
 $verificationPath = Join-Path $packageRoot 'reports\automated-verification.json'
 Write-Utf8NoBom $verificationPath ($verification | ConvertTo-Json -Depth 30)
 
-$expectedScenarios = @('success', 'auto_bond', 'fallback_once', 'disconnect_once')
+$expectedScenarios = @('bond_first', 'already_bonded', 'auth_once', 'auth_persistent', 'att_timeout_first', 'att_timeout_middle', 'att_timeout_last', 'notification_failure', 'disconnect_once', 'response_delay', 'response_wrong', 'response_duplicate', 'business_timeout')
 $evidenceReferences = @()
+$usesAvdEvidence = $false
 if ($Ble11Evidence.Count -eq 0) {
     $simulationStatus = 'pending_environment'
     $ble11Status = [ordered]@{
@@ -395,6 +412,11 @@ if ($Ble11Evidence.Count -eq 0) {
         & $dart (Join-Path $repositoryRoot 'tool\ble11\validate_ble11_evidence.dart') $evidenceFile.FullName
         if ($LASTEXITCODE -ne 0) { throw "Invalid BLE-11 evidence: $($evidenceFile.FullName)" }
         $evidenceValue = Get-Content -Raw -LiteralPath $evidenceFile.FullName | ConvertFrom-Json
+        if ($evidenceValue.evidence_kind -eq 'virtual_birdbox_avd') { $usesAvdEvidence = $true }
+        if ($evidenceValue.evidence_kind -eq 'virtual_birdbox_avd' -and !$dualAvdCapable) {
+            throw 'AVD evidence requires an emulator of at least 36.5; phone evidence does not.'
+        }
+        if ($evidenceValue.schema_version -ne 2 -or $evidenceValue.security_flow -ne 'bond_first') { throw 'Current candidates require schema-2 bond-first evidence.' }
         $scenario = [string]$evidenceValue.scenario
         if ($scenario -notin $expectedScenarios -or !$observedScenarios.Add($scenario)) {
             throw "Duplicate or invalid BLE-11 scenario: $scenario"
@@ -433,7 +455,7 @@ if ($Ble11Evidence.Count -eq 0) {
         status = $simulationStatus
         required_emulator_version = '36.5+'
         detected_emulator_version = $emulatorVersion
-        dual_avd_capable = $true
+        dual_avd_capable = $dualAvdCapable
         avds = $avds
         expected_scenarios = $expectedScenarios
         completed_scenarios = @($observedScenarios | Sort-Object)
@@ -455,6 +477,7 @@ foreach ($reference in $evidenceReferences) {
 $manifest = [ordered]@{
     schema_version = 1
     candidate_suite = 'rc4-hf-ble-12'
+    security_flow = 'bond_first'
     candidate_id = $candidateId
     created_at = (Get-Date).ToUniversalTime().ToString('o')
     purpose = 'simulated_candidate_external_handoff'
@@ -475,22 +498,22 @@ $manifest = [ordered]@{
     }
     builds = [ordered]@{
         app = [ordered]@{
-            file = 'artifacts/BirdBox-1.14.8-172-BLE12-debug.apk'
-            sha256 = $artifactHashes['artifacts/BirdBox-1.14.8-172-BLE12-debug.apk']
+            file = 'artifacts/BirdBox-1.14.11-176-BLE20-debug.apk'
+            sha256 = $artifactHashes['artifacts/BirdBox-1.14.11-176-BLE20-debug.apk']
             package_id = 'deckers.thibault.aves.bird'
             build_mode = 'debug_candidate'
-            version_name = '1.14.8'
-            version_code = 172
+            version_name = '1.14.11'
+            version_code = 176
             git_commit = $gitCommit
             manifest_report = Get-Reference 'reports/app-apk-manifest.xml' $artifactHashes
         }
         virtual_birdbox = [ordered]@{
-            file = 'artifacts/VirtualBirdBox-BLE11-debug.apk'
-            sha256 = $artifactHashes['artifacts/VirtualBirdBox-BLE11-debug.apk']
+            file = 'artifacts/VirtualBirdBox-BLE20-debug.apk'
+            sha256 = $artifactHashes['artifacts/VirtualBirdBox-BLE20-debug.apk']
             package_id = 'deckers.thibault.aves.virtualbirdbox.debug'
             build_mode = 'debug_test_only'
-            version_name = 'ble11'
-            version_code = 1
+            version_name = 'ble20'
+            version_code = 2
             git_commit = $gitCommit
             test_only = $true
             release_variant_enabled = $false
@@ -503,6 +526,7 @@ $manifest = [ordered]@{
     }
     simulation = [ordered]@{
         status = $simulationStatus
+        runner_kind = $(if ($usesAvdEvidence) { 'virtual_birdbox_avd' } else { 'virtual_birdbox_phone' })
         expected_scenarios = $expectedScenarios
         status_report = Get-Reference 'evidence/ble11-status.json' $artifactHashes
         evidence_files = $evidenceReferences

@@ -1,0 +1,101 @@
+{
+  "received_files": 4,
+  "verified": true,
+  "reports": [
+    {
+      "verified": true,
+      "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261012_133959_ble20-virtual-bond_first_5d19941d.json",
+      "bytes": 118408,
+      "file_sha256": "81f088f525cde031d84250084543070c29568a511a248b6ce06191cc509562ce",
+      "payload_sha256": "81f088f525cde031d84250084543070c29568a511a248b6ce06191cc509562ce",
+      "trace_id": "ble20-virtual-bond_first",
+      "retained_events": 70,
+      "retained_scans": 0,
+      "critical_events_missing": false,
+      "critical_missing_reasons": [],
+      "critical_history_unknown": false,
+      "raw_history_complete": false,
+      "evidence_sources": [
+        "android",
+        "dart"
+      ],
+      "run_id": "20261012-213905-P2-bond_first-3-c18f4b",
+      "role": "P2",
+      "scenario": "bond_first",
+      "test_exit_code": 1,
+      "run_status": "test_failed"
+    },
+    {
+      "verified": true,
+      "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261013_060908_ble20-virtual-bond_first_375400a9.json",
+      "bytes": 113741,
+      "file_sha256": "0a1e6afe2078de5f13b993b0b888395a88ddb57960f6766bd51493a0bc0e27fa",
+      "payload_sha256": "0a1e6afe2078de5f13b993b0b888395a88ddb57960f6766bd51493a0bc0e27fa",
+      "trace_id": "ble20-virtual-bond_first",
+      "retained_events": 68,
+      "retained_scans": 0,
+      "critical_events_missing": false,
+      "critical_missing_reasons": [],
+      "critical_history_unknown": false,
+      "raw_history_complete": false,
+      "evidence_sources": [
+        "android",
+        "dart"
+      ],
+      "run_id": "20261013-140734-P2-bond_first-1-ef5b43",
+      "role": "P2",
+      "scenario": "bond_first",
+      "test_exit_code": 1,
+      "run_status": "test_failed"
+    },
+    {
+      "verified": true,
+      "file_name": "BirdBox_BLE_1.14.11_176_vivo_X20_20261013_062613_ble20-virtual-bond_first_45fe180c.json",
+      "bytes": 164233,
+      "file_sha256": "b05f752b147513427fa0bb71330e5e6b35c36c7887ef92f23ab01d8243c6d0e3",
+      "payload_sha256": "b05f752b147513427fa0bb71330e5e6b35c36c7887ef92f23ab01d8243c6d0e3",
+      "trace_id": "ble20-virtual-bond_first",
+      "retained_events": 88,
+      "retained_scans": 0,
+      "critical_events_missing": false,
+      "critical_missing_reasons": [],
+      "critical_history_unknown": false,
+      "raw_history_complete": false,
+      "evidence_sources": [
+        "android",
+        "dart"
+      ],
+      "run_id": "20261013-142515-P2-bond_first-2-9492c8",
+      "role": "P2",
+      "scenario": "bond_first",
+      "test_exit_code": 0,
+      "run_status": "passed"
+    },
+    {
+      "verified": true,
+      "file_name": "BirdBox_BLE_1.14.11_176_FIN-AL60_20261013_070022_ble20-virtual-bond_first_fc64758d.json",
+      "bytes": 89259,
+      "file_sha256": "86ec7802298ad955619b591f42f1c0f5196b9f793bb7808933075eca9beb620b",
+      "payload_sha256": "86ec7802298ad955619b591f42f1c0f5196b9f793bb7808933075eca9beb620b",
+      "trace_id": "ble20-virtual-bond_first",
+      "retained_events": 57,
+      "retained_scans": 0,
+      "critical_events_missing": false,
+      "critical_missing_reasons": [],
+      "critical_history_unknown": false,
+      "raw_history_complete": false,
+      "evidence_sources": [
+        "android",
+        "dart"
+      ],
+      "run_id": "20261013-145702-P1-bond_first-1-f0e914",
+      "role": "P1",
+      "scenario": "bond_first",
+      "test_exit_code": 1,
+      "run_status": "test_failed"
+    }
+  ],
+  "skipped": [],
+  "failures": [],
+  "scope": "file_integrity_and_actual_retention_only_not_phone_acceptance"
+}

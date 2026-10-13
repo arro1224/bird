@@ -9,6 +9,11 @@ final class BleConnectionDiagnosticEvent {
     required this.source,
     this.systemBondAttempted,
     this.createBondCallCount,
+    this.commandAttemptCount,
+    this.attWriteCallCount,
+    this.writeFragmentIndex,
+    this.preparationStep,
+    this.failurePhase,
     this.bondElapsedMs,
     this.securityWriteAttemptCount,
     this.securityWriteResult,
@@ -33,6 +38,11 @@ final class BleConnectionDiagnosticEvent {
     this.gattInstanceId,
     this.gattGeneration,
     this.connectionState,
+    this.serviceDiscoveryApiAccepted,
+    this.serviceDiscoveryElapsedMs,
+    this.preparationElapsedMs,
+    this.callbackGattIdentity,
+    this.callbackGattIsCurrent,
     this.serviceDiscoveryResult,
     this.mtu,
     this.notificationState,
@@ -90,6 +100,8 @@ final class BleConnectionDiagnosticEvent {
   final String source;
   final bool? systemBondAttempted;
   final int? createBondCallCount;
+  final int? commandAttemptCount, attWriteCallCount, writeFragmentIndex;
+  final String? preparationStep, failurePhase;
   final int? bondElapsedMs;
   final int? securityWriteAttemptCount;
   final String? securityWriteResult;
@@ -114,6 +126,11 @@ final class BleConnectionDiagnosticEvent {
   final int? gattInstanceId;
   final int? gattGeneration;
   final String? connectionState;
+  final bool? serviceDiscoveryApiAccepted;
+  final int? serviceDiscoveryElapsedMs;
+  final int? preparationElapsedMs;
+  final int? callbackGattIdentity;
+  final bool? callbackGattIsCurrent;
   final String? serviceDiscoveryResult;
   final int? mtu;
   final String? notificationState;
@@ -166,6 +183,11 @@ final class BleConnectionDiagnosticEvent {
     'schema_version': 4,
     if (systemBondAttempted != null) 'system_bond_attempted': systemBondAttempted,
     if (createBondCallCount != null) 'create_bond_call_count': createBondCallCount,
+    if (commandAttemptCount != null) 'command_attempt_count': commandAttemptCount,
+    if (attWriteCallCount != null) 'att_write_call_count': attWriteCallCount,
+    if (writeFragmentIndex != null) 'write_fragment_index': writeFragmentIndex,
+    if (preparationStep != null) 'preparation_step': preparationStep,
+    if (failurePhase != null) 'failure_phase': failurePhase,
     if (bondElapsedMs != null) 'bond_elapsed_ms': bondElapsedMs,
     if (securityWriteAttemptCount != null) 'security_write_attempt_count': securityWriteAttemptCount,
     if (securityWriteResult != null) 'security_write_result': securityWriteResult,
@@ -197,6 +219,11 @@ final class BleConnectionDiagnosticEvent {
     if (gattInstanceId != null) 'gatt_instance_id': gattInstanceId,
     if (gattGeneration != null) 'gatt_generation': gattGeneration,
     if (connectionState != null) 'connection_state': connectionState,
+    if (serviceDiscoveryApiAccepted != null) 'service_discovery_api_accepted': serviceDiscoveryApiAccepted,
+    if (serviceDiscoveryElapsedMs != null) 'service_discovery_elapsed_ms': serviceDiscoveryElapsedMs,
+    if (preparationElapsedMs != null) 'preparation_elapsed_ms': preparationElapsedMs,
+    if (callbackGattIdentity != null) 'callback_gatt_identity': callbackGattIdentity,
+    if (callbackGattIsCurrent != null) 'callback_gatt_is_current': callbackGattIsCurrent,
     if (serviceDiscoveryResult != null) 'service_discovery_result': serviceDiscoveryResult,
     if (mtu != null) 'mtu': mtu,
     if (notificationState != null) 'notification_state': notificationState,
@@ -255,6 +282,11 @@ final class BleConnectionDiagnosticEvent {
     source: value['source'] as String,
     systemBondAttempted: value['system_bond_attempted'] as bool?,
     createBondCallCount: value['create_bond_call_count'] as int?,
+    commandAttemptCount: value['command_attempt_count'] as int?,
+    attWriteCallCount: value['att_write_call_count'] as int?,
+    writeFragmentIndex: value['write_fragment_index'] as int?,
+    preparationStep: value['preparation_step'] as String?,
+    failurePhase: value['failure_phase'] as String?,
     bondElapsedMs: value['bond_elapsed_ms'] as int?,
     securityWriteAttemptCount: value['security_write_attempt_count'] as int?,
     securityWriteResult: value['security_write_result'] as String?,
@@ -279,6 +311,11 @@ final class BleConnectionDiagnosticEvent {
     gattInstanceId: value['gatt_instance_id'] as int?,
     gattGeneration: (value['gatt_generation'] ?? value['gatt_instance_id']) as int?,
     connectionState: value['connection_state'] as String?,
+    serviceDiscoveryApiAccepted: value['service_discovery_api_accepted'] as bool?,
+    serviceDiscoveryElapsedMs: value['service_discovery_elapsed_ms'] as int?,
+    preparationElapsedMs: value['preparation_elapsed_ms'] as int?,
+    callbackGattIdentity: value['callback_gatt_identity'] as int?,
+    callbackGattIsCurrent: value['callback_gatt_is_current'] as bool?,
     serviceDiscoveryResult: value['service_discovery_result'] as String?,
     mtu: value['mtu'] as int?,
     notificationState: value['notification_state'] as String?,
@@ -348,6 +385,11 @@ final class BleConnectionDiagnosticEvent {
       source: 'android',
       systemBondAttempted: value['systemBondAttempted'] as bool?,
       createBondCallCount: value['createBondCallCount'] as int?,
+      commandAttemptCount: value['commandAttemptCount'] as int?,
+      attWriteCallCount: value['attWriteCallCount'] as int?,
+      writeFragmentIndex: value['writeFragmentIndex'] as int?,
+      preparationStep: value['preparationStep'] as String?,
+      failurePhase: value['failurePhase'] as String?,
       bondElapsedMs: value['bondElapsedMs'] as int?,
       securityWriteAttemptCount: value['securityWriteAttemptCount'] as int?,
       securityWriteResult: value['securityWriteResult'] as String?,
@@ -372,6 +414,11 @@ final class BleConnectionDiagnosticEvent {
       gattInstanceId: value['gattInstanceId'] as int?,
       gattGeneration: (value['gattGeneration'] ?? value['gattInstanceId']) as int?,
       connectionState: value['connectionState'] as String?,
+      serviceDiscoveryApiAccepted: value['serviceDiscoveryApiAccepted'] as bool?,
+      serviceDiscoveryElapsedMs: value['serviceDiscoveryElapsedMs'] as int?,
+      preparationElapsedMs: value['preparationElapsedMs'] as int?,
+      callbackGattIdentity: value['callbackGattIdentity'] as int?,
+      callbackGattIsCurrent: value['callbackGattIsCurrent'] as bool?,
       serviceDiscoveryResult: value['serviceDiscoveryResult'] as String?,
       mtu: value['mtu'] as int?,
       notificationState: value['notificationState'] as String?,

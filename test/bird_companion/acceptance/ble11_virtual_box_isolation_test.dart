@@ -11,7 +11,8 @@ void main() {
       'android/virtualBirdBox/build.gradle.kts',
     ).readAsStringSync();
 
-    expect(manifest, contains('android:testOnly="true"'));
+    expect(manifest, contains('android:testOnly="\${virtualBirdBoxTestOnly}"'));
+    expect(build, contains('(!manualInstallBuild.get()).toString()'));
     expect(
       build,
       contains('beforeVariants(selector().withBuildType("release"))'),

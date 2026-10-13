@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 
 import '../ble11/ble11_evidence_validator.dart';
+import '../ble11/bond_first_evidence_validator.dart';
 
 const ble12ExpectedScenarios = <String>{
   'success',
@@ -51,12 +52,15 @@ Future<Ble12CandidateValidation> validateBle12Candidate({
   Directory? repositoryRoot,
 }) async {
   final errors = <String>[];
+  final newCandidate = manifest['security_flow'] == 'bond_first' || ((_map(_map(manifest['builds'])['app'])['version_code'] as num?)?.toInt() ?? 0) >= 176;
+  final expectedScenarios = newCandidate ? bondFirstScenarios : ble12ExpectedScenarios;
 
   void require(bool condition, String message) {
     if (!condition) errors.add(message);
   }
 
   require(manifest['schema_version'] == 1, 'schema_version must be 1.');
+  require(!newCandidate || manifest['security_flow'] == 'bond_first', 'new candidates must explicitly use bond_first evidence rules.');
   require(
     manifest['candidate_suite'] == 'rc4-hf-ble-12',
     'candidate_suite must be rc4-hf-ble-12.',
@@ -212,6 +216,8 @@ Future<Ble12CandidateValidation> validateBle12Candidate({
   await _validateBuild(
     build: _map(builds['app']),
     label: 'app',
+    expectedVersionName: newCandidate ? '1.14.11' : '1.14.8',
+    expectedVersionCode: newCandidate ? 176 : 172,
     packageRoot: packageRoot,
     expectedPackage: 'deckers.thibault.aves.bird',
     expectedMode: 'debug_candidate',
@@ -226,8 +232,8 @@ Future<Ble12CandidateValidation> validateBle12Candidate({
     expectedPackage: 'deckers.thibault.aves.virtualbirdbox.debug',
     expectedMode: 'debug_test_only',
     expectedGitCommit: gitCommit,
-    expectedVersionName: 'ble11',
-    expectedVersionCode: 1,
+    expectedVersionName: newCandidate ? 'ble20' : 'ble11',
+    expectedVersionCode: newCandidate ? 2 : 1,
     errors: errors,
   );
   require(
@@ -274,12 +280,12 @@ Future<Ble12CandidateValidation> validateBle12Candidate({
     'Flutter analysis must have zero issues.',
   );
   require(
-    (verification['app_native_test_count'] as num?)?.toInt() == 20,
-    'App native BLE regression must contain 20 tests.',
+    newCandidate ? ((verification['app_native_test_count'] as num?)?.toInt() ?? 0) >= 126 : (verification['app_native_test_count'] as num?)?.toInt() == 20,
+    'App native BLE regression count is incomplete for the candidate generation.',
   );
   require(
-    (verification['virtual_birdbox_test_count'] as num?)?.toInt() == 8,
-    'virtual BirdBox regression must contain 8 tests.',
+    newCandidate ? ((verification['virtual_birdbox_test_count'] as num?)?.toInt() ?? 0) >= 31 : (verification['virtual_birdbox_test_count'] as num?)?.toInt() == 8,
+    'virtual BirdBox regression count is incomplete for the candidate generation.',
   );
   require(
     verification['app_apk_build'] == 'passed' && verification['virtual_apk_build'] == 'passed',
@@ -294,10 +300,10 @@ Future<Ble12CandidateValidation> validateBle12Candidate({
   );
   require(
     _strings(simulation['expected_scenarios']).toSet().containsAll(
-          ble12ExpectedScenarios,
+          expectedScenarios,
         ) &&
-        _strings(simulation['expected_scenarios']).toSet().length == ble12ExpectedScenarios.length,
-    'simulation must name all four BLE-11 scenarios.',
+        _strings(simulation['expected_scenarios']).toSet().length == expectedScenarios.length,
+    'simulation must name the complete scenario matrix for this candidate.',
   );
   final statusReport = await _readReferencedJson(
     packageRoot,
@@ -341,12 +347,12 @@ Future<Ble12CandidateValidation> validateBle12Candidate({
     );
   } else {
     require(
-      environment['dual_avd_capable'] == true,
+      environment['dual_avd_capable'] == true || (newCandidate && simulation['runner_kind'] == 'virtual_birdbox_phone'),
       'passed BLE-11 evidence requires a dual-AVD-capable environment.',
     );
     require(
-      evidenceReferences.length == ble12ExpectedScenarios.length,
-      'passed simulation requires four BLE-11 evidence files.',
+      evidenceReferences.length == expectedScenarios.length,
+      'passed simulation requires the complete scenario evidence matrix.',
     );
     final observedScenarios = <String>{};
     for (final reference in evidenceReferences) {
@@ -357,6 +363,7 @@ Future<Ble12CandidateValidation> validateBle12Candidate({
         errors,
       );
       final result = validateBle11Evidence(evidence);
+      require(!newCandidate || evidence['schema_version'] == 2, 'new candidates cannot reuse schema 1 write-triggered evidence.');
       for (final error in result.errors) {
         errors.add('BLE-11 ${evidence['scenario'] ?? 'unknown'}: $error');
       }
@@ -385,7 +392,7 @@ Future<Ble12CandidateValidation> validateBle12Candidate({
       }
     }
     require(
-      observedScenarios.length == ble12ExpectedScenarios.length && observedScenarios.containsAll(ble12ExpectedScenarios),
+      observedScenarios.length == expectedScenarios.length && observedScenarios.containsAll(expectedScenarios),
       'BLE-11 evidence does not cover the exact scenario matrix.',
     );
   }

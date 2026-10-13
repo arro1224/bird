@@ -41,7 +41,6 @@ public final class MainActivity extends FlutterActivity {
     private static final String SESSION_PREFERENCES = "bird_companion_secure_sessions";
     private static final String SESSION_KEY_ALIAS = "bird_companion_session_key_v1";
     private static final String CLIENT_IDENTITY_PREFERENCE = "installation_client_identity";
-    private BirdBoxBleChannel birdBoxBleChannel;
     private BirdBoxWifiChannel birdBoxWifiChannel;
     private BirdBoxDppChannel birdBoxDppChannel;
     private BirdBoxBleDiagnosticFileChannel birdBoxBleDiagnosticFileChannel;
@@ -49,7 +48,9 @@ public final class MainActivity extends FlutterActivity {
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
         super.configureFlutterEngine(flutterEngine);
-        birdBoxBleChannel = new BirdBoxBleChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
+        if (!flutterEngine.getPlugins().has(BirdBoxBlePlugin.class)) {
+            flutterEngine.getPlugins().add(new BirdBoxBlePlugin());
+        }
         birdBoxBleDiagnosticFileChannel = new BirdBoxBleDiagnosticFileChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
         birdBoxWifiChannel = new BirdBoxWifiChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
         birdBoxDppChannel = new BirdBoxDppChannel(this, flutterEngine.getDartExecutor().getBinaryMessenger());
@@ -79,9 +80,8 @@ public final class MainActivity extends FlutterActivity {
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        final boolean handledByBle = birdBoxBleChannel != null && birdBoxBleChannel.onRequestPermissionsResult(requestCode, grantResults);
         final boolean handledByWifi = birdBoxWifiChannel != null && birdBoxWifiChannel.onRequestPermissionsResult(requestCode, grantResults);
-        if (!handledByBle && !handledByWifi) {
+        if (!handledByWifi) {
             super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         }
     }
@@ -89,10 +89,6 @@ public final class MainActivity extends FlutterActivity {
     @Override
     public void cleanUpFlutterEngine(@NonNull FlutterEngine flutterEngine) {
         if (birdBoxBleDiagnosticFileChannel != null) { birdBoxBleDiagnosticFileChannel.dispose(); birdBoxBleDiagnosticFileChannel = null; }
-        if (birdBoxBleChannel != null) {
-            birdBoxBleChannel.dispose();
-            birdBoxBleChannel = null;
-        }
         if (birdBoxWifiChannel != null) {
             birdBoxWifiChannel.dispose();
             birdBoxWifiChannel = null;

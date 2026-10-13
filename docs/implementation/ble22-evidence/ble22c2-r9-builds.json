@@ -1,0 +1,56 @@
+{
+  "git_commit": "c9aa4fabee60756b2cd2f40474ef06e58bff8f35",
+  "box_manual_install_debug": true,
+  "app_entrypoint": "integration_test/ble22_phone_test.dart",
+  "artifacts": {
+    "transport": {
+      "path": "apks/transport-debug.apk",
+      "entrypoint": "integration_test/ble22_phone_test.dart",
+      "version_name": "1.14.11",
+      "defines": [],
+      "apk_sha256": "0c48bb68a73dec1305b781321add8cbf47ad679d88c8ef7206d7a1c911966768",
+      "package": "deckers.thibault.aves.bird",
+      "version_code": 176
+    },
+    "virtual": {
+      "manual_install_debug": true,
+      "path": "apks/virtual-debug.apk",
+      "package": "deckers.thibault.aves.virtualbirdbox.debug",
+      "apk_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400"
+    },
+    "simulation": {
+      "path": "apks/simulation-debug.apk",
+      "entrypoint": "lib/main_bird_simulated.dart",
+      "version_name": "1.14.11",
+      "defines": [
+        "--dart-define=BIRD_SIMULATED_DEVICE_ID=bbx-b1e11001b1e11001b1e11001b1e11001"
+      ],
+      "apk_sha256": "814fa250f6b2bfcd1df85de111451f143c3571fd3de89b1131675bf895e6b60b",
+      "package": "deckers.thibault.aves.bird.sim",
+      "version_code": 176
+    },
+    "formal": {
+      "path": "apks/formal-debug.apk",
+      "entrypoint": "lib/main.dart",
+      "version_name": "1.14.11",
+      "defines": [],
+      "apk_sha256": "48e99c04cb30869cad4ee550c0974413c6f18d90b6635302aae6f3b9490a02a0",
+      "package": "deckers.thibault.aves.bird",
+      "version_code": 176
+    }
+  },
+  "unresolved_issues": [
+    "vivo_first_bond_fresh_gatt_status_133"
+  ],
+  "box_sha256": "5f6ddbe9245a68a716a1c1ee011f6af048490ca3a5bfbfd240616a9d64b37400",
+  "hardware_status": "pending",
+  "source_fingerprint": "51ede4943e9e6cfce8c4946573507bcaed253908c4b94dab41598db9e8877a87",
+  "round_id": "ble22-c2-20261013-r9",
+  "build_dirty": true,
+  "status": "built_not_phone_accepted",
+  "releasable": false,
+  "app_sha256": "0c48bb68a73dec1305b781321add8cbf47ad679d88c8ef7206d7a1c911966768",
+  "build_id": "ble22-c2-20261013-r9",
+  "reference_candidate": "ble22-20261012-round18",
+  "phone_test_status": "not_started"
+}

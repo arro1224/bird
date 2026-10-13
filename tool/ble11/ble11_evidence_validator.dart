@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'bond_first_evidence_validator.dart';
 
 final class Ble11EvidenceValidation {
   const Ble11EvidenceValidation(this.errors);
@@ -8,6 +9,7 @@ final class Ble11EvidenceValidation {
 }
 
 Ble11EvidenceValidation validateBle11Evidence(Map<String, dynamic> value) {
+  if (value['schema_version'] == 2) return Ble11EvidenceValidation(List.unmodifiable(validateBondFirstEvidence(value)));
   final errors = <String>[];
 
   void require(bool condition, String message) {

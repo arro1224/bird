@@ -5,6 +5,8 @@ import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
+import 'package:aves/bird_companion/core/session/session_credential.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/features/connection/data/health_api.dart';
 import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
@@ -72,6 +74,7 @@ class _SimulatedBirdBoxDebugAppState extends State<SimulatedBirdBoxDebugApp> {
   late final B7SimulatedProvisioningRepository _repository;
   late final Future<BirdCompanionDependencies> _dependenciesFuture;
   BirdCompanionDependencies? _dependencies;
+  SessionCredential? _redeemedCredential;
 
   @override
   void initState() {
@@ -126,22 +129,35 @@ class _SimulatedBirdBoxDebugAppState extends State<SimulatedBirdBoxDebugApp> {
     // Exchange the same transient pairing session exposed by the simulated BLE
     // layer. Persist is false so a debug run cannot replace real credentials.
     final pairing = PairingApi(dependencies.apiClient);
-    final credential = widget.config.pairingCode.isNotEmpty
-        ? await pairing.pair(
-            completion.baseUri,
-            pairingCode: widget.config.pairingCode,
-            clientName: 'Bird Companion Python local acceptance',
-          )
-        : await pairing.exchangeSession(
-            completion.baseUri,
-            deviceId: completion.deviceId,
-            clientId: _simulatedClientId,
-            pairingSessionId: simulatedBirdBoxPairingSessionId,
-            clientName: 'Bird Companion Android (Simulated)',
-          );
+    final SessionCredential credential;
+    try {
+      credential =
+          _redeemedCredential ??
+          (widget.config.pairingCode.isNotEmpty
+              ? await pairing.pair(
+                  completion.baseUri,
+                  pairingCode: widget.config.pairingCode,
+                  clientName: 'Bird Companion Python local acceptance',
+                )
+              : await pairing.exchangeSession(
+                  completion.baseUri,
+                  deviceId: completion.deviceId,
+                  clientId: _simulatedClientId,
+                  pairingSessionId: _repository.takePairingSessionForHttp(),
+                  clientName: 'Bird Companion Android (Simulated)',
+                ));
+    } catch (error) {
+      if (error is ProvisioningException) rethrow;
+      throw const ProvisioningException(code: ProvisioningErrorCode.authorizationRequired, retryable: false);
+    }
+    if (!credential.isUsableAt(DateTime.now())) {
+      _redeemedCredential = null;
+      throw const ProvisioningException(code: ProvisioningErrorCode.tokenExpired, retryable: false);
+    }
     if (credential.deviceId != completion.deviceId) {
       throw StateError('Local backend pairing identity does not match simulated BLE.');
     }
+    _redeemedCredential = credential;
     await dependencies.sessionCoordinator.activate(
       credential,
       persist: false,

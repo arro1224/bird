@@ -36,6 +36,22 @@ final class BirdBoxSecurityWriteAttemptContext {
     private long bondStartedAtMs = -1L;
     private long bondFinishedAtMs = -1L;
     private int createBondCallCount;
+    private int attWriteCallCount;
+    private int commandAttemptCount;
+    private int writeFragmentIndex;
+
+    void recordCommandAttemptStarted(int commandAttempt) {
+        if (commandAttempt != commandAttemptCount) writeFragmentIndex = 0;
+        commandAttemptCount = commandAttempt;
+    }
+    void recordAttWriteInvoked(int commandAttempt) {
+        recordCommandAttemptStarted(commandAttempt);
+        attWriteCallCount++;
+        writeFragmentIndex++;
+    }
+    int attWriteCallCount() { return attWriteCallCount; }
+    int commandAttemptCount() { return commandAttemptCount; }
+    int writeFragmentIndex() { return writeFragmentIndex; }
 
     void beginPairing(String request, int connection, int generation, long nowMs) {
         begin(request, connection, generation,
@@ -103,6 +119,9 @@ final class BirdBoxSecurityWriteAttemptContext {
         bondStartedAtMs = -1L;
         bondFinishedAtMs = -1L;
         createBondCallCount = 0;
+        attWriteCallCount = 0;
+        commandAttemptCount = 0;
+        writeFragmentIndex = 0;
     }
 
     boolean markApiAccepted(
@@ -199,7 +218,7 @@ final class BirdBoxSecurityWriteAttemptContext {
 
     /** Records the side-effect boundary before BluetoothDevice.createBond() is invoked. */
     void recordCreateBondInvoked(String before) {
-        if (!createBondInvoked) createBondCallCount++;
+        createBondCallCount++;
         createBondInvoked = true;
         createBondStateBefore = before;
     }
@@ -353,6 +372,9 @@ final class BirdBoxSecurityWriteAttemptContext {
         bondStartedAtMs = -1L;
         bondFinishedAtMs = -1L;
         createBondCallCount = 0;
+        attWriteCallCount = 0;
+        commandAttemptCount = 0;
+        writeFragmentIndex = 0;
     }
 
     private boolean matches(

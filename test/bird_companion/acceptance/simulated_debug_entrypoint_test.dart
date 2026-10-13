@@ -1,4 +1,8 @@
 import 'dart:io';
+import 'package:aves/bird_companion/core/network/api_client.dart';
+import 'package:aves/bird_companion/features/connection/data/health_api.dart';
+import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
+import '../../../tool/mock_box_server/mock_box_server.dart';
 
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
@@ -40,8 +44,17 @@ void main() {
     tester,
   ) async {
     var healthChecks = 0;
+    late Future<void> completionWork;
+    late MockBoxServer server;
+    late Uri mockUri;
+    late ApiClient client;
+    await tester.runAsync(() async {
+      server = MockBoxServer(deviceId: deviceId, logRequests: false);
+      mockUri = await server.start();
+      client = ApiClient();
+    });
     final repository = B7SimulatedProvisioningRepository(
-      baseUri: baseUri,
+      baseUri: mockUri,
       deviceId: deviceId,
     );
     addTearDown(repository.dispose);
@@ -53,12 +66,20 @@ void main() {
           titlePrefix: '模拟 · ',
           onProvisioningCompleted: (completion) async {
             healthChecks++;
-            expect(completion.baseUri, baseUri);
+            expect(completion.baseUri, mockUri);
             expect(completion.deviceId, deviceId);
             expect(
               completion.networkMode,
               ProvisioningNetworkMode.directAp,
             );
+            completionWork = tester.runAsync(() async {
+              await HttpOverrides.runWithHttpOverrides(() async {
+                final health = await HealthApi(client).read(completion.baseUri);
+                expect(health.deviceId, completion.deviceId);
+                await PairingApi(client).exchangeSession(completion.baseUri, deviceId: completion.deviceId, clientId: 'a870bcb1-d423-4d66-96f7-f809ce786543', pairingSessionId: repository.takePairingSessionForHttp());
+              }, _RealLocalHttpOverrides());
+            });
+            await completionWork;
           },
         ),
         onGenerateRoute: (settings) {
@@ -90,12 +111,18 @@ void main() {
     expect(find.text('盒子直连已就绪'), findsOneWidget);
 
     await tester.tap(find.text('完成'));
+    await completionWork;
     await tester.pumpAndSettle();
 
     expect(healthChecks, 1);
+    expect(server.pairingExchangeCount, 1);
     expect(find.text('拍鸟伴侣正式首页'), findsOneWidget);
     expect(find.text('模拟验收结果'), findsNothing);
     expect(find.byType(Banner), findsNothing);
+    await tester.runAsync(() async {
+      await client.dispose();
+      await server.close();
+    });
   });
 
   test('debug repository keeps Direct AP, STA and DPP on the HTTP Mock URL', () async {
@@ -111,6 +138,9 @@ void main() {
     final discovered = await repository.discoverDevices().first;
     final info = await repository.connect(discovered);
     expect(info.deviceId, deviceId);
+
+    await repository.openPairing();
+    await repository.authorizePairing('123456');
 
     await repository.startDirectAp();
     await _waitForEvent(
@@ -194,6 +224,10 @@ void main() {
     expect(simulatedApp, isNot(contains('模拟验收结果')));
   });
 }
+
+// TestWidgets replaces HttpClient with an HTTP-400 stub. This test intentionally
+// connects to the ephemeral local Mock server through the real IO implementation.
+class _RealLocalHttpOverrides extends HttpOverrides {}
 
 Future<void> _settleSimulatedEvent(WidgetTester tester) async {
   await tester.runAsync(() async {

@@ -11,7 +11,7 @@ public final class BirdBoxPairingCoordinatorTest {
         final BirdBoxSecurityWriteStateMachine state = new BirdBoxSecurityWriteStateMachine();
         final BirdBoxPairingCoordinator coordinator = new BirdBoxPairingCoordinator(state, this);
         final List<String> calls = new ArrayList<>();
-        int bond = 10, afterRegister = -1, bondCalls, rebuilds;
+        int bond = 10, afterRegister = -1, afterCreate = -1, bondCalls, rebuilds;
         boolean accepted = true, deadline;
         RuntimeException exception;
         String failure;
@@ -24,6 +24,7 @@ public final class BirdBoxPairingCoordinatorTest {
         public boolean createBond() {
             calls.add("create_bond"); bondCalls++;
             if (exception != null) throw exception;
+            if (afterCreate != -1) bond = afterCreate;
             return accepted;
         }
         public void startBondTimeout(long owner, long milliseconds) {
@@ -76,6 +77,53 @@ public final class BirdBoxPairingCoordinatorTest {
             assertEquals(0, h.bondCalls);
             assertEquals(state == 12 ? 1 : 0, h.rebuilds);
         }
+    }
+
+    @Test public void everyRegistrationTransitionUsesOneAuthoritativeState() {
+        for (int before : new int[]{10, 11, 12}) {
+            for (int after : new int[]{10, 11, 12}) {
+                Harness h = new Harness(); h.bond = before; h.afterRegister = after; h.start();
+                assertEquals(after == 10 ? 1 : 0, h.bondCalls);
+                assertEquals(after == 12 ? 1 : 0, h.rebuilds);
+                assertEquals(after != 12, h.deadline);
+                if (after != 12) {
+                    assertTrue(h.state.isWaitingForBond());
+                    h.coordinator.timeout(h.coordinator.owner());
+                    assertEquals("bond_timeout", h.failure);
+                } else {
+                    h.coordinator.timeout(h.coordinator.owner());
+                    assertNull(h.failure);
+                }
+            }
+        }
+    }
+
+    @Test public void unknownRegisteredStateFailsWithoutBondOrWrite() {
+        Harness h = new Harness(); h.bond = 12; h.afterRegister = 99; h.start();
+        assertEquals("bond_state_unknown", h.failure);
+        assertEquals(0, h.bondCalls); assertEquals(0, h.rebuilds);
+        assertFalse(h.state.canWrite(7)); assertFalse(h.deadline);
+    }
+
+    @Test public void pairingCompletedBeforeCreateBondReturnsNeedsNoBroadcast() {
+        Harness h = new Harness(); h.afterCreate = 12; h.start();
+        assertEquals(1, h.bondCalls); assertEquals(1, h.rebuilds); assertFalse(h.deadline);
+        h.coordinator.bondChanged(h.coordinator.owner(), 12, 11);
+        h.coordinator.timeout(h.coordinator.owner());
+        assertEquals(1, h.rebuilds); assertNull(h.failure);
+    }
+
+    @Test public void unknownBroadcastHasADeterministicTerminalResult() {
+        Harness h = new Harness(); h.start();
+        h.coordinator.bondChanged(h.coordinator.owner(), 99, 10);
+        assertEquals("bond_state_unknown", h.failure); assertFalse(h.deadline);
+    }
+
+    @Test public void cancelAndRepeatedTerminalEventsAreHarmless() {
+        Harness h = new Harness(); h.start(); long owner = h.coordinator.owner();
+        h.coordinator.cancel(); h.coordinator.cancel();
+        h.coordinator.bondChanged(owner, 12, 11); h.coordinator.timeout(owner);
+        assertNull(h.failure); assertEquals(0, h.rebuilds); assertFalse(h.deadline);
     }
 
     @Test public void falseFailsImmediatelyAndCancelsDeadline() {

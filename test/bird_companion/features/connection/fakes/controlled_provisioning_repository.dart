@@ -11,6 +11,8 @@ class ControlledProvisioningRepository extends FakeProvisioningRepository implem
   Object? settingsError;
   Completer<PairingWindow>? pendingPairing;
   Completer<void>? pendingEnd;
+  Completer<void>? pendingSettings;
+  Completer<BleScanEnvironment>? pendingEnvironment;
   BleScanEnvironment environment = const BleScanEnvironment(permission: BleScanPermissionState.granted, adapter: BleAdapterState.enabled, locationService: BleLocationServiceState.enabled);
   final progress = StreamController<BlePairingProgress>.broadcast(sync: true);
   @override
@@ -39,12 +41,14 @@ class ControlledProvisioningRepository extends FakeProvisioningRepository implem
   Future<void> openLocationSettings(Object candidate) async {
     if (!ownsSession(candidate)) return;
     settingsCalls++;
+    if (pendingSettings != null) await pendingSettings!.future;
     if (settingsError != null) throw settingsError!;
   }
 
   @override
   Future<BleScanEnvironment> readScanEnvironment() async {
     environmentReads++;
+    if (pendingEnvironment != null) return pendingEnvironment!.future;
     return environment;
   }
 

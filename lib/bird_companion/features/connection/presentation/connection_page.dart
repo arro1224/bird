@@ -101,11 +101,13 @@ class _BleConnectionHost extends StatefulWidget {
 class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBindingObserver {
   var _completing = false;
   late final ProvisioningCubit _provisioningCubit;
+  late final NetworkProvisioningCubit _networkCubit;
 
   @override
   void initState() {
     super.initState();
     _provisioningCubit = ProvisioningCubit(widget.repository, permissionSettingsOpener: openAppSettings)..discover();
+    _networkCubit = NetworkProvisioningCubit(widget.repository);
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -122,6 +124,7 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_provisioningCubit.close());
+    unawaited(_networkCubit.close());
     super.dispose();
   }
 
@@ -159,6 +162,9 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
     } catch (error) {
       if (!mounted) return;
       setState(() => _completing = false);
+      if (error is ProvisioningException || error is ProvisioningCredentialSaveException) {
+        _networkCubit.completionFailed(error);
+      }
       final message = UserMessageMapper.fromError(error);
       BirdFeedback.error(context, message.message);
     }
@@ -170,9 +176,7 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
     child: MultiBlocProvider(
       providers: [
         BlocProvider.value(value: _provisioningCubit),
-        BlocProvider(
-          create: (_) => NetworkProvisioningCubit(widget.repository),
-        ),
+        BlocProvider.value(value: _networkCubit),
       ],
       child: _BleConnectionView(
         onMethodSelected: widget.onMethodSelected,
@@ -214,6 +218,10 @@ class _BleConnectionView extends StatelessWidget {
           onBack: networkCubit.backToMethodSelection,
           content: NetworkProvisioningPage(
             onBack: networkCubit.backToMethodSelection,
+            onReauthorize: () {
+              networkCubit.backToMethodSelection();
+              unawaited(context.read<ProvisioningCubit>().openPairing());
+            },
             completing: completing,
             onCompleted: onProvisioningCompleted == null
                 ? null

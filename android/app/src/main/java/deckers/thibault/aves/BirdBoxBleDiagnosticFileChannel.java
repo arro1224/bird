@@ -18,17 +18,25 @@ final class BirdBoxBleDiagnosticFileChannel implements MethodChannel.MethodCallH
     private final Activity activity;
     private final MethodChannel channel;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> { Thread t = new Thread(r, "birdbox-diagnostic-file"); t.setDaemon(true); return t; });
+    private final ExecutorService worker;
     private final Map<String, BirdBoxDiagnosticFileWriter.Artifact> artifacts = new LinkedHashMap<>();
     private final File directory;
     private volatile boolean disposed;
     private MethodChannel.Result pendingSave;
     private BirdBoxDiagnosticFileWriter.Artifact saveArtifact;
     BirdBoxBleDiagnosticFileChannel(Activity activity, BinaryMessenger messenger) {
+        this(activity, messenger, Executors.newSingleThreadExecutor(r -> { Thread t = new Thread(r, "birdbox-diagnostic-file"); t.setDaemon(true); return t; }));
+    }
+    BirdBoxBleDiagnosticFileChannel(Activity activity, BinaryMessenger messenger, ExecutorService worker) {
+        this.worker = worker;
         this.activity = activity; directory = new File(activity.getCacheDir(), "ble_diagnostics");
         channel = new MethodChannel(messenger, "bird_companion/ble_diagnostic_files"); channel.setMethodCallHandler(this);
     }
     @Override public void onMethodCall(MethodCall call, MethodChannel.Result result) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main.post(() -> onMethodCall(call, result));
+            return;
+        }
         if (disposed) { result.error("diagnostic_disposed", "Diagnostic service closed.", null); return; }
         switch (call.method) {
             case "getBuildIdentity": run(result, () -> buildIdentity()); break;
