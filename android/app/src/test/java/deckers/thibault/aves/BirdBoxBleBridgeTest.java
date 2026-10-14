@@ -48,6 +48,9 @@ public final class BirdBoxBleBridgeTest {
     private Map<?, ?> lastEvent(String type) {
         return diagnostics.stream().filter(e -> type.equals(e.get("eventType"))).reduce((a, b) -> b).orElseThrow();
     }
+    private Map<?, ?> findEvent(String type) {
+        return diagnostics.stream().filter(e -> type.equals(e.get("eventType"))).findFirst().orElse(null);
+    }
 
     private final class TestPlatform extends BirdBoxBlePlatform {
         int bond = BluetoothDevice.BOND_NONE, connections, creates, unregisters, afterRegister = -1;
@@ -254,7 +257,8 @@ public final class BirdBoxBleBridgeTest {
         platform.connectFails = true; Result result = prepare(); platform.bonded();
         result.failed("ble_gatt_recovery_failed"); advance(31_000); assertEquals(1, result.completions);
     }
-    @Test public void connectionCallbackFailureTerminates() {
+    @Test @Config(sdk = 31) public void connectionCallbackFailureTerminates() {
+        // SDK 31：现代栈不重试，133 立即有界终止（SDK 27 的重试路径另测）。
         Result result = prepare(); platform.bonded();
         platform.callback.onConnectionStateChange(freshGatt, 133, BluetoothProfile.STATE_DISCONNECTED); drain();
         result.failed("ble_gatt_recovery_failed");
@@ -266,6 +270,50 @@ public final class BirdBoxBleBridgeTest {
         assertEquals(1, result.completions);
         assertEquals(133, ((Map<?, ?>) result.details).get("gattStatus"));
         verify(freshGatt, never()).writeCharacteristic(any(BluetoothGattCharacteristic.class));
+    }
+    @Test @Config(sdk = 27) public void legacyFirstPostBondConnectFailureRetriesOnceThenSucceeds() {
+        Result result = prepare(); platform.bonded();
+        // 与 20261012-213905-P2-bond_first-3 同形：rebuild 拨号后 48ms 即回 133。
+        platform.callback.onConnectionStateChange(freshGatt, 133, BluetoothProfile.STATE_DISCONNECTED); drain();
+        assertEquals(0, result.completions);
+        assertEquals("first_post_bond_rebuild", lastEvent("gatt_connect_retry_started").get("resultCode"));
+        // settle gate 内不重拨，确认拨号发生在 settle 之后且是新客户端。
+        advance(500); assertEquals(2, platform.connections);
+        advance(501); assertEquals(3, platform.connections); assertEquals(0, result.completions);
+        platform.callback.onConnectionStateChange(recoveryGatt, 0, BluetoothProfile.STATE_CONNECTED); drain();
+        platform.callback.onMtuChanged(recoveryGatt, 100, 0); drain();
+        platform.callback.onServicesDiscovered(recoveryGatt, 0); drain();
+        platform.callback.onDescriptorWrite(recoveryGatt, descriptor(3), 0); drain();
+        platform.callback.onDescriptorWrite(recoveryGatt, descriptor(6), 0); drain();
+        assertEquals(1, result.completions); assertNull(result.code);
+        // 失败客户端按既有纪律保留登记，不 close。
+        verify(freshGatt, never()).close();
+    }
+    @Test @Config(sdk = 27) public void legacySecondPostBondConnectFailureTerminatesWithoutThirdDial() {
+        Result result = prepare(); platform.bonded();
+        platform.callback.onConnectionStateChange(freshGatt, 133, BluetoothProfile.STATE_DISCONNECTED); drain();
+        advance(1_001);
+        assertEquals(3, platform.connections);
+        platform.callback.onConnectionStateChange(recoveryGatt, 133, BluetoothProfile.STATE_DISCONNECTED); drain();
+        result.failed("ble_gatt_recovery_failed");
+        assertEquals(133, ((Map<?, ?>) result.details).get("gattStatus"));
+        advance(16_000);
+        assertEquals(3, platform.connections); assertEquals(1, result.completions);
+    }
+    @Test @Config(sdk = 31) public void freshConnectFailureOnModernSdkTerminatesWithoutRetry() {
+        Result result = prepare(); platform.bonded();
+        platform.callback.onConnectionStateChange(freshGatt, 133, BluetoothProfile.STATE_DISCONNECTED); drain();
+        result.failed("ble_gatt_recovery_failed");
+        assertEquals(2, platform.connections);
+        assertNull(findEvent("gatt_connect_retry_started"));
+    }
+    @Test @Config(sdk = 27) public void legacyPostBondRetryFailureAfterBondLostTerminatesAsBondLost() {
+        Result result = prepare(); platform.bonded();
+        platform.callback.onConnectionStateChange(freshGatt, 133, BluetoothProfile.STATE_DISCONNECTED); drain();
+        platform.bond = BluetoothDevice.BOND_NONE;
+        advance(1_001);
+        result.failed("bond_lost");
+        assertEquals(2, platform.connections);
     }
     @Test public void serviceCallbackFailurePreservesItsActualStatusAndStage() {
         Result result = prepare(); platform.bonded();
@@ -496,12 +544,17 @@ public final class BirdBoxBleBridgeTest {
         assertEquals(2, platform.connections); assertEquals(1, preparation.completions);
         verify(freshGatt, never()).requestMtu(anyInt());
     }
-    @Test @Config(sdk = 27) public void missingFreshConnectionClosesReservedRegistrationAtDeadline() {
+    @Test @Config(sdk = 27) public void missingFreshConnectionRetriesOnceThenSecondSilenceTerminates() {
+        // 与 20261013-140734-P2-bond_first-1 同形：rebuild 后约 15 秒无任何连接回调。
         Result preparation = prepare(); platform.bonded(); advance(15_001);
+        assertEquals(0, preparation.completions);
+        assertEquals("first_post_bond_rebuild", lastEvent("gatt_connect_retry_started").get("resultCode"));
+        advance(1_001); // settle 后重拨
+        assertEquals(3, platform.connections);
+        advance(15_001); // 第二次同样静默 → 有界终止
         preparation.failed("ble_gatt_recovery_failed");
         assertEquals("gatt_connect", ((Map<?, ?>) preparation.details).get("preparationStep"));
-        verify(oldGatt).close(); verify(freshGatt).close();
-        assertEquals(2, platform.connections);
+        assertEquals(3, platform.connections);
     }
     @Test @Config(sdk = 27) public void legacySessionTeardownReleasesEveryHeldRegistrationAfterRecovery() {
         prepare(); ready(); write(); advance(2_001);

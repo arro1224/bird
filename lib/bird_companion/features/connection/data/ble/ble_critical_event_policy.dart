@@ -16,6 +16,7 @@ final class BleCriticalEventPolicy {
     'security_write_begin', 'security_old_timers_cancelled', 'security_preparation_failed',
     'gatt_rebuild_started', 'gatt_rebuild_completed', 'gatt_disconnect_requested', 'gatt_disconnected',
     'gatt_connection_state_changed', 'gatt_services_discovered', 'gatt_mtu_changed',
+    'gatt_connect_retry_started',
     'gatt_service_discovery_api_invoked', 'gatt_service_discovery_api_returned',
     'gatt_service_discovery_api_exception', 'gatt_service_discovery_timeout',
     'gatt_service_discovery_wait_started', 'gatt_service_discovery_callback_ignored',

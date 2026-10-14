@@ -120,6 +120,13 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     @Nullable private Runnable securityReconnectGuard;
     private boolean securityMtuResolvedBeforeDiscovery;
     private long securityReconnectNotBefore;
+    // 首绑后 1 秒内的首次 rebuild 可能撞上栈收尾 SMP 的瞬态：vivo X20 实测过
+    // status 133（20261012-213905-P2-bond_first-3）与连接回调缺失
+    // （20261013-140734-P2-bond_first-1）。同一路径在已绑定矩阵 7 场全过，
+    // 说明重建机制可靠，窗口只在全新绑定后。对 gatt_connect 阶段的这两类
+    // 失败给一次有界重试；第二次仍失败按原样有界终止，两次状态都留证。
+    private int securityConnectRetryCount;
+    private static final int SECURITY_CONNECT_RETRY_MAX = 1;
     @Nullable private volatile BluetoothDevice connectedDevice;
     @Nullable private MethodChannel.Result pendingPermissionResult;
     @Nullable private MethodChannel.Result pendingOperationResult;
@@ -1261,6 +1268,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         pairingMetadataResult = "preparePairing".equals(call.method);
         systemBondAttempted = false;
         bondInitiationSource = "none";
+        securityConnectRetryCount = 0;
         securityWriteAttemptContext.beginPairing(request, connectionGeneration, gattGeneration, SystemClock.uptimeMillis());
         if ("open_pairing".equals(command))
             emitDiagnostic("user_start_pairing", call.method, -1, null, "requested");
@@ -1553,6 +1561,13 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                         discoveryGatt == gatt && Boolean.TRUE.equals(discoveryApiAccepted) ? "callback_missing" : "api_not_invoked");
             if ("mtu_before_services".equals(step))
                 emitDiagnostic("gatt_mtu_barrier_timeout", pendingOperation, -1, null, "callback_missing");
+            // A fresh-bond first connect that never calls back is one of the two observed
+            // post-bond transient shapes (no 133, 15s silence). Same bounded retry as the
+            // callback path; the guard inside retrySecurityConnect keeps it single-shot.
+            if ("gatt_connect".equals(step) && Build.VERSION.SDK_INT <= 28 && securityConnectRetryCount < SECURITY_CONNECT_RETRY_MAX) {
+                retrySecurityConnect(-1);
+                return;
+            }
             failNativePreparation("ble_gatt_recovery_failed");
         };
         mainHandler.postDelayed(preparationTimeout, 15_000L);
@@ -1625,6 +1640,64 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             if (gatt == null) failNativePreparation("ble_gatt_recovery_failed");
         } catch (RuntimeException error) {
             failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed");
+        }
+    }
+
+    /**
+     * Bounded single retry for the first connect attempt right after a fresh bond on
+     * legacy stacks (status 133 at connect, or a silent connect with no callback).
+     * The failed client keeps its registration — disconnect requested, then held like
+     * other disconnected legacy clients — because unregistering it before the retry
+     * dial can disturb the vendor address mapping the held-registration policy already
+     * guards. One settle gate drains the fresh-bond window before dialing again; a
+     * second failure terminates as before, with both statuses in the record.
+     */
+    private void retrySecurityConnect(int gattStatus) {
+        if (securityConnectRetryCount >= SECURITY_CONNECT_RETRY_MAX) {
+            failNativePreparation("ble_gatt_recovery_failed", gattStatus);
+            return;
+        }
+        securityConnectRetryCount++;
+        emitDiagnostic("gatt_connect_retry_started", pendingOperation, gattStatus, null, "first_post_bond_rebuild");
+        final BluetoothGatt failed = gatt;
+        if (failed != null) {
+            if (heldLegacyRegistrations.size() >= MAX_HELD_LEGACY_REGISTRATIONS) {
+                emitDiagnostic("gatt_legacy_registration_limit", pendingOperation, -1, null, "session_reconnect_required");
+                failNativePreparation("ble_gatt_recovery_failed", gattStatus);
+                return;
+            }
+            try { failed.disconnect(); } catch (RuntimeException ignored) { }
+            heldLegacyRegistrations.add(failed);
+        }
+        final BluetoothDevice device = connectedDevice;
+        try {
+            if (device == null || platform.bondState(device) != BluetoothDevice.BOND_BONDED) {
+                failNativePreparation("bond_lost", gattStatus);
+                return;
+            }
+            gatt = null;
+            linkReady = false;
+            securedGattGeneration = -1;
+            enabledNotifications.clear();
+            currentMtu = 23;
+            gattRebuilt = false;
+            gattGeneration++;
+            securityReconnectNotBefore = android.os.SystemClock.elapsedRealtime() + SECURITY_DISCONNECT_SETTLE_MS;
+            setPreparationStep("gatt_connect");
+            final String owner = activeSecurityRequestId;
+            final int connection = connectionGeneration;
+            final long token = operationToken;
+            if (securityReconnectGuard != null) mainHandler.removeCallbacks(securityReconnectGuard);
+            securityReconnectGuard = () -> {
+                securityReconnectGuard = null;
+                if (token != operationToken || connection != connectionGeneration || owner == null
+                        || !owner.equals(activeSecurityRequestId) || !preparing()
+                        || !"gatt_connect".equals(preparationStep)) return;
+                reconnectGattAfterSecurity();
+            };
+            mainHandler.postDelayed(securityReconnectGuard, SECURITY_DISCONNECT_SETTLE_MS);
+        } catch (RuntimeException error) {
+            failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed", gattStatus);
         }
     }
 
@@ -2057,6 +2130,13 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         } else if (state == BluetoothProfile.STATE_DISCONNECTED || status != BluetoothGatt.GATT_SUCCESS) {
             emitDiagnostic("gatt_disconnected", pendingOperation, status, null, "link_lost");
             if (preparing()) {
+                // The first connect attempt right after a fresh bond can fail transiently
+                // on legacy stacks (status 133 or a missing callback). Retry once, in step.
+                if ("gatt_connect".equals(preparationStep) && Build.VERSION.SDK_INT <= 28
+                        && securityConnectRetryCount < SECURITY_CONNECT_RETRY_MAX) {
+                    retrySecurityConnect(status);
+                    return;
+                }
                 if (pairingCoordinator.waitingForBond()) {
                     // System bond can outlive the old ordinary GATT. Keep the device and its
                     // bond deadline; its successful broadcast will build a fresh connection.
@@ -2502,6 +2582,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         currentMtu = 23;
         gattGeneration = 0;
         disconnectRequested = false;
+        securityConnectRetryCount = 0;
         emitDiagnostic("teardown_completed", "disconnect", status, null, reason);
     }
 
