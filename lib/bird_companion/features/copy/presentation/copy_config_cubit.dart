@@ -346,6 +346,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     if (value == state.pairPolicy || state.fullBackup) return;
     final version = state.preferencesVersion;
     if (version == null) return;
+    final previous = state.pairPolicy;
     emit(
       state.copyWith(pairPolicy: value, clearPreview: true, clearError: true),
     );
@@ -355,17 +356,27 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
         expectedVersion: version,
       );
       if (isClosed) return;
+      // 保存期间用户又改了策略：以最新 UI 选择为准，只吸收服务端版本号。
+      final latest = state.pairPolicy;
       emit(
         state.copyWith(
-          pairPolicy: saved.pairPolicy,
+          pairPolicy: latest,
           preferencesVersion: saved.version,
           clearPreview: true,
           clearError: true,
         ),
       );
+      if (latest != value) await setPairPolicy(latest);
     } catch (error) {
       if (isClosed) return;
-      emit(state.copyWith(error: error, clearPreview: true));
+      // 保存失败回滚 UI 到旧策略，避免界面与盒子偏好脱节。
+      emit(
+        state.copyWith(
+          pairPolicy: previous,
+          error: error,
+          clearPreview: true,
+        ),
+      );
     }
   }
 

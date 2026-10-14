@@ -608,9 +608,9 @@ class _FailedItemsSection extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                         ),
-                        const Text(
-                          '副本校验不一致（COPY_HASH_MISMATCH），可重试失败项。',
-                          style: TextStyle(fontSize: 12, color: AppColors.inkMuted),
+                        Text(
+                          item.failureText,
+                          style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
                         ),
                       ],
                     ),
@@ -630,6 +630,7 @@ class _FailedItemsSection extends StatelessWidget {
 }
 
 /// 终态报告卡：部分成功不得显示成成功（迁移对照 §3.6）。
+/// 审阅导出结果（XMP/CSV/嵌入）有数据时必须展示，CSV 失败计为部分完成。
 class _ReportCard extends StatelessWidget {
   const _ReportCard({required this.report});
 
@@ -664,10 +665,32 @@ class _ReportCard extends StatelessWidget {
             _metric('耗时', _duration(report.elapsedSeconds!)),
           if (report.bytesPerSecond != null)
             _metric('有效吞吐', '${_bytes(report.bytesPerSecond!)}/s'),
+          if (_hasReviewExportMetrics) ...[
+            const Divider(height: 20),
+            _metric('审阅 XMP', '${report.xmpCount ?? 0}'),
+            _metric(
+              '审阅 CSV',
+              report.csvStatus == 'failed' ? '导出失败' : '已导出${report.csvStatus == null ? '' : '（${report.csvStatus}）'}',
+              danger: report.csvStatus == 'failed',
+            ),
+            if (report.embedSuccessCount != null || report.embedDegradedCount != null)
+              _metric(
+                '嵌入副本',
+                '${report.embedSuccessCount ?? 0} 成功${(report.embedDegradedCount ?? 0) > 0 ? ' · ${report.embedDegradedCount} 降级外置' : ''}',
+                danger: (report.embedDegradedCount ?? 0) > 0,
+              ),
+          ],
         ],
       ),
     );
   }
+
+  /// 后端返回了任一审阅导出字段才渲染导出区（字段缺失不占位）。
+  bool get _hasReviewExportMetrics =>
+      report.xmpCount != null ||
+      report.csvStatus != null ||
+      report.embedSuccessCount != null ||
+      report.embedDegradedCount != null;
 
   Widget _metric(String label, String value, {bool danger = false}) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 3),

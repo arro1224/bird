@@ -212,6 +212,14 @@ void main() {
       expect(empty.isPartialSuccess, isFalse);
       expect(const CopyReport(failedFiles: 2).isPartialSuccess, isTrue);
     });
+
+    test('CSV 导出失败或嵌入降级计入部分成功', () {
+      expect(const CopyReport(csvStatus: 'failed').isPartialSuccess, isTrue);
+      expect(const CopyReport(csvStatus: 'success').isPartialSuccess, isFalse);
+      expect(const CopyReport(embedDegradedCount: 1).isPartialSuccess, isTrue);
+      expect(const CopyReport(embedDegradedCount: 0).isPartialSuccess, isFalse);
+      expect(const CopyReport(failedFiles: 0, csvStatus: 'success').isPartialSuccess, isFalse);
+    });
   });
 
   group('CopyJobItem', () {
@@ -237,6 +245,61 @@ void main() {
         'f.ARW',
       );
       expect(CopyJobItem.fromJson({'copy_item_id': 'a'}).targetPath, isNull);
+    });
+  });
+
+  group('CopyJobItem 错误原因容错解析', () {
+    test('error_code|failure_reason 两键兼容，error_message|failure_message 兼容', () {
+      expect(
+        CopyJobItem.fromJson({
+          'copy_item_id': 'a',
+          'error_code': 'COPY_HASH_MISMATCH',
+          'error_message': '文件校验失败',
+        }).errorCode,
+        'COPY_HASH_MISMATCH',
+      );
+      expect(
+        CopyJobItem.fromJson({
+          'copy_item_id': 'a',
+          'failure_reason': 'COPY_DEVICE_REMOVED',
+          'failure_message': '设备被拔出',
+        }).errorCode,
+        'COPY_DEVICE_REMOVED',
+      );
+      expect(
+        CopyJobItem.fromJson({'copy_item_id': 'a', 'error_message': '后端说明'}).errorMessage,
+        '后端说明',
+      );
+      // 全缺失不抛。
+      final bare = CopyJobItem.fromJson({'copy_item_id': 'a'});
+      expect(bare.errorCode, isNull);
+      expect(bare.failureText, '复制失败，可重试失败项。');
+    });
+
+    test('failureText：后端可用 message 优先；不可用内容回退错误码映射', () {
+      // 后端普通语言 message 直接展示。
+      expect(
+        CopyJobItem.fromJson({
+          'copy_item_id': 'a',
+          'error_code': 'COPY_HASH_MISMATCH',
+          'error_message': '文件 DSC05002.JPG 校验失败',
+        }).failureText,
+        '文件 DSC05002.JPG 校验失败',
+      );
+      // 含路径/异常字样的 message 不可用 → 按错误码映射。
+      expect(
+        CopyJobItem.fromJson({
+          'copy_item_id': 'a',
+          'error_code': 'COPY_HASH_MISMATCH',
+          'error_message': '/tmp/xxx Exception',
+        }).failureText,
+        '副本校验不一致，可重试失败项。',
+      );
+      // 未知错误码保留原码。
+      expect(
+        CopyJobItem.fromJson({'copy_item_id': 'a', 'error_code': 'COPY_FUTURE_CODE'}).failureText,
+        contains('COPY_FUTURE_CODE'),
+      );
     });
   });
 

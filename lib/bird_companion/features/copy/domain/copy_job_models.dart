@@ -403,6 +403,8 @@ class CopyJobItem {
     this.targetFilename,
     this.state = CopyItemState.pending,
     this.conflictDecision,
+    this.errorCode,
+    this.errorMessage,
   });
 
   /// copy_item_id | item_id | id 三键容错（未冻结）。
@@ -418,6 +420,37 @@ class CopyJobItem {
 
   /// 预检明细：skip / overwrite / keep_both；任务项可能缺失。
   final String? conflictDecision;
+
+  /// 失败原因错误码（§15 COPY_* 等，未冻结，容错解析）。
+  /// 兼容 error_code | failure_reason；缺失时 UI 用通用文案。
+  final String? errorCode;
+
+  /// 后端给的人类可读失败说明（可能是空/内部细节，UI 侧再判断可用性）。
+  final String? errorMessage;
+
+  /// UI 失败文案：优先后端可用 message，否则按错误码映射，
+  /// 都没有时回退通用文案（不硬编码任何一种失败语义）。
+  String get failureText {
+    final raw = errorMessage?.trim();
+    final usable = raw != null &&
+        raw.isNotEmpty &&
+        !raw.contains(RegExp(r'[/\\]')) &&
+        !raw.contains('Exception') &&
+        !raw.contains('http://') &&
+        !raw.contains('https://');
+    if (usable) return raw;
+    final code = errorCode;
+    if (code == null || code.isEmpty) return '复制失败，可重试失败项。';
+    return switch (code) {
+      'COPY_HASH_MISMATCH' => '副本校验不一致，可重试失败项。',
+      'COPY_IO_ERROR' => '读写文件失败，请检查设备后重试失败项。',
+      'COPY_DEVICE_REMOVED' => '复制期间设备被拔出，请重新插入后重试失败项。',
+      'COPY_INSUFFICIENT_SPACE' => '目标设备空间不足，请更换目标盘后重试失败项。',
+      'COPY_SOURCE_CHANGED' => '源文件在复制期间变化，请重新预检后重试。',
+      'COPY_METADATA_WRITE_FAILED' => '审阅信息写入失败，原片副本不受影响，可重试失败项。',
+      _ => '复制失败（$code），可重试失败项。',
+    };
+  }
 
   String? get targetPath {
     final dir = targetRelativeDirectory?.trim();
@@ -443,6 +476,8 @@ class CopyJobItem {
       targetFilename: _string(json, 'target_filename'),
       state: CopyItemState.fromWire(json['state']?.toString()),
       conflictDecision: _string(json, 'conflict_decision'),
+      errorCode: _string(json, 'error_code') ?? _string(json, 'failure_reason'),
+      errorMessage: _string(json, 'error_message') ?? _string(json, 'failure_message'),
     );
   }
 
@@ -457,6 +492,8 @@ class CopyJobItem {
     targetFilename: targetFilename,
     state: state ?? this.state,
     conflictDecision: conflictDecision,
+    errorCode: errorCode,
+    errorMessage: errorMessage,
   );
 }
 
@@ -624,8 +661,10 @@ class CopyReport {
   final CopyJobDeviceSnapshot? targetDevice;
   final DateTime? generatedAt;
 
-  /// “部分成功不得显示成成功”：只要有失败项即按部分完成渲染。
-  bool get isPartialSuccess => (failedFiles ?? 0) > 0;
+  /// “部分成功不得显示成成功”：有失败文件、CSV 导出失败或嵌入降级
+  /// 都按部分完成渲染。
+  bool get isPartialSuccess =>
+      (failedFiles ?? 0) > 0 || csvStatus == 'failed' || (embedDegradedCount ?? 0) > 0;
 
   factory CopyReport.fromJson(Map<String, dynamic> json) {
     final rawSource = json['source_device'];

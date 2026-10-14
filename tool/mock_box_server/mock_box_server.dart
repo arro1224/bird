@@ -2265,6 +2265,7 @@ class MockBoxServer {
     request.response.contentLength = await file.length();
     await request.response.addStream(file.openRead());
     await request.response.close();
+    _logResponseStatus(request, HttpStatus.ok);
   }
 
   Future<void> _serveProgressiveMedia(
@@ -2339,6 +2340,7 @@ class MockBoxServer {
     if (request.headers.value(HttpHeaders.ifNoneMatchHeader) == etag) {
       request.response.statusCode = HttpStatus.notModified;
       await request.response.close();
+      _logResponseStatus(request, HttpStatus.notModified);
       return;
     }
     final file = File(
@@ -2363,6 +2365,7 @@ class MockBoxServer {
     request.response.contentLength = await file.length();
     await request.response.addStream(file.openRead());
     await request.response.close();
+    _logResponseStatus(request, HttpStatus.ok);
   }
 
   Future<void> _controlMediaAsset(HttpRequest request) async {
@@ -2462,6 +2465,16 @@ class MockBoxServer {
     );
     request.response.write('mock diagnostics\nstatus=ok\n');
     await request.response.close();
+    _logResponseStatus(request, HttpStatus.ok);
+  }
+
+  /// Logs the response status for routes that bypass [_json] (static media,
+  /// log export). JSON routes are logged by [_sendCachedResponse].
+  void _logResponseStatus(HttpRequest request, int statusCode) {
+    if (logRequests) {
+      // Query strings may contain short-lived signatures. Never print them.
+      requestLogSink('${request.method} ${request.uri.path} -> $statusCode');
+    }
   }
 
   Map<String, dynamic> _buildPhoto(int zeroBasedIndex) {
@@ -2705,6 +2718,12 @@ class MockBoxServer {
     request.response.headers.contentType = ContentType.json;
     request.response.write(cached.body);
     await request.response.close();
+    if (logRequests) {
+      // Query strings may contain short-lived signatures. Never print them.
+      requestLogSink(
+        '${request.method} ${request.uri.path} -> ${cached.statusCode}',
+      );
+    }
   }
 
   void _restoreState() {

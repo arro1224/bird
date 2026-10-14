@@ -373,9 +373,7 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
     final page = items.skip(offset).take(_pageSize).toList(growable: false);
     final hasMore = offset + page.length < items.length;
     return CopyJobItemPage(
-      items: List.unmodifiable(
-        page.map((entry) => entry.item.copyWith(state: entry.state)),
-      ),
+      items: List.unmodifiable(page.map((entry) => entry.exposed)),
       hasMore: hasMore,
       nextCursor: hasMore ? '${offset + page.length}' : null,
     );
@@ -414,6 +412,11 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
       totalBytes: stats.totalBytes,
       elapsedSeconds: elapsedSeconds,
       bytesPerSecond: stats.copiedBytes > 0 && elapsedSeconds != null && elapsedSeconds > 0 ? stats.copiedBytes ~/ elapsedSeconds : null,
+      // 演示样本覆盖审阅导出三路：CSV 失败与嵌入降级都要计为部分成功。
+      xmpCount: stats.copiedFiles,
+      csvStatus: stats.failedFiles > 0 ? 'failed' : 'success',
+      embedSuccessCount: stats.copiedFiles,
+      embedDegradedCount: stats.failedFiles,
       sourceDevice: CopyJobDeviceSnapshot(mediaId: job.sourceMediaId),
       targetDevice: CopyJobDeviceSnapshot(mediaId: job.targetMediaId),
       generatedAt: _now(),
@@ -799,8 +802,11 @@ class _MockCopyJob {
         targetRelativeDirectory: '20260901',
         targetFilename: 'DSC05002.JPG',
       ),
-      // 第 2 项校验失败：演示「部分完成不得显示成成功」与失败项重试。
+      // 第 2 项校验失败：演示「部分完成不得显示成成功」与失败项重试；
+      // errorCode 对齐真实后端 §15 校验失败语义。
       willFail: true,
+      errorCode: 'COPY_HASH_MISMATCH',
+      errorMessage: '文件 DSC05002.JPG 校验失败（COPY_HASH_MISMATCH）',
     ),
   ];
 
@@ -957,14 +963,45 @@ class _MockCopyJob {
 }
 
 class _MockCopyItemState {
-  _MockCopyItemState({required this.item, required this.willFail}) : state = item.state;
+  _MockCopyItemState({
+    required this.item,
+    required this.willFail,
+    this.errorCode,
+    this.errorMessage,
+  }) : state = item.state;
 
   CopyJobItem item;
   final bool willFail;
 
+  /// 失败原因（对齐真实后端 §15 错误码语义），failed 状态时随 item 暴露。
+  final String? errorCode;
+  final String? errorMessage;
+
   /// 文件项当前状态；写入时同步回内部 [item]（jobItems 暴露内部模型）。
   CopyItemState state;
   int enteredAtMs = 0;
+
+  /// jobItems 返回的展示项：失败时携带错误码与后端 message。
+  CopyJobItem get exposed => state == CopyItemState.failed && errorCode != null
+      ? item.copyWith(state: state).copyWithItem(errorCode: errorCode, errorMessage: errorMessage)
+      : item.copyWith(state: state);
+}
+
+extension _MockCopyItemCopy on CopyJobItem {
+  CopyJobItem copyWithItem({String? errorCode, String? errorMessage}) => CopyJobItem(
+    copyItemId: copyItemId,
+    assetId: assetId,
+    sourceMediaId: sourceMediaId,
+    sourceRelativePath: sourceRelativePath,
+    sourceSize: sourceSize,
+    sourceMtimeNs: sourceMtimeNs,
+    targetRelativeDirectory: targetRelativeDirectory,
+    targetFilename: targetFilename,
+    state: state,
+    conflictDecision: conflictDecision,
+    errorCode: errorCode ?? this.errorCode,
+    errorMessage: errorMessage ?? this.errorMessage,
+  );
 }
 
 class _MockStats {

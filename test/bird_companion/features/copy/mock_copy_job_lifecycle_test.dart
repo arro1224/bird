@@ -159,6 +159,9 @@ void main() {
     final failed = await repo.jobItems(job.copyJobId, state: 'failed');
     expect(failed.items, hasLength(1));
     expect(failed.items.single.state, CopyItemState.failed);
+    // 失败项必须携带后端错误码语义（不再由 UI 硬编码 COPY_HASH_MISMATCH）。
+    expect(failed.items.single.errorCode, 'COPY_HASH_MISMATCH');
+    expect(failed.items.single.errorMessage, isNotNull);
     expect(failed.hasMore, isFalse);
 
     final allPage1 = await repo.jobItems(job.copyJobId);

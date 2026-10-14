@@ -30,6 +30,7 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = false;
+  bool _loadMoreFailed = false;
   String? _cursor;
   Object? _error;
 
@@ -51,6 +52,7 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
     setState(() {
       _loading = true;
       _error = null;
+      _loadMoreFailed = false;
     });
     try {
       final page = await repository.listJobs();
@@ -75,7 +77,10 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
   Future<void> _loadMore() async {
     final repository = _repository;
     if (repository == null || _loadingMore || !_hasMore) return;
-    setState(() => _loadingMore = true);
+    setState(() {
+      _loadingMore = true;
+      _loadMoreFailed = false;
+    });
     try {
       final page = await repository.listJobs(cursor: _cursor);
       if (!mounted) return;
@@ -86,11 +91,12 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
         _loadingMore = false;
       });
     } catch (error) {
+      // 失败置错误态、不自动重试：footer 重建循环会反复打后端（死循环）。
       if (!mounted) return;
-      setState(() => _loadingMore = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(UserMessageMapper.fromError(error).message)));
+      setState(() {
+        _loadingMore = false;
+        _loadMoreFailed = true;
+      });
     }
   }
 
@@ -147,7 +153,24 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
                 itemCount: _jobs.length + (_hasMore ? 1 : 0),
                 itemBuilder: (context, index) {
                   if (index >= _jobs.length) {
-                    unawaited(_loadMore());
+                    if (_loadMoreFailed) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Center(
+                          child: TextButton.icon(
+                            key: const Key('copy-job-list-load-more-retry'),
+                            onPressed: _loadMore,
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('加载失败，点击重试'),
+                          ),
+                        ),
+                      );
+                    }
+                    // 不得在 build 期同步触发：_loadMore 首行 setState 会
+                    // 撞 "setState called during build"（任务超一页时必现）。
+                    scheduleMicrotask(() {
+                      if (mounted) unawaited(_loadMore());
+                    });
                     return const Padding(
                       padding: EdgeInsets.symmetric(vertical: 16),
                       child: Center(

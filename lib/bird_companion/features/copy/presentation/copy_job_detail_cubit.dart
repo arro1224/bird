@@ -79,8 +79,7 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
   final String copyJobId;
   bool _eventGapRetryUsed = false;
   int _loadGeneration = 0;
-
-  /// 全量加载（进入页面 / 版本冲突后的自动刷新 / 手动下拉）。
+  /// 全量加载（进入页面 / 版本冲突后的自动刷新 / 手动下拉 / 事件缺口恢复）。
   Future<void> load() async {
     final generation = ++_loadGeneration;
     emit(state.copyWith(loading: true, clearError: true));
@@ -121,21 +120,73 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
       final next = await _repository.getJob(copyJobId);
       if (isClosed || generation != _loadGeneration) return;
       var updated = state.copyWith(detail: next, clearError: true);
+      final lastSeqBefore = state.lastEventSeq;
       final eventPage = await _repository.jobEvents(
         copyJobId,
         afterSeq: state.lastEventSeq,
       );
       if (isClosed || generation != _loadGeneration) return;
+      // 缺口判断必须在合并前：合并后 lastEventSeq 已被推进，跳号会被掩盖。
+      final hasGap = lastSeqBefore > 0 &&
+          eventPage.events.isNotEmpty &&
+          eventPage.events.first.seq != null &&
+          eventPage.events.first.seq! > lastSeqBefore + 1;
       updated = _mergeEventPage(updated, eventPage);
       emit(updated);
-      if (next.state.isTerminal && state.report == null) {
-        await _loadReportAndFailures(generation);
+      if (!hasGap) {
+        // 连续一次无缺口的增量页才清标记（缺口源仍在时保持，防无限重拉）。
+        _eventGapRetryUsed = false;
+        if (next.state.isTerminal && state.report == null) {
+          await _loadReportAndFailures(generation);
+        }
+        return;
       }
+      // 缺口恢复：从 0 重拉一次；恢复后仍不连续说明事件流损坏，报错防死循环。
+      if (_eventGapRetryUsed) {
+        emit(
+          state.copyWith(error: StateError('事件流出现缺口，请手动刷新')),
+        );
+        return;
+      }
+      _eventGapRetryUsed = true;
+      await _reloadEventsFromZero(generation);
     } catch (error) {
       if (isClosed || generation != _loadGeneration) return;
       // 轮询失败不打断页面，只记录错误（下次 tick 重试）。
       emit(state.copyWith(error: error));
     }
+  }
+
+  /// 从 0 重拉事件（缺口恢复）；恢复后仍跳号则报错防死循环。
+  Future<void> _reloadEventsFromZero(int generation) async {
+    try {
+      final eventPage = await _repository.jobEvents(copyJobId);
+      if (isClosed || generation != _loadGeneration) return;
+      final merged = _mergeEventPage(state, eventPage);
+      if (_hasInternalGap(merged.events)) {
+        emit(
+          merged.copyWith(error: StateError('事件流出现缺口，请手动刷新')),
+        );
+        return;
+      }
+      emit(merged);
+    } catch (error) {
+      if (isClosed || generation != _loadGeneration) return;
+      emit(state.copyWith(error: error));
+    }
+  }
+
+  /// 事件 seq 集合内部存在跳号（与增量缺口同一假设：seq 连续）。
+  bool _hasInternalGap(List<CopyJobEvent> events) {
+    final seqs = events
+        .where((event) => event.seq != null)
+        .map((event) => event.seq!)
+        .toList()
+      ..sort();
+    for (var i = 1; i < seqs.length; i++) {
+      if (seqs[i] > seqs[i - 1] + 1) return true;
+    }
+    return false;
   }
 
   Future<void> loadMoreFailedItems() async {
@@ -207,7 +258,8 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
     }
   }
 
-  /// 合并一页事件：按 seq 去重升序；检测缺口并在首次出现时重拉一次。
+  /// 合并一页事件：按 seq 去重升序。缺口检测由调用方 [pollTick] 处理
+  /// （[load] 从 0 拉全量，无需检测）。
   CopyJobDetailState _mergeEventPage(
     CopyJobDetailState base,
     CopyJobEventPage page,
@@ -218,20 +270,10 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
       known[event.seq] = event;
     }
     final merged = known.values.toList()..sort((a, b) => a.seq!.compareTo(b.seq!));
-    var next = base.copyWith(
+    return base.copyWith(
       events: merged,
       lastEventSeq: merged.isEmpty ? base.lastEventSeq : merged.last.seq!,
     );
-    // 缺口检测：增量页首条不紧接已知序号 → 从 0 重拉一次；仍缺口则报错防死循环。
-    if (base.lastEventSeq > 0 && page.events.isNotEmpty && page.events.first.seq != null && page.events.first.seq! > base.lastEventSeq + 1) {
-      if (_eventGapRetryUsed) {
-        return next.copyWith(error: StateError('事件流出现缺口，请手动刷新'));
-      }
-      _eventGapRetryUsed = true;
-      // 由调用方 load() 场景外进入时仅重拉一次事件（同步处理）。
-      return next;
-    }
-    return next;
   }
 
   Future<void> _loadReportAndFailures(int generation) async {
@@ -242,7 +284,7 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
     } catch (error) {
       if (isClosed || generation != _loadGeneration) return;
       // 报告尚未生成等场景不作为页面级错误。
-      emit(state.copyWith(notice: null, error: error));
+      emit(state.copyWith(error: error));
     }
     try {
       final page = await _repository.jobItems(copyJobId, state: 'failed');
