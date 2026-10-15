@@ -1,0 +1,20 @@
+{
+  "kind": "candidate_freeze",
+  "round_id": "ble22-20261015-r1",
+  "date": "2026-10-15",
+  "operator": "yummylyr (Claude Code session)",
+  "git_commit": "6d177831b4d0ab78d9390511077e7d9bcfbe74ff",
+  "source_fingerprint": "457c707c35168529fea6a32b0e0aa68044bc7d8e268c3b6e6a9221ac4d50ff29",
+  "build_dirty": true,
+  "build_dirty_reason": "android/gradle.properties local JDK paths (org.gradle.java.home / installations.paths) - machine-local, not committed",
+  "fix_under_test": "M01 bounded single retry for first post-bond gatt_connect transient (commit 6d177831b)",
+  "artifacts": {
+    "transport_apk_sha256": "dab07e5994ea3465a769bbbc4d5645893666cbaa016e9d5c23416478dc7431f1",
+    "formal_apk_sha256": "0b8fa27a51f781dd1bb0fc91334793565b403257515e260ac82e89aa2a7caa21",
+    "simulation_apk_sha256": "5c009dc53865cc450665c3b686e4604b225f7ca9f9ab28b54cd38c8805af2f75",
+    "virtual_apk_sha256": "2d0527e500349887de5c7296395e8a567287f84ff7e26eb886421c62cdbaa105"
+  },
+  "prior_conclusions_invalidated": "r9 and earlier candidate conclusions do not carry over (source fingerprint changed, includes 6d177831b retry fix)",
+  "environment_notes": "prepare_round.ps1 run with pwsh 7.4.6 portable (E:/dev-cache/pwsh7); overridden -FlutterSdk D:/code/flutterSetting -AndroidSdk D:/code/Android/Sdk -JavaHome D:/code/Android_Studio/jbr; virtualBirdBox --offline build verified passing locally",
+  "status": "built_not_phone_accepted"
+}
