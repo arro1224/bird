@@ -89,6 +89,12 @@ final class BirdBoxPairingCoordinator {
         if (bond == BONDED) bonded();
         else if (bond == BONDING) state.onBonding();
         else if (bond == NONE && previous == BONDING) fail("bond_rejected");
+        else if (bond == NONE && previous == BONDED && state.isWaitingForBond()
+                && state.phase() == BirdBoxSecurityWriteStateMachine.Phase.SYSTEM_BOND_WAITING) {
+            // The stack reported BONDING earlier in this attempt and then rolled the bond
+            // back; that is a lost bond, not a stale pre-createBond broadcast.
+            fail("bond_lost_during_bonding");
+        }
         else if (bond != NONE && bond != BONDING) fail("bond_state_unknown");
     }
 

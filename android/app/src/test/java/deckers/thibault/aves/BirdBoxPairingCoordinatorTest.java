@@ -152,6 +152,27 @@ public final class BirdBoxPairingCoordinatorTest {
         assertEquals("bond_rejected",reject.failure);
     }
 
+    @Test public void bondedThenNoneDuringWaitIsLostNotTimedOut() {
+        Harness h=new Harness(); h.start();
+        // The stack reported BONDING earlier in this attempt and then rolled the
+        // bond back before the rebuild could start; a lost bond, not a stale broadcast.
+        h.coordinator.bondChanged(h.coordinator.owner(),11,10);
+        h.coordinator.bondChanged(h.coordinator.owner(),10,12);
+        assertEquals("bond_lost_during_bonding",h.failure);
+        assertFalse(h.deadline); assertEquals(0,h.rebuilds);
+    }
+
+    @Test public void staleBondLostBroadcastBeforeBondingCannotCancelTheNewBond() {
+        Harness h=new Harness(); h.start();
+        // A leftover pre-createBond broadcast reports BONDED -> NONE while this
+        // attempt has never seen BONDING; it must be ignored, not fail the attempt.
+        h.coordinator.bondChanged(h.coordinator.owner(),10,12);
+        assertNull(h.failure);
+        assertTrue(h.deadline);
+        h.coordinator.bondChanged(h.coordinator.owner(),12,10);
+        assertEquals(1,h.rebuilds);
+    }
+
     @Test public void oldDeadlineAndBroadcastCannotAdvanceReplacementAttempt() {
         Harness h=new Harness(); h.start(); long old=h.coordinator.owner();
         h.coordinator.cancel(); h.state.reset(); h.start();

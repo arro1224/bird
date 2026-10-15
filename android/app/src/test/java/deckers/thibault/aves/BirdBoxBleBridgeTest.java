@@ -10,9 +10,11 @@ import android.app.Activity;
 import android.app.Application;
 import android.bluetooth.*;
 import android.content.*;
+import android.location.LocationManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Build;
+import android.provider.Settings;
 import java.time.Duration;
 import java.util.*;
 import org.junit.*;
@@ -184,8 +186,51 @@ public final class BirdBoxBleBridgeTest {
         assertEquals(1, result.completions);
     }
 
-    @Test public void realBridgeIsolatesOldGattAndRequiresBothCccdsBeforeProtectedWrite() {
-        Result result = prepare();
+    /** Overrides final Build fields for the known-affected device check; restores them afterwards. */
+    private static void setDeviceIdentity(String manufacturer, String model) throws Exception {
+        java.lang.reflect.Field manufacturerField = Build.class.getField("MANUFACTURER");
+        java.lang.reflect.Field modelField = Build.class.getField("MODEL");
+        manufacturerField.setAccessible(true);
+        modelField.setAccessible(true);
+        manufacturerField.set(null, manufacturer);
+        modelField.set(null, model);
+    }
+
+    @Test public void startScanWithLocationOffGuidesKnownAffectedDevicesAndStampsLocationFacts() throws Exception {
+        Settings.Secure.putInt(app.getContentResolver(), Settings.Secure.LOCATION_MODE,
+                Settings.Secure.LOCATION_MODE_OFF);
+        String originalManufacturer = Build.MANUFACTURER, originalModel = Build.MODEL;
+        setDeviceIdentity("HUAWEI", "MIS-AL00");
+        try {
+            Result scan = call("startScan", Map.of("scanSessionId", "scan-loc", "timeoutMs", 1_000));
+            scan.failed("location_service_disabled");
+            Map<?, ?> gate = lastEvent("location_compatibility_required");
+            assertEquals("location_disabled", gate.get("resultCode"));
+            assertEquals("disabled", gate.get("locationService"));
+            assertEquals(Boolean.FALSE, gate.get("locationRequiredByApp"));
+            if (Build.VERSION.SDK_INT == 31) {
+                assertEquals("huawei_mis_al00_sdk31", gate.get("locationCompatibilityRule"));
+                assertEquals(Boolean.TRUE, gate.get("locationRequiredForDeviceCompatibility"));
+            } else {
+                // Pre-S devices hit the same gate through the platform location
+                // permission requirement, not the OEM compatibility rule.
+                assertEquals("none", gate.get("locationCompatibilityRule"));
+                assertEquals(Boolean.FALSE, gate.get("locationRequiredForDeviceCompatibility"));
+            }
+        } finally {
+            setDeviceIdentity(originalManufacturer, originalModel);
+        }
+        // With location re-enabled the same known-affected device scans without the gate.
+        Settings.Secure.putInt(app.getContentResolver(), Settings.Secure.LOCATION_MODE,
+                Settings.Secure.LOCATION_MODE_HIGH_ACCURACY);
+        long before = diagnostics.size();
+        call("startScan", Map.of("scanSessionId", "scan-ok", "timeoutMs", 1_000));
+        call("stopScan", Collections.emptyMap());
+        assertTrue(diagnostics.stream().skip(before)
+                .noneMatch(e -> "location_compatibility_required".equals(e.get("eventType"))));
+    }
+
+    @Test public void realBridgeIsolatesOldGattAndRequiresBothCccdsBeforeProtectedWrite() {        Result result = prepare();
         assertTrue(platform.calls.indexOf("register") < platform.calls.indexOf("create"));
         write().failed("ble_gatt_not_ready");
         platform.bonded();
