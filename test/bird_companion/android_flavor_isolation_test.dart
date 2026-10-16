@@ -45,7 +45,7 @@ void main() {
       gradle,
       contains('if (appFlavor != "bird" && variantBuilder.buildType != "debug")'),
     );
-    expect(channel, contains('event.put("packageId", activity.getPackageName())'));
+    expect(channel, contains('event.put("packageId", applicationContext.getPackageName())'));
     expect(channel, contains('event.put("buildFlavor", BuildConfig.FLAVOR)'));
     expect(channel, contains('event.put("buildType", BuildConfig.BUILD_TYPE)'));
   });

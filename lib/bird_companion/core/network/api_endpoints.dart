@@ -8,6 +8,13 @@ abstract final class ApiEndpoints {
   // rc4 provisioning extension. Compose it separately so the immutable
   // birdbox-v1@1.0.0 endpoint inventory remains exactly frozen.
   static const apiV1Prefix = '/api/v1';
+  static const recognitionCapabilities = '$apiV1Prefix/recognition-capabilities';
+  static String recognitionEvents(String jobId) => '$apiV1Prefix/jobs/$jobId/recognition-events';
+  static String startSmartFollow(String jobId) => '$apiV1Prefix/jobs/$jobId/smart-follow-sessions';
+  static String smartFollowSession(String sessionId) => '$apiV1Prefix/smart-follow-sessions/$sessionId';
+  static String smartFollowCopyJobs(String sessionId) => '${smartFollowSession(sessionId)}/copy-jobs';
+  static String smartFollowActions(String sessionId) => '${smartFollowSession(sessionId)}/actions';
+  static final mediaPathPattern = RegExp('^${RegExp.escape(apiV1Prefix)}/files/[^/]+/(thumbnail|preview)\$');
   static const pairing = '$apiV1Prefix/pairing';
   static const deviceStatus = '/api/v1/device/status';
   static const devicePair = '/api/v1/device/pair';

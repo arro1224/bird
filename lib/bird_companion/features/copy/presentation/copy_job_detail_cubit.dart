@@ -90,7 +90,7 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
       emit(next);
 
       // 事件从 0 重拉（版本冲突后状态可能回退，增量序号不可信）。
-      final eventPage = await _repository.jobEvents(copyJobId);
+      final eventPage = await _allEventPages(generation);
       if (isClosed || generation != _loadGeneration) return;
       _eventGapRetryUsed = false;
       next = _mergeEventPage(next, eventPage);
@@ -121,10 +121,7 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
       if (isClosed || generation != _loadGeneration) return;
       var updated = state.copyWith(detail: next, clearError: true);
       final lastSeqBefore = state.lastEventSeq;
-      final eventPage = await _repository.jobEvents(
-        copyJobId,
-        afterSeq: state.lastEventSeq,
-      );
+      final eventPage = await _allEventPages(generation, afterSeq: state.lastEventSeq);
       if (isClosed || generation != _loadGeneration) return;
       // 缺口判断必须在合并前：合并后 lastEventSeq 已被推进，跳号会被掩盖。
       final hasGap = lastSeqBefore > 0 &&
@@ -160,7 +157,7 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
   /// 从 0 重拉事件（缺口恢复）；恢复后仍跳号则报错防死循环。
   Future<void> _reloadEventsFromZero(int generation) async {
     try {
-      final eventPage = await _repository.jobEvents(copyJobId);
+      final eventPage = await _allEventPages(generation);
       if (isClosed || generation != _loadGeneration) return;
       final merged = _mergeEventPage(state, eventPage);
       if (_hasInternalGap(merged.events)) {
@@ -177,6 +174,23 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
   }
 
   /// 事件 seq 集合内部存在跳号（与增量缺口同一假设：seq 连续）。
+  Future<CopyJobEventPage> _allEventPages(int generation, {int? afterSeq}) async {
+    final events = <CopyJobEvent>[];
+    var cursor = afterSeq;
+    while (!isClosed && generation == _loadGeneration) {
+      final page = await _repository.jobEvents(copyJobId, afterSeq: cursor);
+      if (isClosed || generation != _loadGeneration) break;
+      events.addAll(page.events);
+      if (!page.hasMore) break;
+      final next = page.events.lastOrNull?.seq;
+      if (next == null || next <= (cursor ?? 0)) {
+        throw StateError('事件分页未推进，请手动刷新');
+      }
+      cursor = next;
+    }
+    return CopyJobEventPage(events: events, hasMore: false);
+  }
+
   bool _hasInternalGap(List<CopyJobEvent> events) {
     final seqs = events
         .where((event) => event.seq != null)

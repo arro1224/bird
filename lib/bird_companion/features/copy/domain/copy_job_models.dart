@@ -630,6 +630,7 @@ class CopyReport {
     this.csvStatus,
     this.embedSuccessCount,
     this.embedDegradedCount,
+    this.exportFailedCount,
     this.sourceDevice,
     this.targetDevice,
     this.generatedAt,
@@ -657,6 +658,7 @@ class CopyReport {
   final String? csvStatus;
   final int? embedSuccessCount;
   final int? embedDegradedCount;
+  final int? exportFailedCount;
   final CopyJobDeviceSnapshot? sourceDevice;
   final CopyJobDeviceSnapshot? targetDevice;
   final DateTime? generatedAt;
@@ -664,7 +666,7 @@ class CopyReport {
   /// “部分成功不得显示成成功”：有失败文件、CSV 导出失败或嵌入降级
   /// 都按部分完成渲染。
   bool get isPartialSuccess =>
-      (failedFiles ?? 0) > 0 || csvStatus == 'failed' || (embedDegradedCount ?? 0) > 0;
+      (failedFiles ?? 0) > 0 || csvStatus == 'failed' || (embedDegradedCount ?? 0) > 0 || (exportFailedCount ?? 0) > 0;
 
   factory CopyReport.fromJson(Map<String, dynamic> json) {
     final rawSource = json['source_device'];
@@ -690,6 +692,7 @@ class CopyReport {
       csvStatus: _string(json, 'csv_status'),
       embedSuccessCount: _int(json, 'embed_success_count'),
       embedDegradedCount: _int(json, 'embed_degraded_count'),
+      exportFailedCount: _int(json, 'export_failed_count'),
       sourceDevice: rawSource is Map ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawSource)) : null,
       targetDevice: rawTarget is Map ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawTarget)) : null,
       generatedAt: ProtocolValidation.optionalDateTime(json, 'generated_at'),

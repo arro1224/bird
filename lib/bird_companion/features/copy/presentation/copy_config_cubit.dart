@@ -21,6 +21,7 @@ class CopyConfigState {
     this.preferencesVersion,
     this.scopeOptions = const [],
     this.copyReady = false,
+    this.reviewExportReady = true,
     this.targetMediaId,
     this.conflictStrategy,
     this.reviewExport = const ReviewExportConfig.disabled(),
@@ -50,6 +51,7 @@ class CopyConfigState {
   final int? preferencesVersion;
   final List<CopyScopeOption> scopeOptions;
   final bool copyReady;
+  final bool reviewExportReady;
   final String? targetMediaId;
   final ConflictStrategy? conflictStrategy;
   final ReviewExportConfig reviewExport;
@@ -148,6 +150,7 @@ class CopyConfigState {
     int? preferencesVersion,
     List<CopyScopeOption>? scopeOptions,
     bool? copyReady,
+    bool? reviewExportReady,
     String? targetMediaId,
     ConflictStrategy? conflictStrategy,
     ReviewExportConfig? reviewExport,
@@ -183,6 +186,7 @@ class CopyConfigState {
     preferencesVersion: preferencesVersion ?? this.preferencesVersion,
     scopeOptions: scopeOptions ?? this.scopeOptions,
     copyReady: copyReady ?? this.copyReady,
+    reviewExportReady: reviewExportReady ?? this.reviewExportReady,
     targetMediaId: clearTargetMediaId ? null : targetMediaId ?? this.targetMediaId,
     conflictStrategy: conflictStrategy ?? this.conflictStrategy,
     reviewExport: reviewExport ?? this.reviewExport,
@@ -295,6 +299,8 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
           devices: devices,
           loadingDevices: false,
           copyReady: true,
+          reviewExportReady: capabilities.reviewExportReady,
+          reviewExport: capabilities.reviewExportReady ? state.reviewExport : const ReviewExportConfig.disabled(),
           sourceMediaId: sourceBinding.sourceMediaId,
           sourceBindingToken: sourceBinding.token,
           sourceDisplayName: sourceBinding.displayName,
@@ -386,7 +392,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
 
   void setReviewExportEnabled(bool enabled) => emit(
     state.copyWith(
-      reviewExport: enabled
+      reviewExport: enabled && state.reviewExportReady
           ? ReviewExportConfig(
               enabled: true,
               writeXmp: true,

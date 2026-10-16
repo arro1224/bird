@@ -670,9 +670,17 @@ class _ReportCard extends StatelessWidget {
             _metric('审阅 XMP', '${report.xmpCount ?? 0}'),
             _metric(
               '审阅 CSV',
-              report.csvStatus == 'failed' ? '导出失败' : '已导出${report.csvStatus == null ? '' : '（${report.csvStatus}）'}',
+              switch (report.csvStatus) {
+                'success' => '已导出',
+                'failed' => '导出失败',
+                'pending' => '等待导出',
+                'not_requested' => '未开启',
+                _ => '状态未确认',
+              },
               danger: report.csvStatus == 'failed',
             ),
+            if ((report.exportFailedCount ?? 0) > 0)
+              _metric('审阅导出失败', '${report.exportFailedCount}', danger: true),
             if (report.embedSuccessCount != null || report.embedDegradedCount != null)
               _metric(
                 '嵌入副本',

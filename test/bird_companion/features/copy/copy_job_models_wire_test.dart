@@ -8,6 +8,13 @@ import 'package:flutter_test/flutter_test.dart';
 /// 响应协议未冻结：未知字段忽略 / 缺失给默认 / 未知枚举保留 raw /
 /// 未知 allowed_action 丢弃。联调期后端字段演进时只需放宽此处。
 void main() {
+  test('XMP 失败不能被成功 CSV 和零复制失败数掩盖', () {
+    final report = CopyReport.fromJson({
+      'failed_files': 0, 'csv_status': 'success', 'export_failed_count': 1,
+    });
+    expect(report.exportFailedCount, 1);
+    expect(report.isPartialSuccess, isTrue);
+  });
   group('CopyJobState tolerant parsing', () {
     test('未知 state 不抛异常并保留 raw', () {
       final detail = CopyJobDetail.fromJson({

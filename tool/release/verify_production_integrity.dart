@@ -126,15 +126,20 @@ void main() {
   _requireContains(
     failures,
     connectionPagePath,
-    'if (!_handoffCommitted)',
-    'an unfinished provisioning route must release its connection resources',
+    'unawaited(_provisioningCubit.close())',
+    'the connection page must close its owned provisioning cubit',
   );
   _requireContains(
     failures,
     connectionPagePath,
-    'widget.repository.disconnect()',
-    'an unfinished provisioning route must disconnect the repository',
+    'unawaited(_networkCubit.close())',
+    'the connection page must close its owned network cubit',
   );
+  const provisioningCubitPath = 'lib/bird_companion/features/connection/presentation/provisioning_cubit.dart';
+  _requireContains(failures, provisioningCubitPath, '!retainSession',
+      'successful handoff must preserve the live session');
+  _requireContains(failures, provisioningCubitPath, '_control!.endSession(_owner!)',
+      'unfinished provisioning must release only the owned session');
 
   const provisioningRepositoryPath = 'lib/bird_companion/features/connection/data/provisioning_repository_impl.dart';
   _requireContains(

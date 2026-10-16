@@ -55,7 +55,9 @@ void main() {
     });
     expect(payload['device_id'], _deviceId);
     expect(payload['protocol_version'], '1.0-rc4');
-    expect(logs, ['GET /health']);
+    // The mock now records both request and response, without credentials.
+    expect(logs, everyElement(anyOf('GET /health', 'GET /health -> 200')));
+    expect(logs.first, 'GET /health');
     final output = logs.join('\n');
     for (final secret in const [
       'a7-query-token',

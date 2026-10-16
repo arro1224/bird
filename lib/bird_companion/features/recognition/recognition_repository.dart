@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
+import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:flutter/foundation.dart';
 
@@ -20,7 +21,7 @@ class RecognitionRepository extends ChangeNotifier {
   String _key(String id) => '${deviceId()}:$id';
   Map<String, dynamic>? snapshot(String job) => _snapshots[_key(job)];
 
-  Future<Map<String, dynamic>> capabilities() => api.get('/api/v1/recognition-capabilities');
+  Future<Map<String, dynamic>> capabilities() => api.get(ApiEndpoints.recognitionCapabilities);
 
   Future<void> rememberAnalysisOption(String project, Map<String, dynamic>? config) => cache.write('recognition-option:${_key(project)}', config);
   Map<String, dynamic>? analysisOption(String project) {
@@ -49,7 +50,7 @@ class RecognitionRepository extends ChangeNotifier {
     bool current() => !_closed && requestedDevice == deviceId() && requestedUri == api.baseUri;
     var cursor = cache.read<int>('recognition-cursor:$key') ?? 0;
     do {
-      final response = await api.get('/api/v1/jobs/$job/recognition-events', queryParameters: {'after_event_seq': cursor, 'page_size': 100});
+      final response = await api.get(ApiEndpoints.recognitionEvents(job), queryParameters: {'after_event_seq': cursor, 'page_size': 100});
       if (!current()) return;
       final data = response;
       final rows = (data['items'] as List).map((row) => Map<String, dynamic>.from(row as Map)).toList();
@@ -69,7 +70,7 @@ class RecognitionRepository extends ChangeNotifier {
       }
       final session = data['smart_follow_session_id'] as String?;
       if (session != null) {
-        final sessionData = await api.get('/api/v1/smart-follow-sessions/$session');
+        final sessionData = await api.get(ApiEndpoints.smartFollowSession(session));
         if (!current()) return;
         final old = previous?['smart_follow'] as Map?;
         _snapshots[key]!['smart_follow'] = old == null || (sessionData['state_version'] as int) >= (old['state_version'] as int) ? sessionData : old;
@@ -81,19 +82,19 @@ class RecognitionRepository extends ChangeNotifier {
   }
 
   Future<void> startFollow(String job, Map<String, dynamic> config) async {
-    await api.post('/api/v1/jobs/$job/smart-follow-sessions', data: config, idempotencyKey: 'follow-start-$job');
+    await api.post(ApiEndpoints.startSmartFollow(job), data: config, idempotencyKey: 'follow-start-$job');
     await sync(job);
   }
 
   Future<List<Map<String, dynamic>>> childJobs(String session) async {
-    final data = await api.get('/api/v1/smart-follow-sessions/$session/copy-jobs');
+    final data = await api.get(ApiEndpoints.smartFollowCopyJobs(session));
     return (data['items'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
   Future<void> action(String job, String action) async {
     final session = snapshot(job)?['smart_follow'] as Map;
     await api.post(
-      '/api/v1/smart-follow-sessions/${session['session_id']}/actions',
+      ApiEndpoints.smartFollowActions(session['session_id'] as String),
       data: {'action': action, 'expected_state_version': session['state_version']},
       idempotencyKey: '${session['session_id']}-$action-${session['state_version']}',
     );

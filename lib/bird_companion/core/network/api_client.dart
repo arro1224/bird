@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:aves/bird_companion/core/network/api_exception.dart';
+import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:dio/dio.dart';
 
@@ -84,7 +85,7 @@ class ApiClient {
         uri.scheme != base.scheme ||
         uri.host != base.host ||
         uri.port != base.port ||
-        !RegExp(r'^/api/v1/files/[^/]+/(thumbnail|preview)$').hasMatch(uri.path)) {
+        !ApiEndpoints.mediaPathPattern.hasMatch(uri.path)) {
       return const {};
     }
     return {'Authorization': 'Bearer $token', 'X-Api-Version': _apiVersion};

@@ -59,7 +59,7 @@ void main() {
     );
     expect(
       gate,
-      contains('widget.repository.disconnect()'),
+      contains('_control!.endSession(_owner!)'),
       reason: 'production gate must require unfinished-flow cleanup',
     );
     for (final needle in const [

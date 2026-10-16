@@ -117,6 +117,7 @@ class CopyCapabilities {
     required this.supportedScopes,
     required this.recognitionPolicyVersion,
     this.missingRequirements = const [],
+    this.reviewExportReady = true,
   });
 
   final String revision;
@@ -124,6 +125,7 @@ class CopyCapabilities {
   final List<CopyScope> supportedScopes;
   final String recognitionPolicyVersion;
   final List<String> missingRequirements;
+  final bool reviewExportReady;
 
   factory CopyCapabilities.fromJson(Map<String, dynamic> json) => CopyCapabilities(
     revision: ProtocolValidation.requiredId(json, 'revision'),
@@ -134,6 +136,7 @@ class CopyCapabilities {
       'recognition_policy_version',
     ),
     missingRequirements: _stringList(json, 'missing_requirements'),
+    reviewExportReady: json['review_export_ready'] == true,
   );
 }
 

@@ -156,7 +156,9 @@ void main() {
     expect(result.toJson()['status'], 'handoff_ready');
     expect(result.toJson()['hardware_status'], 'pending');
     expect(result.toJson()['releasable'], isFalse);
-  });
+  }, skip: !File('outputs/RC4-HF-BLE-05/handoff-manifest.json').existsSync()
+      ? 'External historical BLE-05 delivery artifacts are not distributed in this source checkout; no hardware acceptance is implied.'
+      : false);
 }
 
 const _passedBle03Validation = Rc4HfBle03EvidenceValidation(

@@ -19,6 +19,7 @@ class _GapRepository implements CopyJobRepository {
 
   int incrementalCalls = 0;
   int fullCalls = 0;
+  bool paginated = false;
 
   CopyJobDetail get detail => const CopyJobDetail(
     copyJobId: 'job-1',
@@ -33,6 +34,14 @@ class _GapRepository implements CopyJobRepository {
 
   @override
   Future<CopyJobEventPage> jobEvents(String copyJobId, {int? afterSeq}) async {
+    if (paginated) {
+      final cursor = afterSeq ?? 0;
+      return CopyJobEventPage(
+        events: [for (var i = cursor + 1; i <= (cursor == 0 ? 1000 : 1005); i++) _event(i)],
+        hasMore: cursor == 0,
+        nextCursor: cursor == 0 ? '1000' : null,
+      );
+    }
     if (afterSeq == null) {
       fullCalls++;
       return CopyJobEventPage(events: List.unmodifiable(fullEvents), hasMore: false);
@@ -88,6 +97,15 @@ CopyJobEvent _event(int seq) => CopyJobEvent(
 );
 
 void main() {
+  test('事件超过 1000 条时进入详情即补齐全部分页', () async {
+    final repository = _GapRepository()..paginated = true;
+    final cubit = CopyJobDetailCubit(repository, copyJobId: 'job-1');
+    await cubit.load();
+    expect(cubit.state.events.length, 1005);
+    expect(cubit.state.lastEventSeq, 1005);
+    expect(cubit.state.error, isNull);
+    await cubit.close();
+  });
   test('首次缺口：增量页跳号时从 0 重拉一次并补齐事件', () async {
     final repository = _GapRepository();
     final cubit = CopyJobDetailCubit(repository, copyJobId: 'job-1');

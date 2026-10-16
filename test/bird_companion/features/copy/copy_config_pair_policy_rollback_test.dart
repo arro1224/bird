@@ -14,6 +14,14 @@ import 'package:flutter_test/flutter_test.dart';
 /// 触发不了失败分支——回滚逻辑（copy_config_cubit.dart `setPairPolicy`）
 /// 在此用注入失败的 fake 仓储验证。
 void main() {
+  test('后端未开放审阅导出时，保留普通复制并禁止打开导出开关', () async {
+    final cubit = await _initialized(_NoExportRepository());
+    addTearDown(cubit.close);
+    expect(cubit.state.copyReady, isTrue);
+    expect(cubit.state.reviewExportReady, isFalse);
+    cubit.setReviewExportEnabled(true);
+    expect(cubit.state.reviewExport.enabled, isFalse);
+  });
   test('保存失败 → 策略回滚到旧值并暴露 error，版本号不变', () async {
     final repository = _FakeCopyRepository()..saveShouldThrow = true;
     final cubit = await _initialized(repository);
@@ -58,6 +66,15 @@ void main() {
     expect(cubit.state.pairPolicy, PairPolicy.both, reason: '以保存期间用户的最新选择为准');
     expect(cubit.state.error, isNull);
   });
+}
+
+class _NoExportRepository extends _FakeCopyRepository {
+  @override
+  Future<CopyCapabilities> capabilities() async => const CopyCapabilities(
+    revision: '1.0-rc3', copyReady: true,
+    supportedScopes: [CopyScope.recognizedAssets],
+    recognitionPolicyVersion: 'recognized-assets-v1', reviewExportReady: false,
+  );
 }
 
 Future<CopyConfigCubit> _initialized(_FakeCopyRepository repository) async {

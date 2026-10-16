@@ -4,6 +4,7 @@ import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
+import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/features/recognition/recognition_repository.dart';
 import 'package:flutter/material.dart';
 
@@ -39,7 +40,7 @@ class _RecognitionOptionsState extends State<RecognitionOptions> {
         if (mounted) setState(() => loaded = true);
         return;
       }
-      final response = await widget.repository.api.get('/api/v1/storage/devices', headers: {'X-BirdBox-Protocol': 'birdbox-copy-v1', 'X-BirdBox-Copy-Revision': '1.0-rc3'});
+      final response = await widget.repository.api.get(ApiEndpoints.storageDevices, headers: {'X-BirdBox-Protocol': 'birdbox-copy-v1', 'X-BirdBox-Copy-Revision': '1.0-rc3'});
       final data = response;
       final devices = (data['devices'] as List).map((e) => Map<String, dynamic>.from(e as Map)).where((e) => e['can_be_target'] == true).toList();
       if (!mounted) return;

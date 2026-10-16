@@ -528,9 +528,11 @@ class CopyContentStep extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           secondary: const Icon(Icons.description_outlined, color: AppColors.brand),
           title: const Text('保存 XMP 与审阅 CSV', style: TextStyle(fontWeight: FontWeight.w700)),
-          subtitle: const Text('在目标盘写入评分、标签、鸟种和保留状态'),
+          subtitle: Text(state.reviewExportReady
+              ? '在目标盘写入评分、标签、鸟种和保留状态'
+              : '当前盒子尚未开放审阅信息导出，仍可正常复制照片'),
           value: state.reviewExport.enabled,
-          onChanged: state.loadingDevices ? null : onReviewExportChanged,
+          onChanged: state.loadingDevices || !state.reviewExportReady ? null : onReviewExportChanged,
         ),
         if (state.reviewExport.enabled)
           const Align(
