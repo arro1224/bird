@@ -150,7 +150,7 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
     await _handoff?.cancel();
     if (!mounted) return;
     _networkCubit.backToMethodSelection();
-    if (_provisioningCubit.state.phase != ProvisioningPhase.methodSelection) unawaited(_provisioningCubit.discover());
+    if (_provisioningCubit.state.phase != ProvisioningPhase.methodSelection) unawaited(_provisioningCubit.returnToDiscovery());
   }
 
   @override
@@ -298,7 +298,8 @@ class _BleConnectionView extends StatelessWidget {
       return BlocBuilder<ProvisioningCubit, ProvisioningState>(
         builder: (context, state) {
           final cubit = context.read<ProvisioningCubit>();
-          final error = state.error == null ? null : UserMessageMapper.fromError(state.error!);
+          final mappedError = state.error == null ? null : UserMessageMapper.fromError(state.error!);
+          final error = state.linkStatus == BleLinkStatus.releaseFailed && mappedError != null ? UserMessage(title: mappedError.title, message: mappedError.message, actionLabel: '重试断开') : mappedError;
           final developerDiagnostic = _developerBleDiagnostic(
             state.error,
             state.latestScanDiagnostic?.scanSessionId,
@@ -307,6 +308,7 @@ class _BleConnectionView extends StatelessWidget {
             ProvisioningPhase.trusted => '验证设备',
             ProvisioningPhase.pairingCode || ProvisioningPhase.authorizing => '设备配对',
             ProvisioningPhase.methodSelection => '连接方式',
+            ProvisioningPhase.disconnecting => '正在断开连接',
             ProvisioningPhase.failure => '连接遇到问题',
             _ => '查找盒子',
           };
@@ -330,8 +332,9 @@ class _BleConnectionView extends StatelessWidget {
               networkState,
               onCopyDiagnostic: _diagnosticCopyAction(context, state),
             ),
-            ProvisioningPhase.connecting => const _BleLoadingView(),
+            ProvisioningPhase.connecting => state.pairingProgress == null ? const _BleLoadingView() : _BlePairingProgressView(progress: state.pairingProgress, onCancel: cubit.reset),
             ProvisioningPhase.authorizing => _BlePairingProgressView(progress: state.pairingProgress, onCancel: cubit.reset),
+            ProvisioningPhase.disconnecting => const _BleDisconnectingView(),
             _ => _BleDiscoveryView(
               devices: state.devices,
               searching: state.phase == ProvisioningPhase.discovering,
@@ -340,11 +343,14 @@ class _BleConnectionView extends StatelessWidget {
               developerDiagnostic: developerDiagnostic,
               onDiscover: cubit.discover,
               onSelectDevice: cubit.selectDevice,
-              onRetry: switch (state.error) {
-                ProvisioningException(code: ProvisioningErrorCode.locationServicesDisabled) => cubit.openLocationSettings,
-                ProvisioningException(code: ProvisioningErrorCode.bluetoothPermissionDenied) => cubit.openPermissionSettings,
-                _ => cubit.retry,
-              },
+              connectionEnabled: !state.releaseBlocked,
+              onRetry: state.releaseBlocked
+                  ? cubit.returnToDiscovery
+                  : switch (state.error) {
+                      ProvisioningException(code: ProvisioningErrorCode.locationServicesDisabled) => cubit.openLocationSettings,
+                      ProvisioningException(code: ProvisioningErrorCode.bluetoothPermissionDenied) => cubit.openPermissionSettings,
+                      _ => cubit.retry,
+                    },
               onCopyDiagnostic: state.latestScanDiagnostic == null
                   ? null
                   : () => _copyBleDiagnostic(
@@ -353,7 +359,21 @@ class _BleConnectionView extends StatelessWidget {
                     ),
             ),
           };
-          return _scaffold(context, title: '${titlePrefix ?? ''}$title', content: content);
+          final inDiscovery = const {ProvisioningPhase.idle, ProvisioningPhase.discovering, ProvisioningPhase.discovered}.contains(state.phase) && state.linkStatus == BleLinkStatus.disconnected;
+          return PopScope(
+            canPop: inDiscovery,
+            onPopInvokedWithResult: (didPop, result) {
+              if (!didPop && state.phase != ProvisioningPhase.disconnecting) unawaited(cubit.returnToDiscovery());
+            },
+            child: _scaffold(
+              context,
+              title: '${titlePrefix ?? ''}$title',
+              content: content,
+              onBack: inDiscovery ? null : () => unawaited(cubit.returnToDiscovery()),
+              backEnabled: state.phase != ProvisioningPhase.disconnecting,
+              linkStatus: state.linkStatus,
+            ),
+          );
         },
       );
     },
@@ -378,7 +398,10 @@ class _BleConnectionView extends StatelessWidget {
       deviceName: info.deviceName,
       capabilities: info.capabilities,
       onCopyDiagnostic: onCopyDiagnostic,
+      onBackToDiscovery: () => unawaited(context.read<ProvisioningCubit>().returnToDiscovery()),
       onSelected: (method) {
+        final state = context.read<ProvisioningCubit>().state;
+        if (state.phase != ProvisioningPhase.methodSelection || state.linkStatus != BleLinkStatus.connected) return;
         onMethodSelected?.call(method);
         switch (method) {
           case ConnectionMethod.directAp:
@@ -397,6 +420,8 @@ class _BleConnectionView extends StatelessWidget {
     required String title,
     required Widget content,
     VoidCallback? onBack,
+    bool backEnabled = true,
+    BleLinkStatus? linkStatus,
   }) => Scaffold(
     backgroundColor: AppColors.paper,
     body: ConnectionBackground(
@@ -407,7 +432,19 @@ class _BleConnectionView extends StatelessWidget {
               title: title,
               onHelp: () => _showBleHelp(context),
               onBack: onBack,
+              backEnabled: backEnabled,
             ),
+            if (linkStatus != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.pageHorizontal, vertical: AppSpacing.xs),
+                child: Text(switch (linkStatus) {
+                  BleLinkStatus.disconnected => '蓝牙未连接',
+                  BleLinkStatus.connecting => '正在连接蓝牙',
+                  BleLinkStatus.connected => '蓝牙已连接',
+                  BleLinkStatus.disconnecting => '正在断开蓝牙，请稍候',
+                  BleLinkStatus.releaseFailed => '蓝牙断开未完成，请重试断开',
+                }, key: const Key('ble-link-status')),
+              ),
             Expanded(child: content),
           ],
         ),
@@ -498,6 +535,7 @@ class _BleDiscoveryView extends StatelessWidget {
     required this.onSelectDevice,
     required this.onRetry,
     this.onCopyDiagnostic,
+    this.connectionEnabled = true,
   });
 
   final List<ProvisioningDevice> devices;
@@ -509,6 +547,7 @@ class _BleDiscoveryView extends StatelessWidget {
   final Future<void> Function(ProvisioningDevice) onSelectDevice;
   final Future<void> Function() onRetry;
   final Future<void> Function()? onCopyDiagnostic;
+  final bool connectionEnabled;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -634,7 +673,7 @@ class _BleDiscoveryView extends StatelessWidget {
               const SizedBox(height: AppSpacing.md),
               BirdButton(
                 label: '连接此盒子',
-                onPressed: () => onSelectDevice(device),
+                onPressed: connectionEnabled ? () => onSelectDevice(device) : null,
                 icon: const Icon(Icons.arrow_forward_rounded),
               ),
             ],
@@ -710,6 +749,11 @@ class _BlePairingProgressView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final message = switch (progress?.stage) {
+      BlePairingStage.preflightPending => '等待配对准备，正在检查并修复历史蓝牙配对记录，请保持盒子在附近且不要重复点击',
+      BlePairingStage.resetConfirming => '正在确认修复历史蓝牙配对记录',
+      BlePairingStage.resetPending => '正在等待盒子清理历史配对记录',
+      BlePairingStage.waitingFreshAdvertisement => '正在等待盒子重新广播',
+      BlePairingStage.freshGattReconnecting => '正在重新连接盒子并检查配对准备',
       BlePairingStage.systemBond => '正在完成系统蓝牙配对，请确认手机的系统提示',
       BlePairingStage.reconnecting => '系统绑定已完成，正在重新连接盒子',
       BlePairingStage.restoringNotifications => '正在恢复盒子通知',
@@ -728,7 +772,19 @@ class _BlePairingProgressView extends StatelessWidget {
             const SizedBox(height: AppSpacing.lg),
             Text(message, key: const Key('ble-pairing-stage'), textAlign: TextAlign.center),
             const SizedBox(height: AppSpacing.md),
-            const Text('系统蓝牙配对与盒子的 App 配对码是两个步骤。请按系统提示操作，随后再输入盒子配对码。', textAlign: TextAlign.center),
+            Text(
+              const {
+                    BlePairingStage.preparing,
+                    BlePairingStage.preflightPending,
+                    BlePairingStage.resetConfirming,
+                    BlePairingStage.resetPending,
+                    BlePairingStage.waitingFreshAdvertisement,
+                    BlePairingStage.freshGattReconnecting,
+                  }.contains(progress?.stage)
+                  ? '配对准备完成后才能开始系统蓝牙配对。若仍失败，请导出完整诊断。'
+                  : '系统蓝牙配对与盒子的 App 配对码是两个步骤。请按系统提示操作，随后再输入盒子配对码。',
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: AppSpacing.lg),
             BirdButton(label: '取消配对', onPressed: onCancel, variant: BirdButtonVariant.outlined),
           ],
@@ -744,6 +800,24 @@ class _BleLoadingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) => const Center(
     child: SizedBox.square(dimension: 40, child: CircularProgressIndicator()),
+  );
+}
+
+class _BleDisconnectingView extends StatelessWidget {
+  const _BleDisconnectingView();
+  @override
+  Widget build(BuildContext context) => const Center(
+    child: Padding(
+      padding: EdgeInsets.all(AppSpacing.pageHorizontal),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: AppSpacing.lg),
+          Text('正在结束本次蓝牙连接，完成后才能连接其他盒子。', textAlign: TextAlign.center),
+        ],
+      ),
+    ),
   );
 }
 
@@ -1090,12 +1164,14 @@ class _ConnectionTopBar extends StatelessWidget {
     required this.onHelp,
     this.showBack = true,
     this.onBack,
+    this.backEnabled = true,
   });
 
   final String title;
   final VoidCallback onHelp;
   final bool showBack;
   final VoidCallback? onBack;
+  final bool backEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -1112,7 +1188,7 @@ class _ConnectionTopBar extends StatelessWidget {
               child: showLeading
                   ? IconButton(
                       tooltip: '返回',
-                      onPressed: onBack ?? () => Navigator.of(context).pop(),
+                      onPressed: backEnabled ? onBack ?? () => Navigator.of(context).pop() : null,
                       icon: const Icon(Icons.arrow_back_ios_new_rounded),
                     )
                   : null,

@@ -333,6 +333,7 @@ final class DeviceCapabilities {
     required this.wifiApStaConcurrency,
     required this.apBand24Ghz,
     required this.apBand5Ghz,
+    this.pairingPreflightV1 = false,
   });
 
   final bool directAp;
@@ -347,6 +348,9 @@ final class DeviceCapabilities {
   final bool wifiApStaConcurrency;
   final bool apBand24Ghz;
   final bool apBand5Ghz;
+
+  /// Optional 2026-10-19 extension. Absence means the public reset protocol is unavailable.
+  final bool pairingPreflightV1;
 
   bool get dppUsableByBox => dppEnrolleeSupported && dppSupportedAkm.any(const {'psk', 'sae'}.contains);
 
@@ -364,6 +368,7 @@ final class DeviceCapabilities {
       'wifi_ap_sta_concurrency',
       'ap_band_2_4_ghz',
       'ap_band_5_ghz',
+      'pairing_preflight_v1',
     };
     _rejectUnknownKeys(json, keys, 'capabilities');
     final akm = _requiredStringList(json, 'dpp_supported_akm').toSet();
@@ -387,6 +392,7 @@ final class DeviceCapabilities {
       wifiApStaConcurrency: _requiredBool(json, 'wifi_ap_sta_concurrency'),
       apBand24Ghz: _requiredBool(json, 'ap_band_2_4_ghz'),
       apBand5Ghz: _requiredBool(json, 'ap_band_5_ghz'),
+      pairingPreflightV1: json.containsKey('pairing_preflight_v1') ? _requiredBool(json, 'pairing_preflight_v1') : false,
     );
   }
 }

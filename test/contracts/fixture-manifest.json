@@ -65,6 +65,17 @@
       "expected_valid": true
     },
     {
+      "file": "fixtures/ble-device-info.preflight-v1.json",
+      "schema": "docs/contracts/schemas/ble-device-info.schema.json",
+      "expected_valid": true
+    },
+    {
+      "file": "fixtures/invalid-ble-device-info.preflight-v1.json",
+      "schema": "docs/contracts/schemas/ble-device-info.schema.json",
+      "expected_valid": false,
+      "expected_error_contains": "boolean"
+    },
+    {
       "file": "fixtures/ble-network-status.rc4.json",
       "schema": "docs/contracts/schemas/ble-network-status.schema.json",
       "expected_valid": true

@@ -16,6 +16,14 @@ final class BleDiagnosticExport {
     retainedEventCount = events.length;
     retainedScanCount = scans.length;
     this.retention = Map.unmodifiable(retention);
+    // Terminal ledgers take precedence over recoverable GATT status and cleanup
+    // events. Later snapshots of the same failure add secondary evidence only.
+    final failures = events.where((e) => e['first_terminal_error'] is Map).toList();
+    Map<String, dynamic>? failure;
+    if (failures.isNotEmpty) {
+      final root = failures.first['first_terminal_error'] as Map;
+      failure = failures.lastWhere((e) => (e['first_terminal_error'] as Map)['attempt_id'] == root['attempt_id'] && (e['first_terminal_error'] as Map)['error_code'] == root['error_code']);
+    }
     final build = _buildMetadata(scans, events);
     if (exporterBuild != null && const ['package_id', 'version_name', 'version_code', 'git_commit', 'source_fingerprint'].every((k) => build[k] == null || build[k].toString() == exporterBuild[k]?.toString())) {
       for (final entry in exporterBuild.entries) {
@@ -31,24 +39,51 @@ final class BleDiagnosticExport {
       'retention': retention,
       'raw_history_complete': false,
       'retained_records_complete': true,
+      if (failure != null) ...{
+        'first_terminal_error': failure['first_terminal_error'],
+        'secondary_errors': failure['secondary_errors'] ?? const [],
+        'secondary_error_count': failure['secondary_error_count'] ?? 0,
+        'secondary_errors_dropped': failure['secondary_errors_dropped'] ?? 0,
+      },
     };
     fullJson = jsonEncode({...header, 'scan_sessions': scans, 'connection_events': events});
     payloadSha256 = sha256.convert(utf8.encode(fullJson)).toString();
-    final errors = events.where((e) => e['error_code'] != null || (e['gatt_status'] is int && (e['gatt_status'] as int) > 0) || RegExp('fail|error|timeout').hasMatch(e['event_type']?.toString() ?? ''));
+    final successfulRequests = events.where((e) => e['event_type'] == 'command_succeeded' && e['request_id'] != null).map((e) => e['request_id']).toSet();
+    final expectedDisconnectGenerations = events.where((e) => e['event_type'] == 'pairing_preflight_expected_disconnect' && e['connection_generation'] != null).map((e) => e['connection_generation']).toSet();
+    final errors = events.where(
+      (e) =>
+          e['event_type'] != 'pairing_preflight_expected_disconnect' &&
+          e['cleanup_outcome'] != 'failed' &&
+          !successfulRequests.contains(e['request_id']) &&
+          !(e['gatt_status'] == 19 && expectedDisconnectGenerations.contains(e['connection_generation']) && const {'disconnected', 'gatt_disconnected', 'gatt_connection_state_changed'}.contains(e['event_type'])) &&
+          (e['error_code'] != null || (e['gatt_status'] is int && (e['gatt_status'] as int) > 0) || RegExp('fail|error|timeout').hasMatch(e['event_type']?.toString() ?? '')),
+    );
+    final firstError = failure != null
+        ? {..._pick(failure, _eventKeys), ..._pick(Map<String, dynamic>.from(failure['first_terminal_error'] as Map), _eventKeys)}
+        : errors.isEmpty
+        ? null
+        : _pick(errors.first, _eventKeys);
     final summary = <String, dynamic>{
       ...header,
+      if (failure != null) 'first_terminal_error': firstError,
+      if (failure != null)
+        'secondary_errors': [
+          for (final item in (failure['secondary_errors'] as List? ?? const []).take(3)) _pick(Map<String, dynamic>.from(item as Map), const ['error_code', 'runtime_type', 'trigger_method']),
+        ],
       'export_kind': 'summary',
       'full_record_included': false,
       'retained_event_count': events.length,
       'scan': scans.isEmpty ? null : _pick(scans.last, _scanKeys),
-      'first_error': errors.isEmpty ? null : _pick(errors.first, _eventKeys),
+      'first_error': firstError,
+      'first_error_selection': failure == null ? 'legacy_event_inference' : 'terminal_ledger',
       'latest_state': events.isEmpty ? null : _pick(events.last, _eventKeys),
     };
     var limit = 128;
     while (true) {
       final output = jsonEncode({
         ...summary,
-        for (final key in ['scan', 'first_error', 'latest_state']) key: _shorten(summary[key], limit),
+        for (final key in ['scan', 'first_error', 'first_terminal_error', 'latest_state', 'secondary_errors'])
+          if (summary.containsKey(key)) key: _shorten(summary[key], limit),
       });
       if (utf8.encode(output).length <= 4096) {
         summaryJson = output;
@@ -143,6 +178,7 @@ final class BleDiagnosticExport {
   static Object? _shorten(Object? value, int limit) {
     if (value is String) return value.runes.length > limit ? '${String.fromCharCodes(value.runes.take(limit))}…' : value;
     if (value is Map<String, dynamic>) return value.map((key, item) => MapEntry(key, _shorten(item, limit)));
+    if (value is List) return value.map((item) => _shorten(item, limit)).toList();
     return value;
   }
 
@@ -177,6 +213,13 @@ final class BleDiagnosticExport {
     'location_compatibility_rule',
   ];
   static const _eventKeys = [
+    'runtime_type',
+    'trigger_method',
+    'expected_state',
+    'current_state',
+    'previous_bond_state',
+    'current_bond_state',
+    'native_attempt_id',
     'occurred_at',
     'event_type',
     'operation_name',

@@ -73,6 +73,32 @@ BleScanDiagnosticSession scan(String id, {String flow = 'flow', int second = 0})
   endReason: BleScanEndReason.timeout,
 );
 void main() {
+  test('native ABI integration lifecycle evidence survives ordinary event pressure', () async {
+    final storage = MemoryStorage();
+    final log = journal(storage, max: 14);
+    const types = [
+      'pre_connect_reset_parked',
+      'pre_connect_reset_disconnect_confirmed',
+      'pre_connect_reset_disconnect_timeout',
+      'gatt_rebuild_decision',
+      'pairing_attempt_replayed',
+      'security_write_cleanup_noop',
+      'controlled_reconnect_requested',
+      'pairing_preflight_write_callback',
+      'pairing_preflight_unavailable',
+      'gatt_foreground_sync',
+    ];
+    for (var i = 0; i < types.length; i++) {
+      await log.record(event(i, type: types[i]));
+    }
+    for (var i = types.length; i < 50; i++) {
+      await log.record(event(i));
+    }
+    final restored = await journal(storage, max: 14).snapshot();
+    expect(restored.records.map((r) => r['event_type']), containsAll(types));
+    expect(restored.records.length, 14);
+    expect(restored.retentionFor('flow', 14)['critical_dropped'], 0);
+  });
   test('joint queue cutoff waits for queued writes and excludes later callbacks', () async {
     final s = MemoryStorage(), j = journal(MemoryStorage());
     // A blocked first write proves snapshot waits, while the second queued later

@@ -15,12 +15,14 @@ class ConnectionMethodPage extends StatelessWidget {
     required this.onSelected,
     this.capabilities,
     this.onCopyDiagnostic,
+    this.onBackToDiscovery,
   });
 
   final String deviceName;
   final ValueChanged<ConnectionMethod> onSelected;
   final DeviceCapabilities? capabilities;
   final VoidCallback? onCopyDiagnostic;
+  final VoidCallback? onBackToDiscovery;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -70,6 +72,16 @@ class ConnectionMethodPage extends StatelessWidget {
           context,
         ).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
       ),
+      if (onBackToDiscovery != null) ...[
+        const SizedBox(height: AppSpacing.lg),
+        OutlinedButton.icon(
+          key: const Key('ble-return-to-discovery'),
+          onPressed: onBackToDiscovery,
+          icon: const Icon(Icons.bluetooth_searching_rounded),
+          label: const Text('返回查找盒子'),
+        ),
+        const Text('返回时会先断开蓝牙连接，完成后重新查找盒子。', textAlign: TextAlign.center),
+      ],
       if (onCopyDiagnostic != null) ...[
         const SizedBox(height: AppSpacing.md),
         OutlinedButton.icon(
