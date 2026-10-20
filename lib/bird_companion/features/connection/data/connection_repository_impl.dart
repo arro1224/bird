@@ -49,6 +49,12 @@ class ConnectionRepositoryImpl implements ConnectionRepository {
     return status;
   }
 
+  Future<DeviceStatus> connectExpected(Uri baseUri, {required NetworkMode networkMode, required String expectedDeviceId, CancelToken? cancelToken}) async {
+    final status = await _api.handshake(baseUri, networkMode, expectedDeviceId: expectedDeviceId, cancelToken: cancelToken);
+    await _save(status, cancelToken);
+    return status;
+  }
+
   @override
   Future<DeviceStatus> pair(
     Uri baseUri, {
@@ -111,6 +117,7 @@ class ConnectionRepositoryImpl implements ConnectionRepository {
           candidate.baseUri,
           candidate.networkMode,
           cancelToken: cancelToken,
+          expectedDeviceId: device.id,
         );
         if (status.connection.id != device.id) {
           continue;

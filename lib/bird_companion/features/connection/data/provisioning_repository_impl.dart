@@ -1,5 +1,8 @@
 import 'package:aves/bird_companion/features/connection/domain/ble_pairing_progress.dart';
 import 'dart:async';
+import 'package:aves/bird_companion/features/connection/domain/connection_cancellation.dart';
+import 'package:dio/dio.dart';
+import 'package:aves/bird_companion/features/connection/data/direct_ap_pending_store.dart';
 
 import 'package:aves/bird_companion/core/session/client_identity_store.dart';
 import 'package:aves/bird_companion/core/session/secure_session_store.dart';
@@ -19,7 +22,8 @@ import 'package:aves/bird_companion/features/connection/domain/request_id_factor
 
 /// Production owner of rc4 identifiers, authorization, operation correlation,
 /// Android routing and transient secret lifetime.
-final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository, ProvisioningNetworkStatusVerifier, BleScanDiagnosticsRepository, BleProvisioningControl {
+final class ProvisioningRepositoryImpl
+    implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository, ProvisioningNetworkStatusVerifier, BleScanDiagnosticsRepository, BleProvisioningControl, DirectApHttpPreparation {
   factory ProvisioningRepositoryImpl({
     required BirdBoxBleDataSource ble,
     required BirdBoxWifiPlatform wifi,
@@ -37,6 +41,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     rememberDynamicAddress,
     RequestIdFactory? requestIds,
     DateTime Function()? clock,
+    DirectApAuthorizationStore? directApAuthorizationStore,
   }) => ProvisioningRepositoryImpl._(
     ble,
     wifi,
@@ -49,6 +54,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     rememberDynamicAddress,
     requestIds ?? SecureRequestIdFactory(),
     clock ?? DateTime.now,
+    directApAuthorizationStore ?? MemoryDirectApAuthorizationStore(),
   );
 
   ProvisioningRepositoryImpl._(
@@ -63,6 +69,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     this._rememberDynamicAddress,
     this._requestIds,
     this._clock,
+    this._directApAuthorizationStore,
   ) {
     _bleEventSubscription = _ble.events.asyncMap(_processBleEvent).where((event) => event != null).cast<ProvisioningEvent>().listen(_events.add, onError: _processBleError);
     _disconnectSubscription = _ble.disconnects.listen((_) {
@@ -99,6 +106,68 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
   _rememberDynamicAddress;
   final RequestIdFactory _requestIds;
   final DateTime Function() _clock;
+  final DirectApAuthorizationStore _directApAuthorizationStore;
+  final Map<String, SessionCredential> _directApUnsavedCredentials = {};
+
+  @override
+  Future<void> cancelDirectApHttp(String deviceId) async {
+    _directApUnsavedCredentials.remove(deviceId);
+    await _directApAuthorizationStore.remove(deviceId);
+  }
+
+  Future<void> _saveDirectApAuthorization() async {
+    final info = _requireDeviceInfo();
+    final session = _pairingSession;
+    if (session == null) return;
+    await _directApAuthorizationStore.write(info.deviceId, {
+      'device_id': info.deviceId,
+      'client_id': _requireClientId(),
+      'pairing_session_id': session.value,
+      'expires_at': session.expiresAt.toUtc().toIso8601String(),
+    });
+  }
+
+  Future<String?> directApPassphrase(String deviceId) async => (await _directApAuthorizationStore.load(deviceId))?['passphrase'] as String?;
+
+  /// Called only after HTTP has verified the frozen BLE device identity.
+  /// It deliberately survives BLE loss and never replays an uncertain redemption.
+  @override
+  Future<void> prepareDirectApHttp(ProvisioningCompletion completion, CancelToken cancelToken) async {
+    cancelToken.throwIfCancellationRequested();
+    final deviceId = completion.deviceId;
+    final health = await _healthApi.read(completion.baseUri, cancellation: cancelToken);
+    if (health.deviceId != deviceId) throw const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false);
+    var credential = _directApUnsavedCredentials[deviceId] ?? await _credentialStore.read(deviceId);
+    cancelToken.throwIfCancellationRequested();
+    if (credential == null || !credential.isUsableAt(_clock())) {
+      final pending = await _directApAuthorizationStore.load(deviceId);
+      final expiresAt = DateTime.tryParse(pending?['expires_at'] as String? ?? '');
+      if (pending == null || pending['device_id'] != deviceId || expiresAt == null || !expiresAt.isAfter(_clock().toUtc())) {
+        await _directApAuthorizationStore.remove(deviceId);
+        throw const ProvisioningException(code: ProvisioningErrorCode.authorizationRequired, retryable: false);
+      }
+      cancelToken.throwIfCancellationRequested();
+      // Consume durably before POST: a lost response may hide successful redemption.
+      await _directApAuthorizationStore.remove(deviceId);
+      _pairingSession = null;
+      cancelToken.throwIfCancellationRequested();
+      try {
+        credential = await _pairingApi.exchangeSession(completion.baseUri, deviceId: deviceId, clientId: pending['client_id'] as String, pairingSessionId: pending['pairing_session_id'] as String, clock: _clock, cancelToken: cancelToken);
+      } catch (_) {
+        cancelToken.throwIfCancellationRequested();
+        throw const ProvisioningException(code: ProvisioningErrorCode.authorizationRequired, retryable: false);
+      }
+      _directApUnsavedCredentials[deviceId] = credential;
+    }
+    cancelToken.throwIfCancellationRequested();
+    if (credential.deviceId != deviceId) throw const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false);
+    final relocated = SessionCredential(deviceId: deviceId, baseUri: completion.baseUri, accessToken: credential.accessToken, expiresAt: credential.expiresAt, apiVersion: credential.apiVersion, clientId: credential.clientId);
+    await _saveCredential(relocated);
+    cancelToken.throwIfCancellationRequested();
+    _directApUnsavedCredentials.remove(deviceId);
+    if (_deviceInfo?.deviceId == deviceId) _credential = relocated;
+    await _directApAuthorizationStore.remove(deviceId);
+  }
 
   final StreamController<ProvisioningEvent> _events = StreamController<ProvisioningEvent>.broadcast(sync: true);
   final StreamController<void> _disconnects = StreamController<void>.broadcast(sync: true);
@@ -298,6 +367,7 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
       value: authorization.pairingSessionId,
       expiresAt: _clock().toUtc().add(authorization.expiresIn),
     );
+    await _saveDirectApAuthorization();
     return authorization;
   }
 
@@ -577,7 +647,11 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     try {
       switch (event.payload) {
         case DirectApReady ready:
-          await _joinAndValidateDirectAp(ready);
+          // AP readiness is not phone WLAN readiness. Forward immediately; the
+          // cancellable HTTP handoff owns waiting, manual join and authorization.
+          await _saveDirectApAuthorization();
+          final saved = await _directApAuthorizationStore.load(info.deviceId) ?? <String, dynamic>{};
+          await _directApAuthorizationStore.write(info.deviceId, {...saved, 'ssid': ready.ssid, 'passphrase': ready.passphrase});
         case StaConnected connected:
           await _wifi.releaseNetwork();
           await _validateAndExchange(
@@ -662,32 +736,6 @@ final class ProvisioningRepositoryImpl implements ProvisioningRepository, DppAva
     final sorted = networks.values.toList()..sort((left, right) => right.rssiDbm.compareTo(left.rssiDbm));
     _wifiScanResults.add(List.unmodifiable(sorted));
     _activeScanRequestId = null;
-  }
-
-  Future<void> _joinAndValidateDirectAp(DirectApReady ready) async {
-    if (!await _wifi.ensurePermissions()) {
-      throw const ProvisioningException(
-        code: ProvisioningErrorCode.localNetworkPermissionDenied,
-        retryable: false,
-      );
-    }
-    final result = await _wifi.joinDirectAp(
-      ssid: ready.ssid,
-      passphrase: ready.passphrase,
-    );
-    if (!result.joined) throw _wifiJoinError(result.outcome);
-    final network = result.network!;
-    await _wifi.bindProcessToNetwork(network);
-    try {
-      await _validateAndExchange(
-        ready.baseUri,
-        ProvisioningNetworkMode.directAp,
-        operationId: ready.operationId,
-      );
-    } catch (_) {
-      await _wifi.releaseNetwork();
-      rethrow;
-    }
   }
 
   Future<void> _applyRecovery(NetworkRecovered recovered) async {

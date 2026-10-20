@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:aves/bird_companion/app/app_dependencies.dart';
+import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
+import 'package:aves/bird_companion/features/connection/presentation/pages/direct_ap_handoff_panel.dart';
 
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
@@ -28,9 +31,12 @@ class NetworkSettingsPage extends StatefulWidget {
   State<NetworkSettingsPage> createState() => _NetworkSettingsPageState();
 }
 
-class _NetworkSettingsPageState extends State<NetworkSettingsPage> {
-  late final NetworkProvisioningCubit _cubit =
-      NetworkProvisioningCubit(widget.repository);
+class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsBindingObserver {
+  late final NetworkProvisioningCubit _cubit;
+  DirectApHandoffCubit? _handoff;
+  StreamSubscription<DirectApHandoffState>? _handoffSubscription;
+  StreamSubscription<void>? _networkSubscription;
+  bool _initialized = false;
   StreamSubscription<void>? _disconnectSubscription;
   ProvisioningDeviceInfo? _deviceInfo;
   bool _bleDisconnected = false;
@@ -39,9 +45,24 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> {
   @override
   void initState() {
     super.initState();
-    final sessionRepository = widget.repository is ProvisioningSessionRepository
-        ? widget.repository as ProvisioningSessionRepository
-        : null;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    _initialized = true;
+    final dependencies = BirdCompanionScope.maybeOf(context);
+    _handoff = dependencies?.createDirectApHandoff();
+    _cubit = NetworkProvisioningCubit(widget.repository, directApHandoff: _handoff);
+    _handoffSubscription = _handoff?.stream.listen((state) {
+      if (!mounted) return;
+      setState(() {});
+      if (state.phase == DirectApHandoffPhase.directApConnected) Navigator.of(context).pop();
+    });
+    _networkSubscription = dependencies?.connectivityMonitor.onTransportChanged.listen((_) => _handoff?.networkChanged());
+    final sessionRepository = widget.repository is ProvisioningSessionRepository ? widget.repository as ProvisioningSessionRepository : null;
     _deviceInfo = sessionRepository?.connectedDeviceInfo;
     _bleDisconnected = _deviceInfo == null;
     _disconnectSubscription = sessionRepository?.disconnects.listen((_) {
@@ -50,23 +71,39 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> {
     });
     final info = _deviceInfo;
     if (info != null) {
-      unawaited(_cubit.resumeAfterBleReconnect(info));
+      // An already connected AP must still expose Stop AP / restore previous Wi-Fi.
+      unawaited(_cubit.resumeAfterBleReconnect(info, handoffDirectAp: false));
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_handoffSubscription?.cancel());
+    unawaited(_networkSubscription?.cancel());
+    unawaited(_handoff?.close());
     unawaited(_disconnectSubscription?.cancel());
     unawaited(_cubit.close());
     super.dispose();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => _handoff?.lifecycleChanged(resumed: state == AppLifecycleState.resumed);
+
+  @override
   Widget build(BuildContext context) => BlocProvider.value(
     value: _cubit,
     child: BirdSettingsScaffold(
       title: '网络设置',
-      body: _bleDisconnected
+      body: _handoff?.state.active == true
+          ? DirectApHandoffPanel(
+              cubit: _handoff!,
+              onBack: () async {
+                await _handoff?.cancel();
+                if (mounted) _showWifiChoices();
+              },
+            )
+          : _bleDisconnected
           ? _BleReconnectNotice(onReconnect: () => openReconnectConnection(context))
           : NetworkProvisioningPage(
               onBack: _showWifiChoices,

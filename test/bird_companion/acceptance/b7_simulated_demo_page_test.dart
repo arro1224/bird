@@ -49,7 +49,7 @@ void main() {
 
     await settleSimulatedEvent(tester);
     expect(find.text('盒子直连已就绪'), findsOneWidget);
-    expect(repository.calls, contains('getNetworkStatus'));
+    expect(repository.calls, isNot(contains('getNetworkStatus')));
 
     await tester.tap(find.text('停止盒子直连'));
     await tester.pumpAndSettle();

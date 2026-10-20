@@ -84,8 +84,11 @@ final class HealthApi {
   Future<BirdBoxHealth> read(
     Uri baseUri, {
     Duration timeout = BleProtocolConstants.healthRequestTimeout,
+    CancelToken? cancellation,
   }) async {
     final cancelToken = CancelToken();
+    if (cancellation?.isCancelled == true) cancelToken.cancel('handoff cancelled');
+    unawaited(cancellation?.whenCancel.then((_) => cancelToken.cancel('handoff cancelled')));
     try {
       final payload = await _client
           .getUri(baseUri.resolve(ApiEndpoints.health), cancelToken: cancelToken)

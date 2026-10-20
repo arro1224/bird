@@ -461,6 +461,18 @@ void main() {
     await _waitUntil(
       () => server.jobListRequestCount > afterReconnect,
     );
+    // A poll already in flight may finish before the single WS recovery
+    // snapshot. Observe quiescence for three poll intervals before asserting
+    // that polling remains stopped; don't mistake the first request for the last.
+    var observedRequests = server.jobListRequestCount;
+    var stableSince = DateTime.now();
+    await _waitUntil(() {
+      if (observedRequests != server.jobListRequestCount) {
+        observedRequests = server.jobListRequestCount;
+        stableSince = DateTime.now();
+      }
+      return DateTime.now().difference(stableSince) >= const Duration(milliseconds: 75);
+    });
     final afterRecoverySnapshot = server.jobListRequestCount;
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(server.jobListRequestCount, afterRecoverySnapshot);

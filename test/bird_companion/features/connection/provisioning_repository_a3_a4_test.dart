@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:dio/dio.dart';
 
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/session/client_identity_store.dart';
@@ -33,7 +34,22 @@ const _staRequest = '10000000-0000-4000-8000-000000000005';
 
 void main() {
   group('BLE-21 redemption and event ownership', () {
-    test('Cubit retries the credential save stage without a new network command', () async {
+    test('HTTP handoff survives BLE disconnect before authorization exchange', () async {
+      final harness = await _Harness.create();
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      await harness.startAp();
+      final ready = harness.repository.events.firstWhere((event) => event.type == ProvisioningEventType.directApReady);
+      harness.ble.emitEvent(harness.apReady());
+      await ready;
+      await harness.repository.disconnect();
+      await harness.finishHttp();
+      expect(harness.server.pairingExchangeCount, 1);
+      expect(await harness.credentials.read(_deviceId), isNotNull);
+      expect(harness.wifi.requestedSsids, isEmpty);
+    });
+    test('deferred HTTP persistence retry needs no new network command', () async {
       final store = _FailOnceStore();
       final harness = await _Harness.create(credentialStore: store);
       addTearDown(harness.close);
@@ -57,15 +73,12 @@ void main() {
       );
       await cubit.startDirectAp(harness.ble.deviceInfo);
       store.failNextWrite = true;
-      final failed = cubit.stream.firstWhere((state) => state.phase == NetworkProvisioningPhase.failure);
+      final ready = harness.repository.events.firstWhere((event) => event.type == ProvisioningEventType.directApReady);
       harness.ble.emitEvent(harness.apReady());
-      expect((await failed).error, isA<ProvisioningCredentialSaveException>());
-      final json = _fixture('ble-network-status.rc4.json');
-      json['request_id'] = _scanRequest;
-      (json['payload'] as Map)['operation_id'] = 'op_direct_ap_setup';
-      (json['payload'] as Map)['base_uri'] = harness.baseUri.toString();
-      harness.ble.queueResponse(BleCommandType.getNetworkStatus, ProvisioningEvent.fromJson(json));
-      await cubit.retryCredentialSave();
+      await ready;
+      expect(harness.server.pairingExchangeCount, 0);
+      await expectLater(harness.finishHttp(), throwsA(isA<ProvisioningCredentialSaveException>()));
+      await harness.finishHttp();
       expect(cubit.state.phase, NetworkProvisioningPhase.success);
       expect(harness.server.pairingExchangeCount, 1);
       expect(harness.ble.requests.where((r) => r.type == BleCommandType.startDirectAp), hasLength(1));
@@ -80,7 +93,7 @@ void main() {
       await expectLater(harness.completeDirectApExchange(), throwsA(isA<ProvisioningCredentialSaveException>()));
       expect(harness.server.pairingExchangeCount, 1);
       expect(await store.read(_deviceId), isNull);
-      await harness.repository.verifyNetworkStatus(harness.terminalStatus());
+      await harness.finishHttp();
       expect(await store.read(_deviceId), isNotNull);
       expect(harness.server.pairingExchangeCount, 1);
     });
@@ -112,6 +125,8 @@ void main() {
       harness.ble.emitEvent(harness.apReady());
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(events.where((event) => event.terminal), hasLength(1));
+      expect(harness.server.pairingExchangeCount, 0);
+      await harness.finishHttp();
       expect(harness.server.pairingExchangeCount, 1);
     });
 
@@ -136,6 +151,7 @@ void main() {
       final ready = harness.repository.events.first;
       harness.ble.emitEvent(harness.apReady(requestId: _scanRequest, operationId: 'op_new_ap'));
       await ready;
+      await harness.finishHttp();
       expect(harness.server.pairingExchangeCount, 1);
     });
 
@@ -148,7 +164,7 @@ void main() {
       await expectLater(harness.completeDirectApExchange(), throwsA(isA<Exception>()));
       expect(harness.server.pairingExchangeCount, 1);
       await expectLater(
-        harness.repository.verifyNetworkStatus(harness.terminalStatus()),
+        harness.finishHttp(),
         throwsA(
           isA<ProvisioningException>().having((e) => e.code, 'code', ProvisioningErrorCode.authorizationRequired),
         ),
@@ -171,7 +187,7 @@ void main() {
       );
       await harness.repository.openPairing();
       await harness.repository.authorizePairing('246810');
-      await harness.repository.verifyNetworkStatus(harness.terminalStatus());
+      await harness.finishHttp();
       expect(harness.server.pairingExchangeCount, 2);
       expect(await harness.credentials.read(_deviceId), isNotNull);
     });
@@ -199,7 +215,7 @@ void main() {
       await harness.repository.disconnect();
       await harness.connect();
       expect(harness.repository.networkStatusResumeRequired, isTrue);
-      await harness.repository.verifyNetworkStatus(harness.terminalStatus());
+      await harness.finishHttp();
       expect(harness.server.pairingExchangeCount, 1);
     });
 
@@ -228,6 +244,7 @@ void main() {
       final ready = harness.repository.events.first;
       harness.ble.emitEvent(harness.apReady());
       await ready;
+      await harness.finishHttp();
       expect(harness.server.pairingExchangeCount, 1);
     });
   });
@@ -366,7 +383,7 @@ void main() {
 
     tearDown(() => harness.close());
 
-    test('direct AP joins, binds, validates identity and exchanges token', () async {
+    test('direct AP readiness is forwarded before phone join; HTTP exchanges later', () async {
       harness.ble.queueResponse(
         BleCommandType.startDirectAp,
         _event(
@@ -413,7 +430,10 @@ void main() {
       );
       await readyFuture.timeout(const Duration(seconds: 3));
 
-      expect(harness.wifi.boundNetwork?.ssid, 'BirdBox-82F41C9E');
+      expect(harness.wifi.boundNetwork, isNull);
+      expect(harness.wifi.requestedSsids, isEmpty);
+      expect(harness.server.pairingExchangeCount, 0);
+      await harness.finishHttp();
       expect(harness.server.lastRc4PairingClientId, _clientId);
       expect(harness.server.lastRc4PairingIncludedCode, isFalse);
       final credential = await harness.credentials.read(_deviceId);
@@ -529,6 +549,9 @@ void main() {
 
     test('native Direct AP loss reaches the repository as a retryable error', () async {
       await harness.completeDirectApExchange();
+      // Manual join no longer binds the process. Exercise a separately acquired
+      // native local-only network to retain coverage of that optional bridge.
+      await harness.wifi.bindProcessToNetwork(const BirdBoxWifiNetwork(handle: 'test-native-network', ssid: 'BirdBox-82F41C9E'));
       final errorExpectation = expectLater(
         harness.repository.events,
         emitsError(
@@ -726,7 +749,10 @@ final class _Harness {
       ),
     );
     await readyFuture.timeout(const Duration(seconds: 3));
+    await finishHttp();
   }
+
+  Future<void> finishHttp() => repository.prepareDirectApHttp(ProvisioningCompletion(deviceId: _deviceId, baseUri: baseUri, networkMode: ProvisioningNetworkMode.directAp), CancelToken());
 
   Future<void> close() async {
     await repository.dispose();

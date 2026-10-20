@@ -1,5 +1,11 @@
 import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:dio/dio.dart';
+
+abstract interface class DirectApHttpPreparation {
+  Future<void> prepareDirectApHttp(ProvisioningCompletion completion, CancelToken cancelToken);
+  Future<void> cancelDirectApHttp(String deviceId);
+}
 
 /// The sole boundary used by presentation code for rc4 provisioning.
 ///

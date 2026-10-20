@@ -77,21 +77,20 @@ class ApiClient {
   Map<String, String> mediaHeaders(Uri uri) {
     final base = _baseUri;
     final token = _accessToken;
-    if (base == null ||
-        token == null ||
-        token.isEmpty ||
-        uri.userInfo.isNotEmpty ||
-        uri.query.isNotEmpty ||
-        uri.scheme != base.scheme ||
-        uri.host != base.host ||
-        uri.port != base.port ||
-        !ApiEndpoints.mediaPathPattern.hasMatch(uri.path)) {
+    if (base == null || token == null || token.isEmpty || uri.userInfo.isNotEmpty || uri.query.isNotEmpty || uri.scheme != base.scheme || uri.host != base.host || uri.port != base.port || !ApiEndpoints.mediaPathPattern.hasMatch(uri.path)) {
       return const {};
     }
     return {'Authorization': 'Bearer $token', 'X-Api-Version': _apiVersion};
   }
 
   Stream<int> get authenticationFailures => _authenticationFailures.stream;
+
+  /// Public device status proves reachability, not authorization. A read-only,
+  /// bounded protected request verifies the restored token before handoff.
+  Future<void> verifyAuthenticatedSession(CancelToken? cancelToken) async {
+    await _request(() => _dio.get<Map<String, dynamic>>(ApiEndpoints.batches, queryParameters: {'page_size': 1}, cancelToken: cancelToken));
+  }
+
   Uri? _baseUri;
   String? _accessToken;
   String _apiVersion = 'v1';
@@ -181,10 +180,12 @@ class ApiClient {
     Uri uri, {
     Object? data,
     String? idempotencyKey,
+    CancelToken? cancelToken,
   }) => _request(
     () => _publicDio.postUri<Map<String, dynamic>>(
       uri,
       data: data,
+      cancelToken: cancelToken,
       options: Options(
         headers: {
           'X-Api-Version': _apiVersion,

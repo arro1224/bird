@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
 
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
@@ -42,6 +43,7 @@ final class NetworkProvisioningState {
     this.dppAvailabilityChecking = false,
     this.error,
     this.canCancel = false,
+    this.directApSsid,
   });
 
   final NetworkProvisioningPhase phase;
@@ -58,6 +60,7 @@ final class NetworkProvisioningState {
   final bool dppAvailabilityChecking;
   final Object? error;
   final bool canCancel;
+  final String? directApSsid;
 
   NetworkProvisioningState copyWith({
     NetworkProvisioningPhase? phase,
@@ -74,6 +77,7 @@ final class NetworkProvisioningState {
     bool? dppAvailabilityChecking,
     Object? error,
     bool? canCancel,
+    String? directApSsid,
     bool clearOperation = false,
     bool clearOperationState = false,
     bool clearNetworks = false,
@@ -98,11 +102,12 @@ final class NetworkProvisioningState {
     dppAvailabilityChecking: dppAvailabilityChecking ?? this.dppAvailabilityChecking,
     error: clearError ? null : error ?? this.error,
     canCancel: canCancel ?? this.canCancel,
+    directApSsid: directApSsid ?? this.directApSsid,
   );
 }
 
 final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
-  NetworkProvisioningCubit(this._repository) : super(const NetworkProvisioningState()) {
+  NetworkProvisioningCubit(this._repository, {this.directApHandoff}) : super(const NetworkProvisioningState()) {
     _eventSubscription = _repository.events.listen(
       _onEvent,
       onError: _onEventError,
@@ -110,6 +115,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   final ProvisioningRepository _repository;
+  final DirectApHandoffCubit? directApHandoff;
   late final StreamSubscription<ProvisioningEvent> _eventSubscription;
   var _generation = 0;
   String? _cancellingOperationId;
@@ -121,6 +127,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   bool get networkStatusResumeRequired => !_resumeConsumed && _repository is ProvisioningSessionRepository && (_repository as ProvisioningSessionRepository).networkStatusResumeRequired;
 
   Future<void> startDirectAp(ProvisioningDeviceInfo info) async {
+    if (state.phase == NetworkProvisioningPhase.startingDirectAp || directApHandoff?.state.active == true) return;
     final generation = ++_generation;
     if (!info.capabilities.directAp) {
       emit(
@@ -142,6 +149,21 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       ),
     );
     try {
+      if (directApHandoff != null) {
+        final current = await _repository.getNetworkStatus();
+        if (isClosed || generation != _generation) return;
+        if (!current.busy && current.activeMode == ProvisioningNetworkMode.directAp && current.operationState == NetworkOperationState.apReady && current.baseUri != null) {
+          _directApReady(current.baseUri!, current.operationId ?? 'existing-direct-ap', current.directAp.ssid);
+          return;
+        }
+        if (current.busy) {
+          if (current.desiredMode == ProvisioningNetworkMode.directAp && current.operationId != null) {
+            emit(state.copyWith(activeOperationId: current.operationId, operationState: current.operationState));
+            return;
+          }
+          throw const ProvisioningException(code: ProvisioningErrorCode.networkOperationBusy, retryable: true);
+        }
+      }
       final accepted = await _repository.startDirectAp();
       if (isClosed || generation != _generation) return;
       emit(
@@ -201,7 +223,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   /// This is used after BLE reconnect. An accepted operation continues on the
   /// box while the transport is down, so local phase memory must not be used as
   /// the source of truth.
-  Future<void> resumeAfterBleReconnect(ProvisioningDeviceInfo info) async {
+  Future<void> resumeAfterBleReconnect(ProvisioningDeviceInfo info, {bool handoffDirectAp = true}) async {
     _resumeConsumed = true;
     final generation = ++_generation;
     _clearScanAccumulator();
@@ -227,6 +249,10 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
         return;
       }
       if (status.activeMode == ProvisioningNetworkMode.directAp && status.operationState == NetworkOperationState.apReady && status.baseUri != null) {
+        if (directApHandoff != null && handoffDirectAp) {
+          _directApReady(status.baseUri!, status.operationId ?? 'existing-direct-ap', status.directAp.ssid);
+          return;
+        }
         await _verifyResumedTerminal(status);
         if (isClosed || generation != _generation) return;
         emit(
@@ -299,6 +325,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   void backToMethodSelection() {
+    if (directApHandoff?.state.active == true) unawaited(directApHandoff!.cancel());
     _generation++;
     _clearScanAccumulator();
     emit(const NetworkProvisioningState());
@@ -709,16 +736,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       return;
     }
     if (payload is DirectApReady && state.phase == NetworkProvisioningPhase.startingDirectAp) {
-      final generation = _generation;
-      emit(
-        state.copyWith(
-          phase: NetworkProvisioningPhase.confirmingNetwork,
-          operationState: NetworkOperationState.apReady,
-          canCancel: false,
-          clearError: true,
-        ),
-      );
-      unawaited(_confirmDirectAp(generation));
+      _directApReady(payload.baseUri, payload.operationId, payload.ssid);
     }
   }
 
@@ -775,12 +793,21 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     _scanCompleteSeen = false;
   }
 
-  Future<void> _confirmDirectAp(int generation) async {
-    await _confirmTerminalStatus(
-      generation: generation,
-      expectedMode: ProvisioningNetworkMode.directAp,
-      expectedState: NetworkOperationState.apReady,
+  void _directApReady(Uri baseUri, String operationId, String? ssid) {
+    emit(
+      state.copyWith(
+        phase: NetworkProvisioningPhase.success,
+        operationState: NetworkOperationState.apReady,
+        activeOperationId: operationId,
+        baseUri: baseUri,
+        directApSsid: ssid,
+        confirmedMode: ProvisioningNetworkMode.directAp,
+        canCancel: false,
+        clearError: true,
+      ),
     );
+    final id = state.trustedDeviceId;
+    if (id != null) unawaited(directApHandoff?.begin(PendingDirectAp(deviceId: id, baseUri: baseUri, operationId: operationId, ssid: ssid)));
   }
 
   Future<void> _confirmSta(int generation) async {

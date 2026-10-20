@@ -8,6 +8,7 @@ import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_page.dart';
+import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
 import 'package:flutter/material.dart';
 
 class BirdCompanionApp extends StatelessWidget {
@@ -31,6 +32,7 @@ class BirdCompanionApp extends StatelessWidget {
           dependencies.deviceSessionCubit.state,
           provisioningRepository: dependencies.provisioningRepository,
           onProvisioningCompleted: dependencies.completeProvisioning,
+          pendingDirectAp: dependencies.cache.read<Map>(DirectApHandoffCubit.pendingKey) != null,
         ),
         onGenerateRoute: (settings) => BirdAppRouter.onGenerateRoute(
           settings,
@@ -53,8 +55,9 @@ Widget birdStartupHome(
   DeviceSessionState session, {
   ProvisioningRepository? provisioningRepository,
   ProvisioningCompletionHandler? onProvisioningCompleted,
+  bool pendingDirectAp = false,
 }) {
-  if (session.device == null && provisioningRepository != null) {
+  if ((pendingDirectAp || session.device == null) && provisioningRepository != null) {
     return ConnectionPage(
       entryMode: ConnectionEntryMode.initialSetup,
       provisioningRepository: provisioningRepository,

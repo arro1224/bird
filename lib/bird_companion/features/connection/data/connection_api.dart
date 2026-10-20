@@ -5,6 +5,7 @@ import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/core/session/session_coordinator.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_address.dart';
 import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:dio/dio.dart';
 
 class PairingRequiredException implements Exception {
@@ -25,6 +26,7 @@ class ConnectionApi {
     Uri baseUri,
     NetworkMode networkMode, {
     CancelToken? cancelToken,
+    String? expectedDeviceId,
   }) async {
     final normalized = _normalizeBaseUri(baseUri);
     final status = await _publicStatus(
@@ -32,6 +34,7 @@ class ConnectionApi {
       networkMode,
       cancelToken: cancelToken,
     );
+    _checkIdentity(status, expectedDeviceId);
     if (cancelToken?.isCancelled == true) {
       throw StateError('Connection cancelled before the device session was configured.');
     }
@@ -43,11 +46,28 @@ class ConnectionApi {
     if (cancelToken?.isCancelled == true) {
       throw StateError('Connection cancelled before the device session was configured.');
     }
-    return _publicStatus(
+    final verified = await _publicStatus(
       normalized,
       networkMode,
       cancelToken: cancelToken,
     );
+    _checkIdentity(verified, expectedDeviceId);
+    if (networkMode == NetworkMode.directAp && expectedDeviceId != null) await _apiClient.verifyAuthenticatedSession(cancelToken);
+    return verified;
+  }
+
+  Future<void> verifyDirectApIdentity(Uri baseUri, String deviceId, CancelToken cancelToken) async {
+    final status = await _publicStatus(_normalizeBaseUri(baseUri), NetworkMode.directAp, cancelToken: cancelToken);
+    _checkIdentity(status, deviceId);
+    if (status.connection.networkMode != NetworkMode.directAp) {
+      throw const ProvisioningProtocolException('network_mode', 'Expected direct_ap');
+    }
+  }
+
+  void _checkIdentity(DeviceStatus status, String? expectedDeviceId) {
+    if (expectedDeviceId != null && status.connection.id != expectedDeviceId) {
+      throw const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false);
+    }
   }
 
   Future<DeviceStatus> pair(

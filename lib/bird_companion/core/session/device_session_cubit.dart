@@ -12,7 +12,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   DeviceSessionCubit(this._repository, this._connectivityMonitor, this._eventClient, this._refreshCoordinator, {this.onConnectionRecovered, SessionCoordinator? sessionCoordinator}) : super(const DeviceSessionState()) {
     _networkSubscription = _connectivityMonitor.onNetworkChanged.listen((available) {
-      if (!isClosed && available && state.phase == DeviceSessionPhase.disconnected && state.device != null) reconnect();
+      if (!isClosed && !provisioningHandoffActive && available && state.phase == DeviceSessionPhase.disconnected && state.device != null) reconnect();
     });
     _eventSubscription = _eventClient.connectionStates.listen((eventState) {
       if (isClosed || !state.isConnected) return;
@@ -58,6 +58,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   final ConnectivityMonitor _connectivityMonitor;
   final EventClient _eventClient;
   final SessionRefreshCoordinator _refreshCoordinator;
+  bool provisioningHandoffActive = false;
   final Future<void> Function()? onConnectionRecovered;
   static const _eventUnavailableMessage = '实时事件连接暂不可用，页面会在刷新时读取最新状态。';
   late final StreamSubscription<bool> _networkSubscription;
@@ -130,7 +131,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   }
 
   Future<void> reconnect() async {
-    if (isClosed || state.phase == DeviceSessionPhase.reconnecting || state.device == null) return;
+    if (isClosed || provisioningHandoffActive || state.phase == DeviceSessionPhase.reconnecting || state.device == null) return;
     emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '正在重新连接盒子…'));
     try {
       final status = await _repository.reconnect();

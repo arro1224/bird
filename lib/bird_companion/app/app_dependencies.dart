@@ -1,4 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/services.dart';
+import 'package:aves/bird_companion/features/connection/domain/connection_cancellation.dart';
+import 'package:aves/bird_companion/features/connection/domain/ble_connection_diagnostics.dart';
+import 'package:dio/dio.dart';
+import 'package:aves/bird_companion/features/connection/data/direct_ap_pending_store.dart';
+import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_diagnostic_snapshot_service.dart';
 import 'package:aves/bird_companion/features/connection/data/platform/birdbox_ble_diagnostic_file_platform.dart';
 import 'package:aves/bird_companion/features/recognition/recognition_repository.dart';
@@ -172,6 +179,7 @@ class BirdCompanionDependencies {
       dpp: MethodChannelBirdBoxDppPlatform(),
       clientIdentityStore: AndroidKeystoreClientIdentityStore(),
       credentialStore: secureSessionStore,
+      directApAuthorizationStore: const EncryptedDirectApAuthorizationStore(),
       healthApi: HealthApi(apiClient),
       pairingApi: pairingApi,
       sessionCoordinator: sessionCoordinator,
@@ -313,7 +321,7 @@ class BirdCompanionDependencies {
         }
       }
     }
-    if (restoreSavedSession && !deviceSessionCubit.state.isConnected) {
+    if (restoreSavedSession && cache.read<Map>(DirectApHandoffCubit.pendingKey) == null && !deviceSessionCubit.state.isConnected) {
       await deviceSessionCubit.restoreSavedSession();
     }
     return dependencies;
@@ -321,25 +329,81 @@ class BirdCompanionDependencies {
 
   /// Promotes a network endpoint confirmed by BLE provisioning into the
   /// application-wide authenticated device session.
-  Future<void> completeProvisioning(
-    ProvisioningCompletion completion,
-  ) async {
+  Future<void> completeProvisioning(ProvisioningCompletion completion, {CancelToken? cancelToken}) async {
     if (completion.networkMode == ProvisioningNetworkMode.none) {
       throw StateError('Provisioning completed without an active network.');
     }
-    final status = await connectionRepository.connect(
-      completion.baseUri,
-      networkMode: switch (completion.networkMode) {
-        ProvisioningNetworkMode.directAp => NetworkMode.directAp,
-        ProvisioningNetworkMode.infrastructureSta => NetworkMode.infrastructureSta,
-        ProvisioningNetworkMode.none => NetworkMode.none,
-      },
-    );
+    final repository = connectionRepository;
+    final networkMode = switch (completion.networkMode) {
+      ProvisioningNetworkMode.directAp => NetworkMode.directAp,
+      ProvisioningNetworkMode.infrastructureSta => NetworkMode.infrastructureSta,
+      ProvisioningNetworkMode.none => NetworkMode.none,
+    };
+    final status = repository is ConnectionRepositoryImpl
+        ? await repository.connectExpected(
+            completion.baseUri,
+            networkMode: networkMode,
+            expectedDeviceId: completion.deviceId,
+            cancelToken: cancelToken,
+          )
+        : await repository.connect(completion.baseUri, networkMode: networkMode, cancelToken: cancelToken);
     if (status.connection.id != completion.deviceId) {
       throw StateError('Provisioned device identity does not match the connected box.');
     }
+    cancelToken?.throwIfCancellationRequested();
     await deviceSessionCubit.setConnectedFromStatus(status);
   }
+
+  Future<void> completeDirectApHandoff(PendingDirectAp pending, CancelToken token) async {
+    Map<String, dynamic> phoneNetwork;
+    try {
+      phoneNetwork = Map<String, dynamic>.from(await const MethodChannel('bird_companion/birdbox_wifi/methods').invokeMapMethod<String, dynamic>('networkSnapshot') ?? const {});
+    } catch (_) {
+      phoneNetwork = const {'transport': 'unknown', 'ssid_available': false};
+    }
+    token.throwIfCancellationRequested();
+    unawaited(
+      bleConnectionDiagnosticStore.record(
+        BleConnectionDiagnosticEvent(
+          traceId: pending.operationId,
+          flowId: pending.operationId,
+          occurredAt: DateTime.now(),
+          eventType: 'direct_ap_phone_network',
+          source: 'app_network',
+          operationName: 'direct_ap_handoff',
+          sanitizedMessage: jsonEncode(phoneNetwork),
+        ),
+      ),
+    );
+    // Read public identity BEFORE sending pairing material or activating a token.
+    await ConnectionApi(apiClient, PairingApi(apiClient), sessionCoordinator).verifyDirectApIdentity(pending.baseUri, pending.deviceId, token);
+    token.throwIfCancellationRequested();
+    final repository = provisioningRepository;
+    if (repository is DirectApHttpPreparation) await (repository as DirectApHttpPreparation).prepareDirectApHttp(pending.completion, token);
+    token.throwIfCancellationRequested();
+    await completeProvisioning(pending.completion, cancelToken: token);
+  }
+
+  DirectApHandoffCubit createDirectApHandoff() => DirectApHandoffCubit(
+    store: cache,
+    verify: completeDirectApHandoff,
+    activeChanged: (active) {
+      deviceSessionCubit.provisioningHandoffActive = active;
+      if (active) deviceSessionCubit.disconnected('等待手机连接盒子热点。');
+    },
+    onCancel: (id) async {
+      final repository = provisioningRepository;
+      if (repository is DirectApHttpPreparation) await (repository as DirectApHttpPreparation).cancelDirectApHttp(id);
+    },
+    diagnostic: (event) {
+      final trace = event['operation_id'] as String? ?? 'direct-ap';
+      unawaited(
+        bleConnectionDiagnosticStore.record(
+          BleConnectionDiagnosticEvent(traceId: trace, flowId: trace, occurredAt: DateTime.now(), eventType: event['event'] as String, source: 'app_network', operationName: 'direct_ap_handoff', sanitizedMessage: jsonEncode(event)),
+        ),
+      );
+    },
+  );
 
   void dispose() {
     recognitionRepository.dispose();

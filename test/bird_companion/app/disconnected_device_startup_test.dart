@@ -9,6 +9,12 @@ import 'package:flutter_test/flutter_test.dart';
 import '../features/connection/fakes/fake_provisioning_repository.dart';
 
 void main() {
+  test('pending direct AP resumes connection rather than showing cached album', () {
+    final repository = FakeProvisioningRepository();
+    addTearDown(repository.dispose);
+    final home = birdStartupHome(DeviceSessionState(device: _savedDevice), provisioningRepository: repository, pendingDirectAp: true);
+    expect(home, isA<ConnectionPage>());
+  });
   test('users without device history start at the home shell', () {
     final home = birdStartupHome(const DeviceSessionState());
 

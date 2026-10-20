@@ -88,7 +88,9 @@ void main() {
 
         expect(cubit.state.phase, NetworkProvisioningPhase.success);
         expect(cubit.state.baseUri, Uri.parse('http://192.168.8.1'));
-        expect(repository.calls.where((call) => call == 'getNetworkStatus'), hasLength(1));
+        // A correlated readiness event is sufficient to start the phone join
+        // stage; it must not synchronously block on another BLE status read.
+        expect(repository.calls.where((call) => call == 'getNetworkStatus'), isEmpty);
       },
     );
 

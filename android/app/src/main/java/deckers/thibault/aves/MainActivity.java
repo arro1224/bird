@@ -183,11 +183,17 @@ public final class MainActivity extends FlutterActivity {
                         result.error("invalid_payload", "A session payload is required.", null);
                         return;
                     }
-                    preferences.edit().putString(preferenceKey, encryptSession(payload)).apply();
+                    if (!preferences.edit().putString(preferenceKey, encryptSession(payload)).commit()) {
+                        result.error("secure_session_failed", "Secure session could not be persisted.", null);
+                        return;
+                    }
                     result.success(null);
                     return;
                 case "delete":
-                    preferences.edit().remove(preferenceKey).apply();
+                    if (!preferences.edit().remove(preferenceKey).commit()) {
+                        result.error("secure_session_failed", "Secure session deletion could not be persisted.", null);
+                        return;
+                    }
                     result.success(null);
                     return;
                 default:

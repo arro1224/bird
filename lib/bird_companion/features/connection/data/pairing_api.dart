@@ -4,6 +4,7 @@ import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/core/session/session_credential.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/request_id_factory.dart';
+import 'package:dio/dio.dart';
 
 class PairingApi {
   PairingApi(this._client);
@@ -18,6 +19,7 @@ class PairingApi {
     required String pairingSessionId,
     String clientName = 'Bird Companion Android',
     DateTime Function()? clock,
+    CancelToken? cancelToken,
   }) async {
     if (!isUuidV4(clientId)) {
       throw const ProvisioningProtocolException(
@@ -33,6 +35,7 @@ class PairingApi {
     }
     final payload = await _client.postUri(
       baseUri.resolve(ApiEndpoints.pairing),
+      cancelToken: cancelToken,
       data: {
         'device_id': deviceId,
         'client_id': clientId,

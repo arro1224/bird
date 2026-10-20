@@ -3,6 +3,8 @@ package deckers.thibault.aves;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.provider.Settings;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
@@ -78,6 +80,30 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
             return;
         }
         switch (call.method) {
+            case "networkSnapshot":
+                final Map<String, Object> snapshot = new LinkedHashMap<>();
+                final Network active = connectivityManager == null ? null : connectivityManager.getActiveNetwork();
+                final NetworkCapabilities caps = active == null ? null : connectivityManager.getNetworkCapabilities(active);
+                snapshot.put("transport", caps == null ? "unknown" : caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ? "wifi" : caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ? "cellular" : "other");
+                boolean ssidAvailable = false;
+                try {
+                    final android.net.wifi.WifiManager manager = (android.net.wifi.WifiManager) activity.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                    final String ssid = manager == null || manager.getConnectionInfo() == null ? null : manager.getConnectionInfo().getSSID();
+                    ssidAvailable = ssid != null && !"<unknown ssid>".equals(ssid);
+                } catch (SecurityException ignored) {
+                    // Diagnostics do not request additional location permissions.
+                }
+                snapshot.put("ssid_available", ssidAvailable);
+                result.success(snapshot);
+                return;
+            case "openWifiSettings":
+                try {
+                    activity.startActivity(new Intent(Settings.ACTION_WIFI_SETTINGS));
+                    result.success(null);
+                } catch (Exception error) {
+                    result.error("wifi_settings_unavailable", "Open WLAN settings manually.", null);
+                }
+                return;
             case "ensurePermissions":
                 ensurePermissions(result);
                 return;

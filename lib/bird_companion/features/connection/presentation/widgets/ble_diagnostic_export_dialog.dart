@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class BleDiagnosticExportDialog extends StatefulWidget {
-  const BleDiagnosticExportDialog({super.key, required this.export, this.files = const MethodChannelBirdBoxBleDiagnosticFilePlatform()});
+  const BleDiagnosticExportDialog({super.key, required this.export, this.title = '回传蓝牙诊断', this.files = const MethodChannelBirdBoxBleDiagnosticFilePlatform()});
+  final String title;
   final BleDiagnosticExport export;
   final BirdBoxBleDiagnosticFilePlatform files;
   @override
@@ -66,7 +67,7 @@ class _BleDiagnosticExportDialogState extends State<BleDiagnosticExportDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('回传蓝牙诊断'),
+    title: Text(widget.title),
     content: SizedBox(
       width: 420,
       child: SingleChildScrollView(

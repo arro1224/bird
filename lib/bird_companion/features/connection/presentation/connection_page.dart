@@ -1,5 +1,7 @@
 import 'package:aves/bird_companion/features/connection/domain/ble_pairing_progress.dart';
 import 'dart:async';
+import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
+import 'package:aves/bird_companion/features/connection/presentation/pages/direct_ap_handoff_panel.dart';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
@@ -102,17 +104,61 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
   var _completing = false;
   late final ProvisioningCubit _provisioningCubit;
   late final NetworkProvisioningCubit _networkCubit;
+  DirectApHandoffCubit? _handoff;
+  StreamSubscription<DirectApHandoffState>? _handoffSubscription;
+  StreamSubscription<void>? _networkSubscription;
+  bool _initialized = false;
+  bool _starting = true;
 
   @override
   void initState() {
     super.initState();
-    _provisioningCubit = ProvisioningCubit(widget.repository, permissionSettingsOpener: openAppSettings)..discover();
-    _networkCubit = NetworkProvisioningCubit(widget.repository);
+    _provisioningCubit = ProvisioningCubit(widget.repository, permissionSettingsOpener: openAppSettings);
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    _initialized = true;
+    final dependencies = BirdCompanionScope.maybeOf(context);
+    _handoff = dependencies?.createDirectApHandoff();
+    _networkCubit = NetworkProvisioningCubit(widget.repository, directApHandoff: _handoff);
+    _handoffSubscription = _handoff?.stream.listen((state) {
+      if (!mounted) return;
+      setState(() {});
+      if (state.phase == DirectApHandoffPhase.directApConnected) _enterConnectedShell();
+    });
+    _networkSubscription = dependencies?.connectivityMonitor.onTransportChanged.listen((_) => _handoff?.networkChanged());
+    unawaited(_start());
+  }
+
+  Future<void> _start() async {
+    final restored = await _handoff?.restore() ?? false;
+    if (!mounted) return;
+    setState(() => _starting = false);
+    if (!restored) unawaited(_provisioningCubit.discover());
+  }
+
+  void _enterConnectedShell() {
+    _provisioningCubit.retainSession = true;
+    unawaited(Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(BirdRoutes.shell, (_) => false, arguments: ShellArgs(initialIndex: automaticConnectionDestination(widget.entryMode) ?? 0)));
+  }
+
+  Future<void> _leaveDirectAp() async {
+    await _handoff?.cancel();
+    if (!mounted) return;
+    _networkCubit.backToMethodSelection();
+    if (_provisioningCubit.state.phase != ProvisioningPhase.methodSelection) unawaited(_provisioningCubit.discover());
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_handoff?.state.active == true) {
+      _handoff!.lifecycleChanged(resumed: state == AppLifecycleState.resumed);
+      return;
+    }
     if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused || state == AppLifecycleState.hidden || state == AppLifecycleState.detached) {
       unawaited(_provisioningCubit.onAppBackgrounded());
     } else if (state == AppLifecycleState.resumed) {
@@ -123,6 +169,9 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(_handoffSubscription?.cancel());
+    unawaited(_networkSubscription?.cancel());
+    unawaited(_handoff?.close());
     unawaited(_provisioningCubit.close());
     unawaited(_networkCubit.close());
     super.dispose();
@@ -173,18 +222,33 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
   @override
   Widget build(BuildContext context) => Theme(
     data: AppTheme.light(),
-    child: MultiBlocProvider(
-      providers: [
-        BlocProvider.value(value: _provisioningCubit),
-        BlocProvider.value(value: _networkCubit),
-      ],
-      child: _BleConnectionView(
-        onMethodSelected: widget.onMethodSelected,
-        onProvisioningCompleted: _complete,
-        completing: _completing,
-        titlePrefix: widget.titlePrefix,
-      ),
-    ),
+    child: _starting
+        ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+        : _handoff?.state.active == true
+        ? Scaffold(
+            backgroundColor: AppColors.paper,
+            appBar: AppBar(
+              title: const Text('连接盒子热点'),
+              leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => unawaited(_leaveDirectAp())),
+            ),
+            body: ConnectionBackground(
+              child: SafeArea(
+                child: DirectApHandoffPanel(cubit: _handoff!, onBack: () => unawaited(_leaveDirectAp())),
+              ),
+            ),
+          )
+        : MultiBlocProvider(
+            providers: [
+              BlocProvider.value(value: _provisioningCubit),
+              BlocProvider.value(value: _networkCubit),
+            ],
+            child: _BleConnectionView(
+              onMethodSelected: widget.onMethodSelected,
+              onProvisioningCompleted: _complete,
+              completing: _completing,
+              titlePrefix: widget.titlePrefix,
+            ),
+          ),
   );
 }
 
