@@ -11,11 +11,13 @@ public final class BirdBoxPairingCoordinatorTest {
         final BirdBoxSecurityWriteStateMachine state = new BirdBoxSecurityWriteStateMachine();
         final BirdBoxPairingCoordinator coordinator = new BirdBoxPairingCoordinator(state, this);
         final List<String> calls = new ArrayList<>();
-        int bond = 10, afterRegister = -1, afterCreate = -1, bondCalls, rebuilds;
-        boolean accepted = true, deadline;
+        int bond = 10, afterRegister = -1, afterCreate = -1, bondCalls, rebuilds, restores;
+        boolean accepted = true, deadline, gattUsable;
         RuntimeException exception;
         String failure;
         public int bondState() { return bond; }
+        public boolean gattUsable() { return gattUsable; }
+        public void restoreNotificationsAfterBond() { restores++; calls.add("restore_notifications"); }
         public void cancelOldWaits() { calls.add("cancel_old_waits"); }
         public void registerReceiver(long owner) {
             calls.add("register_receiver");
@@ -186,6 +188,37 @@ public final class BirdBoxPairingCoordinatorTest {
         h.coordinator.bondChanged(h.coordinator.owner(),12,11);
         h.coordinator.bondChanged(h.coordinator.owner(),12,11);
         assertEquals(1,h.rebuilds);
+    }
+
+    /** 161410: a live GATT survives a bond completed during this attempt; reuse it. */
+    @Test public void liveGattAfterBondIsReusedWithoutSecondDial() {
+        Harness h=new Harness(); h.gattUsable=true; h.start();
+        h.coordinator.bondChanged(h.coordinator.owner(),11,10);
+        h.coordinator.bondChanged(h.coordinator.owner(),12,11);
+        assertEquals(0,h.rebuilds);
+        assertEquals(1,h.restores);
+        assertTrue(h.calls.contains("gatt_rebuild_decision:reuse_live_gatt"));
+        // The state machine moved through RESTORING_NOTIFICATIONS to write-ready.
+        h.state.onNotificationsRestored();
+        assertTrue(h.state.canWrite(7));
+        assertFalse(h.deadline);
+    }
+
+    @Test public void deadGattAfterBondStillRebuilds() {
+        Harness h=new Harness(); h.gattUsable=false; h.start();
+        h.coordinator.bondChanged(h.coordinator.owner(),11,10);
+        h.coordinator.bondChanged(h.coordinator.owner(),12,11);
+        assertEquals(1,h.rebuilds);
+        assertEquals(0,h.restores);
+        assertTrue(h.calls.contains("gatt_rebuild_decision:rebuild_required"));
+    }
+
+    /** Entry-bonded attempts keep the controlled rebuild path (vivo first-bond discipline). */
+    @Test public void entryBondedNeverReusesTheCarryingGatt() {
+        Harness h=new Harness(); h.bond=12; h.gattUsable=true; h.start();
+        assertEquals(1,h.rebuilds);
+        assertEquals(0,h.restores);
+        assertTrue(h.calls.contains("gatt_rebuild_decision:rebuild_required"));
     }
 
     @Test public void bondedRetryIsSingleAndNeverRestartsBond() {

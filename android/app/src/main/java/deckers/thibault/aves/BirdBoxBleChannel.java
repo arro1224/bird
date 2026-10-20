@@ -71,6 +71,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     private static final long SECURITY_DISCONNECT_GUARD_MS = 3000L;
     private static final long SECURITY_DISCONNECT_SETTLE_MS = 1000L;
     private static final int MAX_HELD_LEGACY_REGISTRATIONS = 8;
+    private static final long PRE_CONNECT_RESET_DISCONNECT_GUARD_MS = 3000L;
     private static final String FULL_SCAN_PERMISSION_POLICY = "full_scan";
 
     private static final UUID SERVICE_UUID = UUID.fromString("6f7d0001-7a66-4c45-a1b9-5f4d2e3c1000");
@@ -79,6 +80,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     private static final UUID WIFI_CONFIG_UUID = UUID.fromString("6f7d0004-7a66-4c45-a1b9-5f4d2e3c1000");
     private static final UUID PROVISIONING_COMMAND_UUID = UUID.fromString("6f7d0005-7a66-4c45-a1b9-5f4d2e3c1000");
     private static final UUID SCAN_RESULTS_UUID = UUID.fromString("6f7d0006-7a66-4c45-a1b9-5f4d2e3c1000");
+    // Board-deployed pairing preflight (increment 2026-10-19 §3.2): public, writable before
+    // the system bond. Old boards never expose it, so it must stay out of REQUIRED_CHARACTERISTICS.
+    private static final UUID PAIRING_PREFLIGHT_UUID = UUID.fromString("6f7d0007-7a66-4c45-a1b9-5f4d2e3c1000");
     private static final UUID CLIENT_CONFIGURATION_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private static final List<UUID> REQUIRED_CHARACTERISTICS = Arrays.asList(
             DEVICE_INFO_UUID,
@@ -115,6 +119,15 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     @Nullable private volatile BluetoothGatt gatt;
     @Nullable private BluetoothGatt retiringGatt;
     private boolean retiringGattDisconnected;
+    // Pre-connect reset (155233): a parked old client must observe a real disconnect
+    // callback before a new dial; the guard bounds the wait when the stack stays silent.
+    @Nullable private BluetoothGatt parkedResetGatt;
+    private boolean parkedResetDisconnected;
+    @Nullable private Runnable parkedResetGuard;
+    // The connect call waiting on the parked stale client; it must be completed exactly
+    // once — by the dial, by the guard, or by a teardown that supersedes the reset.
+    @Nullable private MethodCall pendingPreConnectCall;
+    @Nullable private MethodChannel.Result pendingPreConnectResult;
     private final List<BluetoothGatt> heldLegacyRegistrations = new ArrayList<>();
     @Nullable private Runnable retiringGattGuard;
     @Nullable private Runnable securityReconnectGuard;
@@ -160,6 +173,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     private long preparationStepStartedAt;
     @Nullable private BluetoothGatt discoveryGatt;
     @Nullable private Boolean discoveryApiAccepted;
+    private boolean gattServicesDiscovered;
     private long discoveryStartedAt;
     private int ignoredDiscoveryCallbacks;
     private UUID pendingCharacteristicUuid;
@@ -171,6 +185,16 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     private final BirdBoxPairingCoordinator pairingCoordinator = new BirdBoxPairingCoordinator(
             securityWriteStateMachine, new BirdBoxPairingCoordinator.Platform() {
         public int bondState() { return connectedDevice == null ? BluetoothDevice.ERROR : platform.bondState(connectedDevice); }
+        public boolean gattUsable() {
+            return gatt != null && linkReady
+                    && enabledNotifications.containsAll(Arrays.asList(NETWORK_STATUS_UUID, SCAN_RESULTS_UUID));
+        }
+        public void restoreNotificationsAfterBond() {
+            // The bonded GATT is alive; refresh notifications so the encrypted gate sees
+            // subscriptions tied to the surviving client, then complete the preparation.
+            notificationIndex = 0;
+            subscribePreparedNotifications();
+        }
         public void cancelOldWaits() {
             cancelSecurityWriteCallbackGuard();
             cancelConditionalBondFallback();
@@ -346,6 +370,18 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 break;
             case "preparePairing":
                 beginSecurityWrite(call, result);
+                break;
+            case "writePairingPreflight":
+                writePairingPreflight(call, result);
+                break;
+            case "getNativeBondState":
+                getNativeBondState(call, result);
+                break;
+            case "getGattOwnershipState":
+                getGattOwnershipState(result);
+                break;
+            case "prepareControlledReconnect":
+                prepareControlledReconnect(result);
                 break;
             case "cancelPairing":
                 if (!requireSecurityRequest(call, result)) break;
@@ -1050,6 +1086,11 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         final String traceId = call.argument("traceId");
         if (traceId != null && !traceId.isEmpty()) activeTraceId = traceId;
         if (!requireBluetooth("connect", result)) return;
+        if (pendingPreConnectResult != null && parkedResetGatt != null && !parkedResetDisconnected) {
+            returnError(result, "connect", "gatt_busy",
+                    "The previous connection is still tearing down; retry after the disconnect event.");
+            return;
+        }
         if (pendingOperationResult != null) {
             returnError(
                     result,
@@ -1072,8 +1113,70 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     null,
                     "pre_connect_reset"
             );
-            closeGatt(true, "pre_connect_reset", BluetoothGatt.GATT_SUCCESS);
+            // MIS-AL00 155233: closing the old client synchronously and dialing in the
+            // same call left the stale ACL undrained and the fresh dial silent for the
+            // full 15 s deadline. Park the old client, wait for its real disconnect
+            // callback (bounded), settle, and only then dial the new connection.
+            closeGatt(false, "pre_connect_reset", BluetoothGatt.GATT_SUCCESS);
+            if (parkedResetGatt != null && !parkedResetDisconnected) {
+                emitDiagnostic(
+                        "pre_connect_reset_parked",
+                        "connect",
+                        -1,
+                        null,
+                        "awaiting_stale_disconnect"
+                );
+                pendingPreConnectCall = call;
+                pendingPreConnectResult = result;
+                parkedResetGuard = () -> {
+                    parkedResetGuard = null;
+                    if (parkedResetGatt == null || parkedResetDisconnected) return;
+                    emitDiagnostic(
+                            "pre_connect_reset_disconnect_timeout",
+                            "connect",
+                            -1,
+                            null,
+                            "disconnect_callback_missing"
+                    );
+                    releaseParkedResetGatt();
+                    dialAfterPreConnectReset();
+                };
+                mainHandler.postDelayed(parkedResetGuard, PRE_CONNECT_RESET_DISCONNECT_GUARD_MS);
+                return;
+            }
         }
+        beginDial(call, result);
+    }
+
+    /** Continues the pre-connect reset once the stale client finished its teardown. */
+    private void dialAfterPreConnectReset() {
+        final MethodCall call = pendingPreConnectCall;
+        final MethodChannel.Result result = pendingPreConnectResult;
+        pendingPreConnectCall = null;
+        pendingPreConnectResult = null;
+        if (disposed || call == null || result == null) return;
+        final long settleRemaining = securityReconnectNotBefore - android.os.SystemClock.elapsedRealtime();
+        if (settleRemaining > 0) {
+            mainHandler.postDelayed(() -> {
+                if (!disposed && pendingOperationResult == null && gatt == null) beginDial(call, result);
+            }, settleRemaining);
+            return;
+        }
+        beginDial(call, result);
+    }
+
+    private void releaseParkedResetGatt() {
+        if (parkedResetGuard != null) mainHandler.removeCallbacks(parkedResetGuard);
+        parkedResetGuard = null;
+        final BluetoothGatt parked = parkedResetGatt;
+        parkedResetGatt = null;
+        parkedResetDisconnected = false;
+        if (parked != null) {
+            try { parked.close(); } catch (RuntimeException ignored) { }
+        }
+    }
+
+    private void beginDial(MethodCall call, MethodChannel.Result result) {
         connectedDeviceAddressHash = null;
         previousBondState = null;
         gattGeneration = 0;
@@ -1247,6 +1350,120 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         emitDiagnostic("security_write_api_invoked", "write", -1, uuid, "invoked");
     }
 
+    /** Contract A8: real BluetoothAdapter bond state; Dart caches must never stand in. */
+    private void getNativeBondState(MethodCall call, MethodChannel.Result result) {
+        if (!requireBluetooth("getNativeBondState", result)) return;
+        final String deviceId = call.argument("deviceId");
+        if (deviceId == null || deviceId.isEmpty()) {
+            returnError(result, call.method, "invalid_request", "A platform device handle is required.");
+            return;
+        }
+        try {
+            final BluetoothDevice device = adapter.getRemoteDevice(deviceId);
+            final int state = platform.bondState(device);
+            result.success(bondStateName(state));
+        } catch (IllegalArgumentException error) {
+            returnError(result, call.method, "invalid_request", "The platform device handle is invalid.");
+        } catch (SecurityException error) {
+            returnError(result, call.method, "bluetooth_permission_denied", "Bluetooth permission is missing.");
+        } catch (RuntimeException error) {
+            returnError(result, call.method, "bond_state_unknown", "Bond state could not be read.");
+        }
+    }
+
+    /** Contract A8: process-unique GATT ownership facts for foreground/background sync. */
+    private void getGattOwnershipState(MethodChannel.Result result) {
+        final Map<String, Object> state = new LinkedHashMap<>();
+        state.put("connected", gatt != null);
+        state.put("linkReady", linkReady);
+        state.put("connectionGeneration", connectionGeneration);
+        state.put("gattInstanceId", gattGeneration);
+        state.put("discoveryState", discoveryStateName());
+        state.put("inflightRequest", activeSecurityRequestId);
+        state.put("preparing", preparing());
+        result.success(state);
+    }
+
+    @NonNull
+    private String discoveryStateName() {
+        if (discoveryGatt == gatt && gatt != null) {
+            if (Boolean.TRUE.equals(discoveryApiAccepted)) return "discovering";
+            if (gattServicesDiscovered) return "discovered";
+        }
+        return linkReady ? "ready" : gatt == null ? "absent" : "connected";
+    }
+
+    /** Contract A8: retire the current GATT and dial a fresh generation without createBond. */
+    private void prepareControlledReconnect(MethodChannel.Result result) {
+        if (activeSecurityRequestId != null) {
+            returnError(result, "prepareControlledReconnect", "gatt_busy",
+                    "Cancel the owned pairing before rebuilding its connection.");
+            return;
+        }
+        if (gatt == null) {
+            returnError(result, "prepareControlledReconnect", "invalid_state",
+                    "No GATT connection is owned to rebuild.");
+            return;
+        }
+        emitDiagnostic("controlled_reconnect_requested", "prepareControlledReconnect", -1, null, "teardown_then_redial");
+        disconnectRequested = true;
+        failPendingIfActive("gatt_operation_failed", "The active GATT operation was cancelled.");
+        closeGatt(false, "controlled_reconnect", BluetoothGatt.GATT_SUCCESS);
+        result.success(null);
+        // Dart redials with a plain connect once the disconnect event arrives; the
+        // connection generation has already advanced past the retired client.
+    }
+
+    /**
+     * Contract A1/A8: one opaque preflight write to 0007 before any bonding. The channel
+     * treats it as a non-sensitive public write: no createBond, no encryption gate, no
+     * payload interpretation. Responses arrive as regular 0003 notifications.
+     */
+    private void writePairingPreflight(MethodCall call, MethodChannel.Result result) {
+        if (!requireBluetooth("writePairingPreflight", result)) return;
+        if (gatt == null || connectedDevice == null) {
+            returnError(result, call.method, "ble_gatt_not_ready", "Connect and discover services first.");
+            return;
+        }
+        if (activeSecurityRequestId != null || securityWriteStateMachine.isActive() || preparing()) {
+            returnError(result, call.method, "gatt_busy", "A pairing attempt is active.");
+            return;
+        }
+        final BluetoothGattCharacteristic characteristic = characteristic(PAIRING_PREFLIGHT_UUID.toString());
+        if (characteristic == null) {
+            // Old board without the preflight characteristic; Dart gates on capabilities.
+            emitDiagnostic("pairing_preflight_unavailable", "writePairingPreflight", -1,
+                    PAIRING_PREFLIGHT_UUID, "characteristic_missing");
+            returnError(result, call.method, "pairing_preflight_unsupported",
+                    "The board does not expose the pairing preflight characteristic.");
+            return;
+        }
+        final byte[] value = call.argument("value");
+        if (value == null || value.length == 0 || value.length > currentMtu - 3 || value.length > 512) {
+            returnError(result, call.method, "invalid_request", "The preflight write must fit the current ATT MTU.");
+            return;
+        }
+        if (!beginOperation("preflight", result)) return;
+        pendingCharacteristicUuid = characteristic.getUuid();
+        try {
+            final boolean accepted;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                accepted = gatt.writeCharacteristic(characteristic, value,
+                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothGatt.GATT_SUCCESS;
+            } else {
+                characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+                characteristic.setValue(value);
+                accepted = gatt.writeCharacteristic(characteristic);
+            }
+            if (!accepted) failPending("ble_gatt_operation_failed", "GATT rejected the preflight write.",
+                    gattFailureDetails(-1, characteristic.getUuid()));
+        } catch (SecurityException error) {
+            failPending("bluetooth_permission_denied", "Bluetooth permission is missing.");
+        } catch (RuntimeException error) {
+            failPending("ble_gatt_operation_failed", "GATT preflight write could not start.");
+        }
+    }
+
     private void beginSecurityWrite(MethodCall call, MethodChannel.Result result) {
         if (!requireBluetooth(call.method, result)) return;
         final String request = call.argument("requestId");
@@ -1257,6 +1474,13 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         }
         if (gatt == null || connectedDevice == null || !linkReady) {
             returnError(result, call.method, "ble_gatt_not_ready", "Read and validate BirdBox Device Info before pairing.");
+            return;
+        }
+        // Single-flight: a repeated preparePairing with the same request id joins the
+        // in-flight attempt instead of starting a second bond chain or failing busy.
+        if (securityWriteStateMachine.isActive() && request.equals(activeSecurityRequestId)) {
+            emitDiagnostic("pairing_attempt_replayed", call.method, -1, null, "single_flight_reuse");
+            result.success(securityReadyMetadata());
             return;
         }
         if (pendingOperationResult != null || securityWriteStateMachine.isActive()) {
@@ -1421,6 +1645,14 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     }
 
     private void failSecurityWrite(MethodCall call, MethodChannel.Result result) {
+        // MIS-AL00 161410: a late Dart cleanup after the native side already terminated
+        // the attempt surfaced as invalid_request and its platform_error overwrote the
+        // first error. Cleanup on a finished or absent attempt is an idempotent noop.
+        if (activeSecurityRequestId == null) {
+            emitDiagnostic("security_write_cleanup_noop", "security_write", -1, null, "already_completed");
+            result.success(null);
+            return;
+        }
         if (!requireSecurityRequest(call, result)) return;
         final String errorCode = call.argument("errorCode");
         final BirdBoxSecurityWriteStateMachine.Phase phase = securityWriteStateMachine.phase();
@@ -1450,7 +1682,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         final boolean wasPreparing = preparing();
         failPendingIfActive(errorCode == null ? "invalid_state" : errorCode,
                 "The owned security request was cancelled or failed.");
-        if (securityWriteAttemptContext.attemptId() != null) {
+        if (securityWriteAttemptContext.attemptId() != null && securityWriteAttemptContext.terminalOutcome() == null) {
             securityWriteAttemptContext.markTerminal(
                     errorCode == null ? "failed" : stableErrorCode(errorCode)
             );
@@ -1564,7 +1796,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             // A fresh-bond first connect that never calls back is one of the two observed
             // post-bond transient shapes (no 133, 15s silence). Same bounded retry as the
             // callback path; the guard inside retrySecurityConnect keeps it single-shot.
-            if ("gatt_connect".equals(step) && Build.VERSION.SDK_INT <= 28 && securityConnectRetryCount < SECURITY_CONNECT_RETRY_MAX) {
+            if ("gatt_connect".equals(step) && securityConnectRetryCount < SECURITY_CONNECT_RETRY_MAX) {
                 retrySecurityConnect(-1);
                 return;
             }
@@ -1585,7 +1817,11 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         details.put("preparationStep", failedStep);
         details.put("failurePhase", securityPhaseName());
         details.put("teardownReason", code);
-        securityWriteAttemptContext.markTerminal(code);
+        // First-error fidelity: the first terminal outcome names the root cause; a
+        // racing cleanup must not rewrite it (the fact event keeps the original).
+        if (securityWriteAttemptContext.terminalOutcome() == null) {
+            securityWriteAttemptContext.markTerminal(code);
+        }
         if (securityWriteStateMachine.phase() != BirdBoxSecurityWriteStateMachine.Phase.FAILED)
             securityWriteStateMachine.failAttempt(BirdBoxSecurityWriteStateMachine.Failure.GATT_RECOVERY_FAILED);
         emitDiagnostic("security_preparation_failed", pendingOperation, gattStatus, null, code);
@@ -2003,7 +2239,15 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             final UUID uuid = c.getUuid();
             final long token = operationToken;
             mainHandler.post(() -> {
-                if (current != gatt || token != operationToken || !"write".equals(pendingOperation) || !uuid.equals(pendingCharacteristicUuid)) return;
+                if (current != gatt || token != operationToken || !uuid.equals(pendingCharacteristicUuid)) return;
+                if ("preflight".equals(pendingOperation)) {
+                    emitDiagnostic("pairing_preflight_write_callback", "preflight", status, uuid,
+                            status == BluetoothGatt.GATT_SUCCESS ? "success" : gattErrorCode(status));
+                    if (status == BluetoothGatt.GATT_SUCCESS) succeedPending(null);
+                    else failGattStatus(status, "GATT preflight write failed.", uuid);
+                    return;
+                }
+                if (!"write".equals(pendingOperation)) return;
                 final boolean sensitive = WIFI_CONFIG_UUID.equals(uuid) || PROVISIONING_COMMAND_UUID.equals(uuid);
                 if (sensitive && !securityWriteAttemptContext.completeFromCallback(
                         connectionGeneration, gattGeneration, uuid, isGattSecurityFailure(status))) return;
@@ -2066,6 +2310,23 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     }
 
     private void handleConnectionState(BluetoothGatt current, int status, int state) {
+        if (current == parkedResetGatt) {
+            if (state == BluetoothProfile.STATE_DISCONNECTED) {
+                emitDiagnostic(
+                        "pre_connect_reset_disconnect_confirmed",
+                        pendingOperation,
+                        status,
+                        null,
+                        "stale_gatt_disconnected"
+                );
+                parkedResetDisconnected = true;
+                securityReconnectNotBefore = android.os.SystemClock.elapsedRealtime()
+                        + SECURITY_DISCONNECT_SETTLE_MS;
+                releaseParkedResetGatt();
+                dialAfterPreConnectReset();
+            }
+            return;
+        }
         if (heldLegacyRegistrations.contains(current)) return;
         if (current == retiringGatt) {
             if (state == BluetoothProfile.STATE_DISCONNECTED && !retiringGattDisconnected) {
@@ -2099,6 +2360,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     emitDiagnostic("gatt_legacy_registration_retained", pendingOperation, -1, null, "until_session_teardown");
                 discoveryGatt = current;
                 discoveryApiAccepted = null;
+                gattServicesDiscovered = false;
                 discoveryStartedAt = 0;
                 ignoredDiscoveryCallbacks = 0;
                 securityMtuResolvedBeforeDiscovery = false;
@@ -2131,8 +2393,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             emitDiagnostic("gatt_disconnected", pendingOperation, status, null, "link_lost");
             if (preparing()) {
                 // The first connect attempt right after a fresh bond can fail transiently
-                // on legacy stacks (status 133 or a missing callback). Retry once, in step.
-                if ("gatt_connect".equals(preparationStep) && Build.VERSION.SDK_INT <= 28
+                // (status 133 or a missing callback on any stack generation). Retry once,
+                // in step; the second failure terminates as before.
+                if ("gatt_connect".equals(preparationStep)
                         && securityConnectRetryCount < SECURITY_CONNECT_RETRY_MAX) {
                     retrySecurityConnect(status);
                     return;
@@ -2210,6 +2473,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             else { failPending("invalid_request", "BirdBox service or characteristic properties are invalid."); closeGatt(true, "service_invalid", status); }
             return;
         }
+        gattServicesDiscovered = true;
         if (preparing()) {
             securityWriteStateMachine.onGattRecovered(gattGeneration);
             if (securityMtuResolvedBeforeDiscovery) {
@@ -2550,7 +2814,20 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         linkReady = false;
         securedGattGeneration = -1;
         enabledNotifications.clear();
-        if (current != null) {
+        if ("pre_connect_reset".equals(reason) && current != null) {
+            // Park instead of close: the vendor stack keeps the ACL until the client
+            // observes STATE_DISCONNECTED. Dialing a new client over an undrained ACL
+            // produced the silent 15 s connect of MIS-AL00 155233.
+            releaseParkedResetGatt();
+            parkedResetGatt = current;
+            securityReconnectNotBefore = android.os.SystemClock.elapsedRealtime()
+                    + SECURITY_DISCONNECT_SETTLE_MS;
+            try {
+                current.disconnect();
+            } catch (RuntimeException ignored) {
+                // A rejected disconnect leaves the parked guard to time out.
+            }
+        } else if (current != null) {
             try {
                 current.disconnect();
             } catch (RuntimeException ignored) {
@@ -2562,10 +2839,22 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 // Vendor stacks may already have torn down the client.
             }
         }
-        // Disconnect the live client before unregistering historical clients:
-        // legacy stacks can lose the live address mapping during unregister.
-        releaseRetiringGatt();
-        releaseHeldLegacyRegistrations();
+        if (!"pre_connect_reset".equals(reason) || parkedResetGatt == null) {
+            // Disconnect the live client before unregistering historical clients:
+            // legacy stacks can lose the live address mapping during unregister.
+            releaseRetiringGatt();
+            releaseHeldLegacyRegistrations();
+        }
+        if (!"pre_connect_reset".equals(reason) && pendingPreConnectResult != null) {
+            // A full teardown supersedes any pending pre-connect reset; its connect
+            // caller must not hang past this point.
+            final MethodChannel.Result parked = pendingPreConnectResult;
+            pendingPreConnectCall = null;
+            pendingPreConnectResult = null;
+            releaseParkedResetGatt();
+            returnError(parked, "connect", "gatt_operation_failed",
+                    "The pending connect was cancelled by the disconnect teardown.");
+        }
         if (emitDisconnect && hadNativeSession) {
             emitDisconnect(reason, status, !disconnectRequested);
         }
@@ -2822,6 +3111,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             case "write" -> "writeWithResponse";
             case "securityRecovery" -> "awaitSecurityReady";
             case "scan" -> "startScan";
+            case "preflight" -> "writePairingPreflight";
             default -> operationName;
         };
     }
@@ -2861,6 +3151,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         failPending("ble_session_ended", "Bluetooth session ended: " + reason, lifecycle);
         disposed = true;
         closeGatt(true, reason, BluetoothGatt.GATT_SUCCESS);
+        releaseParkedResetGatt();
+        pendingPreConnectCall = null;
+        pendingPreConnectResult = null;
         if (pendingPermissionResult != null) {
             returnError(
                     pendingPermissionResult,

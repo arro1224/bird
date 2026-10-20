@@ -7,12 +7,16 @@ final class BirdBoxPairingCoordinator {
 
     interface Platform {
         int bondState();
+        /** True when the current GATT link is alive, ready and already subscribed. */
+        boolean gattUsable();
         void cancelOldWaits();
         void registerReceiver(long owner);
         boolean createBond();
         void startBondTimeout(long owner, long milliseconds);
         void cancelBondTimeout();
         void rebuildGatt();
+        /** Re-confirms notifications on the still-usable bonded link instead of rebuilding. */
+        void restoreNotificationsAfterBond();
         void event(String name, String result);
         void fail(String code);
     }
@@ -113,10 +117,21 @@ final class BirdBoxPairingCoordinator {
         if (!active || !waitingForBond) return;
         waitingForBond = false;
         platform.cancelBondTimeout();
+        // Reuse only applies to a bond completed during this attempt: the ordinary
+        // GATT that carried the pairing often survives the system bond, and tearing
+        // it down for a second dial left the rebuild hanging (MIS-AL00 161410).
+        // An attempt that entered already BONDED keeps the controlled rebuild path.
+        final boolean reuse = state.isWaitingForBond() && platform.gattUsable();
         if (state.phase() != BirdBoxSecurityWriteStateMachine.Phase.BONDED_RECOVERING_GATT) {
-            state.onBonded(false);
+            state.onBonded(reuse);
         }
         platform.event("system_bond_result", "bonded");
+        if (reuse) {
+            platform.event("gatt_rebuild_decision", "reuse_live_gatt");
+            platform.restoreNotificationsAfterBond();
+            return;
+        }
+        platform.event("gatt_rebuild_decision", "rebuild_required");
         platform.rebuildGatt();
     }
 

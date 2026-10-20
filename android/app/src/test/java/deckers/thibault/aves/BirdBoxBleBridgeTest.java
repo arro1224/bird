@@ -302,10 +302,16 @@ public final class BirdBoxBleBridgeTest {
         platform.connectFails = true; Result result = prepare(); platform.bonded();
         result.failed("ble_gatt_recovery_failed"); advance(31_000); assertEquals(1, result.completions);
     }
-    @Test @Config(sdk = 31) public void connectionCallbackFailureTerminates() {
-        // SDK 31：现代栈不重试，133 立即有界终止（SDK 27 的重试路径另测）。
+    @Test @Config(sdk = 31) public void connectionCallbackFailureRetriesOnceThenTerminates() {
+        // SDK 31 的 161410 同形：配对后重建首拨静默/133。现代栈同样获得单次有界重试，
+        // 第二次仍失败才终止（版本分叉已删除）。
         Result result = prepare(); platform.bonded();
         platform.callback.onConnectionStateChange(freshGatt, 133, BluetoothProfile.STATE_DISCONNECTED); drain();
+        assertEquals(0, result.completions);
+        assertEquals("first_post_bond_rebuild", lastEvent("gatt_connect_retry_started").get("resultCode"));
+        advance(1_001);
+        assertEquals(3, platform.connections);
+        platform.callback.onConnectionStateChange(recoveryGatt, 133, BluetoothProfile.STATE_DISCONNECTED); drain();
         result.failed("ble_gatt_recovery_failed");
         assertEquals(133, ((Map<?, ?>) result.details).get("gattStatus"));
         assertEquals("gatt_connect", ((Map<?, ?>) result.details).get("preparationStep"));
@@ -345,12 +351,17 @@ public final class BirdBoxBleBridgeTest {
         advance(16_000);
         assertEquals(3, platform.connections); assertEquals(1, result.completions);
     }
-    @Test @Config(sdk = 31) public void freshConnectFailureOnModernSdkTerminatesWithoutRetry() {
+    @Test @Config(sdk = 31) public void freshConnectFailureOnModernSdkRetriesOnceBounded() {
         Result result = prepare(); platform.bonded();
         platform.callback.onConnectionStateChange(freshGatt, 133, BluetoothProfile.STATE_DISCONNECTED); drain();
-        result.failed("ble_gatt_recovery_failed");
+        assertEquals(0, result.completions);
         assertEquals(2, platform.connections);
-        assertNull(findEvent("gatt_connect_retry_started"));
+        advance(1_001);
+        assertEquals(3, platform.connections);
+        platform.callback.onConnectionStateChange(recoveryGatt, 133, BluetoothProfile.STATE_DISCONNECTED); drain();
+        result.failed("ble_gatt_recovery_failed");
+        advance(16_000);
+        assertEquals(3, platform.connections); assertEquals(1, result.completions);
     }
     @Test @Config(sdk = 27) public void legacyPostBondRetryFailureAfterBondLostTerminatesAsBondLost() {
         Result result = prepare(); platform.bonded();
@@ -682,6 +693,136 @@ public final class BirdBoxBleBridgeTest {
         assertEquals(3, facts.get("writeFragmentIndex"));
         assertEquals(1, facts.get("createBondCallCount"));
     }
+    /** 155233: a connect over a live stale client parks it and dials only after a real disconnect. */
+    @Test public void preConnectResetParksStaleGattAndDialsAfterRealDisconnect() {
+        // setup() leaves oldGatt connected and ready; this connect triggers pre_connect_reset.
+        Result result = call("connect", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
+        assertEquals(0, result.completions);
+        assertEquals("awaiting_stale_disconnect", lastEvent("pre_connect_reset_parked").get("resultCode"));
+        // The dial is not issued while the stale client has not confirmed its disconnect.
+        assertEquals(1, platform.connections);
+        verify(oldGatt).disconnect();
+        verify(oldGatt, never()).close();
+        // Real disconnect callback from the parked client releases the dial after settle.
+        platform.callback.onConnectionStateChange(oldGatt, 0, BluetoothProfile.STATE_DISCONNECTED); drain();
+        assertEquals("stale_gatt_disconnected", lastEvent("pre_connect_reset_disconnect_confirmed").get("resultCode"));
+        advance(1_001);
+        assertEquals(2, platform.connections);
+        // The fresh dial completes through the normal service-discovery path.
+        connected(freshGatt);
+        assertEquals(1, result.completions);
+        verify(oldGatt, atLeastOnce()).close();
+    }
+
+    @Test public void preConnectResetSilentStaleGattTimesOutAndDialsAtTheGuard() {
+        Result result = call("connect", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
+        advance(2_999); assertEquals(0, result.completions); assertEquals(1, platform.connections);
+        advance(2); // guard fires at 3 s
+        assertEquals("disconnect_callback_missing", lastEvent("pre_connect_reset_disconnect_timeout").get("resultCode"));
+        assertEquals(2, platform.connections);
+        connected(freshGatt);
+        assertEquals(1, result.completions);
+        verify(oldGatt, atLeastOnce()).close();
+    }
+
+    /** A disconnect while the pre-connect reset is parked cancels the pending dial. */
+    @Test public void disconnectWhileParkedCancelsPendingDial() {
+        Result result = call("connect", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
+        assertEquals(0, result.completions);
+        assertEquals("awaiting_stale_disconnect", lastEvent("pre_connect_reset_parked").get("resultCode"));
+        call("disconnect", Collections.emptyMap());
+        // The parked connect caller is released with a stable error instead of hanging.
+        result.failed("ble_gatt_operation_failed");
+        assertEquals(1, platform.connections);
+        advance(31_000);
+        assertEquals(1, platform.connections); assertEquals(1, result.completions);
+    }
+
+    /** 161410: a late failSecurityWrite after native termination is an idempotent noop. */
+    @Test public void lateFailSecurityWriteAfterTerminalIsIdempotentNoop() {
+        Result pairing = prepare(); platform.bonded();
+        connected(freshGatt); mtu(); notification(3, 0); notification(6, 0);
+        assertEquals(1, pairing.completions);
+        platform.bond = BluetoothDevice.BOND_NONE;
+        // A bond_lost broadcast tears the session down natively before Dart learns.
+        platform.receiver.onReceive(app, new Intent(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+                .putExtra(BluetoothDevice.EXTRA_DEVICE, device)
+                .putExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
+                .putExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.BOND_BONDED)); drain();
+        assertEquals(1, pairing.completions);
+        assertEquals("bond_lost", lastEvent("disconnected").get("resultCode"));
+        // The late Dart cleanup must not return invalid_request.
+        Result lateCleanup = call("failSecurityWrite", Map.of(
+                "requestId", "request", "errorCode", "ble_pairing_rejected"));
+        assertEquals(1, lateCleanup.completions); assertNull(lateCleanup.code);
+        assertEquals("already_completed", lastEvent("security_write_cleanup_noop").get("resultCode"));
+    }
+
+    @Test public void nativeBondStateContractReturnsRealAdapterState() {
+        Result missing = call("getNativeBondState", Collections.emptyMap());
+        missing.failed("invalid_request");
+        Result bonded = call("getNativeBondState", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
+        assertEquals(1, bonded.completions); assertEquals("not_bonded", bonded.value);
+        platform.bond = BluetoothDevice.BOND_BONDED;
+        Result again = call("getNativeBondState", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
+        assertEquals("bonded", again.value);
+    }
+
+    @Test public void gattOwnershipStateExposesGenerationFacts() {
+        Map<?, ?> state = (Map<?, ?>) call("getGattOwnershipState", Collections.emptyMap()).value;
+        assertEquals(Boolean.TRUE, state.get("connected"));
+        assertEquals(Boolean.TRUE, state.get("linkReady"));
+        assertEquals(1, state.get("connectionGeneration"));
+        assertEquals(Boolean.FALSE, state.get("preparing"));
+        assertNull(state.get("inflightRequest"));
+        Result pairing = prepare();
+        state = (Map<?, ?>) call("getGattOwnershipState", Collections.emptyMap()).value;
+        assertEquals("request", state.get("inflightRequest"));
+        assertEquals(Boolean.TRUE, state.get("preparing"));
+        // The system bond rejecting the attempt terminates the preparation.
+        platform.accepted = false;
+        platform.receiver.onReceive(app, new Intent(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+                .putExtra(BluetoothDevice.EXTRA_DEVICE, device)
+                .putExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_BONDING)
+                .putExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.BOND_NONE)); drain();
+        platform.receiver.onReceive(app, new Intent(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+                .putExtra(BluetoothDevice.EXTRA_DEVICE, device)
+                .putExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
+                .putExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.BOND_BONDING)); drain();
+        pairing.failed("bond_rejected");
+    }
+
+    @Test public void controlledReconnectRetiresGattWithoutCreateBond() {
+        platform.bond = BluetoothDevice.BOND_BONDED;
+        Result reconnect = call("prepareControlledReconnect", Collections.emptyMap());
+        assertEquals(1, reconnect.completions); assertNull(reconnect.code);
+        verify(oldGatt).disconnect();
+        assertEquals("controlled_reconnect", lastEvent("teardown_started").get("resultCode"));
+        // After the teardown there is nothing left to rebuild.
+        Result guarded = call("prepareControlledReconnect", Collections.emptyMap());
+        guarded.failed("invalid_state");
+    }
+
+    @Test public void preflightWriteIsPublicAndOldBoardsAreRejectedStably() {
+        // The default Robolectric service (suffix 2..6) has no 0007: stable rejection.
+        Result missing = call("writePairingPreflight", Map.of("value", new byte[]{1}));
+        missing.failed("pairing_preflight_unsupported");
+        // A board exposing 0007 accepts the opaque public write without any bonding.
+        BluetoothGattCharacteristic preflight = new BluetoothGattCharacteristic(
+                uuid(7), BluetoothGattCharacteristic.PROPERTY_WRITE, 0);
+        service.addCharacteristic(preflight);
+        Result write = call("writePairingPreflight", Map.of("value", new byte[]{1, 2, 3}));
+        assertEquals(0, write.completions);
+        if (Build.VERSION.SDK_INT >= 33) {
+            verify(oldGatt).writeCharacteristic(eq(preflight), any(byte[].class), eq(2));
+        } else {
+            verify(oldGatt).writeCharacteristic(preflight);
+        }
+        platform.callback.onCharacteristicWrite(oldGatt, preflight, 0); drain();
+        assertEquals(1, write.completions); assertNull(write.code);
+        assertEquals("success", lastEvent("pairing_preflight_write_callback").get("resultCode"));
+    }
+
     @Test public void retainedEnginePluginReattachesActivityAndEngineDestructionTerminatesOnce() {
         BirdBoxBlePlugin plugin = new BirdBoxBlePlugin((context, binaryMessenger) -> channel);
         FlutterPluginBinding engine = mock(FlutterPluginBinding.class);
