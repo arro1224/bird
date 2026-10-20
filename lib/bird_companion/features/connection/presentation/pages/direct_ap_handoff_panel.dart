@@ -26,7 +26,7 @@ class DirectApHandoffPanel extends StatelessWidget {
       DirectApHandoffPhase.directApJoinTimeout => '等待连接超时',
       DirectApHandoffPhase.failure => '盒子验证未完成',
       DirectApHandoffPhase.directApConnected => '盒子已连接',
-      _ => '等待手机连接盒子热点',
+      _ => pending.isSta ? '等待 Wi-Fi 连接验证' : '等待手机连接盒子热点',
     };
     return PopScope(
       canPop: false,
@@ -41,10 +41,10 @@ class DirectApHandoffPanel extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
           Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: AppSpacing.md),
-          Text('盒子热点已就绪，请在手机 WLAN 设置中连接 ${pending.ssid ?? '盒子热点'}。', textAlign: TextAlign.center),
+          Text(pending.isSta ? '请让手机与盒子连接同一 Wi-Fi。App 会验证设备身份、授权和实时连接后自动进入首页。' : '盒子热点已就绪，请在手机 WLAN 设置中连接 ${pending.ssid ?? '盒子热点'}。', textAlign: TextAlign.center),
           const SizedBox(height: AppSpacing.sm),
-          const Text('若手机提示“此网络无法上网”，请选择保持连接。返回 App 后会继续验证，无需重新配对或启动热点。'),
-          if (repository is ProvisioningRepositoryImpl)
+          Text(pending.isSta ? '无需再次配对或重复提交密码。返回前台后会继续检查连接。' : '若手机提示“此网络无法上网”，请选择保持连接。返回 App 后会继续验证，无需重新配对或启动热点。'),
+          if (!pending.isSta && repository is ProvisioningRepositoryImpl)
             FutureBuilder<String?>(
               future: repository.directApPassphrase(pending.deviceId),
               builder: (_, snapshot) => snapshot.data == null ? const SizedBox.shrink() : ExpansionTile(title: const Text('查看盒子热点密码'), children: [SelectableText(snapshot.data!)]),
@@ -74,11 +74,11 @@ class DirectApHandoffPanel extends StatelessWidget {
           if (dependencies != null)
             TextButton(
               onPressed: () async {
-                final export = await dependencies.bleDiagnosticSnapshotService.capture(pending.operationId);
+                final export = await dependencies.bleDiagnosticSnapshotService.capture(pending.attemptId ?? pending.operationId, includeRetainedHistory: true);
                 if (context.mounted) {
                   await showDialog<void>(
                     context: context,
-                    builder: (_) => BleDiagnosticExportDialog(export: export, title: '回传直连诊断', files: dependencies.bleDiagnosticFilePlatform),
+                    builder: (_) => BleDiagnosticExportDialog(export: export, title: '回传连接诊断', files: dependencies.bleDiagnosticFilePlatform),
                   );
                 }
               },

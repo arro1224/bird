@@ -7,6 +7,12 @@ abstract interface class DirectApHttpPreparation {
   Future<void> cancelDirectApHttp(String deviceId);
 }
 
+/// Last identity-correlated snapshot read during Device Info verification.
+/// It is only an endpoint hint; HTTP identity/auth still have to be checked.
+abstract interface class ProvisioningEndpointSnapshot {
+  ProvisioningNetworkStatus? get lastNetworkSnapshot;
+}
+
 /// The sole boundary used by presentation code for rc4 provisioning.
 ///
 /// Implementations own client/request identifiers, authorization material,

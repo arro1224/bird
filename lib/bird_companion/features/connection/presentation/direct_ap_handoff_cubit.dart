@@ -12,20 +12,26 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 enum DirectApHandoffPhase { idle, waitingForPhoneApJoin, verifyingDirectApHttp, directApConnected, directApJoinTimeout, failure }
 
 final class PendingDirectAp {
-  const PendingDirectAp({required this.deviceId, required this.baseUri, required this.operationId, this.ssid});
+  const PendingDirectAp({required this.deviceId, required this.baseUri, required this.operationId, this.ssid, this.networkMode = ProvisioningNetworkMode.directAp, this.attemptId});
   final String deviceId;
   final Uri baseUri;
   final String operationId;
   final String? ssid;
-  ProvisioningCompletion get completion => ProvisioningCompletion(deviceId: deviceId, baseUri: baseUri, networkMode: ProvisioningNetworkMode.directAp);
-  Map<String, dynamic> toJson() => {'device_id': deviceId, 'base_uri': baseUri.toString(), 'operation_id': operationId, 'ssid': ssid};
+  final ProvisioningNetworkMode networkMode;
+  final String? attemptId;
+  bool get isSta => networkMode == ProvisioningNetworkMode.infrastructureSta;
+  ProvisioningCompletion get completion => ProvisioningCompletion(deviceId: deviceId, baseUri: baseUri, networkMode: networkMode);
+  // Persist public endpoint metadata only. STA SSIDs and all credentials are excluded.
+  Map<String, dynamic> toJson() => {'device_id': deviceId, 'base_uri': baseUri.toString(), 'operation_id': operationId, 'ssid': isSta ? null : ssid, 'network_mode': networkMode.wireValue, 'attempt_id': attemptId};
   factory PendingDirectAp.fromJson(Map json) {
     final uri = Uri.parse(json['base_uri'] as String);
     final id = json['device_id'] as String;
     if (!RegExp(r'^bbx-[0-9a-f]{32}$').hasMatch(id) || !{'http', 'https'}.contains(uri.scheme) || uri.host.isEmpty || uri.userInfo.isNotEmpty || uri.hasQuery || uri.hasFragment) {
       throw const FormatException('Invalid direct AP endpoint');
     }
-    return PendingDirectAp(deviceId: id, baseUri: uri, operationId: json['operation_id'] as String, ssid: json['ssid'] as String?);
+    final mode = ProvisioningNetworkModeWireValue.parse(json['network_mode'] as String? ?? 'direct_ap');
+    if (mode == ProvisioningNetworkMode.none) throw const FormatException('No active network');
+    return PendingDirectAp(deviceId: id, baseUri: uri, operationId: json['operation_id'] as String, ssid: json['ssid'] as String?, networkMode: mode, attemptId: json['attempt_id'] as String?);
   }
 }
 
@@ -41,7 +47,8 @@ final class DirectApHandoffState {
   bool get canContinue => phase != DirectApHandoffPhase.failure || lastError == 'ProvisioningCredentialSaveException';
 }
 
-/// One cancellable HTTP handoff. It never issues a BLE or start_direct_ap command.
+/// One cancellable network handoff (legacy name kept for persisted AP compatibility).
+/// STA and AP share identity/authentication checks; neither reissues a BLE command.
 final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
   DirectApHandoffCubit({required this.store, required this.verify, this.onCancel, this.activeChanged, this.window = const Duration(seconds: 90), this.retryUnit = const Duration(seconds: 1), this.diagnostic})
     : super(const DirectApHandoffState());
@@ -170,22 +177,29 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
           _emit(DirectApHandoffPhase.directApConnected);
           _log('direct_ap_http_verified', {'device_id_verified': true});
           return;
-        } catch (error) {
+        } catch (error, stack) {
           if (isClosed || generation != _generation || token.isCancelled) break;
           final transient = isTransientDirectApError(error);
           final classification = directApErrorKind(error);
-          _log('direct_ap_http_error', {'classification': classification, 'transient': transient, 'first_error': state.firstError ?? classification});
+          _log('direct_ap_http_error', {
+            'classification': classification,
+            'error_class': error.runtimeType.toString(),
+            'error_code': classification,
+            'stack_frames': stack.toString().split('\n').take(8).map((frame) => frame.replaceAll(RegExp(r'\?.*'), '[redacted]')).join('\n'),
+            'transient': transient,
+            'first_error': state.firstError ?? classification,
+          });
           if (!transient) {
             _emit(DirectApHandoffPhase.failure, message: directApErrorMessage(error), firstError: classification);
             return;
           }
-          _emit(DirectApHandoffPhase.waitingForPhoneApJoin, message: '尚未连接到盒子热点。请在 WLAN 设置中连接后返回。', firstError: classification);
+          _emit(DirectApHandoffPhase.waitingForPhoneApJoin, message: pending.isSta ? '等待盒子与手机处于同一 Wi-Fi，连接恢复后会继续验证。' : '尚未连接到盒子热点。请在 WLAN 设置中连接后返回。', firstError: classification);
           _log('direct_ap_waiting_for_phone');
         }
         await _wait(retryUnit * state.attempt.clamp(1, 3));
       }
       if (!isClosed && generation == _generation) {
-        _emit(DirectApHandoffPhase.directApJoinTimeout, remaining: 0, message: '等待手机连接热点超时，可连接后继续验证，无需重新配对。');
+        _emit(DirectApHandoffPhase.directApJoinTimeout, remaining: 0, message: pending.isSta ? '验证暂未完成。请确认手机与盒子连接同一 Wi-Fi，然后继续验证，无需重新配网。' : '等待手机连接热点超时，可连接后继续验证，无需重新配对。');
         _log('direct_ap_join_timeout');
       }
     } finally {

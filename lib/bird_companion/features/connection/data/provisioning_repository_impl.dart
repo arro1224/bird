@@ -23,7 +23,15 @@ import 'package:aves/bird_companion/features/connection/domain/request_id_factor
 /// Production owner of rc4 identifiers, authorization, operation correlation,
 /// Android routing and transient secret lifetime.
 final class ProvisioningRepositoryImpl
-    implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository, ProvisioningNetworkStatusVerifier, BleScanDiagnosticsRepository, BleProvisioningControl, DirectApHttpPreparation {
+    implements
+        ProvisioningRepository,
+        DppAvailabilityRepository,
+        ProvisioningSessionRepository,
+        ProvisioningNetworkStatusVerifier,
+        BleScanDiagnosticsRepository,
+        BleProvisioningControl,
+        DirectApHttpPreparation,
+        ProvisioningEndpointSnapshot {
   factory ProvisioningRepositoryImpl({
     required BirdBoxBleDataSource ble,
     required BirdBoxWifiPlatform wifi,
@@ -182,6 +190,9 @@ final class ProvisioningRepositoryImpl
   late final StreamSubscription<void> _disconnectSubscription;
   late final StreamSubscription<WifiNetworkLoss> _wifiLossSubscription;
   ProvisioningDeviceInfo? _deviceInfo;
+  ProvisioningNetworkStatus? _lastNetworkSnapshot;
+  @override
+  ProvisioningNetworkStatus? get lastNetworkSnapshot => _deviceInfo == null ? null : _lastNetworkSnapshot;
   String? _clientId;
   SessionCredential? _credential;
   SessionCredential? _pendingCredential;
@@ -312,6 +323,7 @@ final class ProvisioningRepositoryImpl
       _networkStatusResumeRequired = reconnecting;
       _lastTrustedDeviceId = info.deviceId;
       final status = reconnecting ? await _networkStatusAfterReconnect() : await _ble.readNetworkStatus();
+      _lastNetworkSnapshot = status;
       _resumeOperation(status);
       _checkOwner(owner);
       return info;
@@ -381,6 +393,7 @@ final class ProvisioningRepositoryImpl
       );
     }
     final status = event.payload as ProvisioningNetworkStatus;
+    _lastNetworkSnapshot = status;
     _resumeOperation(status);
     return status;
   }
@@ -652,13 +665,12 @@ final class ProvisioningRepositoryImpl
           await _saveDirectApAuthorization();
           final saved = await _directApAuthorizationStore.load(info.deviceId) ?? <String, dynamic>{};
           await _directApAuthorizationStore.write(info.deviceId, {...saved, 'ssid': ready.ssid, 'passphrase': ready.passphrase});
-        case StaConnected connected:
+        case StaConnected _:
           await _wifi.releaseNetwork();
-          await _validateAndExchange(
-            connected.baseUri,
-            ProvisioningNetworkMode.infrastructureSta,
-            operationId: connected.operationId,
-          );
+          // Readiness is evidence, not a UI session. The shared HTTP handoff
+          // verifies identity/auth and promotes the global session independently
+          // of BLE lifetime. Do not establish WS here then fail a second BLE read.
+          await _saveDirectApAuthorization();
         case DppBootstrapReady ready:
           if (_operations[ready.operationId] != BleCommandType.startDppProvisioning) {
             return null;

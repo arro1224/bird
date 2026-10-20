@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_shell.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
@@ -64,15 +65,23 @@ abstract final class BirdRoutes {
 
 /// Opens the canonical connection flow from any reconnect entry.
 void openReconnectConnection(BuildContext context) {
-  Navigator.of(
-    context,
-    rootNavigator: true,
-  ).pushNamed(
-    BirdRoutes.connection,
-    arguments: const ConnectionArgs(
-      entryMode: ConnectionEntryMode.addOrSwitch,
-    ),
-  );
+  unawaited(() async {
+    final dependencies = BirdCompanionScope.maybeOf(context);
+    dependencies?.connectionAttempts.begin('explicit_reconnect');
+    if (await dependencies?.deviceSessionCubit.verifySavedSession() == true) return;
+    if (!context.mounted) return;
+    unawaited(
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).pushNamed(
+        BirdRoutes.connection,
+        arguments: const ConnectionArgs(
+          entryMode: ConnectionEntryMode.addOrSwitch,
+        ),
+      ),
+    );
+  }());
 }
 
 abstract final class BirdAppRouter {
@@ -168,9 +177,7 @@ abstract final class BirdAppRouter {
               ? args
               : null,
         );
-        page = id == null
-            ? _invalid('复制任务详情', '缺少任务编号')
-            : CopyJobDetailPage(copyJobId: id);
+        page = id == null ? _invalid('复制任务详情', '缺少任务编号') : CopyJobDetailPage(copyJobId: id);
       case BirdRoutes.jobDetail:
         final args = settings.arguments;
         final id = _clean(

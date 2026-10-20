@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
 import 'package:aves/bird_companion/features/connection/presentation/pages/direct_ap_handoff_panel.dart';
+import 'package:aves/bird_companion/features/connection/presentation/widgets/ble_diagnostic_export_dialog.dart';
 
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
@@ -55,7 +56,7 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
     _initialized = true;
     final dependencies = BirdCompanionScope.maybeOf(context);
     _handoff = dependencies?.createDirectApHandoff();
-    _cubit = NetworkProvisioningCubit(widget.repository, directApHandoff: _handoff);
+    _cubit = NetworkProvisioningCubit(widget.repository, directApHandoff: _handoff, resolveStaEndpoint: dependencies?.resolveStaEndpoint, diagnostic: dependencies?.connectionAttempts.record);
     _handoffSubscription = _handoff?.stream.listen((state) {
       if (!mounted) return;
       setState(() {});
@@ -103,9 +104,10 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
                 if (mounted) _showWifiChoices();
               },
             )
-          : _bleDisconnected
-          ? _BleReconnectNotice(onReconnect: () => openReconnectConnection(context))
+          : _bleDisconnected && !{NetworkProvisioningPhase.configuringSta, NetworkProvisioningPhase.confirmingNetwork}.contains(_cubit.state.phase)
+          ? _BleReconnectNotice(onReconnect: () => openReconnectConnection(context), onExportDiagnostic: dependenciesExport)
           : NetworkProvisioningPage(
+              onExportDiagnostic: dependenciesExport,
               onBack: _showWifiChoices,
               onChangeWifi: _showWifiChoices,
               completing: _completing,
@@ -113,6 +115,18 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
             ),
     ),
   );
+
+  Future<void> dependenciesExport() async {
+    final dependencies = BirdCompanionScope.maybeOf(context);
+    if (dependencies == null) return;
+    final export = await dependencies.bleDiagnosticSnapshotService.capture(_cubit.attemptId ?? dependencies.connectionAttempts.activeId, includeRetainedHistory: true);
+    if (mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => BleDiagnosticExportDialog(export: export, title: '回传连接诊断', files: dependencies.bleDiagnosticFilePlatform),
+      );
+    }
+  }
 
   void _showWifiChoices() {
     final info = _deviceInfo;
@@ -148,9 +162,10 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
 }
 
 class _BleReconnectNotice extends StatelessWidget {
-  const _BleReconnectNotice({required this.onReconnect});
+  const _BleReconnectNotice({required this.onReconnect, this.onExportDiagnostic});
 
   final VoidCallback onReconnect;
+  final VoidCallback? onExportDiagnostic;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -180,6 +195,7 @@ class _BleReconnectNotice extends StatelessWidget {
         onPressed: onReconnect,
         icon: const Icon(Icons.bluetooth_searching_rounded),
       ),
+      if (onExportDiagnostic != null) TextButton(onPressed: onExportDiagnostic, child: const Text('导出本次连接诊断')),
     ],
   );
 }

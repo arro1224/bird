@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:aves/bird_companion/features/connection/domain/request_id_factory.dart';
 import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
 
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
@@ -107,7 +110,8 @@ final class NetworkProvisioningState {
 }
 
 final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
-  NetworkProvisioningCubit(this._repository, {this.directApHandoff}) : super(const NetworkProvisioningState()) {
+  NetworkProvisioningCubit(this._repository, {this.directApHandoff, this.resolveStaEndpoint, this.diagnostic, this.reconciliationWindow = const Duration(seconds: 60), this.pollInterval = const Duration(seconds: 2)})
+    : super(const NetworkProvisioningState()) {
     _eventSubscription = _repository.events.listen(
       _onEvent,
       onError: _onEventError,
@@ -116,6 +120,34 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   final ProvisioningRepository _repository;
   final DirectApHandoffCubit? directApHandoff;
+  final Future<Uri?> Function(String deviceId)? resolveStaEndpoint;
+  final void Function(Map<String, dynamic>)? diagnostic;
+  final Duration reconciliationWindow, pollInterval;
+  Timer? _staDeadline, _staPoll;
+  bool _readingSta = false;
+  String? _attemptId;
+  String? get attemptId => _attemptId;
+  void _trace(String event, {Object? error, StackTrace? stack, Map<String, dynamic> fields = const {}}) {
+    diagnostic?.call({
+      'event': event,
+      'attempt_id': _attemptId,
+      'generation': _generation,
+      'phase': state.phase.name,
+      'device_id': state.trustedDeviceId,
+      'operation_id': state.activeOperationId,
+      if (error != null) 'error_class': error.runtimeType.toString(),
+      if (error != null) 'error_code': directApErrorKind(error),
+      if (stack != null) 'stack_frames': stack.toString().split('\n').take(8).map((frame) => frame.replaceAll(RegExp(r'\?.*'), '[redacted]')).join('\n'),
+      ...fields,
+    });
+  }
+
+  void _stopStaReconciliation() {
+    _staDeadline?.cancel();
+    _staPoll?.cancel();
+    _staDeadline = _staPoll = null;
+  }
+
   late final StreamSubscription<ProvisioningEvent> _eventSubscription;
   var _generation = 0;
   String? _cancellingOperationId;
@@ -268,6 +300,10 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
         return;
       }
       if (status.activeMode == ProvisioningNetworkMode.infrastructureSta && status.operationState == NetworkOperationState.staConnected && status.baseUri != null) {
+        if (directApHandoff != null && handoffDirectAp) {
+          _staReady(status.baseUri!, status.operationId ?? 'existing-sta');
+          return;
+        }
         await _verifyResumedTerminal(status);
         if (isClosed || generation != _generation) return;
         emit(
@@ -325,6 +361,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   void backToMethodSelection() {
+    _stopStaReconciliation();
     if (directApHandoff?.state.active == true) unawaited(directApHandoff!.cancel());
     _generation++;
     _clearScanAccumulator();
@@ -487,6 +524,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   Future<void> submitStaConfiguration(
     StaNetworkConfiguration configuration,
   ) async {
+    if (state.phase == NetworkProvisioningPhase.configuringSta || state.phase == NetworkProvisioningPhase.confirmingNetwork || directApHandoff?.state.active == true) return;
     final capabilities = state.capabilities;
     final supported =
         capabilities?.infrastructureSta == true &&
@@ -500,6 +538,8 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       return;
     }
     final generation = ++_generation;
+    _attemptId = SecureRequestIdFactory().create();
+    _trace('sta_intent_started', fields: {'network_identity_hash': sha256.convert(utf8.encode(configuration.ssid)).toString()});
     emit(
       state.copyWith(
         phase: NetworkProvisioningPhase.configuringSta,
@@ -514,8 +554,11 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       final accepted = await _repository.setStaConfig(configuration);
       if (isClosed || generation != _generation) return;
       emit(state.copyWith(activeOperationId: accepted.operationId));
-    } catch (error) {
+      _trace('sta_command_accepted');
+      if (directApHandoff != null) _startStaReconciliation(generation);
+    } catch (error, stack) {
       if (isClosed || generation != _generation) return;
+      _trace('sta_command_failed', error: error, stack: stack);
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.failure,
@@ -627,6 +670,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   void _onEvent(ProvisioningEvent event) {
     if (isClosed || event.deviceId != state.trustedDeviceId) return;
+    _trace('network_event_received', fields: {'request_id': event.requestId, 'received_operation_id': event.operationId, 'event_type': event.type.wireValue});
     final eventOperationId = event.operationId;
     if (eventOperationId != null && eventOperationId != state.activeOperationId) {
       return;
@@ -691,6 +735,12 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       return;
     }
     if (payload is StaConnected && (state.phase == NetworkProvisioningPhase.configuringSta || state.phase == NetworkProvisioningPhase.preparingDpp || state.phase == NetworkProvisioningPhase.stoppingDirectAp)) {
+      if (directApHandoff != null) {
+        // The correlated terminal event is already box evidence. A second BLE
+        // command must not veto an otherwise valid HTTP/WS handoff.
+        _staReady(payload.baseUri, payload.operationId);
+        return;
+      }
       final generation = _generation;
       emit(
         state.copyWith(
@@ -737,6 +787,79 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     }
     if (payload is DirectApReady && state.phase == NetworkProvisioningPhase.startingDirectAp) {
       _directApReady(payload.baseUri, payload.operationId, payload.ssid);
+    }
+  }
+
+  void _staReady(Uri baseUri, String operationId) {
+    _stopStaReconciliation();
+    emit(
+      state.copyWith(
+        phase: NetworkProvisioningPhase.confirmingNetwork,
+        operationState: NetworkOperationState.staConnected,
+        activeOperationId: operationId,
+        baseUri: baseUri,
+        confirmedMode: ProvisioningNetworkMode.infrastructureSta,
+        clearError: true,
+        canCancel: false,
+      ),
+    );
+    _trace('sta_endpoint_ready', fields: {'base_uri': baseUri.toString()});
+    final id = state.trustedDeviceId;
+    if (id != null) unawaited(directApHandoff?.begin(PendingDirectAp(deviceId: id, baseUri: baseUri, operationId: operationId, networkMode: ProvisioningNetworkMode.infrastructureSta, attemptId: _attemptId)));
+  }
+
+  void _startStaReconciliation(int generation) {
+    _stopStaReconciliation();
+    _staPoll = Timer.periodic(pollInterval, (_) => unawaited(_pollSta(generation)));
+    _staDeadline = Timer(reconciliationWindow, () => unawaited(_reconcileStaEndpoint(generation)));
+    unawaited(_pollSta(generation));
+  }
+
+  bool _staCurrent(int generation) => !isClosed && generation == _generation && state.phase == NetworkProvisioningPhase.configuringSta;
+
+  Future<void> _pollSta(int generation) async {
+    if (!_staCurrent(generation) || _readingSta) return;
+    _readingSta = true;
+    try {
+      final status = await _repository.getNetworkStatus();
+      if (!_staCurrent(generation)) return;
+      _trace('sta_status_read', fields: {'status_operation_id': status.operationId, 'operation_state': status.operationState.wireValue, 'busy': status.busy});
+      // Another operation or an old success must not complete this intent.
+      if (status.operationId != state.activeOperationId) return;
+      if (!status.busy && (status.lastError != null || status.operationState == NetworkOperationState.failed || status.operationState == NetworkOperationState.cancelled)) {
+        _stopStaReconciliation();
+        final error = status.lastError ?? const NetworkOperationFailedException();
+        _trace('sta_box_terminal_failure', error: error);
+        emit(state.copyWith(phase: NetworkProvisioningPhase.failure, error: _safePresentationError(error)));
+      } else if (!status.busy && status.activeMode == ProvisioningNetworkMode.infrastructureSta && status.operationState == NetworkOperationState.staConnected && status.baseUri != null) {
+        _staReady(status.baseUri!, status.operationId!);
+      }
+    } catch (error, stack) {
+      if (_staCurrent(generation)) _trace('sta_status_temporarily_unavailable', error: error, stack: stack);
+      // Accepted board work survives BLE loss; reconcile before declaring failure.
+    } finally {
+      _readingSta = false;
+    }
+  }
+
+  Future<void> _reconcileStaEndpoint(int generation) async {
+    if (!_staCurrent(generation)) return;
+    _stopStaReconciliation();
+    try {
+      final id = state.trustedDeviceId;
+      final endpoint = id == null ? null : await resolveStaEndpoint?.call(id).timeout(const Duration(seconds: 5));
+      if (!_staCurrent(generation)) return;
+      if (endpoint != null) {
+        _trace('sta_ble_terminal_missing_http_fallback');
+        _staReady(endpoint, state.activeOperationId!);
+        return;
+      }
+    } catch (error, stack) {
+      if (_staCurrent(generation)) _trace('sta_endpoint_lookup_failed', error: error, stack: stack);
+    }
+    if (_staCurrent(generation)) {
+      _trace('sta_confirmation_timeout', error: const NetworkStatusConfirmationException());
+      emit(state.copyWith(phase: NetworkProvisioningPhase.failure, error: const NetworkStatusConfirmationException()));
     }
   }
 
@@ -864,6 +987,9 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   void _onEventError(Object error, StackTrace stackTrace) {
     if (isClosed || state.trustedDeviceId == null) return;
     if (_cancellingOperationId != null) return;
+    _trace('network_transport_error', error: error, stack: stackTrace);
+    if (state.phase == NetworkProvisioningPhase.failure && state.error != null) return;
+    if (directApHandoff?.state.active == true || (directApHandoff != null && state.phase == NetworkProvisioningPhase.configuringSta && state.activeOperationId != null)) return;
     if (state.phase == NetworkProvisioningPhase.preparingDpp) {
       _emitDppOutcome(error);
       return;
@@ -889,6 +1015,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   @override
   Future<void> close() async {
+    _stopStaReconciliation();
     _generation++;
     await _eventSubscription.cancel();
     return super.close();

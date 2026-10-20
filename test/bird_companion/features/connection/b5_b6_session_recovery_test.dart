@@ -16,6 +16,63 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:web_socket_channel/io.dart';
 
 void main() {
+  test('foreground revalidation does not flash offline while an existing healthy session is checked', () async {
+    final pending = Completer<DeviceStatus>();
+    final repository = _RecoveryRepository(saved: _savedDevice, reconnectFuture: pending.future);
+    final events = EventClient(), refresh = SessionRefreshCoordinator();
+    final session = DeviceSessionCubit(repository, _FixedConnectivityMonitor(true), events, refresh);
+    addTearDown(() async {
+      await session.close();
+      await events.dispose();
+      await refresh.dispose();
+    });
+    await session.setConnectedFromStatus(_status(_savedDevice));
+    final check = session.verifySavedSession();
+    await Future<void>.delayed(Duration.zero);
+    expect(session.state.isConnected, true);
+    pending.completeError(EventSessionNotReadyException());
+    expect(await check, true);
+    expect(session.state.isConnected, true);
+    expect(session.state.message, contains('实时事件连接暂不可用'));
+  });
+  test('foreground and explicit reconnect coalesce; superseded restore cannot overwrite a verified session', () async {
+    final pending = Completer<DeviceStatus>();
+    final repository = _RecoveryRepository(saved: _savedDevice, reconnectFuture: pending.future);
+    final events = EventClient(), refresh = SessionRefreshCoordinator();
+    final session = DeviceSessionCubit(repository, _FixedConnectivityMonitor(true), events, refresh);
+    addTearDown(() async {
+      await session.close();
+      await events.dispose();
+      await refresh.dispose();
+    });
+    final first = session.verifySavedSession(), second = session.verifySavedSession();
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.reconnectCalls, 1);
+    session.provisioningHandoffActive = true;
+    final current = _savedDevice.copyWith(baseUri: Uri.parse('http://192.0.2.20:8080'));
+    await session.setConnectedFromStatus(_status(current));
+    pending.complete(_status(_savedDevice));
+    expect(await first, false);
+    expect(await second, false);
+    expect(session.state.device?.baseUri, current.baseUri);
+    expect(session.state.isConnected, true);
+  });
+
+  test('verified connection enters online immediately even when retained-write sync is slow', () async {
+    final sync = Completer<void>();
+    final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status(_savedDevice));
+    final events = EventClient(), refresh = SessionRefreshCoordinator();
+    final session = DeviceSessionCubit(repository, _FixedConnectivityMonitor(true), events, refresh, onConnectionRecovered: () => sync.future);
+    addTearDown(() async {
+      sync.complete();
+      await session.close();
+      await events.dispose();
+      await refresh.dispose();
+    });
+    expect(await session.verifySavedSession(), true);
+    expect(session.state.isConnected, true);
+  });
+
   test('offline startup retains the saved device without reconnecting', () async {
     final repository = _RecoveryRepository(saved: _savedDevice);
     final events = EventClient();
@@ -265,10 +322,11 @@ final class _FixedConnectivityMonitor extends ConnectivityMonitor {
 }
 
 final class _RecoveryRepository implements ConnectionRepository {
-  _RecoveryRepository({required this.saved, this.reconnectStatus});
+  _RecoveryRepository({required this.saved, this.reconnectStatus, this.reconnectFuture});
 
   final DeviceConnection? saved;
   final DeviceStatus? reconnectStatus;
+  final Future<DeviceStatus>? reconnectFuture;
   int reconnectCalls = 0;
 
   @override
@@ -277,6 +335,7 @@ final class _RecoveryRepository implements ConnectionRepository {
   @override
   Future<DeviceStatus> reconnect({CancelToken? cancelToken}) async {
     reconnectCalls++;
+    if (reconnectFuture != null) return reconnectFuture!;
     return reconnectStatus ?? (throw StateError('offline'));
   }
 

@@ -5,6 +5,8 @@ import 'package:aves/bird_companion/features/connection/data/connection_api.dart
 import 'package:aves/bird_companion/features/connection/data/device_discovery_source.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
 import 'package:dio/dio.dart';
+import 'package:aves/bird_companion/features/connection/domain/connection_cancellation.dart';
+import 'package:aves/bird_companion/core/session/session_coordinator.dart';
 
 class ConnectionRepositoryImpl implements ConnectionRepository {
   ConnectionRepositoryImpl(this._api, this._cache, this._discoverySource);
@@ -95,6 +97,15 @@ class ConnectionRepositoryImpl implements ConnectionRepository {
   Future<DeviceStatus> reconnect({CancelToken? cancelToken}) async {
     final device = await savedDevice();
     if (device == null) throw StateError('没有可重连的盒子设备。');
+    // A live saved HTTP session must not wait for mDNS or restart BLE pairing.
+    Object? lastError;
+    try {
+      return await connectExpected(device.baseUri, networkMode: device.networkMode, expectedDeviceId: device.id, cancelToken: cancelToken);
+    } catch (error) {
+      if (error is EventSessionNotReadyException) rethrow;
+      lastError = error;
+      cancelToken?.throwIfCancellationRequested();
+    }
     List<DeviceConnection> discovered;
     try {
       discovered = await _discoverySource.discover();
@@ -103,11 +114,8 @@ class ConnectionRepositoryImpl implements ConnectionRepository {
       // address hint is still worth trying when mDNS is temporarily absent.
       discovered = const [];
     }
-    final candidates = _unique([
-      ...discovered.where((candidate) => candidate.id == device.id),
-      device,
-    ]);
-    Object? lastError;
+    final endpoints = <String>{device.baseUri.toString()};
+    final candidates = discovered.where((candidate) => candidate.id == device.id && endpoints.add(candidate.baseUri.toString()));
     for (final candidate in candidates) {
       if (cancelToken?.isCancelled == true) {
         throw StateError('Connection cancelled while resolving the device.');

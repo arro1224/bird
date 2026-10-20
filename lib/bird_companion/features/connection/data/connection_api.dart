@@ -41,6 +41,7 @@ class ConnectionApi {
     final restored = await _sessionCoordinator.restore(
       deviceId: status.connection.id,
       baseUri: normalized,
+      cancelToken: cancelToken,
     );
     if (!restored) throw PairingRequiredException(status);
     if (cancelToken?.isCancelled == true) {
@@ -52,15 +53,18 @@ class ConnectionApi {
       cancelToken: cancelToken,
     );
     _checkIdentity(verified, expectedDeviceId);
-    if (networkMode == NetworkMode.directAp && expectedDeviceId != null) await _apiClient.verifyAuthenticatedSession(cancelToken);
+    if (expectedDeviceId != null) {
+      await _apiClient.verifyAuthenticatedSession(cancelToken);
+      _sessionCoordinator.requireConnectedSession(expectedDeviceId, normalized);
+    }
     return verified;
   }
 
-  Future<void> verifyDirectApIdentity(Uri baseUri, String deviceId, CancelToken cancelToken) async {
-    final status = await _publicStatus(_normalizeBaseUri(baseUri), NetworkMode.directAp, cancelToken: cancelToken);
+  Future<void> verifyDirectApIdentity(Uri baseUri, String deviceId, CancelToken cancelToken, {NetworkMode networkMode = NetworkMode.directAp}) async {
+    final status = await _publicStatus(_normalizeBaseUri(baseUri), networkMode, cancelToken: cancelToken);
     _checkIdentity(status, deviceId);
-    if (status.connection.networkMode != NetworkMode.directAp) {
-      throw const ProvisioningProtocolException('network_mode', 'Expected direct_ap');
+    if (status.connection.networkMode != networkMode) {
+      throw const ProvisioningProtocolException('network_mode', 'Unexpected active network mode');
     }
   }
 

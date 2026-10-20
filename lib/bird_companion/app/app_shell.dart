@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
@@ -23,7 +24,8 @@ class BirdAppShell extends StatefulWidget {
   State<BirdAppShell> createState() => _BirdAppShellState();
 }
 
-class _BirdAppShellState extends State<BirdAppShell> {
+class _BirdAppShellState extends State<BirdAppShell> with WidgetsBindingObserver {
+  bool _leftForeground = false;
   late int _selectedIndex;
   late final ValueNotifier<int> _selectedTab;
   late final ValueNotifier<AlbumFocusRequest?> _albumFocusRequest;
@@ -34,6 +36,7 @@ class _BirdAppShellState extends State<BirdAppShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectedIndex = widget.initialIndex.clamp(0, 2).toInt();
     _selectedTab = ValueNotifier(_selectedIndex);
     _albumFocusRequest = ValueNotifier<AlbumFocusRequest?>(null);
@@ -47,9 +50,20 @@ class _BirdAppShellState extends State<BirdAppShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _albumFocusRequest.dispose();
     _selectedTab.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) _leftForeground = true;
+    if (state == AppLifecycleState.resumed && _leftForeground) {
+      _leftForeground = false;
+      final dependencies = BirdCompanionScope.maybeOf(context);
+      if (dependencies?.deviceSessionCubit.provisioningHandoffActive == false) unawaited(dependencies!.deviceSessionCubit.verifySavedSession());
+    }
   }
 
   static const _destinations = <NavigationDestination>[

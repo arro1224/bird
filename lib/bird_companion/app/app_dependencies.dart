@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:aves/bird_companion/features/connection/data/connection_attempt_recorder.dart';
 import 'package:flutter/services.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_cancellation.dart';
 import 'package:aves/bird_companion/features/connection/domain/ble_connection_diagnostics.dart';
@@ -144,6 +145,9 @@ class BirdCompanionDependencies {
   final BleConnectionDiagnosticStore bleConnectionDiagnosticStore;
   final bleDiagnosticFilePlatform = const MethodChannelBirdBoxBleDiagnosticFilePlatform();
   late final bleDiagnosticSnapshotService = BleDiagnosticSnapshotService(bleScanDiagnosticStore, bleConnectionDiagnosticStore, bleDiagnosticFilePlatform);
+  late final connectionAttempts = ConnectionAttemptRecorder(cache, bleConnectionDiagnosticStore);
+  StreamSubscription<EventConnectionState>? _sessionTrace;
+  StreamSubscription? _deviceTrace;
 
   static Future<BirdCompanionDependencies> create({
     bool connectEnvironmentTestEndpoint = true,
@@ -301,6 +305,8 @@ class BirdCompanionDependencies {
       bleConnectionDiagnosticStore: bleConnectionDiagnosticStore,
     );
     dependencies.birdSyncService.start();
+    dependencies._sessionTrace = eventClient.connectionStates.listen((state) => dependencies.connectionAttempts.record({'event': 'session_ws_state', 'device_id': sessionCoordinator.activeDeviceId, 'ws_state': state.name}));
+    dependencies._deviceTrace = deviceSessionCubit.stream.listen((state) => dependencies.connectionAttempts.record({'event': 'global_session_state', 'device_id': state.device?.id, 'phase': state.phase.name}));
     const testBaseUrl = String.fromEnvironment('BIRD_TEST_BASE_URL');
     const testPairingCode = String.fromEnvironment('BIRD_TEST_PAIRING_CODE');
     if (connectEnvironmentTestEndpoint && testBaseUrl.isNotEmpty) {
@@ -355,6 +361,7 @@ class BirdCompanionDependencies {
   }
 
   Future<void> completeDirectApHandoff(PendingDirectAp pending, CancelToken token) async {
+    connectionAttempts.record({'event': 'network_identity_check_started', 'attempt_id': pending.attemptId, 'operation_id': pending.operationId, 'device_id': pending.deviceId, 'base_uri': pending.baseUri.toString()});
     Map<String, dynamic> phoneNetwork;
     try {
       phoneNetwork = Map<String, dynamic>.from(await const MethodChannel('bird_companion/birdbox_wifi/methods').invokeMapMethod<String, dynamic>('networkSnapshot') ?? const {});
@@ -376,12 +383,39 @@ class BirdCompanionDependencies {
       ),
     );
     // Read public identity BEFORE sending pairing material or activating a token.
-    await ConnectionApi(apiClient, PairingApi(apiClient), sessionCoordinator).verifyDirectApIdentity(pending.baseUri, pending.deviceId, token);
+    await ConnectionApi(apiClient, PairingApi(apiClient), sessionCoordinator).verifyDirectApIdentity(pending.baseUri, pending.deviceId, token, networkMode: pending.isSta ? NetworkMode.infrastructureSta : NetworkMode.directAp);
     token.throwIfCancellationRequested();
     final repository = provisioningRepository;
     if (repository is DirectApHttpPreparation) await (repository as DirectApHttpPreparation).prepareDirectApHttp(pending.completion, token);
     token.throwIfCancellationRequested();
     await completeProvisioning(pending.completion, cancelToken: token);
+    connectionAttempts.record({
+      'event': 'authenticated_http_ws_verified',
+      'attempt_id': pending.attemptId,
+      'operation_id': pending.operationId,
+      'device_id': pending.deviceId,
+      'http_result': 'protected_read_ok',
+      'ws_state': eventClient.currentState.name,
+    });
+  }
+
+  Future<Uri?> resolveStaEndpoint(String deviceId) async {
+    final candidates = await connectionRepository.discover();
+    for (final device in candidates) {
+      if (device.id == deviceId && device.networkMode == NetworkMode.infrastructureSta) return device.baseUri;
+    }
+    final repository = provisioningRepository;
+    final snapshot = repository is ProvisioningEndpointSnapshot ? (repository as ProvisioningEndpointSnapshot).lastNetworkSnapshot : null;
+    return snapshot?.activeMode == ProvisioningNetworkMode.infrastructureSta ? snapshot?.baseUri : null;
+  }
+
+  Future<bool> resumeVerifiedBleEndpoint(ProvisioningDeviceInfo info, CancelToken token) async {
+    final repository = provisioningRepository;
+    final snapshot = repository is ProvisioningEndpointSnapshot ? (repository as ProvisioningEndpointSnapshot).lastNetworkSnapshot : null;
+    final endpoint = snapshot?.baseUri;
+    if (snapshot == null || snapshot.busy || snapshot.lastError != null || endpoint == null || !{NetworkOperationState.staConnected, NetworkOperationState.apReady}.contains(snapshot.operationState)) return false;
+    await completeDirectApHandoff(PendingDirectAp(deviceId: info.deviceId, baseUri: endpoint, operationId: snapshot.operationId ?? 'existing-network', networkMode: snapshot.activeMode, attemptId: connectionAttempts.activeId), token);
+    return true;
   }
 
   DirectApHandoffCubit createDirectApHandoff() => DirectApHandoffCubit(
@@ -389,13 +423,14 @@ class BirdCompanionDependencies {
     verify: completeDirectApHandoff,
     activeChanged: (active) {
       deviceSessionCubit.provisioningHandoffActive = active;
-      if (active) deviceSessionCubit.disconnected('等待手机连接盒子热点。');
+      if (active) deviceSessionCubit.disconnected('正在验证盒子网络连接。');
     },
     onCancel: (id) async {
       final repository = provisioningRepository;
       if (repository is DirectApHttpPreparation) await (repository as DirectApHttpPreparation).cancelDirectApHttp(id);
     },
     diagnostic: (event) {
+      connectionAttempts.record(event);
       final trace = event['operation_id'] as String? ?? 'direct-ap';
       unawaited(
         bleConnectionDiagnosticStore.record(
@@ -406,6 +441,8 @@ class BirdCompanionDependencies {
   );
 
   void dispose() {
+    unawaited(_sessionTrace?.cancel());
+    unawaited(_deviceTrace?.cancel());
     recognitionRepository.dispose();
     unawaited(provisioningRepository.dispose());
     unawaited(mediaAssetCoordinator.dispose());

@@ -17,7 +17,8 @@ from birdbox_backend.main import create_app
 from test_rc4_backend import _settings, DEVICE_ID
 
 root = Path(tempfile.mkdtemp(prefix="birdbox-direct-ap-acceptance-"))
-settings = _settings(root, network_mode="direct_ap")
+mode = os.environ.get("BIRDBOX_FIXTURE_NETWORK_MODE", "direct_ap")
+settings = _settings(root, network_mode=mode)
 app = create_app(settings)
 client_id = "a870bcb1-d423-4d66-96f7-f809ce786543"
 with TestClient(app):
@@ -29,8 +30,8 @@ def fixture():
     pairing = app.state.pairing_service
     pairing.open_pairing(device_id=DEVICE_ID, client_id=client_id)
     authorization = pairing.authorize_pairing(device_id=DEVICE_ID, client_id=client_id, pairing_code="123456")
-    return {"device_id": DEVICE_ID, "client_id": client_id, **authorization}
+    return {"device_id": DEVICE_ID, "client_id": client_id, "network_mode": mode, **authorization}
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=18096, log_level="warning")
+    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("BIRDBOX_FIXTURE_PORT", "18096")), log_level="warning")

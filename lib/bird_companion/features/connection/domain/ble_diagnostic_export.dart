@@ -35,13 +35,23 @@ final class BleDiagnosticExport {
     fullJson = jsonEncode({...header, 'scan_sessions': scans, 'connection_events': events});
     payloadSha256 = sha256.convert(utf8.encode(fullJson)).toString();
     final errors = events.where((e) => e['error_code'] != null || (e['gatt_status'] is int && (e['gatt_status'] as int) > 0) || RegExp('fail|error|timeout').hasMatch(e['event_type']?.toString() ?? ''));
+    final requestedErrors = errors.where((e) => e['flow_id'] == traceId || e['attempt_id'] == traceId || e['trace_id'] == traceId);
     final summary = <String, dynamic>{
       ...header,
+      if (retention.containsKey('per_flow_retention'))
+        'retention': {
+          'export_scope': retention['export_scope'],
+          'included_flow_count': (retention['included_flow_ids'] as List?)?.length,
+          'observations_dropped': retention['observations_dropped'],
+          'truncated': truncated,
+          'per_flow_loss_details_in_full_file': true,
+        },
       'export_kind': 'summary',
       'full_record_included': false,
       'retained_event_count': events.length,
       'scan': scans.isEmpty ? null : _pick(scans.last, _scanKeys),
-      'first_error': errors.isEmpty ? null : _pick(errors.first, _eventKeys),
+      'first_error_scope': requestedErrors.isNotEmpty ? 'requested_flow' : 'retained_history',
+      'first_error': errors.isEmpty ? null : _pick(requestedErrors.isNotEmpty ? requestedErrors.first : errors.first, _eventKeys),
       'latest_state': events.isEmpty ? null : _pick(events.last, _eventKeys),
     };
     var limit = 128;
@@ -95,7 +105,11 @@ final class BleDiagnosticExport {
   late final int retainedEventCount, retainedScanCount;
   late final String payloadSha256;
   late final Map<String, dynamic> retention;
-  bool get truncated => retention.isEmpty || (retention['observations_dropped'] as int? ?? 0) > 0 || ['scan_sessions', 'connection_events'].any((key) => (retention[key] as Map?)?['truncated'] != false);
+  bool get truncated =>
+      retention.isEmpty ||
+      (retention['observations_dropped'] as int? ?? 0) > 0 ||
+      ['scan_sessions', 'connection_events'].any((key) => (retention[key] as Map?)?['truncated'] != false) ||
+      ((retention['per_flow_retention'] as Map?)?.values.any((flow) => (flow as Map).values.any((stats) => (stats as Map)['truncated'] != false)) ?? false);
   late final String fullJson;
   late final List<String> parts;
 

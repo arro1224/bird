@@ -33,6 +33,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     });
     _authenticationSubscription = sessionCoordinator?.authenticationFailures.listen((_) {
       if (!isClosed) {
+        _invalidateConnection();
         emit(
           state.copyWith(
             phase: DeviceSessionPhase.disconnected,
@@ -58,7 +59,22 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   final ConnectivityMonitor _connectivityMonitor;
   final EventClient _eventClient;
   final SessionRefreshCoordinator _refreshCoordinator;
-  bool provisioningHandoffActive = false;
+  bool _provisioningHandoffActive = false;
+  bool get provisioningHandoffActive => _provisioningHandoffActive;
+  set provisioningHandoffActive(bool value) {
+    if (value && !_provisioningHandoffActive) _invalidateConnection();
+    _provisioningHandoffActive = value;
+  }
+
+  int _connectionGeneration = 0;
+  CancelToken? _connectionCancel;
+  Future<bool>? _restoring;
+  void _invalidateConnection() {
+    ++_connectionGeneration;
+    _connectionCancel?.cancel('Connection attempt superseded');
+    _connectionCancel = null;
+  }
+
   final Future<void> Function()? onConnectionRecovered;
   static const _eventUnavailableMessage = '实时事件连接暂不可用，页面会在刷新时读取最新状态。';
   late final StreamSubscription<bool> _networkSubscription;
@@ -72,9 +88,10 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
 
   Future<void> connected(DeviceSessionState next) async {
     if (isClosed) return;
+    _invalidateConnection();
     emit(next);
     _refreshCoordinator.requestRefresh();
-    await _synchronizeAfterConnection();
+    unawaited(_synchronizeAfterConnection());
   }
 
   Future<void> setConnectedFromStatus(dynamic status) => connected(
@@ -85,14 +102,48 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   /// startup request in flight. A failed restore keeps the device in session
   /// so the connection page can offer a one-tap retry.
   Future<bool> restoreSavedSession({Duration timeout = const Duration(seconds: 5)}) async {
-    if (isClosed || state.isConnected) return state.isConnected;
+    return _verifySavedSession(timeout: timeout, force: false);
+  }
+
+  /// Used on explicit reconnect and foreground restore. Online cache alone is
+  /// not proof. All callers coalesce around one cancellable verification.
+  Future<bool> verifySavedSession({Duration timeout = const Duration(seconds: 12), String? expectedDeviceId}) async {
+    final saved = await _repository.savedDevice();
+    if (expectedDeviceId != null && saved?.id != expectedDeviceId) return false;
+    return _verifySavedSession(timeout: timeout, force: true);
+  }
+
+  Future<bool> _verifySavedSession({required Duration timeout, required bool force}) {
+    if (_restoring != null) return _restoring!;
+    final future = _restoreSavedSession(timeout: timeout, force: force);
+    _restoring = future;
+    unawaited(
+      future.whenComplete(() {
+        if (identical(_restoring, future)) _restoring = null;
+      }),
+    );
+    return future;
+  }
+
+  Future<bool> _restoreSavedSession({required Duration timeout, required bool force}) async {
+    if (provisioningHandoffActive) return false;
+    if (isClosed || (!force && state.isConnected)) return state.isConnected;
+    _invalidateConnection();
+    final generation = _connectionGeneration;
     final device = await _repository.savedDevice();
-    if (device == null || isClosed) return false;
-    emit(DeviceSessionState(phase: DeviceSessionPhase.disconnected, device: device));
-    if (!await _connectivityMonitor.hasNetwork || isClosed) return false;
+    if (device == null || isClosed || generation != _connectionGeneration) return false;
+    final wasConnected = state.isConnected && state.device?.id == device.id;
+    if (!wasConnected) emit(DeviceSessionState(phase: DeviceSessionPhase.disconnected, device: device));
+    final hasNetwork = await _connectivityMonitor.hasNetwork;
+    if (isClosed || generation != _connectionGeneration) return false;
+    if (!hasNetwork) {
+      emit(state.copyWith(phase: DeviceSessionPhase.disconnected));
+      return false;
+    }
 
     final cancelToken = CancelToken();
-    emit(state.copyWith(phase: DeviceSessionPhase.reconnecting));
+    _connectionCancel = cancelToken;
+    if (!wasConnected) emit(state.copyWith(phase: DeviceSessionPhase.reconnecting));
     try {
       final status = await _repository
           .reconnect(cancelToken: cancelToken)
@@ -103,16 +154,23 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
               throw TimeoutException('Startup reconnection timed out.');
             },
           );
-      if (isClosed) return false;
+      if (isClosed || generation != _connectionGeneration || cancelToken.isCancelled) return false;
       await setConnectedFromStatus(status);
       return true;
-    } catch (_) {
-      if (!isClosed) emit(state.copyWith(phase: DeviceSessionPhase.disconnected));
+    } catch (error) {
+      if (!isClosed && generation == _connectionGeneration && wasConnected && error is EventSessionNotReadyException) {
+        // REST was identity/auth verified by the repository. A transient WS
+        // outage may degrade live refresh, but cannot erase an existing session.
+        emit(state.copyWith(message: _eventUnavailableMessage));
+        return true;
+      }
+      if (!isClosed && generation == _connectionGeneration) emit(state.copyWith(phase: DeviceSessionPhase.disconnected));
       return false;
     }
   }
 
   Future<void> _synchronizeAfterConnection() async {
+    final generation = _connectionGeneration;
     try {
       await onConnectionRecovered?.call();
       // Retained writes may have changed gallery and review data after the
@@ -121,7 +179,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       _refreshCoordinator.requestRefresh();
     } catch (_) {
       // The session is healthy even if retained writes cannot be replayed yet.
-      if (!isClosed) emit(state.copyWith(message: '已连接盒子，手机上保存的修改会自动传回盒子。'));
+      if (!isClosed && generation == _connectionGeneration) emit(state.copyWith(message: '已连接盒子，手机上保存的修改会自动传回盒子。'));
     }
   }
 
@@ -132,17 +190,11 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
 
   Future<void> reconnect() async {
     if (isClosed || provisioningHandoffActive || state.phase == DeviceSessionPhase.reconnecting || state.device == null) return;
-    emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '正在重新连接盒子…'));
-    try {
-      final status = await _repository.reconnect();
-      if (isClosed) return;
-      await setConnectedFromStatus(status);
-    } catch (_) {
-      if (!isClosed) emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: '自动重连失败，可手动重新连接。'));
-    }
+    await verifySavedSession();
   }
 
   void disconnected([String? message, bool clearDevice = false]) {
+    _invalidateConnection();
     if (!isClosed) {
       emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: message, clearDevice: clearDevice));
     }
@@ -150,6 +202,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
 
   @override
   Future<void> close() async {
+    _invalidateConnection();
     await _networkSubscription.cancel();
     await _eventSubscription.cancel();
     await _authenticationSubscription?.cancel();

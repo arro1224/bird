@@ -22,6 +22,7 @@ class NetworkProvisioningPage extends StatefulWidget {
     this.onCompleted,
     this.onChangeWifi,
     this.onReauthorize,
+    this.onExportDiagnostic,
     this.completing = false,
   });
 
@@ -29,6 +30,7 @@ class NetworkProvisioningPage extends StatefulWidget {
   final ValueChanged<Uri>? onCompleted;
   final VoidCallback? onChangeWifi;
   final VoidCallback? onReauthorize;
+  final VoidCallback? onExportDiagnostic;
   final bool completing;
 
   @override
@@ -51,7 +53,7 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
           },
         );
       }
-      return switch (state.phase) {
+      final content = switch (state.phase) {
         NetworkProvisioningPhase.choosingWifiMethod => _WifiMethodView(state: state),
         NetworkProvisioningPhase.scanningWifi => const _ProgressView(
           icon: Icons.wifi_find_rounded,
@@ -115,6 +117,12 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
           onCancel: state.canCancel ? () => unawaited(cubit.cancelActiveOperation()) : null,
         ),
       };
+      return Column(
+        children: [
+          Expanded(child: content),
+          if (widget.onExportDiagnostic != null) TextButton.icon(onPressed: widget.onExportDiagnostic, icon: const Icon(Icons.description_outlined), label: const Text('导出本次连接诊断')),
+        ],
+      );
     },
   );
 }

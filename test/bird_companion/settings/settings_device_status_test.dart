@@ -9,8 +9,34 @@ import 'package:aves/bird_companion/features/settings/presentation/settings_show
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:aves/bird_companion/features/connection/data/connection_attempt_recorder.dart';
+import 'package:aves/bird_companion/features/connection/data/ble/ble_connection_diagnostic_store.dart';
+import '../features/connection/ble_diagnostic_snapshot_test.dart' show MemoryStorage;
 
 void main() {
+  testWidgets('default reconnect reuses verified HTTP session without opening BLE discovery', (tester) async {
+    final session = _TestDeviceSessionCubit(const DeviceSessionState())..verificationResult = true;
+    final dependencies = _TestDependencies(session);
+    RouteSettings? route;
+    addTearDown(session.close);
+    await tester.pumpWidget(
+      BirdCompanionScope(
+        dependencies: dependencies,
+        child: MaterialApp(
+          onGenerateRoute: (settings) {
+            route = settings;
+            return MaterialPageRoute<void>(builder: (_) => const Scaffold());
+          },
+          home: const SettingsShowcasePage(embedded: true),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('showcase-device-primary-action')));
+    await tester.pumpAndSettle();
+    expect(session.verificationCount, 1);
+    expect(session.reconnectCount, 0);
+    expect(route, isNull);
+  });
   testWidgets('default reconnect opens device discovery without a production scope', (tester) async {
     RouteSettings? route;
     await tester.pumpWidget(
@@ -297,6 +323,13 @@ class _TestDeviceSessionCubit extends Cubit<DeviceSessionState> implements Devic
   _TestDeviceSessionCubit(super.initialState);
 
   int reconnectCount = 0;
+  bool verificationResult = false;
+  int verificationCount = 0;
+  @override
+  Future<bool> verifySavedSession({Duration timeout = const Duration(seconds: 12), String? expectedDeviceId}) async {
+    ++verificationCount;
+    return verificationResult;
+  }
 
   @override
   Future<void> reconnect() async {
@@ -312,6 +345,8 @@ class _TestDependencies implements BirdCompanionDependencies {
 
   @override
   final DeviceSessionCubit deviceSessionCubit;
+  @override
+  late final connectionAttempts = ConnectionAttemptRecorder(MemoryStorage(), BleConnectionDiagnosticStore(MemoryStorage()));
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

@@ -1,5 +1,6 @@
 import 'package:aves/bird_companion/features/connection/domain/ble_pairing_progress.dart';
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
 import 'package:aves/bird_companion/features/connection/presentation/pages/direct_ap_handoff_panel.dart';
 
@@ -107,6 +108,10 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
   DirectApHandoffCubit? _handoff;
   StreamSubscription<DirectApHandoffState>? _handoffSubscription;
   StreamSubscription<void>? _networkSubscription;
+  StreamSubscription<ProvisioningState>? _provisioningTrace;
+  CancelToken? _resumeCancel;
+  bool _checkingExisting = false;
+  bool _entered = false;
   bool _initialized = false;
   bool _starting = true;
 
@@ -124,7 +129,19 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
     _initialized = true;
     final dependencies = BirdCompanionScope.maybeOf(context);
     _handoff = dependencies?.createDirectApHandoff();
-    _networkCubit = NetworkProvisioningCubit(widget.repository, directApHandoff: _handoff);
+    _networkCubit = NetworkProvisioningCubit(widget.repository, directApHandoff: _handoff, resolveStaEndpoint: dependencies?.resolveStaEndpoint, diagnostic: dependencies?.connectionAttempts.record);
+    _provisioningTrace = _provisioningCubit.stream.listen((state) {
+      if (state.phase == ProvisioningPhase.connecting) dependencies?.connectionAttempts.begin('ble_connect', scanId: state.latestScanDiagnostic?.scanSessionId);
+      dependencies?.connectionAttempts.record({
+        'event': 'provisioning_page_state',
+        'phase': state.phase.name,
+        'device_id': state.deviceInfo?.deviceId,
+        'scan_session_id': state.latestScanDiagnostic?.scanSessionId,
+        if (state.error != null) 'error_class': state.error.runtimeType.toString(),
+        if (state.error != null) 'error_code': directApErrorKind(state.error!),
+      });
+      if ((state.phase == ProvisioningPhase.trusted || state.phase == ProvisioningPhase.methodSelection) && dependencies != null) unawaited(_resumeExistingEndpoint(dependencies, state.deviceInfo!));
+    });
     _handoffSubscription = _handoff?.stream.listen((state) {
       if (!mounted) return;
       setState(() {});
@@ -137,13 +154,43 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
   Future<void> _start() async {
     final restored = await _handoff?.restore() ?? false;
     if (!mounted) return;
+    if (!restored && widget.entryMode == ConnectionEntryMode.initialSetup) {
+      final dependencies = BirdCompanionScope.maybeOf(context);
+      if (await dependencies?.deviceSessionCubit.verifySavedSession() == true) {
+        if (mounted) _enterConnectedShell();
+        return;
+      }
+    }
+    if (!mounted) return;
     setState(() => _starting = false);
     if (!restored) unawaited(_provisioningCubit.discover());
   }
 
   void _enterConnectedShell() {
+    if (_entered || !mounted) return;
+    _entered = true;
+    BirdCompanionScope.maybeOf(context)?.connectionAttempts.record({'event': 'route_changed', 'route': BirdRoutes.shell});
     _provisioningCubit.retainSession = true;
     unawaited(Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(BirdRoutes.shell, (_) => false, arguments: ShellArgs(initialIndex: automaticConnectionDestination(widget.entryMode) ?? 0)));
+  }
+
+  Future<void> _resumeExistingEndpoint(BirdCompanionDependencies dependencies, ProvisioningDeviceInfo info) async {
+    if (!mounted || _checkingExisting || _entered || _handoff?.state.active == true) return;
+    final token = CancelToken();
+    _resumeCancel?.cancel('Superseded');
+    _resumeCancel = token;
+    setState(() => _checkingExisting = true);
+    final deadline = Timer(const Duration(seconds: 10), () => token.cancel('Existing endpoint verification deadline'));
+    try {
+      final resumed = await Future.any<bool>([dependencies.resumeVerifiedBleEndpoint(info, token), token.whenCancel.then<bool>((_) => false)]);
+      if (mounted && !token.isCancelled && resumed) _enterConnectedShell();
+    } catch (error) {
+      dependencies.connectionAttempts.record({'event': 'existing_endpoint_not_resumed', 'device_id': info.deviceId, 'error_class': error.runtimeType.toString(), 'error_code': directApErrorKind(error)});
+      // Being authorized does not imply WLAN is reachable. Keep normal choices.
+    } finally {
+      deadline.cancel();
+      if (mounted) setState(() => _checkingExisting = false);
+    }
   }
 
   Future<void> _leaveDirectAp() async {
@@ -171,6 +218,8 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_handoffSubscription?.cancel());
     unawaited(_networkSubscription?.cancel());
+    unawaited(_provisioningTrace?.cancel());
+    _resumeCancel?.cancel('Connection view disposed');
     unawaited(_handoff?.close());
     unawaited(_provisioningCubit.close());
     unawaited(_networkCubit.close());
@@ -222,13 +271,13 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
   @override
   Widget build(BuildContext context) => Theme(
     data: AppTheme.light(),
-    child: _starting
+    child: _starting || _checkingExisting
         ? const Scaffold(body: Center(child: CircularProgressIndicator()))
         : _handoff?.state.active == true
         ? Scaffold(
             backgroundColor: AppColors.paper,
             appBar: AppBar(
-              title: const Text('连接盒子热点'),
+              title: Text(_handoff!.state.pending!.isSta ? '确认 Wi-Fi 连接' : '连接盒子热点'),
               leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => unawaited(_leaveDirectAp())),
             ),
             body: ConnectionBackground(
@@ -281,6 +330,7 @@ class _BleConnectionView extends StatelessWidget {
           title: '${titlePrefix ?? ''}${_networkTitle(networkState.phase)}',
           onBack: networkCubit.backToMethodSelection,
           content: NetworkProvisioningPage(
+            onExportDiagnostic: () => unawaited(_copyBleDiagnostic(context, networkCubit.attemptId ?? BirdCompanionScope.maybeOf(context)?.connectionAttempts.activeId ?? 'network-connection')),
             onBack: networkCubit.backToMethodSelection,
             onReauthorize: () {
               networkCubit.backToMethodSelection();
@@ -466,7 +516,7 @@ class _BleConnectionView extends StatelessWidget {
       return;
     }
     try {
-      final export = await dependencies.bleDiagnosticSnapshotService.capture(traceId);
+      final export = await dependencies.bleDiagnosticSnapshotService.capture(traceId, includeRetainedHistory: true);
       if (!context.mounted) return;
       await showDialog<void>(
         context: context,
