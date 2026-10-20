@@ -15,6 +15,24 @@ void main() {
     expect(info.deviceId, 'bbx-82f41c9e7a3d4b68a1501e21e536c649');
     expect(info.capabilities.dppUsableByBox, isFalse);
     expect(info.capabilities.bleFragmentationV1, isTrue);
+    expect(info.capabilities.pairingPreflightV1, isFalse);
+  });
+
+  test('preflight capability accepts only booleans and preserves other strict fields', () {
+    expect(ProvisioningDeviceInfo.fromJson(fixture('ble-device-info.preflight-v1.json')).capabilities.pairingPreflightV1, isTrue);
+    for (final supported in [true, false]) {
+      final json = fixture('ble-device-info.rc4.json');
+      (json['capabilities'] as Map)['pairing_preflight_v1'] = supported;
+      expect(ProvisioningDeviceInfo.fromJson(json).capabilities.pairingPreflightV1, supported);
+    }
+    for (final invalid in [null, 0, 1, 'true', <String, dynamic>{}]) {
+      final json = fixture('ble-device-info.rc4.json');
+      (json['capabilities'] as Map)['pairing_preflight_v1'] = invalid;
+      expect(() => ProvisioningDeviceInfo.fromJson(json), throwsA(isA<ProvisioningProtocolException>()));
+    }
+    final unknown = fixture('ble-device-info.rc4.json');
+    (unknown['capabilities'] as Map)['unknown_capability'] = true;
+    expect(() => ProvisioningDeviceInfo.fromJson(unknown), throwsA(isA<ProvisioningProtocolException>()));
   });
 
   test('Device Info rejects missing, wrong type, unknown enum and wrong version', () {

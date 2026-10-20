@@ -7,6 +7,7 @@ final class FakeBirdBoxWifiPlatform implements BirdBoxWifiPlatform {
   final List<WifiJoinResult> _joinResults = [];
   final List<String> requestedSsids = [];
   int releaseCount = 0;
+  Future<void> Function()? beforeRelease;
   BirdBoxWifiNetwork? _boundNetwork;
   final StreamController<WifiNetworkLoss> _networkLosses = StreamController<WifiNetworkLoss>.broadcast(sync: true);
 
@@ -39,6 +40,7 @@ final class FakeBirdBoxWifiPlatform implements BirdBoxWifiPlatform {
 
   @override
   Future<void> releaseNetwork() async {
+    if (beforeRelease != null) await beforeRelease!();
     releaseCount += 1;
     _boundNetwork = null;
   }

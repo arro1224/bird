@@ -90,6 +90,7 @@ final class BleConnectionDiagnosticEvent {
     this.resultCode,
     this.errorCode,
     this.sanitizedMessage,
+    this.failureDetails,
   });
 
   final String traceId;
@@ -178,6 +179,7 @@ final class BleConnectionDiagnosticEvent {
   final String? resultCode;
   final String? errorCode;
   final String? sanitizedMessage;
+  final Map<String, Object?>? failureDetails;
 
   Map<String, Object?> toJson() => {
     'schema_version': 4,
@@ -271,6 +273,7 @@ final class BleConnectionDiagnosticEvent {
     if (resultCode != null) 'result_code': resultCode,
     if (errorCode != null) 'error_code': errorCode,
     if (sanitizedMessage != null) 'sanitized_message': sanitizedMessage,
+    ...?failureDetails,
   };
 
   factory BleConnectionDiagnosticEvent.fromJson(Map<String, dynamic> value) => BleConnectionDiagnosticEvent(
@@ -363,6 +366,14 @@ final class BleConnectionDiagnosticEvent {
     resultCode: value['result_code'] as String?,
     errorCode: value['error_code'] as String?,
     sanitizedMessage: value['sanitized_message'] as String?,
+    failureDetails: value['first_terminal_error'] is Map || (value['secondary_errors'] is List && (value['secondary_errors'] as List).isNotEmpty)
+        ? {
+            'first_terminal_error': value['first_terminal_error'],
+            'secondary_errors': value['secondary_errors'] ?? const [],
+            'secondary_error_count': value['secondary_error_count'] ?? 0,
+            'secondary_errors_dropped': value['secondary_errors_dropped'] ?? 0,
+          }
+        : null,
   );
 
   factory BleConnectionDiagnosticEvent.fromPlatform(

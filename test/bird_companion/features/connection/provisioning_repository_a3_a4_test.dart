@@ -34,6 +34,44 @@ const _staRequest = '10000000-0000-4000-8000-000000000005';
 
 void main() {
   group('BLE-21 redemption and event ownership', () {
+    test('STA terminal evidence survives BLE teardown while phone routing is released', () async {
+      final harness = await _Harness.create();
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      harness.ble.queueResponse(
+        BleCommandType.setStaConfig,
+        _event(ProvisioningEventType.commandAccepted, _apRequest, {
+          'operation_id': 'op_sta_transport_loss',
+          'desired_mode': 'infrastructure_sta',
+          'provisioning_method': 'ble_manual',
+        }),
+      );
+      await harness.repository.setStaConfig(
+        StaNetworkConfiguration(provisioningMethod: ProvisioningMethod.bleManual, selectionMethod: WifiSelectionMethod.manual, ssid: 'test-network', security: WifiSecurity.open, hidden: false, networkKind: StaNetworkKind.router),
+      );
+      harness.wifi.beforeRelease = () async {
+        harness.wifi.beforeRelease = null;
+        await harness.ble.disconnect();
+      };
+      final ready = harness.repository.events.firstWhere((event) => event.type == ProvisioningEventType.staConnected);
+      harness.ble.emitEvent(
+        _event(ProvisioningEventType.staConnected, _apRequest, {
+        'operation_id': 'op_sta_transport_loss',
+          'active_mode': 'infrastructure_sta',
+          'ssid': 'test-network',
+          'ipv4': '192.0.2.10',
+          'prefix_length': 24,
+          'gateway_ipv4': '192.0.2.1',
+          'base_uri': harness.baseUri.toString(),
+          'network_kind': 'router',
+          'provisioning_method': 'ble_manual',
+        }),
+      );
+      expect((await ready.timeout(const Duration(seconds: 2))).operationId, 'op_sta_transport_loss');
+      expect(harness.repository.connectedDeviceInfo, isNull);
+      expect(harness.server.pairingExchangeCount, 0, reason: 'Only the independent HTTP handoff can activate a session.');
+    });
     test('HTTP handoff survives BLE disconnect before authorization exchange', () async {
       final harness = await _Harness.create();
       addTearDown(harness.close);

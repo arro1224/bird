@@ -11,6 +11,7 @@
 - `../decisions/ADR-001-birdbox-v1.md`：冲突决议、兼容窗口和责任边界。
 - `../../test/contracts/fixture-manifest.json`：可同时用于 mock 与真实盒子的固定样例。
 - `birdbox-network-v1.0-rc4-app-profile.md`：BLE 双模式配网 App 侧冻结接口。
+- `ble-pairing-preflight-1019-dart-native-contract.md`：10-19 公开配对预检增量、e160043ef 实际原生 ABI、乙侧适配及待联合确认的释放语义。
 - `A7-K7-INTEROP-AND-SECURITY-AUDIT-2026-08-26.md`：A7 自动证据、真机矩阵与阻断记录。
 
 `birdbox-v1.openapi.yaml` 使用 JSON 语法编写。JSON 是 YAML 1.2 的合法子集，

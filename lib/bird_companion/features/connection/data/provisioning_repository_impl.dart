@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/features/connection/domain/ble_pairing_progress.dart';
+import 'package:aves/bird_companion/features/connection/domain/ble_attempt_failure.dart';
 import 'dart:async';
 import 'package:aves/bird_companion/features/connection/domain/connection_cancellation.dart';
 import 'package:dio/dio.dart';
@@ -31,7 +32,9 @@ final class ProvisioningRepositoryImpl
         BleScanDiagnosticsRepository,
         BleProvisioningControl,
         DirectApHttpPreparation,
-        ProvisioningEndpointSnapshot {
+        ProvisioningEndpointSnapshot,
+        BleFailureDiagnostics,
+        BleSessionReleaseGuard {
   factory ProvisioningRepositoryImpl({
     required BirdBoxBleDataSource ble,
     required BirdBoxWifiPlatform wifi,
@@ -203,37 +206,87 @@ final class ProvisioningRepositoryImpl
   String? _activeScanRequestId;
   int _scanSequence = 0;
   bool _disposed = false;
+  bool _connectActive = false;
   String? _lastTrustedDeviceId;
   bool _networkStatusResumeRequired = false;
 
   BleProvisioningControl? get _bleControl => _ble is BleProvisioningControl ? _ble as BleProvisioningControl : null;
   Object? _sessionOwner;
+  Object? _nativeSessionOwner;
+  Future<void>? _sessionRelease;
+  ProvisioningException? _sessionReleaseError;
   @override
-  Object claimSession() => _sessionOwner = _bleControl?.claimSession() ?? Object();
+  bool get sessionReleasePending => _sessionRelease != null;
   @override
-  bool ownsSession(Object owner) => !_disposed && identical(owner, _sessionOwner) && (_bleControl?.ownsSession(owner) ?? true);
+  bool get sessionReleaseFailed => _sessionReleaseError != null;
   @override
-  Future<void> endSession(Object owner) async {
-    if (!ownsSession(owner)) return;
+  Object claimSession() {
+    // Do not invalidate the releasing native owner when a new page appears.
+    if (!sessionReleasePending && !sessionReleaseFailed) _nativeSessionOwner = _bleControl?.claimSession();
+    return _sessionOwner = Object();
+  }
+
+  @override
+  bool ownsSession(Object owner) => !_disposed && identical(owner, _sessionOwner) && (_nativeSessionOwner == null || (_bleControl?.ownsSession(_nativeSessionOwner!) ?? true));
+  @override
+  Future<void> endSession(Object owner) => ownsSession(owner) ? _releaseSession() : Future.value();
+
+  Future<void> _releaseSession() {
+    final pending = _sessionRelease;
+    if (pending != null) return pending;
+    final completion = Completer<void>();
+    _sessionRelease = completion.future;
+    unawaited(
+      _performSessionRelease().then(
+        (_) {
+          _sessionRelease = null;
+          completion.complete();
+        },
+        onError: (Object error, StackTrace stack) {
+          final failure = BleAttemptFailure(attemptId: 'session-release-$_connectionEpoch')..capture(error, stack, method: 'repository.endSession', expectedState: 'released', currentState: 'release_failed');
+          _sessionReleaseError = failure.exception;
+          _sessionRelease = null;
+          completion.completeError(failure.exception, stack);
+        },
+      ),
+    );
+    return completion.future;
+  }
+
+  Future<void> _performSessionRelease() async {
     final control = _bleControl;
-    if (control != null) {
-      await control.endSession(owner);
+    final nativeOwner = _nativeSessionOwner;
+    if (control != null && nativeOwner != null) {
+      await control.endSession(nativeOwner);
     } else {
       await _ble.stopScan();
-      if (!ownsSession(owner)) return;
       await _ble.disconnect();
     }
-    if (!identical(owner, _sessionOwner)) return;
     _clearTransientState();
     await _wifi.releaseNetwork();
+    _nativeSessionOwner = null;
+    _sessionReleaseError = null;
+  }
+
+  @override
+  Future<void> waitForSessionRelease() async {
+    while (_sessionRelease != null) {
+      await _sessionRelease;
+    }
+    if (_sessionReleaseError != null) throw _sessionReleaseError!;
+    _checkNotDisposed();
+    _nativeSessionOwner ??= _bleControl?.claimSession();
   }
 
   @override
   Future<void> pauseDiscovery(Object owner) async {
     if (!ownsSession(owner)) return;
+    if (sessionReleasePending || sessionReleaseFailed) return;
+    await waitForSessionRelease();
+    if (!ownsSession(owner)) return;
     final control = _bleControl;
     if (control != null) {
-      await control.pauseDiscovery(owner);
+      await control.pauseDiscovery(_nativeSessionOwner!);
     } else {
       await _ble.stopScan();
     }
@@ -241,7 +294,9 @@ final class ProvisioningRepositoryImpl
 
   @override
   Future<void> resumeDiscovery(Object owner) async {
-    if (ownsSession(owner)) await _bleControl?.resumeDiscovery(owner);
+    if (!ownsSession(owner) || sessionReleasePending || sessionReleaseFailed) return;
+    await waitForSessionRelease();
+    if (ownsSession(owner)) await _bleControl?.resumeDiscovery(_nativeSessionOwner!);
   }
 
   @override
@@ -249,12 +304,15 @@ final class ProvisioningRepositoryImpl
     if (!ownsSession(owner)) return;
     final control = _bleControl;
     if (control == null) throw const ProvisioningException(code: ProvisioningErrorCode.locationSettingsUnavailable, retryable: false);
-    await control.openLocationSettings(owner);
+    await waitForSessionRelease();
+    if (ownsSession(owner)) await control.openLocationSettings(_nativeSessionOwner!);
   }
 
   @override
   Future<void> locationSettingsReturned(Object owner, {required bool enabled}) async {
-    if (ownsSession(owner)) await _bleControl?.locationSettingsReturned(owner, enabled: enabled);
+    if (!ownsSession(owner) || sessionReleasePending || sessionReleaseFailed) return;
+    await waitForSessionRelease();
+    if (ownsSession(owner)) await _bleControl?.locationSettingsReturned(_nativeSessionOwner!, enabled: enabled);
   }
 
   @override
@@ -264,6 +322,18 @@ final class ProvisioningRepositoryImpl
 
   /// Final de-duplicated scan snapshots for B-owned selection pages.
   Stream<List<WifiScanNetwork>> get wifiScanResults => _wifiScanResults.stream;
+
+  @override
+  Future<void> recordFailureDetails(ProvisioningException error) async {
+    final ble = _ble;
+    if (ble is BleFailureDiagnostics) {
+      try {
+        await (ble as BleFailureDiagnostics).recordFailureDetails(error);
+      } catch (_) {
+        // Diagnostic persistence can never replace the operation failure.
+      }
+    }
+  }
 
   /// BLE disconnect is informational. It never sends a cancellation command.
   @override
@@ -276,7 +346,7 @@ final class ProvisioningRepositoryImpl
   }
 
   @override
-  ProvisioningDeviceInfo? get connectedDeviceInfo => _deviceInfo;
+  ProvisioningDeviceInfo? get connectedDeviceInfo => sessionReleasePending || sessionReleaseFailed ? null : _deviceInfo;
 
   @override
   bool get networkStatusResumeRequired => _networkStatusResumeRequired;
@@ -284,6 +354,9 @@ final class ProvisioningRepositoryImpl
   @override
   Stream<ProvisioningDevice> discoverDevices({Duration? timeout}) async* {
     _checkNotDisposed();
+    final owner = _sessionOwner;
+    await waitForSessionRelease();
+    _checkOwner(owner);
     await for (final advertisement in _ble.scan(timeout: timeout)) {
       final opaqueId = advertisement.platformDeviceId;
       yield ProvisioningDevice(
@@ -300,12 +373,26 @@ final class ProvisioningRepositoryImpl
   Future<ProvisioningDeviceInfo> connect(ProvisioningDevice device) async {
     _checkNotDisposed();
     final owner = _sessionOwner;
-    await _ble.connect(device.advertisement);
-    _checkOwner(owner);
+    if (_connectActive) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: true);
+    _connectActive = true;
+    var transportStarted = false;
     try {
-      final info = await _ble.readDeviceInfo();
-      await _ble.subscribeRequiredNotifications();
+      await waitForSessionRelease();
+      _checkOwner(owner);
       final clientId = await _clientIdentityStore.readOrCreate();
+      _checkOwner(owner);
+      final ble = _ble;
+      final ProvisioningDeviceInfo info;
+      transportStarted = true;
+      if (ble is BirdBoxPairingPreparation) {
+        info = await (ble as BirdBoxPairingPreparation).prepareConnection(device.advertisement, clientId: clientId);
+      } else {
+        await ble.connect(device.advertisement);
+        _checkOwner(owner);
+        await ble.subscribeRequiredNotifications();
+        info = await ble.readDeviceInfo();
+        if (info.capabilities.pairingPreflightV1) throw const ProvisioningException(code: ProvisioningErrorCode.blePairingPreflightUnavailable, retryable: false);
+      }
       _checkOwner(owner);
       _deviceInfo = info;
       _clientId = clientId;
@@ -322,22 +409,32 @@ final class ProvisioningRepositoryImpl
       final reconnecting = _lastTrustedDeviceId == info.deviceId;
       _networkStatusResumeRequired = reconnecting;
       _lastTrustedDeviceId = info.deviceId;
-      final status = reconnecting ? await _networkStatusAfterReconnect() : await _ble.readNetworkStatus();
+      // Production preparation may leave native BOND_NONE waiting for the user.
+      // The public read cannot implicitly enter get_network_status security setup.
+      final status = reconnecting && ble is! BirdBoxPairingPreparation ? await _networkStatusAfterReconnect() : await _ble.readNetworkStatus();
       _lastNetworkSnapshot = status;
       _resumeOperation(status);
       _checkOwner(owner);
       return info;
-    } catch (_) {
-      if (identical(owner, _sessionOwner)) await _ble.disconnect();
-      rethrow;
+    } catch (error, stack) {
+      final failure = BleAttemptFailure(attemptId: 'repository-connect-$_connectionEpoch')..capture(error, stack, method: 'repository.connect', expectedState: 'trusted', currentState: 'connecting');
+      if (transportStarted && identical(owner, _sessionOwner)) {
+        try {
+          await _releaseSession();
+        } catch (cleanupError, cleanupStack) {
+          failure.capture(cleanupError, cleanupStack, method: 'repository.connect.disconnect', expectedState: 'gatt_closed', currentState: 'cleanup_failed');
+        }
+      }
+      await recordFailureDetails(failure.exception);
+      Error.throwWithStackTrace(failure.exception, stack);
+    } finally {
+      _connectActive = false;
     }
   }
 
   @override
   Future<void> disconnect() async {
-    _clearTransientState();
-    await _wifi.releaseNetwork();
-    await _ble.disconnect();
+    await _releaseSession();
   }
 
   @override
@@ -559,6 +656,7 @@ final class ProvisioningRepositoryImpl
     String? requestId,
   }) async {
     final owner = _sessionOwner;
+    if (sessionReleasePending || sessionReleaseFailed) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: true);
     final info = _requireDeviceInfo();
     final clientId = _requireClientId();
     final request = BleCommandRequest(
@@ -670,7 +768,13 @@ final class ProvisioningRepositoryImpl
           // Readiness is evidence, not a UI session. The shared HTTP handoff
           // verifies identity/auth and promotes the global session independently
           // of BLE lifetime. Do not establish WS here then fail a second BLE read.
-          await _saveDirectApAuthorization();
+          // Authorization was persisted at authorize_pairing. Do not require a
+          // live BLE peer again after releasing phone routing: a disconnect may
+          // already have cleared transient state. Presentation still checks its
+          // own generation, trusted identity and operation before HTTP handoff.
+          _operations.remove(operationId);
+          _operationRequests.remove(operationId);
+          return event;
         case DppBootstrapReady ready:
           if (_operations[ready.operationId] != BleCommandType.startDppProvisioning) {
             return null;
@@ -980,13 +1084,13 @@ final class ProvisioningRepositoryImpl
   ProvisioningDeviceInfo _requireDeviceInfo() {
     _checkNotDisposed();
     final info = _deviceInfo;
-    if (info == null) throw StateError('No trusted BirdBox is connected');
+    if (info == null) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattNotReady, retryable: true);
     return info;
   }
 
   String _requireClientId() {
     final clientId = _clientId;
-    if (clientId == null) throw StateError('Client identity is not loaded');
+    if (clientId == null) throw const ProvisioningException(code: ProvisioningErrorCode.bleSessionEnded, retryable: true);
     return clientId;
   }
 
@@ -1009,7 +1113,7 @@ final class ProvisioningRepositoryImpl
   }
 
   void _checkNotDisposed() {
-    if (_disposed) throw StateError('Provisioning repository is disposed');
+    if (_disposed) throw const ProvisioningException(code: ProvisioningErrorCode.bleSessionEnded, retryable: true);
   }
 
   @override

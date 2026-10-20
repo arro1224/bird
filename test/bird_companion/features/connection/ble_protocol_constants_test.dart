@@ -5,11 +5,22 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('rc4 UUID and fragmentation constants stay frozen', () {
     expect(BleProtocolConstants.protocolVersion, '1.0-rc4');
-    expect(BleProtocolConstants.allGattUuids, hasLength(6));
+    expect(BleProtocolConstants.characteristicUuids, hasLength(5));
+    expect(BleProtocolConstants.allGattUuids, hasLength(7));
     expect(BleProtocolConstants.fragmentHeaderLength, 12);
     expect(BleProtocolConstants.maximumMessageBytes, 4096);
     expect(BleProtocolConstants.maximumFragmentCount, 256);
     expect(BleProtocolConstants.fragmentReassemblyTimeout, const Duration(seconds: 5));
+  });
+
+  test('public preflight is optional and separate from protected command writes', () {
+    const uuid = '6f7d0007-7a66-4c45-a1b9-5f4d2e3c1000';
+    expect(BleProtocolConstants.pairingPreflightCharacteristicUuid, uuid);
+    expect(BleProtocolConstants.optionalCharacteristicUuids, {uuid});
+    expect(BleProtocolConstants.preBondWriteCharacteristicUuids, {uuid});
+    expect(BleProtocolConstants.characteristicUuids, isNot(contains(uuid)));
+    expect(BleProtocolConstants.writeWithResponseCharacteristicUuids, isNot(contains(uuid)));
+    expect(BleProtocolConstants.pairingPreflightMaximumTokenLifetime, const Duration(seconds: 15));
   });
 
   test('UUID matching is lowercase normalized', () {

@@ -16,7 +16,8 @@ This profile is independent from the immutable `birdbox-v1@1.0.0` business API f
 ## Frozen transport
 
 - Protocol version: `1.0-rc4`.
-- Six UUIDs: one primary service and five characteristics, all compared as lowercase strings.
+- Six mandatory UUIDs: one primary service and five characteristics, all compared as lowercase strings.
+- The 2026-10-19 extension adds optional public characteristic `6f7d0007-7a66-4c45-a1b9-5f4d2e3c1000`, gated by the strict boolean `capabilities.pairing_preflight_v1`. Missing capability means false. The two public preflight requests are separate from the nine protected/business commands below; see [the incremental Dart/native contract](ble-pairing-preflight-1019-dart-native-contract.md) for pending integration decisions and the documented response envelopes.
 - Fragment header: 12 bytes, little-endian integer fields, magic `42 42`, version `1`.
 - Reassembled UTF-8 JSON limit: 4096 bytes; fragment count limit: 256; reassembly timeout: 5 seconds.
 - Identical duplicate fragments are idempotent. Missing, conflicting, out-of-range or oversized fragments produce `BLE_FRAGMENT_INVALID`.

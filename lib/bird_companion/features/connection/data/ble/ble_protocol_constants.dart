@@ -7,6 +7,7 @@ abstract final class BleProtocolConstants {
   static const wifiConfigCharacteristicUuid = '6f7d0004-7a66-4c45-a1b9-5f4d2e3c1000';
   static const provisioningCommandCharacteristicUuid = '6f7d0005-7a66-4c45-a1b9-5f4d2e3c1000';
   static const scanResultsCharacteristicUuid = '6f7d0006-7a66-4c45-a1b9-5f4d2e3c1000';
+  static const pairingPreflightCharacteristicUuid = '6f7d0007-7a66-4c45-a1b9-5f4d2e3c1000';
 
   static const characteristicUuids = <String>{
     deviceInfoCharacteristicUuid,
@@ -16,7 +17,11 @@ abstract final class BleProtocolConstants {
     scanResultsCharacteristicUuid,
   };
 
-  static const allGattUuids = <String>{serviceUuid, ...characteristicUuids};
+  // The original five characteristics remain mandatory for legacy boxes.
+  // 0007 is usable only when Device Info declares pairing_preflight_v1=true.
+  static const optionalCharacteristicUuids = <String>{pairingPreflightCharacteristicUuid};
+  static const allGattUuids = <String>{serviceUuid, ...characteristicUuids, ...optionalCharacteristicUuids};
+  static const preBondWriteCharacteristicUuids = <String>{pairingPreflightCharacteristicUuid};
   static const notifyCharacteristicUuids = <String>{networkStatusCharacteristicUuid, scanResultsCharacteristicUuid};
   static const writeWithResponseCharacteristicUuids = <String>{wifiConfigCharacteristicUuid, provisioningCommandCharacteristicUuid};
 
@@ -45,6 +50,7 @@ abstract final class BleProtocolConstants {
   static const healthRetryInterval = Duration(seconds: 2);
   static const healthRetryWindow = Duration(seconds: 30);
   static const pairingSessionLifetime = Duration(seconds: 600);
+  static const pairingPreflightMaximumTokenLifetime = Duration(seconds: 15);
 
   static const directApGatewayIpv4 = '192.168.82.1';
   static const directApPrefixLength = 24;

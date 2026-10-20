@@ -11,6 +11,10 @@ final class BleOperationFailure implements Exception {
   String toString() => 'BleOperationFailure(${error.code.wireValue})';
 }
 
+abstract interface class BirdBoxPairingPreparation {
+  Future<ProvisioningDeviceInfo> prepareConnection(BirdBoxAdvertisement advertisement, {required String clientId});
+}
+
 abstract interface class BirdBoxBleDataSource {
   Stream<BirdBoxAdvertisement> scan({Duration? timeout});
   Future<void> stopScan();

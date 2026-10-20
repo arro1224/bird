@@ -18,6 +18,11 @@ enum ProvisioningErrorCode {
   pairingCodeInvalid,
   pairingCodeExpired,
   pairingRateLimited,
+  pairingPreflightInvalidPeer,
+  pairingPreflightCommandUnsupported,
+  pairingPreflightBusy,
+  pairingPreflightExpired,
+  pairingPreflightConfirmationRejected,
   pairingSessionInvalid,
   pairingSessionExpired,
   pairingSessionUsed,
@@ -31,6 +36,7 @@ enum ProvisioningErrorCode {
   bleOperationBusy,
   bleSessionEnded,
   bleHostUnavailable,
+  blePairingPreflightUnavailable,
   bleCommandResponseTimeout,
   locationSettingsUnavailable,
   bleGattNotReady,
@@ -92,6 +98,11 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.pairingCodeInvalid => 'PAIRING_CODE_INVALID',
     ProvisioningErrorCode.pairingCodeExpired => 'PAIRING_CODE_EXPIRED',
     ProvisioningErrorCode.pairingRateLimited => 'PAIRING_RATE_LIMITED',
+    ProvisioningErrorCode.pairingPreflightInvalidPeer => 'PAIRING_PREFLIGHT_INVALID_PEER',
+    ProvisioningErrorCode.pairingPreflightCommandUnsupported => 'PAIRING_PREFLIGHT_COMMAND_UNSUPPORTED',
+    ProvisioningErrorCode.pairingPreflightBusy => 'PAIRING_PREFLIGHT_BUSY',
+    ProvisioningErrorCode.pairingPreflightExpired => 'PAIRING_PREFLIGHT_EXPIRED',
+    ProvisioningErrorCode.pairingPreflightConfirmationRejected => 'PAIRING_PREFLIGHT_CONFIRMATION_REJECTED',
     ProvisioningErrorCode.pairingSessionInvalid => 'PAIRING_SESSION_INVALID',
     ProvisioningErrorCode.pairingSessionExpired => 'PAIRING_SESSION_EXPIRED',
     ProvisioningErrorCode.pairingSessionUsed => 'PAIRING_SESSION_USED',
@@ -105,6 +116,7 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.bleOperationBusy => 'BLE_OPERATION_BUSY',
     ProvisioningErrorCode.bleSessionEnded => 'BLE_SESSION_ENDED',
     ProvisioningErrorCode.bleHostUnavailable => 'BLE_HOST_UNAVAILABLE',
+    ProvisioningErrorCode.blePairingPreflightUnavailable => 'BLE_PAIRING_PREFLIGHT_UNAVAILABLE',
     ProvisioningErrorCode.bleCommandResponseTimeout => 'BLE_COMMAND_RESPONSE_TIMEOUT',
     ProvisioningErrorCode.locationSettingsUnavailable => 'LOCATION_SETTINGS_UNAVAILABLE',
     ProvisioningErrorCode.bleGattNotReady => 'BLE_GATT_NOT_READY',
@@ -164,6 +176,7 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.bleOperationBusy ||
     ProvisioningErrorCode.bleSessionEnded ||
     ProvisioningErrorCode.bleHostUnavailable ||
+    ProvisioningErrorCode.blePairingPreflightUnavailable ||
     ProvisioningErrorCode.bleCommandResponseTimeout ||
     ProvisioningErrorCode.locationSettingsUnavailable ||
     ProvisioningErrorCode.bleGattNotReady ||
@@ -215,12 +228,15 @@ final class ProvisioningProtocolException implements FormatException {
 }
 
 final class ProvisioningException implements Exception {
-  const ProvisioningException({required this.code, required this.retryable, this.retryAfter = Duration.zero, this.diagnosticMessage});
+  const ProvisioningException({required this.code, required this.retryable, this.retryAfter = Duration.zero, this.diagnosticMessage, this.failureDetails});
 
   final ProvisioningErrorCode code;
   final bool retryable;
   final Duration retryAfter;
   final String? diagnosticMessage;
+
+  /// App-local redacted evidence. Never serialized into a box request.
+  final Map<String, Object?>? failureDetails;
 
   factory ProvisioningException.fromJson(Map<String, dynamic> json) {
     final rawCode = json['code'];

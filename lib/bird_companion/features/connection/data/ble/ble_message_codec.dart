@@ -101,7 +101,7 @@ final class BleMessageCodec {
       return Map<String, dynamic>.from(decoded);
     } on FormatException catch (error) {
       if (error is ProvisioningProtocolException) rethrow;
-      throw ProvisioningProtocolException('message', 'must be valid JSON', error);
+      throw const ProvisioningProtocolException('message', 'must be valid JSON');
     }
   }
 }

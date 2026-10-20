@@ -96,7 +96,15 @@ void main() {
     );
     expect(cleanup.terminalOutcome, 'BLE_PAIRING_TIMEOUT');
     expect(cleanup.cleanupOutcome, 'failed');
-    expect(cleanup.errorCode, 'StateError');
+    expect(cleanup.errorCode, 'BLE_PAIRING_TIMEOUT');
+    final details = cleanup.failureDetails!;
+    expect((details['first_terminal_error'] as Map)['error_code'], 'BLE_PAIRING_TIMEOUT');
+    final secondary = (details['secondary_errors'] as List).single as Map;
+    expect(secondary['runtime_type'], 'StateError');
+    expect(secondary['trigger_method'], 'failSecurityWrite');
+    expect(secondary['stack_trace_available'], true);
+    expect(secondary['stack_trace'], contains('ble_security_write_recovery_test.dart:'));
+    expect(jsonEncode(details), isNot(contains('simulated cleanup failure')));
   });
 
   test('engine dispose releases an active command once and is idempotent', () async {
@@ -121,6 +129,55 @@ void main() {
     expect(platform.failSecurityWriteCalls, 1);
     expect(platform.completeSecurityWriteCalls, 0);
     expect(platform.disposeCalls, 1);
+  });
+
+  test('native terminal rejection wins over a later timeout and cleanup failure', () async {
+    final diagnostics = _RecordingConnectionDiagnosticSink();
+    final gate = Completer<bool>();
+    final platform = _RecoveryPlatform(securityFailures: 1, failCleanup: true)..pendingSecurityReady = gate;
+    final dataSource = await _connectedDataSource(platform, diagnostics: diagnostics);
+    addTearDown(dataSource.dispose);
+    final result = dataSource.writeCommand(request);
+    while (platform.awaitSecurityReadyCalls == 0) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    platform.emitTerminal(request.requestId, generation: 1);
+    await Future<void>.delayed(Duration.zero);
+    gate.completeError(const ProvisioningException(code: ProvisioningErrorCode.blePairingTimeout, retryable: true));
+    try {
+      await result;
+      fail('expected rejection');
+    } on ProvisioningException catch (error) {
+      expect(error.code, ProvisioningErrorCode.blePairingRejected);
+      final first = error.failureDetails!['first_terminal_error'] as Map;
+      expect(first['trigger_method'], 'native.security_write_terminal');
+      expect(first['previous_bond_state'], 'bonding');
+      expect(first['current_bond_state'], 'not_bonded');
+      final secondary = error.failureDetails!['secondary_errors'] as List;
+      expect(secondary.map((e) => (e as Map)['error_code']), contains('BLE_PAIRING_TIMEOUT'));
+      expect(secondary.map((e) => (e as Map)['runtime_type']), contains('StateError'));
+    }
+    expect(diagnostics.events.lastWhere((e) => e.eventType == 'command_failed').errorCode, 'BLE_PAIRING_REJECTED');
+  });
+
+  test('stale native terminal cannot fail a current request and success cleanup is secondary', () async {
+    final diagnostics = _RecordingConnectionDiagnosticSink();
+    final platform = _RecoveryPlatform(securityFailures: 0)..failSuccessCleanup = true;
+    final dataSource = await _connectedDataSource(platform, diagnostics: diagnostics);
+    addTearDown(dataSource.dispose);
+    final result = dataSource.writeCommand(request);
+    await _waitForWrites(platform, 1);
+    platform.emitTerminal(request.requestId, generation: 99);
+    platform.emitTerminal('foreign', generation: 1);
+    await Future<void>.delayed(Duration.zero);
+    _emitNetworkStatus(platform);
+    await result;
+    final cleanup = diagnostics.events.singleWhere((e) => e.eventType == 'security_cleanup_failed');
+    expect(cleanup.terminalOutcome, 'success');
+    expect(cleanup.failureDetails!['first_terminal_error'], isNull);
+    expect((cleanup.failureDetails!['secondary_errors'] as List).single['trigger_method'], 'completeSecurityWrite');
+    expect(platform.failSecurityWriteCalls, 0);
+    expect(diagnostics.events.where((e) => e.eventType == 'command_failed'), isEmpty);
   });
 
   test('secure preparation blocks writes and uses the rebuilt MTU', () async {
@@ -351,6 +408,20 @@ class _RecoveryPlatform implements BirdBoxBlePlatform {
   int completeSecurityWriteCalls = 0;
   int failSecurityWriteCalls = 0;
   int disposeCalls = 0;
+  Completer<bool>? pendingSecurityReady;
+  bool failSuccessCleanup = false;
+
+  void emitTerminal(String requestId, {required int generation}) => _diagnostics.add({
+    'traceId': 'ble-14-trace',
+    'eventType': 'security_write_terminal',
+    'requestId': requestId,
+    'connectionGeneration': generation,
+    'terminalOutcome': 'ble_pairing_rejected',
+    'securityPhase': 'bonding',
+    'previousBondState': 'bonding',
+    'actualBondState': 'not_bonded',
+    'attemptId': 'native-attempt',
+  });
 
   @override
   Stream<Map<String, dynamic>> get scanResults => _scan.stream;
@@ -416,6 +487,7 @@ class _RecoveryPlatform implements BirdBoxBlePlatform {
   @override
   Future<bool> awaitSecurityReady(String requestId) async {
     awaitSecurityReadyCalls += 1;
+    if (pendingSecurityReady != null) return pendingSecurityReady!.future;
     final error = securityReadyError;
     if (error != null) throw error;
     return true;
@@ -435,6 +507,7 @@ class _RecoveryPlatform implements BirdBoxBlePlatform {
     required String responseType,
   }) async {
     completeSecurityWriteCalls += 1;
+    if (failSuccessCleanup) throw StateError('private completion cleanup');
   }
 
   @override

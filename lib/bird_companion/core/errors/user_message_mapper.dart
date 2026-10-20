@@ -314,6 +314,16 @@ abstract final class UserMessageMapper {
   /// pairing credentials, passwords or tokens and must never reach the UI.
   static UserMessage fromProvisioningError(ProvisioningException error) {
     switch (error.code) {
+      case ProvisioningErrorCode.blePairingPreflightUnavailable:
+        return const UserMessage(title: '配对准备接口未就绪', message: '当前手机端缺少配对准备支持，请更新应用后重新连接。');
+      case ProvisioningErrorCode.pairingPreflightCommandUnsupported:
+        return const UserMessage(title: '盒子需要更新', message: '当前盒子不支持配对前检查。请升级盒子服务；旧版本可在手机和盒子两端忘记目标设备后重新配对。');
+      case ProvisioningErrorCode.pairingPreflightInvalidPeer:
+      case ProvisioningErrorCode.pairingPreflightConfirmationRejected:
+        return const UserMessage(title: '配对准备未完成', message: '盒子未确认本次配对准备，请重新连接后重试。', actionLabel: '重新连接');
+      case ProvisioningErrorCode.pairingPreflightBusy:
+      case ProvisioningErrorCode.pairingPreflightExpired:
+        return const UserMessage(title: '配对准备暂未完成', message: '本次配对准备未能完成，请保持盒子在附近后重新连接。', actionLabel: '重新连接');
       case ProvisioningErrorCode.userCancelledDppDialog:
       case ProvisioningErrorCode.userCancelledWifiDialog:
         return const UserMessage(

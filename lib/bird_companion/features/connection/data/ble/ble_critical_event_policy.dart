@@ -1,10 +1,12 @@
 /// Evidence needed to distinguish system bond, GATT, ATT and business failures.
 final class BleCriticalEventPolicy {
-  static bool isCritical(Map record) => events.contains(record['event_type']) || record['error_code'] != null || record['terminal_outcome'] != null;
+  static bool isCritical(Map record) => events.contains(record['event_type']) || record['error_code'] != null || record['terminal_outcome'] != null || record['first_terminal_error'] != null;
 
   // Request ID joins Dart events to native attempts and their write children.
   static String? requestKey(Map record, String flow) {
-    final id = record['request_id'] ?? record['attempt_id'];
+    // A reset transaction spans prepare, confirm and fresh prepare. Retain it
+    // as one protected attempt rather than evicting its first request early.
+    final id = record['operation_name'] == 'pairing_preflight' && record['attempt_id'] != null ? record['attempt_id'] : record['request_id'] ?? record['attempt_id'];
     return id == null ? null : '$flow\u0000$id';
   }
 
@@ -18,6 +20,23 @@ final class BleCriticalEventPolicy {
     'network_transport_error',
     'authenticated_http_ws_verified',
     'route_changed',
+    'attempt_failed',
+    'attempt_failure_finalized',
+    'pairing_preflight_request',
+    'pairing_preflight_result',
+    'pairing_preflight_state',
+    'pairing_preflight_expected_disconnect',
+    'pairing_preflight_notifications_ready',
+    'pairing_preflight_write_callback',
+    'pairing_preflight_unavailable',
+    'gatt_foreground_sync',
+    'controlled_reconnect_requested',
+    'pre_connect_reset_parked',
+    'pre_connect_reset_disconnect_confirmed',
+    'pre_connect_reset_disconnect_timeout',
+    'pairing_attempt_replayed',
+    'security_write_cleanup_noop',
+    'gatt_rebuild_decision',
     'command_started',
     'command_succeeded',
     'command_failed',

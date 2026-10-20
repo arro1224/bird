@@ -31,7 +31,8 @@
         "ble_fragmentation_v1": {"type": "boolean"},
         "wifi_ap_sta_concurrency": {"type": "boolean"},
         "ap_band_2_4_ghz": {"type": "boolean"},
-        "ap_band_5_ghz": {"type": "boolean"}
+        "ap_band_5_ghz": {"type": "boolean"},
+        "pairing_preflight_v1": {"type": "boolean", "default": false}
       }
     }
   }
