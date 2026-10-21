@@ -314,6 +314,12 @@ abstract final class UserMessageMapper {
   /// pairing credentials, passwords or tokens and must never reach the UI.
   static UserMessage fromProvisioningError(ProvisioningException error) {
     switch (error.code) {
+      case ProvisioningErrorCode.bleGattOwnerMismatch:
+        return const UserMessage(title: '蓝牙连接已变化', message: '本次配对准备已停止，请返回后重新选择盒子。', actionLabel: '返回查找盒子');
+      case ProvisioningErrorCode.bleBondStateNotNone:
+        return const UserMessage(title: '系统绑定状态已变化', message: '请等待当前系统绑定完成后重新准备连接。');
+      case ProvisioningErrorCode.bleGattReleaseUnconfirmed:
+        return const UserMessage(title: '蓝牙断开尚未确认', message: '暂时无法开始新的连接。若持续无法确认，请关闭手机蓝牙后重试断开，完成后再开启蓝牙。', actionLabel: '重试断开');
       case ProvisioningErrorCode.blePairingPreflightUnavailable:
         return const UserMessage(title: '配对准备接口未就绪', message: '当前手机端缺少配对准备支持，请更新应用后重新连接。');
       case ProvisioningErrorCode.pairingPreflightCommandUnsupported:

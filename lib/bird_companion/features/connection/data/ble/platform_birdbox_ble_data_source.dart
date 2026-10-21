@@ -90,15 +90,17 @@ final class BleDisconnectEvent {
     required this.gattStatus,
     required this.unexpected,
     this.connectionGeneration,
+    this.gattInstanceId,
   });
 
   final String reason;
   final int gattStatus;
   final bool unexpected;
   final int? connectionGeneration;
+  final int? gattInstanceId;
 
   @override
-  String toString() => 'BleDisconnectEvent(reason: $reason, gattStatus: $gattStatus, unexpected: $unexpected, connectionGeneration: $connectionGeneration)';
+  String toString() => 'BleDisconnectEvent(reason: $reason, gattStatus: $gattStatus, unexpected: $unexpected, connectionGeneration: $connectionGeneration, gattInstanceId: $gattInstanceId)';
 }
 
 final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform, BirdBoxPairingPlatform, BirdBoxPairingPreflightPlatform, BirdBoxNativeConnectReset {
@@ -117,6 +119,10 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform, BirdB
 
   final MethodChannel _methodChannel;
   final Map<String, BlePairingReady> _securityOwners = {};
+  // Native currently also anchors a force-close as "released". Never let a
+  // repeated idempotent call turn an observed timeout into a confirmed release.
+  final Set<(int, int)> _unconfirmedPublicReleases = {};
+  final Set<(int, int)> _confirmedPublicReleases = {};
   final Stream<Map<String, dynamic>> _scanResults;
   final Stream<Map<String, dynamic>> _notifications;
   final Stream<Map<String, dynamic>> _diagnostics;
@@ -142,7 +148,11 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform, BirdB
   }
 
   static void _requirePublicOwner(PublicGattSnapshot state, int generation, [int? instance]) {
-    if (!state.connected || !state.linkReady || state.connectionGeneration != generation || instance != null && state.gattInstanceId != instance) {
+    if (state.connectionGeneration != generation || state.connected && instance != null && state.gattInstanceId != instance) {
+      throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOwnerMismatch, retryable: false);
+    }
+    if (state.retiring) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: false);
+    if (!state.connected || !state.linkReady) {
       throw const ProvisioningException(code: ProvisioningErrorCode.bleGattNotReady, retryable: true);
     }
     if (state.preparing || state.inflightRequest != null) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: true);
@@ -151,25 +161,61 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform, BirdB
   @override
   Future<void> writePairingPreflight({required String requestId, required int connectionGeneration, required int gattInstanceId, required Uint8List fragmentBytes}) async {
     _requirePublicOwner(await getGattOwnershipState(connectionGeneration), connectionGeneration, gattInstanceId);
-    final value = await _publicInvoke('writePairingPreflight', {'value': fragmentBytes});
+    final value = await _publicInvoke('writePairingPreflight', {
+      'value': fragmentBytes,
+      'expectedConnectionGeneration': connectionGeneration,
+      'expectedGattInstanceId': gattInstanceId,
+    });
     if (value != null) throw const ProvisioningProtocolException('writePairingPreflight', 'invalid ATT receipt');
   }
 
   @override
   Future<void> prepareControlledReconnect({required String requestId, required int connectionGeneration, required int gattInstanceId, required String reason}) async {
     final before = await getGattOwnershipState(connectionGeneration);
-    if (before.connectionGeneration != connectionGeneration || before.connected && before.gattInstanceId != gattInstanceId || before.preparing || before.inflightRequest != null) {
-      throw const ProvisioningException(code: ProvisioningErrorCode.bleGattRecoveryFailed, retryable: false);
+    if (before.connectionGeneration != connectionGeneration || before.connected && before.gattInstanceId != gattInstanceId) {
+      throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOwnerMismatch, retryable: false);
     }
-    // A peer reset may have already closed the old GATT before this call.
-    if (!before.connected) return;
-    final receipt = await _publicInvoke('prepareControlledReconnect');
+    if (before.retiring || before.preparing || before.inflightRequest != null) {
+      throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: false);
+    }
+    final owner = (connectionGeneration, gattInstanceId);
+    if (_unconfirmedPublicReleases.contains(owner)) {
+      throw const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);
+    }
+    if (!before.connected) {
+      if (_confirmedPublicReleases.contains(owner) || before.lastRelease?.confirms(owner) == true) return;
+      // Old native builds have no release record. Absence alone remains unsafe.
+      throw const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);
+    }
+    final Object? receipt;
+    try {
+      receipt = await _publicInvoke('prepareControlledReconnect', {
+        'expectedConnectionGeneration': connectionGeneration,
+        'expectedGattInstanceId': gattInstanceId,
+      });
+    } on ProvisioningException catch (error) {
+      if (error.code == ProvisioningErrorCode.bleGattReleaseUnconfirmed) {
+        _unconfirmedPublicReleases.add(owner);
+        if (_unconfirmedPublicReleases.length > 32) _unconfirmedPublicReleases.remove(_unconfirmedPublicReleases.first);
+      }
+      rethrow;
+    }
     final after = await getGattOwnershipState(connectionGeneration);
-    // e160043ef closes synchronously and emits no disconnect event here.
-    // null alone is insufficient evidence; verify local native retirement.
-    if (receipt != null || after.connected || after.linkReady || after.preparing || after.inflightRequest != null || after.connectionGeneration != connectionGeneration || after.gattInstanceId != 0) {
+    // R1 holds the Future until real disconnect + local close. Absence alone
+    // (including a retiring snapshot) is never a release receipt.
+    if (receipt != null ||
+        after.retiring ||
+        after.connected ||
+        after.linkReady ||
+        after.preparing ||
+        after.inflightRequest != null ||
+        after.connectionGeneration != connectionGeneration ||
+        after.gattInstanceId != 0 ||
+        after.lastRelease != null && !after.lastRelease!.confirms(owner)) {
       throw const ProvisioningException(code: ProvisioningErrorCode.bleGattRecoveryFailed, retryable: false);
     }
+    _confirmedPublicReleases.add(owner);
+    if (_confirmedPublicReleases.length > 32) _confirmedPublicReleases.remove(_confirmedPublicReleases.first);
   }
 
   Future<Object?> _publicInvoke(String method, [Map<String, dynamic>? args]) async {
@@ -189,6 +235,9 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform, BirdB
         'bluetooth_permission_denied' => ProvisioningErrorCode.bluetoothPermissionDenied,
         'bluetooth_unavailable' => ProvisioningErrorCode.bluetoothUnavailable,
         'bond_state_unknown' => ProvisioningErrorCode.bleBondStateUnknown,
+        'gatt_owner_mismatch' => ProvisioningErrorCode.bleGattOwnerMismatch,
+        'bond_state_not_none' => ProvisioningErrorCode.bleBondStateNotNone,
+        'gatt_release_unconfirmed' => ProvisioningErrorCode.bleGattReleaseUnconfirmed,
         'ble_gatt_not_ready' => ProvisioningErrorCode.bleGattNotReady,
         'ble_gatt_operation_failed' || 'gatt_operation_failed' => ProvisioningErrorCode.bleGattOperationFailed,
         'invalid_request' || 'invalid_state' => ProvisioningErrorCode.invalidRequest,
@@ -351,7 +400,8 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform, BirdB
     final gattStatus = event['gattStatus'];
     final unexpected = event['unexpected'];
     final connectionGeneration = event['connectionGeneration'];
-    if (reason is! String || reason.isEmpty || gattStatus is! int || unexpected is! bool) {
+    final instance = event['gattInstanceId'];
+    if (reason is! String || reason.isEmpty || gattStatus is! int || unexpected is! bool || instance != null && (instance is! int || instance < 0)) {
       throw const ProvisioningProtocolException('platform_disconnect_event', 'contains invalid fields');
     }
     return BleDisconnectEvent(
@@ -359,6 +409,7 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform, BirdB
       gattStatus: gattStatus,
       unexpected: unexpected,
       connectionGeneration: connectionGeneration is int ? connectionGeneration : null,
+      gattInstanceId: instance as int?,
     );
   }
 
@@ -421,6 +472,7 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform, BirdB
         'bond_state_unknown' => ProvisioningErrorCode.bleBondStateUnknown,
         'location_settings_unavailable' => ProvisioningErrorCode.locationSettingsUnavailable,
         'gatt_busy' => ProvisioningErrorCode.bleOperationBusy,
+        'gatt_release_unconfirmed' => ProvisioningErrorCode.bleGattReleaseUnconfirmed,
         'ble_session_ended' => ProvisioningErrorCode.bleSessionEnded,
         'ble_host_unavailable' => ProvisioningErrorCode.bleHostUnavailable,
         'ble_gatt_not_ready' => ProvisioningErrorCode.bleGattNotReady,
@@ -490,7 +542,7 @@ final class MethodChannelBirdBoxBlePlatform implements BirdBoxBlePlatform, BirdB
   }
 }
 
-final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleScanDiagnosticSource, BleProvisioningControl, BirdBoxPairingPreparation, BleFailureDiagnostics {
+final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleScanDiagnosticSource, BleProvisioningControl, BirdBoxPairingPreparation, BleFailureDiagnostics, BleNativeReleaseState {
   PlatformBirdBoxBleDataSource({
     BirdBoxBlePlatform? platform,
     this._diagnosticSink,
@@ -501,6 +553,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     this.preparationTimeout = const Duration(seconds: 45),
     this.preflightResponseTimeout = const Duration(seconds: 3),
     this.freshAdvertisementTimeout = const Duration(seconds: 12),
+    this.releaseTimeout = const Duration(seconds: 4),
   }) : _platform = platform ?? MethodChannelBirdBoxBlePlatform(),
        _clock = clock ?? DateTime.now,
        _fragmentCodec = const BleFragmentCodec(),
@@ -516,7 +569,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   }
 
   final BirdBoxBlePlatform _platform;
-  final Duration preparationTimeout, preflightResponseTimeout, freshAdvertisementTimeout;
+  final Duration preparationTimeout, preflightResponseTimeout, freshAdvertisementTimeout, releaseTimeout;
   _PublicPreparation? _publicPreparation;
   _PublicRequest? _publicRequest;
   _ExpectedReset? _expectedReset;
@@ -529,6 +582,16 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   final RequestIdFactory _preflightIds = SecureRequestIdFactory();
   final Set<String> _publicRequestIds = {};
   final Set<int> _retiredPublicGenerations = {};
+  bool _publicCleanupOwned = false;
+  (int, int)? _publicGattOwner;
+  bool _publicOwnerInvalidated = false;
+  ProvisioningException? _publicReleaseFailure;
+  (int, int)? _lastKnownGattOwner;
+  _NativeReleaseWait? _nativeReleaseWait;
+  BleAttemptFailure? _releaseFailureEvidence;
+  int _releaseSequence = 0;
+  @override
+  bool get nativeReleaseBlocked => _publicReleaseFailure != null;
   final BleScanDiagnosticSink? _diagnosticSink;
   final BleConnectionDiagnosticSink? _connectionDiagnosticSink;
   final DateTime Function() _clock;
@@ -637,12 +700,20 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       rethrow;
     }
     if (!stillCurrent()) return;
-    final sameOwner = state.connected && state.linkReady && state.connectionGeneration == generation && (instance == null || state.gattInstanceId == instance) && !state.preparing && state.inflightRequest == null;
+    if (state.retiring) {
+      if (instance != null) _lastKnownGattOwner = (generation, instance);
+      _publicReleaseFailure = const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);
+      await _recordConnectionDiagnostic(eventType: 'gatt_foreground_sync', operationName: 'getGattOwnershipState', resultCode: 'retiring');
+      _markDisconnected('native_gatt_retiring');
+      throw _publicReleaseFailure!;
+    }
+    final sameOwner = instance != null && state.connected && state.linkReady && state.connectionGeneration == generation && state.gattInstanceId == instance && !state.preparing && state.inflightRequest == null;
     await _recordConnectionDiagnostic(eventType: 'gatt_foreground_sync', operationName: 'getGattOwnershipState', resultCode: sameOwner ? 'reuse_owned_gatt' : 'ownership_lost');
     if (!stillCurrent()) return;
     if (sameOwner) {
       _activeGattGeneration = state.gattInstanceId;
     } else {
+      _publicOwnerInvalidated = state.connected;
       _handleDisconnect(BleDisconnectEvent(reason: 'native_ownership_lost', gattStatus: 0, unexpected: true, connectionGeneration: generation));
     }
   }
@@ -683,9 +754,12 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     if (_activeSecurityRequest != requestId || ready.requestId != requestId || !_connected) {
       throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOperationFailed, retryable: true, diagnosticMessage: 'Stale pairing preparation result');
     }
+    _publicCleanupOwned = false;
+    _publicGattOwner = null;
     _pairingReady = ready;
     _activeConnectionGeneration = ready.connectionGeneration;
     _activeGattGeneration = ready.gattGeneration;
+    _lastKnownGattOwner = (ready.connectionGeneration, ready.gattGeneration);
     _negotiatedMtu = ready.mtu;
     _requiredNotificationsSubscribed = true;
     for (final reassembler in _notificationReassemblers.values) {
@@ -697,6 +771,8 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   @override
   Stream<BirdBoxAdvertisement> scan({Duration? timeout}) {
     if (_disposed) return Stream.error(const ProvisioningException(code: ProvisioningErrorCode.bleSessionEnded, retryable: true));
+    if (_publicReleaseFailure != null) return Stream.error(_publicReleaseFailure!);
+    if (_disconnectFuture != null || _controlledReleaseGeneration != null) return Stream.error(const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: false));
     if (_scanController != null) return Stream.error(const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: true));
     _discoveryPaused = false;
     var scanTimeout = timeout ?? const Duration(seconds: 10);
@@ -937,9 +1013,10 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   @override
   Future<void> connect(BirdBoxAdvertisement advertisement) async {
     _checkNotDisposed();
+    if (_publicReleaseFailure != null) throw _publicReleaseFailure!;
     final sessionOwner = _sessionOwner;
     final initialEpoch = _transportEpoch;
-    if (_connectInProgress || _disconnectFuture != null || _activeSecurityRequest != null) {
+    if (_connectInProgress || _disconnectFuture != null || _controlledReleaseGeneration != null || _activeSecurityRequest != null) {
       throw const ProvisioningException(
         code: ProvisioningErrorCode.bleOperationBusy,
         retryable: true,
@@ -966,6 +1043,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       await stopScan();
       if (_platform is BirdBoxNativeConnectReset) {
         final previous = _activeConnectionGeneration;
+        if (previous != null && _activeGattGeneration != null) _lastKnownGattOwner = (previous, _activeGattGeneration!);
         ++_transportEpoch;
         _markDisconnected('pre_connect_reset');
         if (previous != null) {
@@ -990,6 +1068,9 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         _platformConnectPending = false;
         _activeConnectionGeneration = connectionGeneration;
         _activePlatformDeviceId = platformDeviceId;
+        _publicOwnerInvalidated = false;
+        _publicGattOwner = null;
+        _releaseFailureEvidence = null;
         final deferredDisconnects = List<BleDisconnectEvent>.of(
           _deferredConnectDisconnects,
         );
@@ -1015,6 +1096,23 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
           traceId: traceId,
           flowId: _traceFlowIds[traceId],
         )..capture(error, stack, method: 'connect', expectedState: 'gatt_ready', currentState: 'connecting');
+        if (error is ProvisioningException && error.code == ProvisioningErrorCode.bleGattReleaseUnconfirmed) {
+          _publicReleaseFailure = error;
+          _releaseFailureEvidence = failure;
+          // A process/engine may already own a stale connection before this page.
+          // Retired-instance evidence may identify recovery; it never adopts a live GATT.
+          if (_platform is BirdBoxPairingPreflightPlatform) {
+            try {
+              final snapshot = await _publicPlatform.getGattOwnershipState(_lastKnownGattOwner?.$1 ?? 0).timeout(releaseTimeout);
+              final release = snapshot.lastRelease;
+              if (!snapshot.connected && release != null && release.connectionGeneration == snapshot.connectionGeneration && release.state == 'unconfirmed') {
+                _lastKnownGattOwner = (release.connectionGeneration, release.gattInstanceId);
+              }
+            } catch (_) {
+              // Missing evidence keeps the failure gate closed.
+            }
+          }
+        }
         await _recordConnectionDiagnostic(
           eventType: 'connect_failed',
           operationName: 'connect',
@@ -1075,31 +1173,165 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   }
 
   Future<void> _performPlatformTeardown(String reason) async {
+    if (_publicReleaseFailure != null) {
+      if (reason != 'requested') throw _publicReleaseFailure!;
+      await _retryBlockedRelease(reason);
+      return;
+    }
+    if (_publicOwnerInvalidated || _publicCleanupOwned && _publicGattOwner == null) {
+      // Repository/page/dispose cleanup must not fall back to a generation-only
+      // disconnect after a public transaction lost its native instance.
+      ++_transportEpoch;
+      _markDisconnected(reason);
+      await _recordConnectionDiagnostic(eventType: 'cleanup_noop', operationName: 'disconnect', resultCode: 'public_owner_not_owned');
+      return;
+    }
     ++_transportEpoch;
     final requestId = _nativePreparationStarted ? _activeSecurityRequest : null, ready = _pairingReady;
     final generation = _activeConnectionGeneration;
+    final instance = _activeGattGeneration;
+    final owned = _publicGattOwner ?? (generation != null && instance != null ? (generation, instance) : null);
+    if (owned != null) _lastKnownGattOwner = owned;
     if (reason == 'pre_connect_reset' && _publicPreparation != null) _controlledReleaseGeneration = generation;
     await _recordConnectionDiagnostic(
       eventType: 'teardown_started',
       operationName: 'disconnect',
       resultCode: reason,
     );
+    var released = false;
     try {
       final platform = _platform;
-      if (platform is BirdBoxPairingPlatform) {
+      if (platform is BirdBoxPairingPreflightPlatform && owned != null) {
+        await _releaseKnownGatt(owned, reason, requestId: requestId, ready: ready);
+        _publicGattOwner = null;
+      } else if (platform is BirdBoxPairingPlatform) {
+        if (platform is BirdBoxPairingPreflightPlatform) {
+          // No known native instance remains; do not disconnect a foreign GATT.
+          await _recordConnectionDiagnostic(eventType: 'cleanup_noop', operationName: 'disconnect', resultCode: 'no_known_native_instance');
+          return;
+        }
         await (platform as BirdBoxPairingPlatform).disconnectOwned(requestId, ready, generation);
       } else {
         await platform.disconnect();
       }
+      released = true;
+    } catch (error, stack) {
+      if (error is ProvisioningException && error.code == ProvisioningErrorCode.bleGattOwnerMismatch) {
+        _publicOwnerInvalidated = true;
+        _publicGattOwner = null;
+      } else {
+        _publicReleaseFailure = error is ProvisioningException ? error : const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);
+      }
+      final failure = _releaseFailureEvidence ??= BleAttemptFailure(attemptId: 'release-${_releaseSequence++}', connectionGeneration: owned?.$1, gattGeneration: owned?.$2);
+      failure.capture(error, stack, method: 'disconnect', expectedState: 'release_confirmed', currentState: 'release_failed');
+      await _recordConnectionDiagnostic(eventType: 'gatt_release_failed', operationName: 'disconnect', failure: failure, connectionGeneration: owned?.$1, gattInstanceId: owned?.$2);
+      Error.throwWithStackTrace(_publicReleaseFailure ?? error, stack);
     } finally {
       _markDisconnected(reason);
       if (reason == 'pre_connect_reset' && _publicPreparation != null && generation != null) _retiredPublicGenerations.add(generation);
-      if (_controlledReleaseGeneration == generation) _controlledReleaseGeneration = null;
-      await _recordConnectionDiagnostic(
-        eventType: 'teardown_completed',
-        operationName: 'disconnect',
-        resultCode: reason,
-      );
+      _controlledReleaseGeneration = null;
+      if (owned != null || _platform is! BirdBoxPairingPreflightPlatform) {
+        await _recordConnectionDiagnostic(
+          eventType: released ? 'teardown_completed' : 'teardown_failed',
+          operationName: 'disconnect',
+          resultCode: reason,
+          connectionGeneration: owned?.$1,
+          gattInstanceId: owned?.$2,
+        );
+      }
+    }
+  }
+
+  Future<void> _releaseKnownGatt((int, int) owned, String reason, {String? requestId, BlePairingReady? ready}) async {
+    final state = await _publicPlatform.getGattOwnershipState(owned.$1).timeout(releaseTimeout);
+    if (state.connectionGeneration != owned.$1 || state.connected && state.gattInstanceId != owned.$2) {
+      throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOwnerMismatch, retryable: false);
+    }
+    if (!state.connected && !state.retiring && !state.preparing && state.inflightRequest == null && state.lastRelease?.confirms(owned) == true) {
+      await _recordConnectionDiagnostic(eventType: 'gatt_release_confirmed', operationName: 'disconnect', resultCode: 'native_disconnect_and_close_confirmed', connectionGeneration: owned.$1, gattInstanceId: owned.$2);
+      return;
+    }
+    if (state.retiring || !state.connected) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);
+    _controlledReleaseGeneration = owned.$1;
+    await _recordConnectionDiagnostic(eventType: 'gatt_release_requested', operationName: 'disconnect', resultCode: reason, connectionGeneration: owned.$1, gattInstanceId: owned.$2);
+    try {
+      if (!state.preparing && state.inflightRequest == null) {
+        // R1's held, atomically owned Future is also valid for an idle bonded
+        // GATT. Ordinary disconnect's synchronous receipt is not needed here.
+        await _publicPlatform.prepareControlledReconnect(requestId: 'release-${_releaseSequence++}', connectionGeneration: owned.$1, gattInstanceId: owned.$2, reason: reason).timeout(releaseTimeout);
+      } else {
+        if (requestId == null || state.inflightRequest != requestId || _platform is! BirdBoxPairingPlatform) {
+          throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOwnerMismatch, retryable: false);
+        }
+        final pending = _NativeReleaseWait(owned, _activeTraceId ?? _lastTraceId);
+        _nativeReleaseWait = pending;
+        try {
+          await (_platform as BirdBoxPairingPlatform).disconnectOwned(requestId, ready, owned.$1).timeout(releaseTimeout);
+          await _recordConnectionDiagnostic(eventType: 'gatt_release_request_accepted', operationName: 'disconnect', resultCode: 'awaiting_physical_confirmation', connectionGeneration: owned.$1, gattInstanceId: owned.$2);
+          if (!await _waitForNativeRelease(pending).timeout(releaseTimeout)) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);
+        } finally {
+          pending.cancelled = true;
+          if (identical(_nativeReleaseWait, pending)) _nativeReleaseWait = null;
+        }
+      }
+      final after = await _publicPlatform.getGattOwnershipState(owned.$1).timeout(releaseTimeout);
+      if (after.connectionGeneration != owned.$1 || after.connected) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOwnerMismatch, retryable: false);
+      if (after.retiring || after.preparing || after.inflightRequest != null) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);
+      if (after.lastRelease != null && !after.lastRelease!.confirms(owned)) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);
+      await _recordConnectionDiagnostic(eventType: 'gatt_release_confirmed', operationName: 'disconnect', resultCode: 'native_disconnect_and_close_confirmed', connectionGeneration: owned.$1, gattInstanceId: owned.$2);
+    } on TimeoutException {
+      throw const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);
+    }
+  }
+
+  Future<bool> _waitForNativeRelease(_NativeReleaseWait pending) async {
+    while (!pending.cancelled) {
+      if (pending.result.isCompleted) return pending.result.future;
+      final snapshot = await _publicPlatform.getGattOwnershipState(pending.owned.$1).timeout(releaseTimeout);
+      if (pending.cancelled) return false;
+      final release = snapshot.lastRelease;
+      if (release != null && release.connectionGeneration == pending.owned.$1 && release.gattInstanceId == pending.owned.$2 && release.traceId == pending.traceId) {
+        if (release.state == 'unconfirmed') return false;
+        if (release.confirms(pending.owned, traceId: pending.traceId)) return true;
+      }
+      await Future.any<void>([pending.result.future.then<void>((_) {}), Future<void>.delayed(const Duration(milliseconds: 20))]);
+    }
+    return false;
+  }
+
+  Future<void> _retryBlockedRelease(String reason) async {
+    final original = _publicReleaseFailure!;
+    final owned = _lastKnownGattOwner;
+    await _recordConnectionDiagnostic(eventType: 'gatt_release_retry_requested', operationName: 'disconnect', resultCode: 'explicit_retry', connectionGeneration: owned?.$1, gattInstanceId: owned?.$2);
+    try {
+      if (owned == null) throw original;
+      final state = await _publicPlatform.getGattOwnershipState(owned.$1).timeout(releaseTimeout);
+      if (state.connectionGeneration != owned.$1 || state.connected && state.gattInstanceId != owned.$2) {
+        throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOwnerMismatch, retryable: false);
+      }
+      if (state.retiring || state.preparing || state.inflightRequest != null) throw original;
+      if (state.connected) {
+        await _releaseKnownGatt(owned, reason);
+      } else if (state.lastRelease?.confirms(owned) == true) {
+        await _recordConnectionDiagnostic(eventType: 'gatt_release_confirmed', operationName: 'disconnect', resultCode: 'native_disconnect_and_close_confirmed', connectionGeneration: owned.$1, gattInstanceId: owned.$2);
+      } else {
+        // A force-close/absence or idempotent success cannot prove the original
+        // disconnect. Explicit recovery can instead prove the adapter is OFF.
+        final environment = await _platform.readScanEnvironment().timeout(releaseTimeout);
+        final after = await _publicPlatform.getGattOwnershipState(owned.$1).timeout(releaseTimeout);
+        if (environment.adapter != BleAdapterState.disabled || after.connected || after.retiring || after.preparing || after.inflightRequest != null || after.connectionGeneration != owned.$1) throw original;
+        await _recordConnectionDiagnostic(eventType: 'gatt_release_recovered', operationName: 'disconnect', resultCode: 'adapter_disabled_and_native_absent', connectionGeneration: owned.$1, gattInstanceId: owned.$2);
+      }
+      _publicReleaseFailure = null;
+      _publicGattOwner = null;
+      ++_transportEpoch;
+      _markDisconnected('explicit_release_recovery');
+    } catch (error, stack) {
+      final failure = _releaseFailureEvidence ??= BleAttemptFailure(attemptId: 'release-${_releaseSequence++}', connectionGeneration: owned?.$1, gattGeneration: owned?.$2)
+        ..capture(original, null, method: 'disconnect', expectedState: 'release_confirmed', currentState: 'release_failed');
+      failure.capture(error, stack, method: 'disconnect.retry', expectedState: 'release_confirmed', currentState: 'recovery_blocked');
+      await _recordConnectionDiagnostic(eventType: 'gatt_release_retry_blocked', operationName: 'disconnect', resultCode: 'new_confirmation_required', failure: failure, connectionGeneration: owned?.$1, gattInstanceId: owned?.$2);
+      throw original;
     }
   }
 
@@ -1120,6 +1352,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       throw const ProvisioningException(code: ProvisioningErrorCode.blePairingPreflightUnavailable, retryable: false);
     }
     final run = _PublicPreparation(_sessionOwner, _preflightIds.create());
+    _publicCleanupOwned = true;
     final failure = BleAttemptFailure(attemptId: run.id, traceId: _lastTraceId ?? _activeTraceId, flowId: _flowId);
     _publicPreparation = run;
     _preparedConnectionGeneration = null;
@@ -1147,13 +1380,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         previousGeneration = generation;
         var bond = await run.wait(_readNativeBond());
         if (resets > 0 && bond.state != NativeBondState.notBonded) throw const ProvisioningException(code: ProvisioningErrorCode.bleBondStateUnknown, retryable: false);
-        while (bond.state == NativeBondState.bonding) {
-          _publicProgress(run, BlePairingStage.systemBond);
-          await run.wait(Future<void>.delayed(const Duration(milliseconds: 250)));
-          _checkPublicRun(run);
-          bond = await run.wait(_readNativeBond());
-          if (bond.state == NativeBondState.notBonded) throw const ProvisioningException(code: ProvisioningErrorCode.blePairingRejected, retryable: true);
-        }
+        bond = await _waitForExistingBond(run, bond);
         if (bond.state == NativeBondState.bonded) {
           await run.wait(subscribeRequiredNotifications());
         } else {
@@ -1164,7 +1391,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         _checkPublicRun(run);
         if (expectedDeviceId != null && info.deviceId != expectedDeviceId) throw const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false);
         expectedDeviceId = info.deviceId;
-        bond = await run.wait(_readNativeBond());
+        bond = await _waitForExistingBond(run, await run.wait(_readNativeBond()));
         if (bond.state == NativeBondState.bonded) {
           _markPublicReady(info.deviceId, bond);
           return info;
@@ -1210,6 +1437,14 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
           }
           advertisementToUse = await _freshAdvertisement(run, advertisement);
         } on ProvisioningException catch (error) {
+          if (error.code == ProvisioningErrorCode.bleBondStateNotNone) {
+            final current = await _waitForExistingBond(run, await run.wait(_readNativeBond()));
+            if (current.state != NativeBondState.bonded) rethrow;
+            await run.wait(subscribeRequiredNotifications());
+            _checkPublicRun(run);
+            _markPublicReady(info.deviceId, current);
+            return info;
+          }
           // Current native ABI has no characteristic inventory. Missing 0007 is
           // learned from its stable write error, with the same one-refresh cap.
           if (!gatt.hasCharacteristicInventory && error.code == ProvisioningErrorCode.pairingPreflightCommandUnsupported && error.diagnosticMessage == 'native_preflight_characteristic_missing' && cacheRefreshes++ == 0) {
@@ -1228,6 +1463,15 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         }
       }
     } catch (error, stack) {
+      if (error is ProvisioningException && error.code == ProvisioningErrorCode.bleGattOwnerMismatch) {
+        _publicOwnerInvalidated = true;
+        _publicGattOwner = null;
+        _markDisconnected('public_owner_mismatch');
+      }
+      if (error is ProvisioningException && error.code == ProvisioningErrorCode.bleGattReleaseUnconfirmed) {
+        _publicReleaseFailure = error;
+        _markDisconnected('public_release_unconfirmed');
+      }
       // Teardown is secondary; preserve the original cause and never bond as a fallback.
       failure.capture(error, stack, method: 'prepareConnection', expectedState: 'preflight_ready', currentState: run.stage.name);
       await _recordConnectionDiagnostic(
@@ -1266,6 +1510,17 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     _preparedAllowsBond = bond.state == NativeBondState.notBonded;
   }
 
+  Future<NativeBondSnapshot> _waitForExistingBond(_PublicPreparation run, NativeBondSnapshot bond) async {
+    while (bond.state == NativeBondState.bonding) {
+      _publicProgress(run, BlePairingStage.systemBond);
+      await run.wait(Future<void>.delayed(const Duration(milliseconds: 250)));
+      _checkPublicRun(run);
+      bond = await run.wait(_readNativeBond());
+      if (bond.state == NativeBondState.notBonded) throw const ProvisioningException(code: ProvisioningErrorCode.blePairingRejected, retryable: true);
+    }
+    return bond;
+  }
+
   Future<NativeBondSnapshot> _readNativeBond() async {
     final generation = _activeConnectionGeneration, epoch = _transportEpoch, owner = _sessionOwner;
     if (!_connected || generation == null) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattNotReady, retryable: true);
@@ -1273,9 +1528,11 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     if (deviceId == null) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattNotReady, retryable: true);
     final snapshot = await _publicPlatform.getNativeBondState(generation, platformDeviceId: deviceId);
     if (!_connected || _transportEpoch != epoch || !identical(owner, _sessionOwner) || snapshot.connectionGeneration != generation || (_activeGattGeneration != null && snapshot.gattInstanceId != _activeGattGeneration)) {
-      throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOperationFailed, retryable: true);
+      throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOwnerMismatch, retryable: false);
     }
     _activeGattGeneration = snapshot.gattInstanceId;
+    _publicGattOwner = (snapshot.connectionGeneration, snapshot.gattInstanceId);
+    _lastKnownGattOwner = _publicGattOwner;
     return snapshot;
   }
 
@@ -1283,8 +1540,14 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     final generation = _activeConnectionGeneration, instance = _activeGattGeneration, epoch = _transportEpoch;
     if (!_connected || generation == null || instance == null) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattNotReady, retryable: true);
     final value = await _publicPlatform.getGattOwnershipState(generation);
+    if (value.retiring) {
+      _lastKnownGattOwner = (generation, instance);
+      _publicReleaseFailure = const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);
+      _markDisconnected('native_gatt_retiring');
+      throw _publicReleaseFailure!;
+    }
     if (!_connected || epoch != _transportEpoch || !value.connected || !value.linkReady || value.connectionGeneration != generation || value.gattInstanceId != instance) {
-      throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOperationFailed, retryable: true);
+      throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOwnerMismatch, retryable: false);
     }
     if (value.preparing || value.inflightRequest != null) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: true);
     return value;
@@ -1294,7 +1557,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     _checkPublicRun(run);
     if (_publicRequest != null || _activeSecurityRequest != null || !_publicStatusSubscribed) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: true);
     final bond = await run.wait(_readNativeBond());
-    if (bond.state != NativeBondState.notBonded) throw const ProvisioningException(code: ProvisioningErrorCode.bleBondStateUnknown, retryable: false);
+    if (bond.state != NativeBondState.notBonded) throw const ProvisioningException(code: ProvisioningErrorCode.bleBondStateNotNone, retryable: false);
     _checkPublicRun(run);
     final pending = _PublicRequest(request, deviceId, bond.connectionGeneration, bond.gattInstanceId);
     final message = _preflightCodec.encodeRequest(request);
@@ -1356,12 +1619,30 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     _checkPublicRun(run);
     _controlledReleaseGeneration = generation;
     try {
-      await _publicPlatform.prepareControlledReconnect(requestId: run.id, connectionGeneration: generation, gattInstanceId: instance, reason: reason);
+      final reset = _expectedReset;
+      var peerAlreadyDisconnected = false;
+      if (reason == 'pairing_reset' && reset != null && reset.disconnected.isCompleted && reset.connectionGeneration == generation && reset.gattInstanceId == instance) {
+        final state = await run.wait(_publicPlatform.getGattOwnershipState(generation));
+        if (state.retiring) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: false);
+        if (state.connectionGeneration != generation || state.connected && state.gattInstanceId != instance) {
+          throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOwnerMismatch, retryable: false);
+        }
+        // This fast path has both the matched board-reset disconnect callback
+        // and native absence; neither absence nor a request event alone suffices.
+        peerAlreadyDisconnected = !state.connected;
+      }
+      if (!peerAlreadyDisconnected) await _publicPlatform.prepareControlledReconnect(requestId: run.id, connectionGeneration: generation, gattInstanceId: instance, reason: reason);
       _checkPublicRun(run);
+      _publicGattOwner = null;
       _retiredPublicGenerations.add(generation);
       if (_retiredPublicGenerations.length > 32) _retiredPublicGenerations.remove(_retiredPublicGenerations.first);
       ++_transportEpoch;
       _markDisconnected('controlled_preflight_release');
+    } on ProvisioningException catch (error) {
+      if (const {ProvisioningErrorCode.bleGattReleaseUnconfirmed, ProvisioningErrorCode.bleGattRecoveryFailed, ProvisioningErrorCode.bleOperationBusy}.contains(error.code)) {
+        _publicReleaseFailure = error;
+      }
+      rethrow;
     } finally {
       _controlledReleaseGeneration = null;
       _expectedReset = null;
@@ -1526,6 +1807,10 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       }
       securitySessionStarted = true;
       _nativePreparationStarted = true;
+      // From this point the native security attempt owns cleanup, even when
+      // preparePairing fails before producing a readiness receipt.
+      _publicCleanupOwned = false;
+      _publicGattOwner = null;
       final platform = _platform;
       _pairingProgress.add(BlePairingProgress(requestId: request.requestId, stage: BlePairingStage.preparing));
       if (platform is BirdBoxPairingPlatform) {
@@ -1824,6 +2109,18 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   void _handleDisconnect([BleDisconnectEvent? event]) {
     final eventGeneration = event?.connectionGeneration;
     final activeGeneration = _activeConnectionGeneration;
+    final instance = event?.gattInstanceId;
+    final knownInstance = _nativeReleaseWait?.owned.$2 ?? _activeGattGeneration;
+    if (eventGeneration == activeGeneration && instance != null && instance > 0 && knownInstance != null && instance != knownInstance) {
+      unawaited(_recordConnectionDiagnostic(eventType: 'stale_disconnect_ignored', operationName: 'disconnect', resultCode: 'foreign_gatt_instance', connectionGeneration: eventGeneration, gattInstanceId: instance));
+      return;
+    }
+    final pendingRelease = _nativeReleaseWait;
+    if (pendingRelease != null && eventGeneration == pendingRelease.owned.$1 && instance == pendingRelease.owned.$2 && event?.reason == 'requested') {
+      // This is the request/start event, not physical confirmation.
+      _markDisconnected('release_requested');
+      return;
+    }
     if (eventGeneration != null && eventGeneration != activeGeneration && _retiredPublicGenerations.contains(eventGeneration)) return;
     final reset = _expectedReset;
     final matchingReset =
@@ -1950,6 +2247,8 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
   }
 
   void _checkConnected() {
+    if (_publicReleaseFailure != null) throw _publicReleaseFailure!;
+    if (_disconnectFuture != null || _controlledReleaseGeneration != null) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: false);
     _checkNotDisposed();
     if (!_connected) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattNotReady, retryable: true);
   }
@@ -1960,6 +2259,27 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     try {
       final event = BleConnectionDiagnosticEvent.fromPlatform({...value, 'flowId': _traceFlowIds[value['traceId']]});
       _activeTraceId ??= event.traceId;
+      final pendingRelease = _nativeReleaseWait;
+      if (pendingRelease != null && const {'controlled_release_disconnect_confirmed', 'controlled_release_disconnect_timeout'}.contains(event.eventType)) {
+        final instance = event.gattInstanceId ?? event.gattGeneration;
+        if (event.connectionGeneration == pendingRelease.owned.$1 && event.traceId == pendingRelease.traceId) {
+          if (instance == pendingRelease.owned.$2) {
+            final confirmed = event.eventType == 'controlled_release_disconnect_confirmed' && event.resultCode == 'retired_gatt_disconnected';
+            final timedOut = event.eventType == 'controlled_release_disconnect_timeout' && const {'disconnect_callback_missing', 'close_failed'}.contains(event.resultCode);
+            if ((confirmed || timedOut) && !pendingRelease.result.isCompleted) pendingRelease.result.complete(confirmed);
+          } else if (instance == null || instance == 0) {
+            unawaited(
+              _recordConnectionDiagnostic(
+                eventType: 'gatt_release_completion_unattributed',
+                operationName: 'disconnect',
+                resultCode: 'retired_instance_missing',
+                connectionGeneration: pendingRelease.owned.$1,
+                gattInstanceId: pendingRelease.owned.$2,
+              ),
+            );
+          }
+        }
+      }
       final failure = _activeCommandFailure;
       final outcome = event.terminalOutcome?.toLowerCase();
       if (failure != null &&
@@ -2029,6 +2349,8 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     String? cleanupOutcome,
     String? sanitizedMessage,
     BleAttemptFailure? failure,
+    int? connectionGeneration,
+    int? gattInstanceId,
   }) async {
     final traceId = failure?.firstTerminalError?['trace_id'] as String? ?? _activeTraceId ?? _lastTraceId;
     if (traceId == null) return;
@@ -2054,8 +2376,9 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         sanitizedMessage: sanitizedMessage,
         attemptId: failure?.firstTerminalError?['attempt_id'] as String? ?? _publicPreparation?.id,
         failureDetails: failure?.toJson(),
-        connectionGeneration: _activeConnectionGeneration,
-        gattGeneration: _activeGattGeneration,
+        connectionGeneration: connectionGeneration ?? _activeConnectionGeneration,
+        gattInstanceId: gattInstanceId ?? _activeGattGeneration,
+        gattGeneration: gattInstanceId ?? _activeGattGeneration,
       ),
     );
   }
@@ -2083,6 +2406,14 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     ProvisioningException() => error.code.wireValue,
     _ => error.runtimeType.toString(),
   };
+}
+
+final class _NativeReleaseWait {
+  _NativeReleaseWait(this.owned, this.traceId);
+  final (int, int) owned;
+  final String? traceId;
+  final result = Completer<bool>();
+  bool cancelled = false;
 }
 
 final class _PublicPreparation {

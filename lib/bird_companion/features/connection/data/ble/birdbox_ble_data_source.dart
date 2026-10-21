@@ -15,6 +15,12 @@ abstract interface class BirdBoxPairingPreparation {
   Future<ProvisioningDeviceInfo> prepareConnection(BirdBoxAdvertisement advertisement, {required String clientId});
 }
 
+/// Allows repository error cleanup to preserve a native release failure instead
+/// of silently turning that cleanup into a user-authorized recovery attempt.
+abstract interface class BleNativeReleaseState {
+  bool get nativeReleaseBlocked;
+}
+
 abstract interface class BirdBoxBleDataSource {
   Stream<BirdBoxAdvertisement> scan({Duration? timeout});
   Future<void> stopScan();

@@ -418,7 +418,9 @@ final class ProvisioningRepositoryImpl
       return info;
     } catch (error, stack) {
       final failure = BleAttemptFailure(attemptId: 'repository-connect-$_connectionEpoch')..capture(error, stack, method: 'repository.connect', expectedState: 'trusted', currentState: 'connecting');
-      if (transportStarted && identical(owner, _sessionOwner)) {
+      final releaseBlocked = _ble is BleNativeReleaseState && (_ble as BleNativeReleaseState).nativeReleaseBlocked;
+      if (releaseBlocked && identical(owner, _sessionOwner)) _sessionReleaseError = failure.exception;
+      if (!releaseBlocked && transportStarted && identical(owner, _sessionOwner)) {
         try {
           await _releaseSession();
         } catch (cleanupError, cleanupStack) {

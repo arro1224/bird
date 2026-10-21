@@ -29,6 +29,7 @@ $steps = @(
 if (!$SkipFlutter) {
     $steps += @(
         @{name='flutter-tests';file=$dart;arguments=@($flutter,'--suppress-analytics','--no-version-check','test','--no-pub','test/bird_companion/features/connection','test/bird_companion/core/provisioning_error_mapping_test.dart','test/contracts','--reporter','expanded');timeout=300},
+        @{name='flutter-integration';file=$dart;arguments=@($flutter,'--suppress-analytics','--no-version-check','test','--no-pub','test/bird_companion/settings','test/bird_companion/app','test/bird_companion/features/settings','--reporter','expanded');timeout=300},
         @{name='flutter-analyze';file=$dart;arguments=@($flutter,'--suppress-analytics','--no-version-check','analyze','--no-pub');timeout=180},
         @{name='contracts';file=$dart;arguments=@('--packages=.dart_tool/package_config.json','tool/contracts/verify_contracts.dart');timeout=60}
     )
@@ -54,20 +55,31 @@ try {
     $env:PYTHONDONTWRITEBYTECODE = '1'
     $env:PYTHONUTF8 = '1'
     $env:PYTHONIOENCODING = 'utf-8'
+    $snapshotCode = 'import sys; sys.path.insert(0,"tool/ble22/ble1019"); import acceptance; acceptance.write_new(sys.argv[1], acceptance.snapshot())'
+    $beforePath = Join-Path $output 'source-before.json'
+    $before = Invoke-Ble22Process -File $Python -Arguments @('-c',$snapshotCode,$beforePath) -WorkingDirectory $root -TimeoutSeconds 60 -LogPath (Join-Path $output 'source-before.log')
+    if ($before.exit_code -ne 0) { throw 'Could not capture source before checks.' }
     foreach ($step in $steps) {
         Write-Output "BLE1019_CHECK $($step.name)"
         $log = Join-Path $output ($step.name+'.log')
         $process = Invoke-Ble22Process -File $step.file -Arguments $step.arguments -WorkingDirectory $root -TimeoutSeconds $step.timeout -LogPath $log
-        $results += @{name=$step.name;exit_code=$process.exit_code;timed_out=$process.timed_out;log=$log;sha256=(Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash.ToLowerInvariant()}
+        $results += @{name=$step.name;file=$step.file;arguments=$step.arguments;working_directory=$root;exit_code=$process.exit_code;timed_out=$process.timed_out;log=$log;sha256=(Get-FileHash -LiteralPath $log -Algorithm SHA256).Hash.ToLowerInvariant()}
     }
+    $afterPath = Join-Path $output 'source-after.json'
+    $after = Invoke-Ble22Process -File $Python -Arguments @('-c',$snapshotCode,$afterPath) -WorkingDirectory $root -TimeoutSeconds 60 -LogPath (Join-Path $output 'source-after.log')
+    if ($after.exit_code -ne 0) { throw 'Could not capture source after checks.' }
+    $sourceBefore = Get-Content -LiteralPath $beforePath -Raw -Encoding utf8 | ConvertFrom-Json
+    $sourceAfter = Get-Content -LiteralPath $afterPath -Raw -Encoding utf8 | ConvertFrom-Json
+    $sourceUnchanged = $sourceBefore.git_commit -eq $sourceAfter.git_commit -and $sourceBefore.source_fingerprint -eq $sourceAfter.source_fingerprint
     $native = [IO.File]::ReadAllText((Join-Path $root 'android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java'))
     $dispatch = @{}
     foreach ($method in @('getNativeBondState','writePairingPreflight','getGattOwnershipState','prepareControlledReconnect')) {
         $dispatch[$method] = $native.Contains('"'+$method+'"')
     }
     $result = @{
-        schema_version=1;round_id=$record.round_id;check_id=$checkId;checks=$results;
-        offline_checks_passed=@($results | Where-Object { $_.exit_code -ne 0 }).Count -eq 0;
+        schema_version=2;round_id=$record.round_id;check_id=$checkId;checks=$results;
+        source_unchanged=$sourceUnchanged;source_before=$beforePath;source_after=$afterPath;
+        offline_checks_passed=(@($results | Where-Object { $_.exit_code -ne 0 }).Count -eq 0 -and $sourceUnchanged);
         flutter_executed=!$SkipFlutter;hardware_executed=$false;apk_built=$false;native_unit_tests_executed=$false;
         native_dispatch_literals_present=$dispatch;native_runtime_verified=$false;jointly_confirmed=$false;
         releasable=$false;scope='offline checks only; pending matrix is not a test pass'

@@ -40,6 +40,9 @@ enum ProvisioningErrorCode {
   bleCommandResponseTimeout,
   locationSettingsUnavailable,
   bleGattNotReady,
+  bleGattOwnerMismatch,
+  bleBondStateNotNone,
+  bleGattReleaseUnconfirmed,
   bleLePairingNotStarted,
   blePairingTimeout,
   blePairingRejected,
@@ -120,6 +123,9 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.bleCommandResponseTimeout => 'BLE_COMMAND_RESPONSE_TIMEOUT',
     ProvisioningErrorCode.locationSettingsUnavailable => 'LOCATION_SETTINGS_UNAVAILABLE',
     ProvisioningErrorCode.bleGattNotReady => 'BLE_GATT_NOT_READY',
+    ProvisioningErrorCode.bleGattOwnerMismatch => 'BLE_GATT_OWNER_MISMATCH',
+    ProvisioningErrorCode.bleBondStateNotNone => 'BLE_BOND_STATE_NOT_NONE',
+    ProvisioningErrorCode.bleGattReleaseUnconfirmed => 'BLE_GATT_RELEASE_UNCONFIRMED',
     ProvisioningErrorCode.bleLePairingNotStarted => 'BLE_LE_PAIRING_NOT_STARTED',
     ProvisioningErrorCode.blePairingTimeout => 'BLE_PAIRING_TIMEOUT',
     ProvisioningErrorCode.blePairingRejected => 'BLE_PAIRING_REJECTED',
@@ -180,6 +186,9 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.bleCommandResponseTimeout ||
     ProvisioningErrorCode.locationSettingsUnavailable ||
     ProvisioningErrorCode.bleGattNotReady ||
+    ProvisioningErrorCode.bleGattOwnerMismatch ||
+    ProvisioningErrorCode.bleBondStateNotNone ||
+    ProvisioningErrorCode.bleGattReleaseUnconfirmed ||
     ProvisioningErrorCode.bleLePairingNotStarted ||
     ProvisioningErrorCode.blePairingTimeout ||
     ProvisioningErrorCode.blePairingRejected ||

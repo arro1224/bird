@@ -149,9 +149,9 @@ def matrix_markdown():
 
 
 def snapshot():
-    paths = ['lib/bird_companion/features/connection', 'lib/bird_companion/core/errors/user_message_mapper.dart',
-             'android/app/src/main', 'pubspec.yaml', 'docs/contracts', 'test/contracts',
-             'tool/ble22/ble1019', 'tool/ble22/README.md', 'test/bird_companion/features/connection']
+    paths = ['lib/bird_companion', 'android/app/src', 'android/app/build.gradle.kts',
+             'android/gradle.properties', 'pubspec.yaml', 'pubspec.lock', 'docs/contracts',
+             'test/bird_companion', 'test/contracts', 'tool/ble22', 'tool/ble19', 'tool/contracts']
     raw = subprocess.check_output(['git', 'ls-files', '-co', '--exclude-standard', '-z', '--', *paths], cwd=REPO)
     lines = [f'{p}\t{sha(REPO / p)}' for p in sorted(set(raw.decode('utf-8').strip('\0').split('\0')))
              if p and (REPO / p).is_file()]
@@ -244,6 +244,30 @@ def action_of(event):
     return None
 
 
+def check_release_completions(events):
+    pending = set()
+    for event in events:
+        if event.get('source') != 'dart':
+            continue
+        kind = event.get('event_type')
+        if kind not in ('gatt_release_requested', 'gatt_release_confirmed', 'gatt_release_recovered'):
+            continue
+        scope = event.get('flow_id') or event.get('trace_id')
+        generation = event.get('connection_generation')
+        instance = event.get('gatt_instance_id', event.get('gatt_generation'))
+        require(isinstance(scope, str) and scope and type(generation) is int and generation > 0
+                and type(instance) is int and instance > 0, 'release_owner_missing')
+        owner = (scope, generation, instance)
+        if kind == 'gatt_release_requested':
+            pending.add(owner)
+        elif ((kind == 'gatt_release_confirmed' and event.get('result_code') == 'native_disconnect_and_close_confirmed')
+              or (kind == 'gatt_release_recovered' and event.get('result_code') == 'adapter_disabled_and_native_absent')):
+            pending.discard(owner)
+    # Native teardown_completed is emitted at barrier start. Neither that nor
+    # an idempotent success can close a pending Dart release in the evidence.
+    require(not pending, 'release_completion_unconfirmed')
+
+
 def check_run(root, path):
     evidence = read(path)
     require(isinstance(evidence, dict), 'evidence_object_required')
@@ -317,6 +341,7 @@ def check_run(root, path):
     allowed = {'one': {1}, 'zero': {0}, 'zero_or_one': {0, 1}, 'per_action': {0, 1}, 'native_baseline': {0 if bond == 'BOND_BONDED' else 1}}[rule]
     require(all(n in allowed for n in dialogs), 'system_popup_count_mismatch')
     events = full['connection_events']
+    check_release_completions(events)
     android = [e for e in events if e.get('source') == 'android']
     require(any(re.fullmatch(r'[a-f0-9]{64}', str(e.get('device_address_hash', ''))) for e in android), 'device_address_hash_missing')
     require(any('system_pairing_interaction' in e for e in android), 'pairing_interaction_fact_missing')

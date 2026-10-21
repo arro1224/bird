@@ -19,6 +19,33 @@ import 'fakes/preflight_ble_platform.dart';
 
 void main() {
   final device = ProvisioningDevice(scanId: 'test', advertisement: PreflightBlePlatform.advertisement);
+  test('repository, page and disposal cleanup never close a replacement public GATT', () async {
+    final platform = PreflightBlePlatform();
+    platform.beforePublicWrite = () {
+      platform.beforePublicWrite = null;
+      platform.instance = 2;
+    };
+    final source = PlatformBirdBoxBleDataSource(platform: platform);
+    final api = ApiClient();
+    final repository = ProvisioningRepositoryImpl(
+      ble: source,
+      wifi: FakeBirdBoxWifiPlatform(),
+      dpp: FakeBirdBoxDppPlatform(),
+      clientIdentityStore: MemoryClientIdentityStore(initialValue: PreflightBlePlatform.client),
+      credentialStore: MemorySecureSessionStore(),
+      healthApi: HealthApi(api),
+      pairingApi: PairingApi(api),
+    );
+    final cubit = ProvisioningCubit(repository);
+    await cubit.selectDevice(device);
+    expect((cubit.state.error as ProvisioningException).code, ProvisioningErrorCode.bleGattOwnerMismatch);
+    await cubit.close();
+    await repository.dispose();
+    await api.dispose();
+    expect(platform.connected, isTrue);
+    expect(platform.publicReleaseOwners, isEmpty);
+    expect(platform.bondsInitiated, 0);
+  });
   test('repository cleanup is secondary and Cubit receives the source rejection with complete evidence', () async {
     final source = _FailingConnection();
     final api = ApiClient();

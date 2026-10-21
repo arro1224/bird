@@ -97,12 +97,26 @@ final class BleDiagnosticExport {
       'first_error': firstError,
       'first_error_selection': failure == null ? 'legacy_event_inference' : 'terminal_ledger',
       'latest_state': events.isEmpty ? null : _pick(events.last, _eventKeys),
+      'release_timeline': events
+          .where(
+            (e) =>
+                requested(e) &&
+                (e['event_type']?.toString().startsWith('gatt_release_') == true ||
+                    const {'controlled_release_disconnect_confirmed', 'controlled_release_disconnect_timeout', 'controlled_release_immediate', 'controlled_reconnect_already_released'}.contains(e['event_type'])),
+          )
+          .toList()
+          .reversed
+          .take(4)
+          .toList()
+          .reversed
+          .map((e) => _pick(e, const ['event_type', 'occurred_at', 'connection_generation', 'gatt_instance_id', 'gatt_generation', 'result_code']))
+          .toList(),
     };
     var limit = 128;
     while (true) {
       final output = jsonEncode({
         ...summary,
-        for (final key in ['scan', 'first_error', 'first_terminal_error', 'latest_state', 'secondary_errors'])
+        for (final key in ['scan', 'first_error', 'first_terminal_error', 'latest_state', 'secondary_errors', 'release_timeline'])
           if (summary.containsKey(key)) key: _shorten(summary[key], limit),
       });
       if (utf8.encode(output).length <= 4096) {
@@ -261,6 +275,7 @@ final class BleDiagnosticExport {
     'gatt_present',
     'link_ready',
     'connection_generation',
+    'gatt_instance_id',
     'gatt_generation',
     'conditional_bond_fallback_attempted',
     'bond_initiation_source',

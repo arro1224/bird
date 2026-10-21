@@ -66,7 +66,8 @@ void main() {
     expect(info.deviceId, PreflightBlePlatform.device);
     expect(platform.requests.map((r) => r['type']), ['prepare_system_pairing', 'confirm_pairing_reset', 'prepare_system_pairing']);
     expect(platform.generation, 2);
-    expect(platform.calls.where((c) => c.startsWith('release:')), ['release:1']);
+    // A matched real peer disconnect plus native absence needs no second release.
+    expect(platform.calls.where((c) => c.startsWith('release:')), isEmpty);
     expect(disconnects, isEmpty);
     expect(platform.bondsInitiated, 0);
     expect(
@@ -324,7 +325,7 @@ void main() {
 
   test('release failure never proceeds to a second connect', () async {
     final platform = PreflightBlePlatform()
-      ..boardOld = true
+      ..missingServiceGenerations.add(1)
       ..releaseFails = true;
     await expectLater(source(platform).prepareConnection(advertisement, clientId: client), errorCode(ProvisioningErrorCode.bleGattRecoveryFailed));
     expect(platform.generation, 1);
@@ -380,7 +381,7 @@ void main() {
 
   test('native snapshot generation mismatch cannot start a preflight write', () async {
     final platform = PreflightBlePlatform()..snapshotGenerationOffset = -1;
-    await expectLater(source(platform).prepareConnection(advertisement, clientId: client), errorCode(ProvisioningErrorCode.bleGattOperationFailed));
+    await expectLater(source(platform).prepareConnection(advertisement, clientId: client), errorCode(ProvisioningErrorCode.bleGattOwnerMismatch));
     expect(platform.requests, isEmpty);
   });
 
@@ -450,6 +451,139 @@ void main() {
     platform.releaseGate!.complete();
     await replacement;
     expect(platform.generation, 2);
+    expect(platform.bondsInitiated, 0);
+  });
+
+  for (final changeGeneration in [false, true]) {
+    test('public owner mismatch leaves replacement ${changeGeneration ? 'generation' : 'instance'} untouched through cleanup', () async {
+      final platform = PreflightBlePlatform();
+      final sink = _Sink();
+      platform.beforePublicWrite = () {
+        platform.beforePublicWrite = null;
+        if (changeGeneration) {
+          platform.generation++;
+        } else {
+          platform.instance++;
+        }
+      };
+      final ble = source(platform, diagnostics: sink);
+      await expectLater(ble.prepareConnection(advertisement, clientId: client), errorCode(ProvisioningErrorCode.bleGattOwnerMismatch));
+      expect(ble.isConnected, isFalse);
+      await ble.disconnect();
+      await ble.dispose();
+      expect(platform.connected, isTrue);
+      expect(platform.publicReleaseOwners, isEmpty);
+      expect(platform.requests, isEmpty);
+      expect(platform.bondsInitiated, 0);
+      final failed = sink.events.lastWhere((e) => e.eventType == 'pairing_preflight_failed');
+      expect(failed.errorCode, 'BLE_GATT_OWNER_MISMATCH');
+    });
+  }
+
+  test('cleanup after another first error still uses original atomic owner and preserves first error', () async {
+    final platform = PreflightBlePlatform()..dropResponses = true;
+    final sink = _Sink();
+    final ble = source(platform, diagnostics: sink);
+    final result = ble.prepareConnection(advertisement, clientId: client);
+    final failed = expectLater(result, errorCode(ProvisioningErrorCode.bleCommandResponseTimeout));
+    await until(() => platform.requests.isNotEmpty);
+    platform.instance = 2;
+    await failed;
+    expect(platform.publicReleaseOwners, isEmpty);
+    expect(platform.connected, isTrue);
+    await ble.disconnect();
+    expect(platform.publicReleaseOwners, isEmpty);
+    final finalized = sink.events.lastWhere((e) => e.eventType == 'teardown_failed' && e.failureDetails != null);
+    expect(jsonEncode(finalized.failureDetails), contains('BLE_GATT_OWNER_MISMATCH'));
+    expect(finalized.errorCode, 'BLE_COMMAND_RESPONSE_TIMEOUT');
+  });
+
+  for (final initial in [NativeBondState.bonded, NativeBondState.bonding]) {
+    test('write-time ${initial.name} follows existing system bond without another createBond', () async {
+      final platform = PreflightBlePlatform();
+      platform.beforePublicWrite = () {
+        platform.beforePublicWrite = null;
+        platform.bond = initial;
+      };
+      final ble = source(platform);
+      final preparing = ble.prepareConnection(advertisement, clientId: client);
+      await until(() => platform.publicWriteOwners.isNotEmpty);
+      if (initial == NativeBondState.bonding) {
+        expect(ble.isConnected, isTrue);
+        platform.bond = NativeBondState.bonded;
+      }
+      await preparing;
+      expect(platform.requests, isEmpty);
+      expect(platform.generation, 1);
+      await ble.writeCommand(open);
+      expect(platform.bondsInitiated, 0);
+    });
+  }
+
+  test('unconfirmed release blocks scan, connect and cleanup without automatic retry', () async {
+    final platform = PreflightBlePlatform()..missingServiceGenerations.add(1);
+    platform.controlledReleaseError = const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);
+    final ble = source(platform);
+    await expectLater(ble.prepareConnection(advertisement, clientId: client), errorCode(ProvisioningErrorCode.bleGattReleaseUnconfirmed));
+    expect(platform.publicReleaseOwners, [(1, 1)]);
+    await expectLater(ble.connect(advertisement), errorCode(ProvisioningErrorCode.bleGattReleaseUnconfirmed));
+    await expectLater(ble.scan().toList(), errorCode(ProvisioningErrorCode.bleGattReleaseUnconfirmed));
+    await expectLater(ble.disconnect(), errorCode(ProvisioningErrorCode.bleGattReleaseUnconfirmed));
+    expect(platform.publicReleaseOwners, [(1, 1)]);
+    expect(platform.bondsInitiated, 0);
+  });
+
+  test('foreground retiring clears ready and blocks new work without another release', () async {
+    final platform = PreflightBlePlatform();
+    final ble = source(platform);
+    final owner = ble.claimSession();
+    await ble.prepareConnection(advertisement, clientId: client);
+    platform.retiring = true;
+    await expectLater(ble.resumeDiscovery(owner), errorCode(ProvisioningErrorCode.bleGattReleaseUnconfirmed));
+    expect(ble.isConnected, isFalse);
+    await expectLater(ble.scan().toList(), errorCode(ProvisioningErrorCode.bleGattReleaseUnconfirmed));
+    await expectLater(ble.connect(advertisement), errorCode(ProvisioningErrorCode.bleGattReleaseUnconfirmed));
+    await expectLater(ble.disconnect(), errorCode(ProvisioningErrorCode.bleGattReleaseUnconfirmed));
+    expect(platform.publicReleaseOwners, isEmpty);
+    expect(platform.bondsInitiated, 0);
+  });
+
+  test('controlled release in flight blocks scan and connect until held completion', () async {
+    final platform = PreflightBlePlatform();
+    final ble = source(platform);
+    await ble.prepareConnection(advertisement, clientId: client);
+    platform.releaseBarrier = Completer<void>();
+    final replacement = ble.prepareConnection(advertisement, clientId: client);
+    await until(() => platform.publicReleaseOwners.isNotEmpty);
+    await expectLater(ble.scan().toList(), errorCode(ProvisioningErrorCode.bleOperationBusy));
+    await expectLater(ble.connect(advertisement), errorCode(ProvisioningErrorCode.bleOperationBusy));
+    expect(platform.generation, 1);
+    expect(platform.publicReleaseOwners, [(1, 1)]);
+    platform.releaseBarrier!.complete();
+    await replacement;
+    expect(platform.generation, 2);
+    expect(ble.isConnected, isTrue);
+  });
+
+  test('retiring during public preparation cannot write or release an absent parked GATT', () async {
+    final platform = PreflightBlePlatform()..retiring = true;
+    final ble = source(platform);
+    await expectLater(ble.prepareConnection(advertisement, clientId: client), errorCode(ProvisioningErrorCode.bleGattReleaseUnconfirmed));
+    expect(ble.isConnected, isFalse);
+    expect(platform.publicWriteOwners, isEmpty);
+    expect(platform.publicReleaseOwners, isEmpty);
+    expect(platform.bondsInitiated, 0);
+  });
+
+  test('idle GATT after security preparation failure uses atomically owned release', () async {
+    final platform = PreflightBlePlatform();
+    final ble = source(platform);
+    await ble.prepareConnection(advertisement, clientId: client);
+    platform.securityPreparationError = const ProvisioningException(code: ProvisioningErrorCode.blePairingRejected, retryable: false);
+    await expectLater(ble.writeCommand(open), errorCode(ProvisioningErrorCode.blePairingRejected));
+    await ble.disconnect();
+    expect(platform.connected, isFalse);
+    expect(platform.publicReleaseOwners, [(1, 1)]);
     expect(platform.bondsInitiated, 0);
   });
 }

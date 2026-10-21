@@ -139,6 +139,41 @@ class AcceptanceTests(unittest.TestCase):
         self.assertFalse(summary['ready_for_joint_review'])
         self.assertFalse(summary['releasable'])
 
+    def test_native_teardown_and_idempotency_cannot_complete_a_new_release_request(self):
+        path, full, evidence = self.fixture()
+        owner = {'source': 'dart', 'trace_id': 'synthetic-only', 'connection_generation': 2, 'gatt_instance_id': 1}
+        full['connection_events'].extend([
+            {**owner, 'event_type': 'gatt_release_requested'},
+            {**owner, 'source': 'android', 'event_type': 'teardown_completed'},
+            {**owner, 'source': 'android', 'event_type': 'controlled_reconnect_already_released', 'result_code': 'idempotent_release'},
+        ])
+        self.mutate_trace(path, full, evidence)
+        with self.assertRaisesRegex(ValueError, 'release_completion_unconfirmed'):
+            a.check_run(self.root, path)
+
+    def test_foreign_instance_or_flow_cannot_settle_release_evidence(self):
+        path, full, evidence = self.fixture()
+        owner = {'source': 'dart', 'trace_id': 'synthetic-only', 'connection_generation': 2, 'gatt_instance_id': 1}
+        full['connection_events'].extend([
+            {**owner, 'event_type': 'gatt_release_requested'},
+            {**owner, 'gatt_instance_id': 2, 'event_type': 'gatt_release_confirmed', 'result_code': 'native_disconnect_and_close_confirmed'},
+            {**owner, 'trace_id': 'foreign', 'event_type': 'gatt_release_confirmed', 'result_code': 'native_disconnect_and_close_confirmed'},
+        ])
+        self.mutate_trace(path, full, evidence)
+        with self.assertRaisesRegex(ValueError, 'release_completion_unconfirmed'):
+            a.check_run(self.root, path)
+
+    def test_explicit_recovery_completes_only_the_matching_prior_release(self):
+        path, full, evidence = self.fixture()
+        owner = {'source': 'dart', 'trace_id': 'synthetic-only', 'connection_generation': 2, 'gatt_instance_id': 1}
+        full['connection_events'].extend([
+            {**owner, 'event_type': 'gatt_release_requested'},
+            {**owner, 'event_type': 'gatt_release_failed', 'error_code': 'BLE_GATT_RELEASE_UNCONFIRMED'},
+            {**owner, 'event_type': 'gatt_release_recovered', 'result_code': 'adapter_disabled_and_native_absent'},
+        ])
+        self.mutate_trace(path, full, evidence)
+        self.assertTrue(a.check_run(self.root, path)['counts_for_acceptance'])
+
     def test_post_ack_disconnect_segment_has_zero_dialogs_even_before_later_user_pairing(self):
         path, _, _ = self.fixture('P06')
         self.assertEqual(a.check_run(self.root, path)['human_dialogs'], 0)

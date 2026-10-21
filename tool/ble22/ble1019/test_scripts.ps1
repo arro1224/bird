@@ -18,6 +18,7 @@ Check ($plan.exit_code -eq 0) 'Plan mode failed.'
 $value = $plan.stdout | ConvertFrom-Json
 Check ($value.mode -eq 'plan_only' -and $value.hardware_operations -eq 0 -and $value.apk_builds -eq 0 -and !$value.releasable) 'Plan mode changed scope.'
 Check ($value.steps.Count -ge 8) 'Offline steps missing.'
+Check (@($value.steps | Where-Object { $_.name -eq 'flutter-integration' -and $_.arguments -contains 'test/bird_companion/settings' -and $_.arguments -contains 'test/bird_companion/app' }).Count -eq 1) 'Settings and session integration coverage missing.'
 Check (!(Test-Path -LiteralPath (Join-Path $round 'checks'))) 'Plan mode executed checks.'
 $bad = Invoke-Ble22Process -File $pwsh -Arguments @('-NoProfile','-File',(Join-Path $PSScriptRoot 'run_offline.ps1'),'-RoundDirectory',$round,'-Python',(Join-Path $round 'missing-python.exe')) -WorkingDirectory $root
 Check ($bad.exit_code -ne 0 -and !(Test-Path -LiteralPath (Join-Path $round 'checks'))) 'Missing runtime must fail before checks.'

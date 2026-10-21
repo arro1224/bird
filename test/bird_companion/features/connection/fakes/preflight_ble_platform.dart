@@ -34,6 +34,17 @@ class PreflightBlePlatform implements BirdBoxBlePlatform, BirdBoxPairingPlatform
   bool staleDuringScan = false;
   bool omitCharacteristicInventory = false;
   bool snapshotFails = false;
+  bool retiring = false;
+  NativeGattReleaseSnapshot? lastRelease;
+  BleAdapterState adapter = BleAdapterState.enabled;
+  String? nativeRequest;
+  int instance = 1;
+  void Function()? beforePublicWrite;
+  ProvisioningException? publicWriteError, controlledReleaseError;
+  ProvisioningException? securityPreparationError;
+  Completer<void>? releaseBarrier;
+  final publicWriteOwners = <(int, int)>[];
+  final publicReleaseOwners = <(int, int)>[];
   int ownershipGenerationOffset = 0;
   int snapshotGenerationOffset = 0;
   NativeBondState bond = NativeBondState.notBonded;
@@ -50,7 +61,7 @@ class PreflightBlePlatform implements BirdBoxBlePlatform, BirdBoxPairingPlatform
   @override
   Stream<BleDisconnectEvent> get disconnects => disconnectEvents.stream;
   @override
-  Future<BleScanEnvironment> readScanEnvironment() async => const BleScanEnvironment(permission: BleScanPermissionState.granted, adapter: BleAdapterState.enabled);
+  Future<BleScanEnvironment> readScanEnvironment() async => BleScanEnvironment(permission: BleScanPermissionState.granted, adapter: adapter);
   @override
   Future<bool> ensurePermissions() async => true;
   @override
@@ -83,7 +94,7 @@ class PreflightBlePlatform implements BirdBoxBlePlatform, BirdBoxPairingPlatform
 
   void loseLink({String reason = 'link_lost', int status = 19, int? oldGeneration}) {
     if (oldGeneration == null) connected = false;
-    disconnectEvents.add(BleDisconnectEvent(reason: reason, gattStatus: status, unexpected: true, connectionGeneration: oldGeneration ?? generation));
+    disconnectEvents.add(BleDisconnectEvent(reason: reason, gattStatus: status, unexpected: true, connectionGeneration: oldGeneration ?? generation, gattInstanceId: instance));
   }
 
   @override
@@ -116,7 +127,7 @@ class PreflightBlePlatform implements BirdBoxBlePlatform, BirdBoxPairingPlatform
   @override
   Future<NativeBondSnapshot> getNativeBondState(int connectionGeneration, {required String platformDeviceId}) async {
     calls.add('bond:$generation');
-    return NativeBondSnapshot(state: bond, connectionGeneration: generation + snapshotGenerationOffset, gattInstanceId: 1);
+    return NativeBondSnapshot(state: bond, connectionGeneration: generation + snapshotGenerationOffset, gattInstanceId: instance);
   }
 
   @override
@@ -125,9 +136,12 @@ class PreflightBlePlatform implements BirdBoxBlePlatform, BirdBoxPairingPlatform
     if (snapshotFails) throw const ProvisioningException(code: ProvisioningErrorCode.blePairingPreflightUnavailable, retryable: false);
     return PublicGattSnapshot(
       connectionGeneration: generation + ownershipGenerationOffset,
-      gattInstanceId: 1,
-      connected: connected,
-      linkReady: connected,
+      gattInstanceId: connected && !retiring ? instance : 0,
+      connected: connected && !retiring,
+      linkReady: connected && !retiring,
+      retiring: retiring,
+      lastRelease: lastRelease,
+      inflightRequest: nativeRequest,
       hasCharacteristicInventory: !omitCharacteristicInventory,
       characteristicUuids: {...BleProtocolConstants.characteristicUuids, if (!missingServiceGenerations.contains(generation)) BleProtocolConstants.pairingPreflightCharacteristicUuid},
     );
@@ -135,13 +149,27 @@ class PreflightBlePlatform implements BirdBoxBlePlatform, BirdBoxPairingPlatform
 
   @override
   Future<void> prepareControlledReconnect({required String requestId, required int connectionGeneration, required int gattInstanceId, required String reason}) async {
+    publicReleaseOwners.add((connectionGeneration, gattInstanceId));
+    if (connectionGeneration != generation || gattInstanceId != instance) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOwnerMismatch, retryable: false);
+    if (retiring) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: false);
+    if (controlledReleaseError != null) {
+      if (controlledReleaseError!.code == ProvisioningErrorCode.bleGattReleaseUnconfirmed) connected = false;
+      throw controlledReleaseError!;
+    }
     calls.add('release:$connectionGeneration');
     if (releaseFails) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattRecoveryFailed, retryable: false);
+    await releaseBarrier?.future;
     await disconnect();
   }
 
   @override
   Future<void> writePairingPreflight({required String requestId, required int connectionGeneration, required int gattInstanceId, required Uint8List fragmentBytes}) async {
+    beforePublicWrite?.call();
+    publicWriteOwners.add((connectionGeneration, gattInstanceId));
+    if (connectionGeneration != generation || gattInstanceId != instance) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattOwnerMismatch, retryable: false);
+    if (retiring) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: false);
+    if (publicWriteError != null) throw publicWriteError!;
+    if (bond != NativeBondState.notBonded) throw const ProvisioningException(code: ProvisioningErrorCode.bleBondStateNotNone, retryable: false);
     if (missingServiceGenerations.contains(generation)) throw const ProvisioningException(code: ProvisioningErrorCode.pairingPreflightCommandUnsupported, retryable: false, diagnosticMessage: 'native_preflight_characteristic_missing');
     final message = _incoming.add(Uint8List.fromList(fragmentBytes));
     if (message == null) return;
@@ -195,7 +223,7 @@ class PreflightBlePlatform implements BirdBoxBlePlatform, BirdBoxPairingPlatform
       notify.add({
         'characteristicUuid': BleProtocolConstants.networkStatusCharacteristicUuid,
         'value': frame,
-        if (metadata) ...{'connectionGeneration': fromGeneration ?? generation, 'gattGeneration': 1},
+        if (metadata) ...{'connectionGeneration': fromGeneration ?? generation, 'gattGeneration': instance},
       });
     }
   }
@@ -203,6 +231,7 @@ class PreflightBlePlatform implements BirdBoxBlePlatform, BirdBoxPairingPlatform
   @override
   Future<BlePairingReady> preparePairing(String requestId, String commandType) async {
     calls.add('secure:$commandType');
+    if (securityPreparationError != null) throw securityPreparationError!;
     if (bond == NativeBondState.notBonded) {
       bondsInitiated++;
       bond = NativeBondState.bonded;

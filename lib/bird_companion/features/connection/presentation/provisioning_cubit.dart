@@ -505,7 +505,11 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 
   void _onFailure(Object error, [StackTrace? stackTrace]) {
     if (!_alive) return;
-    final releaseFailed = state.linkStatus == BleLinkStatus.releaseFailed || state.linkStatus == BleLinkStatus.disconnecting || (_repository is BleSessionReleaseGuard && (_repository as BleSessionReleaseGuard).sessionReleaseFailed);
+    final releaseFailed =
+        error is ProvisioningException && error.code == ProvisioningErrorCode.bleGattReleaseUnconfirmed ||
+        state.linkStatus == BleLinkStatus.releaseFailed ||
+        state.linkStatus == BleLinkStatus.disconnecting ||
+        (_repository is BleSessionReleaseGuard && (_repository as BleSessionReleaseGuard).sessionReleaseFailed);
     if (releaseFailed) _lastAction = _ProvisioningAction.disconnect;
     final failure = _failures ??= BleAttemptFailure(attemptId: 'page-$_actionGeneration');
     failure.capture(error, stackTrace, method: _lastAction.name, expectedState: 'action_completed', currentState: state.phase.name);

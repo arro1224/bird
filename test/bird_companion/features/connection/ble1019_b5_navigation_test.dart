@@ -245,7 +245,7 @@ void main() {
     repository.releaseError = StateError('private failure');
     await tester.runAsync(cubit.returnToDiscovery);
     await tester.pumpAndSettle();
-    expect(find.text('蓝牙断开未完成，请重试断开'), findsOneWidget);
+    expect(find.text('蓝牙断开未完成，请重试断开；若持续失败，请关闭手机蓝牙后重试。'), findsOneWidget);
     expect(find.text('重试断开'), findsOneWidget);
     final button = find.ancestor(of: find.text('连接此盒子'), matching: find.byType(FilledButton));
     expect(tester.widget<FilledButton>(button).onPressed, isNull);

@@ -492,7 +492,7 @@ class _BleConnectionView extends StatelessWidget {
                   BleLinkStatus.connecting => '正在连接蓝牙',
                   BleLinkStatus.connected => '蓝牙已连接',
                   BleLinkStatus.disconnecting => '正在断开蓝牙，请稍候',
-                  BleLinkStatus.releaseFailed => '蓝牙断开未完成，请重试断开',
+                  BleLinkStatus.releaseFailed => '蓝牙断开未完成，请重试断开；若持续失败，请关闭手机蓝牙后重试。',
                 }, key: const Key('ble-link-status')),
               ),
             Expanded(child: content),

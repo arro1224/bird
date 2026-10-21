@@ -1,7 +1,13 @@
 # BLE 1019：Dart / Android 当前接入契约
 
-更新：2026-10-21；原生基线为 `thirdtime` 分支 2026-10-21 R1/R2 修订后的工作区源码。
+更新：2026-10-21；原生基线为 `thirdtime` 的 `d0eb144` 叠加乙第一至三批及本轮原生补充工作区改动。
 **离线回归通过不表示模拟盒子、真机或联合签字通过。**
+
+2026-10-21 乙第一批已接入：公开写和受控释放的生产调用总是成对传入两个expected字段，
+解析retiring，新增三个稳定App错误码，并保护失配后的跨层cleanup。第二批接入可靠完成等待、
+释放失败后的显式恢复和诊断保护。第一、二批未改变Java行为；本轮由乙代补原生释放契约：
+终态冻结旧实例和trace，补普通disconnect快速路径终态及可查询lastRelease，超时不再幂等成功。
+pre_connect_reset超时或close异常终止本次connect，不继续拨号。上述源码修订仍需甲复核及外设实测。
 本文件仅涉及 BLE 配对准备，不改变 HTTP、Wi-Fi、热点和复制协议。附件作为需求和协作依据，
 当前字段与行为以本仓库代码核对结果为准。实施记录与交接报告在本地保留，不纳入源码提交。
 
@@ -14,7 +20,7 @@ Channel：`bird_companion/birdbox_ble/methods`。
 | getNativeBondState | `{deviceId: String}` → `not_bonded / bonding / bonded` | deviceId 为 connect 使用的平台句柄；调用前后读取 ownership 快照，核对 connectionGeneration 与 gattInstanceId；不采用 Dart 缓存代替真实 bond 状态 |
 | writePairingPreflight | `{value: Uint8List, expectedConnectionGeneration?: int, expectedGattInstanceId?: int}` → `null` | 两个期望参数成对可选；传入后由原生在主线程写前串行校验，失配返回 `gatt_owner_mismatch`。Dart 唯一负责 rc4/分片；null 仅表示 ATT 分片写完成。原生写前复查真实 BOND_NONE，BONDING/BONDED/未知拒绝为 `bond_state_not_none` / `bond_state_unknown`，不会触发 createBond |
 | getGattOwnershipState | 无参数 → 下述 Map | 区分缺失特征清单与确实缺0007；缺少清单不推断特征存在或不存在 |
-| prepareControlledReconnect | `{expectedConnectionGeneration?: int, expectedGattInstanceId?: int}` → `null` | 期望参数成对可选，失配返回 `gatt_owner_mismatch`。释放 Future 在真实 STATE_DISCONNECTED 回调且 close 完成后才 success(null)；3 秒无回调返回 `gatt_release_unconfirmed`（强制 close）。同代际已释放（传匹配的期望参数）幂等 success；无 GATT 且参数不匹配为 `invalid_state`；不等待本接口不发送的 disconnect 事件 |
+| prepareControlledReconnect | `{expectedConnectionGeneration?: int, expectedGattInstanceId?: int}` → `null` | 期望参数成对可选，失配返回 `gatt_owner_mismatch`。真实断开且close完成才成功；已知断链快速路径仍需close完成。3秒无回调或close异常返回 `gatt_release_unconfirmed`。仅匹配已确认实例可幂等成功；匹配超时或进行中实例仍未确认；无记录或参数不匹配为 `invalid_state` |
 
 ownership Map 的必需字段：
 
@@ -27,10 +33,19 @@ discoveryState: absent | connected | discovering | discovered | ready
 inflightRequest: String?         // activeSecurityRequestId，不涵盖所有 ATT 操作
 preparing: bool
 retiring: bool                   // 2026-10-21 新增附加字段：释放屏障进行中
+lastRelease: Map?                // 本轮新增；本Engine最近一次屏障释放，初始null
 ```
 
+lastRelease字段为正整数connectionGeneration/gattInstanceId（附gattGeneration别名）、
+可选traceId、reason、state（disconnecting/confirmed/unconfirmed）、resultCode、
+disconnectObserved和closeCompleted。confirmed必须为retired_gatt_disconnected且两个证据bool均为true；
+进行中为awaiting_disconnect；未确认为disconnect_callback_missing、close_failed或release_superseded。
+它绑定退役时的实例与trace，跨页面/诊断重订阅仍可查询，但不跨Engine/进程持久化；仅保存最近一条，
+丢失或归属不匹配时继续失败。Dart兼容旧ABI缺少lastRelease，存在但字段不合法则拒绝快照。
+
 `retiring=true` 表示旧客户端停在释放屏障（park）等待真实断开回调；此时快照为
-connected=false、gattInstanceId=0、discoveryState=absent。该字段为附加字段，旧读取方可忽略。
+connected=false、gattInstanceId=0、discoveryState=absent。Dart兼容旧快照缺少该字段时为false；
+存在时必须是bool，retiring=true与connected=true的矛盾快照被拒绝。
 discoveryState 生命周期：`absent`（无 GATT）→ `connected`（对象存在，未开始发现）→
 `discovering`（discoverServices 已被栈接受、回调未到，ATT 意义上的 pending）→
 `discovered`（服务清单已知，通知/MTU 等收尾可能未完成）→ `ready`（linkReady=true，唯一可写的放行态）。
@@ -53,19 +68,22 @@ App 内部 `NativeBondSnapshot`、`PublicGattSnapshot` 和带代际的控制方�
 `prepareControlledReconnect`、页面 `disconnect` 与 connect 前的陈旧重置（pre_connect_reset）
 共享同一 retire 屏障：closeGatt 先 park 旧客户端（只 disconnect 不 close），等该客户端的
 **真实 STATE_DISCONNECTED 回调**到达后才 close 并完成挂起的释放 Future；3 秒（PARKED_RETIRE_DISCONNECT_GUARD_MS）
-无回调则发 `controlled_release_disconnect_timeout` 诊断、强制 close、挂起 Future 以
-`gatt_release_unconfirmed` 失败。错误驱动型 teardown（link_lost/bond_lost/security_failure 等）
+无回调则强制close后发 `controlled_release_disconnect_timeout` 诊断，挂起 Future 以
+`gatt_release_unconfirmed` 失败。pre_connect_reset对应事件带pre_connect_reset前缀；其guard不再继续dial。
+close抛异常同样为未确认并终止等待，不将捕获异常视作关闭成功。错误驱动型 teardown（link_lost/bond_lost/security_failure 等）
 仍立即 close，不需要屏障。链路已知已断（lastKnownConnectionState==DISCONNECTED）时走快速路径：
-立即 close、立即 success、诊断 `controlled_release_immediate`。
+close成功后立即完成，并发带退役实例的确认终态；受控接口另保留 `controlled_release_immediate`。
 
 - disconnect stream 事件时序不变：仍在 closeGatt 内、屏障**起点**发出，字段
   reason/gattStatus/unexpected/connectionGeneration/gattInstanceId。物理确认以上述
   `pre_connect_reset_disconnect_confirmed`（resultCode stale_gatt_disconnected）或
   `controlled_release_disconnect_confirmed`（resultCode retired_gatt_disconnected）诊断为准。
+  终态在close调用返回后发布，generation/instance/trace取退役时冻结值；晚到的外来trace或旧回调不改写它。
 - 受控释放期间（屏障未确认）普通 connect 被 connect 门禁拒绝为 `gatt_busy`；确认后
   1 秒 settle 窗口内的 connect 会延迟到 settle 结束才拨号（防 155233 同型 ACL 未排空）。
 - 同代际幂等：释放完成后携带匹配的 expectedConnectionGeneration/expectedGattInstanceId
   再次调用 prepareControlledReconnect 返回 success（诊断 controlled_reconnect_already_released）。
+  此处“释放完成”仅含confirmed，超时/close异常/取消的unconfirmed记录不会变成幂等成功。
 - 原生串行校验即原子性：所有 MethodChannel 调用在主线程串行执行，期望参数校验发生在
   主线程、写/释放动作之前，因此 Dart 前后快照之外的跨调用竞态已被原生消除。
 
@@ -73,11 +91,18 @@ App 内部 `NativeBondSnapshot`、`PublicGattSnapshot` 和带代际的控制方�
 
 - pairing_preflight_unsupported → PAIRING_PREFLIGHT_COMMAND_UNSUPPORTED，并仅添加固定的“原生缺特征”标记。
 - gatt_busy、PAIRING_PREFLIGHT_BUSY/EXPIRED 沿用既有有限重试策略。
-- gatt_owner_mismatch → 过期归属，终态不重试（同代际换 instance 视为换代失效）；
-  需重新读 ownership 快照后以新参数重试。
-- bond_state_not_none → 绑定已存在，本轮放弃公开预检（BOND_BONDED 走已绑定路径）；
+- gatt_owner_mismatch → BLE_GATT_OWNER_MISMATCH，旧事务终止（同代际换instance同样失效）；
+  不为旧事务换一组参数继续执行。后续cleanup不调用仅校验generation的普通disconnect；
+  新用户意图可以重新准备，新连接继续由原生connect管理陈旧客户端屏障。
+- bond_state_not_none → BLE_BOND_STATE_NOT_NONE，重读真实状态，本轮放弃公开预检（BOND_BONDED走已绑定路径）；
   BONDING 等待状态变化，不自动重试。
-- gatt_release_unconfirmed → 本轮终态；Dart 可显式发起新一轮释放。
+- gatt_release_unconfirmed → BLE_GATT_RELEASE_UNCONFIRMED，本轮终态，保持失败及连接门禁。
+  Java将超时记录为unconfirmed，后续同实例请求仍失败；迟到回调不会升级旧结果。
+  adapter保留有界的已确认和未确认实例：已观察到真实完成或查询到严格匹配lastRelease确认的实例可在absence时成功，
+  未知absence不调用原生幂等分支来补出成功。数据源保留失败门禁，不自动重发释放或扫描重连。
+  显式重试先核对原始generation/instance；仍是同一活GATT时可重新执行原子释放。
+  已无GATT时，显式重试可查询严格匹配且已确认的lastRelease；没有确认记录则必须观察到手机蓝牙关闭并再次确认同generation、非retiring且无活跃attempt，
+  才记录adapter_disabled_and_native_absent恢复。retiring=false、迟到事件或幂等成功均不自动清除失败。
 - bluetooth_permission_denied / bluetooth_unavailable / bond_state_unknown / ble_gatt_not_ready /
   ble_gatt_operation_failed / invalid_request / invalid_state / ble_session_ended 分别映射已有 App 类型。
 - MissingPlugin 明确返回 BLE_PAIRING_PREFLIGHT_UNAVAILABLE，不猜测 BOND_NONE。
@@ -122,6 +147,19 @@ BOND_BONDED 跳过公开预检，沿用安全写准备；BOND_BONDING 等待当�
 
 ## 5. 页面与前后台
 
+已知且空闲的连接，包括已绑定GATT，收尾携带原始generation和instance执行受控释放并等待Future。
+活动安全attempt使用其request/attempt归属发普通disconnect，区分请求受理与物理释放确认，
+接受同trace、generation、instance的controlled_release_disconnect_confirmed终态，
+或在等待中查询到同trace及实例的lastRelease确认，再复核ownership；受控Future及终态等待均设4秒保护。
+普通disconnect仍只同步返回受理；终态和查询都不能省略归属及本地close复核。
+旧ABI缺少实例的事件继续记录gatt_release_completion_unattributed并保持有界失败。
+归属失配后只清除本地可信状态，Repository、页面和dispose的后续收尾不触碰替换实例。
+匹配confirm后的真实板端断链加上同generation、非retiring的原生absence可走reset快速路径；
+只有absence、起点事件或retiring中的快照均不足以放行。已观察到retiring时，清除就绪许可，
+阻止新扫描、连接及重复释放，页面显示释放未确认并保留显式重试入口。
+若是Dart自己持有的释放Future仍在进行，则继续沿用single-flight等待，resume不另发释放。
+Repository看到数据源释放阻塞时不自动触发恢复；页面重建继续等待原释放或显示失败门禁。
+
 返回“查找盒子”先等待拥有的释放 Future，再允许扫描/连接。断开中禁用新连接，失败保留门禁，
 显式重试断开。页面逻辑 owner 与底层 owner 分开，页面重建不抢夺旧释放。
 
@@ -133,9 +171,20 @@ BOND_BONDED 跳过公开预检，沿用安全写准备；BOND_BONDING 等待当�
 
 ## 6. 诊断与验证边界
 
+第三批行为回归包括终态到达但close未完成、外来trace、只有幂等事件、迟到Future、同代际替换实例、
+未知实例的前台快照及外部BONDING最终失败。期望是完成条件明确、失败门禁保留、不追加createBond。
+原生回归须实际运行并核对XML结果；工具报告记录命令、退出码、跳过原因与运行前后源码指纹。
+设置页、App启动/恢复、STA与直连HTTP接管均参与合流回归。真实Python后端未配置的用例明确跳过。
+本轮原生补充的源码及单测不替代甲复核、0007外设预联调、冻结APK及三机型正式验收。
+
 Dart 首错只写一次，后续收尾错误进入有界 secondary_errors；UI、摘要和完整导出保持一致。
 关键事件保护包含甲新增的 park/断开确认/超时、重放、cleanup noop、GATT复用判断、公开写回调，
 以及乙新增的前台同步。容量不足仍明确记录缺失，不声称无限保留。
+新增保护controlled_release_disconnect_confirmed/timeout、controlled_release_immediate、
+controlled_reconnect_already_released、pairing_preflight_bond_rejected及Dart释放/显式恢复事件。
+短摘要的release_timeline保留请求范围内最近4条释放事实，完整导出仍保留全部实际留存事件。
+旧原生teardown_completed仍可能在屏障起点出现，不能把该名称当物理释放证明；
+Dart的gatt_release_confirmed才表示本层获得终态并复核close，失败不写Dart teardown_completed。
 禁止持久化 reset_token（包括哈希）、密码、完整地址和原始预检报文。
 
 回归日志与验证结果在本地单独保留，不纳入源码提交。

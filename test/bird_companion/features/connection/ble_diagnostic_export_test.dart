@@ -7,6 +7,19 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('short release timeline distinguishes request, acceptance, timeout and explicit recovery', () {
+    final types = ['gatt_release_requested', 'gatt_release_request_accepted', 'controlled_release_disconnect_timeout', 'gatt_release_recovered'];
+    final events = [
+      for (final type in types)
+        <String, dynamic>{'trace_id': 'trace', 'flow_id': 'flow', 'event_type': type, 'connection_generation': 4, 'gatt_instance_id': 2, 'result_code': type == 'gatt_release_recovered' ? 'adapter_disabled_and_native_absent' : 'test'},
+      <String, dynamic>{'trace_id': 'other', 'flow_id': 'other', 'event_type': 'gatt_release_confirmed'},
+    ];
+    final result = BleDiagnosticExport(traceId: 'flow', scans: const [], events: events, generatedAt: DateTime.utc(2026, 10, 21));
+    final summary = jsonDecode(result.summaryJson) as Map;
+    expect((summary['release_timeline'] as List).map((e) => (e as Map)['event_type']), types);
+    expect((jsonDecode(result.fullJson) as Map)['connection_events'], events);
+    expect(utf8.encode(result.summaryJson).length, lessThanOrEqualTo(4096));
+  });
   BleDiagnosticExport build(List<Map<String, dynamic>> events) => BleDiagnosticExport(
     traceId: 'ble-test-trace',
     scans: const [

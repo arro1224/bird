@@ -41,7 +41,12 @@ extension PairingPreflightErrorPolicy on ProvisioningErrorCode {
   PairingPreflightErrorDisposition? get pairingPreflightDisposition => switch (this) {
     ProvisioningErrorCode.pairingPreflightBusy || ProvisioningErrorCode.pairingPreflightExpired => PairingPreflightErrorDisposition.boundedRetryAfterRelease,
     ProvisioningErrorCode.pairingPreflightCommandUnsupported => PairingPreflightErrorDisposition.upgradeRequired,
-    ProvisioningErrorCode.pairingPreflightInvalidPeer || ProvisioningErrorCode.pairingPreflightConfirmationRejected || ProvisioningErrorCode.requestIdConflict => PairingPreflightErrorDisposition.terminal,
+    ProvisioningErrorCode.pairingPreflightInvalidPeer ||
+    ProvisioningErrorCode.pairingPreflightConfirmationRejected ||
+    ProvisioningErrorCode.requestIdConflict ||
+    ProvisioningErrorCode.bleGattOwnerMismatch ||
+    ProvisioningErrorCode.bleBondStateNotNone ||
+    ProvisioningErrorCode.bleGattReleaseUnconfirmed => PairingPreflightErrorDisposition.terminal,
     _ => null,
   };
 }

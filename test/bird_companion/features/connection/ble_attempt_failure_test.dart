@@ -147,6 +147,40 @@ void main() {
     expect((full['secondary_errors'] as List).single['runtime_type'], 'StateError');
   });
 
+  test('release terminal events survive capacity pressure, restart and cross-attempt export', () async {
+    final storage = MemoryStorage();
+    final store = BleConnectionDiagnosticStore(storage, maximumEvents: 20);
+    addTearDown(store.dispose);
+    final types = ['controlled_release_disconnect_confirmed', 'controlled_release_disconnect_timeout', 'controlled_release_immediate', 'controlled_reconnect_already_released', 'pairing_preflight_bond_rejected'];
+    for (var attempt = 0; attempt < 2; attempt++) {
+      for (final type in types) {
+        await store.record(
+          BleConnectionDiagnosticEvent(
+            traceId: 'trace-$attempt',
+            flowId: 'flow',
+            occurredAt: DateTime.utc(2026, 10, 21),
+            eventType: type,
+            source: 'android',
+            attemptId: 'release-$attempt',
+            connectionGeneration: attempt + 1,
+            gattInstanceId: 1,
+          ),
+        );
+      }
+    }
+    for (var i = 0; i < 100; i++) {
+      await store.record(BleConnectionDiagnosticEvent(traceId: 'noise', flowId: 'flow', occurredAt: DateTime.utc(2026, 10, 21), eventType: 'observation', source: 'dart'));
+    }
+    final restarted = BleConnectionDiagnosticStore(storage, maximumEvents: 20);
+    addTearDown(restarted.dispose);
+    final records = (await restarted.snapshot()).records.reversed.toList();
+    for (final type in types) {
+      expect(records.where((e) => e['event_type'] == type), hasLength(2));
+    }
+    final full = jsonDecode(export(records).fullJson) as Map;
+    expect((full['connection_events'] as List).where((e) => types.contains((e as Map)['event_type'])), hasLength(10));
+  });
+
   test('complete preflight transaction exceeds 17 events and remains protected under scan noise', () async {
     final journal = BleDiagnosticJournal(MemoryStorage(), key: 'test', legacyKeys: const [], maximumRecords: 50, pinCurrentAttempt: true);
     final types = ['pairing_preflight_request', 'pairing_preflight_result', 'pairing_preflight_state', 'pairing_preflight_expected_disconnect'];

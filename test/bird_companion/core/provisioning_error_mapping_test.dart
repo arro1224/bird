@@ -3,6 +3,15 @@ import 'package:aves/bird_companion/features/connection/domain/provisioning_erro
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  for (final code in [ProvisioningErrorCode.bleGattOwnerMismatch, ProvisioningErrorCode.bleBondStateNotNone, ProvisioningErrorCode.bleGattReleaseUnconfirmed]) {
+    test('${code.wireValue} remains an app error with a safe specific message', () {
+      expect(code.origin, ProvisioningErrorOrigin.app);
+      expect(ProvisioningErrorCodeWireValue.parse(code.wireValue), code);
+      final message = UserMessageMapper.fromError(ProvisioningException(code: code, retryable: false, diagnosticMessage: 'FAKE_RESET_TOKEN_ONLY'));
+      expect(message.title, isNot('配对准备接口未就绪'));
+      expect('${message.title}${message.message}', isNot(contains('FAKE_RESET_TOKEN_ONLY')));
+    });
+  }
   test('Bluetooth unavailable is a recoverable phone error with a Bluetooth action', () {
     const code = ProvisioningErrorCode.bluetoothUnavailable;
     final message = UserMessageMapper.fromError(const ProvisioningException(code: code, retryable: true));
