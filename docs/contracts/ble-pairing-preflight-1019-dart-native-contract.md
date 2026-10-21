@@ -7,7 +7,12 @@
 解析retiring，新增三个稳定App错误码，并保护失配后的跨层cleanup。第二批接入可靠完成等待、
 释放失败后的显式恢复和诊断保护。第一、二批未改变Java行为；本轮由乙代补原生释放契约：
 终态冻结旧实例和trace，补普通disconnect快速路径终态及可查询lastRelease，超时不再幂等成功。
-pre_connect_reset超时或close异常终止本次connect，不继续拨号。上述源码修订仍需甲复核及外设实测。
+pre_connect_reset超时或close异常终止本次connect，不继续拨号。
+**甲复核结论（2026-10-21，b80dee0c3/5586b6248）：通过。** lastRelease 终态冻结、close 异常
+不再假成功、快速路径带退役实例终态、幂等仅限 confirmed、lint 等价改写均确认；
+pre_connect_reset 超时从“强制 close 后继续拨号”改为 fail-fast（gatt_release_unconfirmed，
+本次 connect 终止不拨号）系甲确认接受的语义修订，取代此前 A6 评审结论，双方以本文件为准。
+甲侧原生验证：246/246（Robolectric），Flutter 516 通过/2 跳过，analyze 0 问题。
 本文件仅涉及 BLE 配对准备，不改变 HTTP、Wi-Fi、热点和复制协议。附件作为需求和协作依据，
 当前字段与行为以本仓库代码核对结果为准。实施记录与交接报告在本地保留，不纳入源码提交。
 

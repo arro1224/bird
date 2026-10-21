@@ -28,8 +28,7 @@
       "command": "flutter analyze --no-pub",
       "result": "No issues found"
     }
-  ],
-  "new_error_codes": ["gatt_owner_mismatch", "bond_state_not_none", "gatt_release_unconfirmed"],
+  ],  "new_error_codes": ["gatt_owner_mismatch", "bond_state_not_none", "gatt_release_unconfirmed"],
   "new_diagnostics": [
     "controlled_release_disconnect_confirmed",
     "controlled_release_disconnect_timeout",
@@ -38,6 +37,28 @@
     "pairing_preflight_bond_rejected"
   ],
   "abi_notes": "expectedConnectionGeneration/expectedGattInstanceId: optional int pair on writePairingPreflight and prepareControlledReconnect; partial pair -> invalid_request; mismatch -> gatt_owner_mismatch with no GATT side effects. Ownership map additive field retiring: bool. Disconnect stream event additive field gattInstanceId.",
+  "peer_native_addendum_review": {
+    "date": "2026-10-21",
+    "peer_commits": ["b80dee0c3", "5586b6248"],
+    "verdict": "accepted in full; pre_connect_reset 3s timeout changed from force-close-then-dial to fail-fast gatt_release_unconfirmed with owner (user) approval, superseding the earlier A6-reviewed behavior",
+    "recheck_on_merged_source": [
+      {
+        "name": "android_unit_tests",
+        "command": "./gradlew :app:testBirdDebugUnitTest --console=plain",
+        "result": "246 passed, 0 failed, 0 skipped (peer +11 bridge tests, 2 rewritten)"
+      },
+      {
+        "name": "flutter_tests",
+        "command": "flutter test test/bird_companion/features/connection test/contracts test/bird_companion/core",
+        "result": "516 passed, 2 skipped, 0 failed"
+      },
+      {
+        "name": "flutter_analyze",
+        "command": "flutter analyze --no-pub",
+        "result": "No issues found"
+      }
+    ]
+  },
   "not_claimed": [
     "phone or simulated-box acceptance",
     "APK build/fingerprint",
