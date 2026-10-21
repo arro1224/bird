@@ -915,6 +915,54 @@ public final class BirdBoxBleBridgeTest {
         assertEquals("close_failed", lastEvent("controlled_release_disconnect_timeout").get("resultCode"));
     }
 
+    @Test public void releasePermissionRevocationCannotBecomeConfirmedOrIdempotentSuccess() {
+        doThrow(new SecurityException("permission revoked")).when(oldGatt).close();
+        Result release = call("prepareControlledReconnect", Collections.emptyMap());
+        platform.callback.onConnectionStateChange(oldGatt, 0, BluetoothProfile.STATE_DISCONNECTED); drain();
+        release.failed("gatt_release_unconfirmed");
+        assertEquals("close_failed", releaseRecord().get("resultCode"));
+        assertEquals(Boolean.FALSE, releaseRecord().get("closeCompleted"));
+        call("prepareControlledReconnect", Map.of("expectedConnectionGeneration", 1,
+                "expectedGattInstanceId", 1)).failed("gatt_release_unconfirmed");
+    }
+
+    @Test public void notificationPermissionRevocationStopsPreparationBeforeProtectedWrites() {
+        Result preparation = prepare();
+        doThrow(new SecurityException("permission revoked")).when(freshGatt)
+                .setCharacteristicNotification(any(BluetoothGattCharacteristic.class), eq(true));
+        platform.bonded(); connected(freshGatt); mtu();
+        preparation.failed("bluetooth_permission_denied");
+        verifyWritesNeverHappened(freshGatt);
+    }
+
+    @Test public void ordinaryConnectPermissionRevocationReportsPermissionFailure() {
+        call("disconnect", Collections.emptyMap()); retire(oldGatt);
+        Result connection = call("connect", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
+        doThrow(new SecurityException("permission revoked")).when(freshGatt)
+                .requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+        platform.callback.onConnectionStateChange(freshGatt, 0, BluetoothProfile.STATE_CONNECTED); drain();
+        connection.failed("bluetooth_permission_denied");
+        verify(freshGatt).close();
+    }
+
+    @Test @Config(sdk = 33)
+    public void modernPreflightWriteRejectionFailsWithoutWaitingForCallback() {
+        service.addCharacteristic(new BluetoothGattCharacteristic(uuid(7), BluetoothGattCharacteristic.PROPERTY_WRITE, 0));
+        when(oldGatt.writeCharacteristic(any(BluetoothGattCharacteristic.class), any(byte[].class), anyInt()))
+                .thenReturn(BluetoothStatusCodes.ERROR_GATT_WRITE_REQUEST_BUSY);
+        call("writePairingPreflight", Map.of("value", new byte[]{1})).failed("ble_gatt_operation_failed");
+    }
+
+    @Test @Config(sdk = 33)
+    public void modernDescriptorRejectionStopsPreparationBeforeProtectedWrites() {
+        when(freshGatt.writeDescriptor(any(BluetoothGattDescriptor.class), any(byte[].class)))
+                .thenReturn(BluetoothStatusCodes.ERROR_GATT_WRITE_REQUEST_BUSY);
+        Result preparation = prepare();
+        platform.bonded(); connected(freshGatt); mtu();
+        preparation.failed("ble_gatt_recovery_failed");
+        verifyWritesNeverHappened(freshGatt);
+    }
+
     /** A link already known gone closes immediately and completes without the barrier. */
     @Test public void controlledReconnectWithDisconnectedLastKnownStateClosesImmediately() throws Exception {
         // setup() left oldGatt connected and ready; pretend the stack already told us

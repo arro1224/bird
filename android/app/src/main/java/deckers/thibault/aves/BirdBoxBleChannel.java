@@ -11,6 +11,7 @@ import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
+import android.bluetooth.BluetoothStatusCodes;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanFilter;
@@ -34,6 +35,7 @@ import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresPermission;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -199,6 +201,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
     private final List<UUID> enabledNotifications = new ArrayList<>();
     private final BirdBoxPairingCoordinator pairingCoordinator = new BirdBoxPairingCoordinator(
             securityWriteStateMachine, new BirdBoxPairingCoordinator.Platform() {
+        @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
         public int bondState() { return connectedDevice == null ? BluetoothDevice.ERROR : platform.bondState(connectedDevice); }
         public boolean gattUsable() {
             return gatt != null && linkReady
@@ -227,6 +230,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 boolean value = platform.createBond(connectedDevice);
                 securityWriteAttemptContext.recordCreateBondResult(value, bondStateName());
                 return value;
+            } catch (SecurityException error) {
+                securityWriteAttemptContext.recordCreateBondException(error.getClass().getSimpleName(), bondStateName());
+                throw error; // The coordinator maps this to bluetooth_permission_denied.
             } catch (RuntimeException error) {
                 securityWriteAttemptContext.recordCreateBondException(error.getClass().getSimpleName(), bondStateName());
                 throw error;
@@ -1205,10 +1211,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         parkedRetireConnectionGeneration = 0;
         parkedRetireGattGeneration = 0;
         parkedRetireTraceId = null;
-        if (parked != null) {
-            try { parked.close(); } catch (RuntimeException ignored) { return false; }
-        }
-        return true;
+        return parked == null || closeGattClient(parked);
     }
 
     private void recordGattRelease(int generation, int instance, @Nullable String trace,
@@ -1398,7 +1401,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     : BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE;
             final boolean started;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                started = current.writeDescriptor(descriptor, value) == BluetoothGatt.GATT_SUCCESS;
+                started = current.writeDescriptor(descriptor, value) == BluetoothStatusCodes.SUCCESS;
             } else {
                 descriptor.setValue(value);
                 started = current.writeDescriptor(descriptor);
@@ -1446,7 +1449,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 if (sensitive) recordProtectedWriteInvocation(characteristic.getUuid());
                 accepted = current.writeCharacteristic(characteristic, value,
-                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothGatt.GATT_SUCCESS;
+                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothStatusCodes.SUCCESS;
             } else {
                 characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
                 characteristic.setValue(value);
@@ -1642,6 +1645,9 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         final int bondState;
         try {
             bondState = platform.bondState(connectedDevice);
+        } catch (SecurityException error) {
+            returnError(result, call.method, "bluetooth_permission_denied", "Bluetooth connect permission is missing.");
+            return;
         } catch (RuntimeException error) {
             returnError(result, call.method, "bond_state_unknown", "Bond state could not be read.");
             return;
@@ -1659,7 +1665,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             final boolean accepted;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 accepted = gatt.writeCharacteristic(characteristic, value,
-                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothGatt.GATT_SUCCESS;
+                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == BluetoothStatusCodes.SUCCESS;
             } else {
                 characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
                 characteristic.setValue(value);
@@ -1719,9 +1725,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             }
             gattRebuilt = false;
             pairingCoordinator.start(request, gattGeneration);
+        } catch (SecurityException error) {
+            failNativePreparation("bluetooth_permission_denied");
         } catch (RuntimeException error) {
-            failNativePreparation(error instanceof SecurityException
-                    ? "bluetooth_permission_denied" : "bond_start_failed");
+            failNativePreparation("bond_start_failed");
         }
     }
 
@@ -1790,8 +1797,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             }
             emitDiagnostic("security_write_retry_started", "securityRecovery", -1, null, "single_rebuild");
             reconnectGattAfterSecurity();
+        } catch (SecurityException error) {
+            failNativePreparation("bluetooth_permission_denied");
         } catch (RuntimeException error) {
-            failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed");
+            failNativePreparation("ble_gatt_recovery_failed");
         }
     }
 
@@ -1949,8 +1958,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                             return;
                         }
                         pairingCoordinator.bondChanged(owner, state, previous);
+                    } catch (SecurityException error) {
+                        failNativePreparation("bluetooth_permission_denied");
                     } catch (RuntimeException error) {
-                        failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "bond_state_unknown");
+                        failNativePreparation("bond_state_unknown");
                     }
                 });
             }
@@ -2084,8 +2095,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             setPreparationStep("gatt_connect");
             gatt = platform.connect(applicationContext, device, gattCallback);
             if (gatt == null) failNativePreparation("ble_gatt_recovery_failed");
+        } catch (SecurityException error) {
+            failNativePreparation("bluetooth_permission_denied");
         } catch (RuntimeException error) {
-            failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed");
+            failNativePreparation("ble_gatt_recovery_failed");
         }
     }
 
@@ -2112,7 +2125,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 failNativePreparation("ble_gatt_recovery_failed", gattStatus);
                 return;
             }
-            try { failed.disconnect(); } catch (RuntimeException ignored) { }
+            disconnectGattClient(failed);
             heldLegacyRegistrations.add(failed);
         }
         final BluetoothDevice device = connectedDevice;
@@ -2142,8 +2155,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 reconnectGattAfterSecurity();
             };
             mainHandler.postDelayed(securityReconnectGuard, SECURITY_DISCONNECT_SETTLE_MS);
+        } catch (SecurityException error) {
+            failNativePreparation("bluetooth_permission_denied", gattStatus);
         } catch (RuntimeException error) {
-            failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed", gattStatus);
+            failNativePreparation("ble_gatt_recovery_failed", gattStatus);
         }
     }
 
@@ -2173,14 +2188,16 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             setPreparationStep("notification_" + notificationIndex);
             boolean accepted;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                accepted = gatt.writeDescriptor(descriptor, value) == BluetoothGatt.GATT_SUCCESS;
+                accepted = gatt.writeDescriptor(descriptor, value) == BluetoothStatusCodes.SUCCESS;
             } else {
                 descriptor.setValue(value);
                 accepted = gatt.writeDescriptor(descriptor);
             }
             if (!accepted) failNativePreparation("ble_gatt_recovery_failed");
+        } catch (SecurityException error) {
+            failNativePreparation("bluetooth_permission_denied");
         } catch (RuntimeException error) {
-            failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed");
+            failNativePreparation("ble_gatt_recovery_failed");
         }
     }
 
@@ -2559,7 +2576,7 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         }
         if (current != gatt) {
             if (state == BluetoothProfile.STATE_DISCONNECTED) {
-                try { current.close(); } catch (RuntimeException ignored) { }
+                closeGattClient(current);
             }
             return;
         }
@@ -2596,8 +2613,11 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 }
                 if (preparing()) setPreparationStep("services");
                 discoverServices(current);
+            } catch (SecurityException error) {
+                if (preparing()) failNativePreparation("bluetooth_permission_denied");
+                else { failPending("bluetooth_permission_denied", "Bluetooth connect permission is missing."); closeGatt(true, "service_discovery_failed", status); }
             } catch (RuntimeException error) {
-                if (preparing()) failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed");
+                if (preparing()) failNativePreparation("ble_gatt_recovery_failed");
                 else { failPending("ble_gatt_operation_failed", "Service discovery failed."); closeGatt(true, "service_discovery_failed", status); }
             }
         } else if (state == BluetoothProfile.STATE_DISCONNECTED || status != BluetoothGatt.GATT_SUCCESS) {
@@ -2647,10 +2667,12 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             emitDiagnostic("gatt_service_discovery_api_returned", pendingOperation, -1, null,
                     discoveryApiAccepted ? "accepted" : "rejected");
             if (!discoveryApiAccepted) failServiceDiscovery("ble_gatt_recovery_failed", "api_rejected");
+        } catch (SecurityException error) {
+            emitDiagnostic("gatt_service_discovery_api_exception", pendingOperation, -1, null, "permission_denied");
+            failServiceDiscovery("bluetooth_permission_denied", "api_exception");
         } catch (RuntimeException error) {
-            emitDiagnostic("gatt_service_discovery_api_exception", pendingOperation, -1, null,
-                    error instanceof SecurityException ? "permission_denied" : "runtime_exception");
-            failServiceDiscovery(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed", "api_exception");
+            emitDiagnostic("gatt_service_discovery_api_exception", pendingOperation, -1, null, "runtime_exception");
+            failServiceDiscovery("ble_gatt_recovery_failed", "api_exception");
         }
     }
 
@@ -2695,7 +2717,8 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             setPreparationStep("mtu");
             try {
                 if (!current.requestMtu(517)) { notificationIndex = 0; subscribePreparedNotifications(); }
-            } catch (RuntimeException error) { failNativePreparation(error instanceof SecurityException ? "bluetooth_permission_denied" : "ble_gatt_recovery_failed"); }
+            } catch (SecurityException error) { failNativePreparation("bluetooth_permission_denied"); }
+            catch (RuntimeException error) { failNativePreparation("ble_gatt_recovery_failed"); }
         } else {
             linkReady = true;
             securityWriteStateMachine.markGattReady(gattGeneration);
@@ -2886,8 +2909,10 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                 case BluetoothDevice.BOND_BONDING -> "bonding";
                 default -> "not_bonded";
             };
+        } catch (SecurityException error) {
+            return "permission_denied";
         } catch (RuntimeException error) {
-            return error instanceof SecurityException ? "permission_denied" : "unknown";
+            return "unknown";
         }
     }
 
@@ -2947,18 +2972,11 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
             };
             mainHandler.postDelayed(retiringGattGuard, SECURITY_DISCONNECT_GUARD_MS);
         }
-        try {
-            callbackGatt.disconnect();
-            if (awaitDisconnect) return;
-        } catch (RuntimeException ignored) {
+        if (!disconnectGattClient(callbackGatt)) {
             // Still close if a vendor stack rejects the disconnect call.
             if (awaitDisconnect) { releaseRetiringGatt(); return; }
         }
-        try {
-            callbackGatt.close();
-        } catch (RuntimeException ignored) {
-            // Vendor stack may already have closed the client.
-        }
+        if (!awaitDisconnect) closeGattClient(callbackGatt);
     }
 
     private void releaseRetiringGatt() {
@@ -2968,15 +2986,38 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
         retiringGatt = null;
         retiringGattDisconnected = false;
         if (retired != null) {
-            try { retired.close(); } catch (RuntimeException ignored) { }
+            closeGattClient(retired);
         }
     }
 
     private void releaseHeldLegacyRegistrations() {
         for (BluetoothGatt held : heldLegacyRegistrations) {
-            try { held.close(); } catch (RuntimeException ignored) { }
+            closeGattClient(held);
         }
         heldLegacyRegistrations.clear();
+    }
+
+    /** Permission can be revoked between the preflight check and teardown. */
+    private static boolean disconnectGattClient(@NonNull BluetoothGatt client) {
+        try {
+            client.disconnect();
+            return true;
+        } catch (SecurityException denied) {
+            return false;
+        } catch (RuntimeException rejected) {
+            return false;
+        }
+    }
+
+    private static boolean closeGattClient(@NonNull BluetoothGatt client) {
+        try {
+            client.close();
+            return true;
+        } catch (SecurityException denied) {
+            return false;
+        } catch (RuntimeException rejected) {
+            return false;
+        }
     }
 
     static boolean isGattSecurityFailure(int status) {
@@ -3043,24 +3084,13 @@ public final class BirdBoxBleChannel implements MethodChannel.MethodCallHandler 
                     parkedRetireTraceId, reason, "disconnecting", "awaiting_disconnect", false, false);
             securityReconnectNotBefore = android.os.SystemClock.elapsedRealtime()
                     + SECURITY_DISCONNECT_SETTLE_MS;
-            try {
-                current.disconnect();
-            } catch (RuntimeException ignored) {
-                // A rejected disconnect leaves the retire guard to time out.
-            }
+            // A rejected disconnect leaves the retire guard to time out.
+            disconnectGattClient(current);
             armParkedRetireGuard();
         } else if (current != null) {
-            try {
-                current.disconnect();
-            } catch (RuntimeException ignored) {
-                // Closing must still continue after permission revocation.
-            }
-            boolean closed = true;
-            try {
-                current.close();
-            } catch (RuntimeException ignored) {
-                closed = false;
-            }
+            // Closing must still continue after permission revocation.
+            disconnectGattClient(current);
+            final boolean closed = closeGattClient(current);
             if (isRetireBarrierReason(reason)) {
                 recordGattRelease(retireConnectionGeneration, retireGattGeneration, activeTraceId,
                         reason, closed ? "confirmed" : "unconfirmed",
