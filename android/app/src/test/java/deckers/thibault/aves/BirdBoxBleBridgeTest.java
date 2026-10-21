@@ -58,10 +58,14 @@ public final class BirdBoxBleBridgeTest {
         int bond = BluetoothDevice.BOND_NONE, connections, creates, unregisters, afterRegister = -1;
         boolean accepted = true, connectFails;
         RuntimeException bondError;
+        boolean bondStateThrows;
         BroadcastReceiver receiver;
         BluetoothGattCallback callback;
         final List<String> calls = new ArrayList<>();
-        @Override int bondState(BluetoothDevice ignored) { return bond; }
+        @Override int bondState(BluetoothDevice ignored) {
+            if (bondStateThrows) throw new RuntimeException("bond state unreadable");
+            return bond;
+        }
         @Override boolean createBond(BluetoothDevice ignored) {
             calls.add("create"); creates++;
             assertNotNull("receiver must precede createBond", receiver);
@@ -168,6 +172,7 @@ public final class BirdBoxBleBridgeTest {
 
     @Test public void ordinaryConnectWithoutCallbackTerminatesAtNativeDeadline() {
         call("disconnect", Collections.emptyMap());
+        retire(oldGatt); // the retire barrier parks the old client until this callback
         Result result = call("connect", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
         advance(14_999); assertEquals(0, result.completions);
         advance(2); result.failed("ble_gatt_operation_failed");
@@ -178,6 +183,7 @@ public final class BirdBoxBleBridgeTest {
 
     @Test public void ordinaryDiscoveryWithoutCallbackTerminatesAndIgnoresLateSuccess() {
         call("disconnect", Collections.emptyMap());
+        retire(oldGatt);
         Result result = call("connect", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
         platform.callback.onConnectionStateChange(freshGatt, 0, BluetoothProfile.STATE_CONNECTED); drain();
         advance(15_001); result.failed("ble_gatt_operation_failed");
@@ -590,6 +596,7 @@ public final class BirdBoxBleBridgeTest {
         platform.callback.onConnectionStateChange(freshGatt, 0, BluetoothProfile.STATE_CONNECTED); drain();
         verify(oldGatt, never()).close(); verify(freshGatt).requestMtu(517);
         call("disconnect", owner());
+        retire(freshGatt); // the retire barrier parks freshGatt until its real callback
         verify(oldGatt).close(); verify(freshGatt).close();
     }
     @Test @Config(sdk = 27) public void cancelledLegacyHandoverClosesBothClientsAndRejectsLateConnection() {
@@ -619,6 +626,7 @@ public final class BirdBoxBleBridgeTest {
         platform.callback.onConnectionStateChange(oldGatt, 0, BluetoothProfile.STATE_DISCONNECTED); drain();
         verify(oldGatt, never()).close();
         call("disconnect", owner());
+        retire(recoveryGatt); // the retire barrier parks recoveryGatt until its real callback
         verify(oldGatt).close(); verify(freshGatt).close(); verify(recoveryGatt).close();
         org.mockito.InOrder teardown = inOrder(recoveryGatt, oldGatt, freshGatt);
         teardown.verify(recoveryGatt).disconnect();
@@ -632,7 +640,9 @@ public final class BirdBoxBleBridgeTest {
         verify(freshGatt, never()).close();
         call("recoverPairing", owner()); advance(1_001);
         assertEquals(3, platform.connections); verify(oldGatt, never()).close();
-        call("disconnect", owner()); verify(oldGatt).close(); verify(freshGatt).close();
+        call("disconnect", owner());
+        retire(recoveryGatt); // the retire barrier parks recoveryGatt until its real callback
+        verify(oldGatt).close(); verify(freshGatt).close();
     }
     @Test @Config(sdk = 27) @SuppressWarnings("unchecked") public void legacyRegistrationLimitTerminatesAndClosesEveryOwnedClient() throws Exception {
         prepare(); ready();
@@ -792,15 +802,22 @@ public final class BirdBoxBleBridgeTest {
         pairing.failed("bond_rejected");
     }
 
+    /** BLE1019 R1: the controlled release completes only after the real disconnect callback. */
     @Test public void controlledReconnectRetiresGattWithoutCreateBond() {
         platform.bond = BluetoothDevice.BOND_BONDED;
         Result reconnect = call("prepareControlledReconnect", Collections.emptyMap());
-        assertEquals(1, reconnect.completions); assertNull(reconnect.code);
-        verify(oldGatt).disconnect();
+        assertEquals(0, reconnect.completions);
+        verify(oldGatt).disconnect(); verify(oldGatt, never()).close();
         assertEquals("controlled_reconnect", lastEvent("teardown_started").get("resultCode"));
-        // After the teardown there is nothing left to rebuild.
+        // The parked release is superseded when Dart retires again instead of redialing.
         Result guarded = call("prepareControlledReconnect", Collections.emptyMap());
         guarded.failed("invalid_state");
+        // The held release completes once the parked client confirms its disconnect.
+        platform.callback.onConnectionStateChange(oldGatt, 0, BluetoothProfile.STATE_DISCONNECTED); drain();
+        assertEquals(1, reconnect.completions); assertNull(reconnect.code);
+        verify(oldGatt).close();
+        assertEquals("retired_gatt_disconnected",
+                lastEvent("controlled_release_disconnect_confirmed").get("resultCode"));
     }
 
     @Test public void preflightWriteIsPublicAndOldBoardsAreRejectedStably() {
@@ -821,6 +838,207 @@ public final class BirdBoxBleBridgeTest {
         platform.callback.onCharacteristicWrite(oldGatt, preflight, 0); drain();
         assertEquals(1, write.completions); assertNull(write.code);
         assertEquals("success", lastEvent("pairing_preflight_write_callback").get("resultCode"));
+    }
+
+    // ---- BLE1019 R1: the shared retire barrier (controlled_reconnect / requested) ----
+
+    /** The 3 s guard force-closes a silent parked client and errors the held release. */
+    @Test public void controlledReconnectTimesOutWithoutDisconnectCallbackAndFailsStably() {
+        Result reconnect = call("prepareControlledReconnect", Collections.emptyMap());
+        advance(2_999); assertEquals(0, reconnect.completions);
+        advance(2);
+        reconnect.failed("gatt_release_unconfirmed");
+        verify(oldGatt).close();
+        assertEquals("disconnect_callback_missing",
+                lastEvent("controlled_release_disconnect_timeout").get("resultCode"));
+        // A late real callback after the guard must be ignored, not double-complete.
+        platform.callback.onConnectionStateChange(oldGatt, 0, BluetoothProfile.STATE_DISCONNECTED); drain();
+        assertEquals(1, reconnect.completions);
+        assertEquals(1, platform.connections);
+    }
+
+    /** A connect during the release barrier is rejected until the client confirms. */
+    @Test public void connectDuringControlledReleaseIsGatedUntilDisconnectConfirmed() {
+        Result reconnect = call("prepareControlledReconnect", Collections.emptyMap());
+        Result early = call("connect", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
+        early.failed("gatt_busy");
+        assertEquals(1, platform.connections);
+        platform.callback.onConnectionStateChange(oldGatt, 0, BluetoothProfile.STATE_DISCONNECTED); drain();
+        assertEquals(1, reconnect.completions);
+        // The settle window still defers the fresh dial before a second attempt succeeds.
+        Result after = call("connect", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
+        advance(1_001);
+        assertEquals(2, platform.connections);
+        connected(freshGatt);
+        assertEquals(1, after.completions);
+    }
+
+    /** A connect issued inside the settle window after a confirmed release waits it out. */
+    @Test public void connectAfterControlledReleaseHonorsSettleBeforeDial() {
+        Result reconnect = call("prepareControlledReconnect", Collections.emptyMap());
+        platform.callback.onConnectionStateChange(oldGatt, 0, BluetoothProfile.STATE_DISCONNECTED); drain();
+        assertEquals(1, reconnect.completions);
+        Result after = call("connect", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
+        assertEquals(0, after.completions);
+        assertEquals(1, platform.connections); // settle: not dialed yet
+        advance(1_001);
+        assertEquals(2, platform.connections);
+        connected(freshGatt);
+        assertEquals(1, after.completions);
+    }
+
+    /** A page disconnect parks the client; the connect gate holds until it confirms. */
+    @Test public void pageDisconnectParksUntilRealDisconnectThenAllowsFreshDial() {
+        Result disconnect = call("disconnect", Collections.emptyMap());
+        assertEquals(1, disconnect.completions); // page Future stays synchronous
+        verify(oldGatt, never()).close();
+        Result early = call("connect", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
+        early.failed("gatt_busy");
+        platform.callback.onConnectionStateChange(oldGatt, 0, BluetoothProfile.STATE_DISCONNECTED); drain();
+        Result after = call("connect", Map.of("deviceId", "AA:BB:CC:DD:EE:FF"));
+        advance(1_001);
+        assertEquals(2, platform.connections);
+        connected(freshGatt);
+        assertEquals(1, after.completions);
+        verify(oldGatt, atLeastOnce()).close();
+    }
+
+    /** A close() rejection from the vendor stack cannot block the held release. */
+    @Test public void releaseBarrierCompletesWhenParkedCloseThrows() {
+        doThrow(new IllegalStateException("vendor close failure")).when(oldGatt).close();
+        Result reconnect = call("prepareControlledReconnect", Collections.emptyMap());
+        platform.callback.onConnectionStateChange(oldGatt, 0, BluetoothProfile.STATE_DISCONNECTED); drain();
+        assertEquals(1, reconnect.completions); assertNull(reconnect.code);
+    }
+
+    /** A link already known gone closes immediately and completes without the barrier. */
+    @Test public void controlledReconnectWithDisconnectedLastKnownStateClosesImmediately() throws Exception {
+        // setup() left oldGatt connected and ready; pretend the stack already told us
+        // the link is gone (a disconnect callback the bridge has not parked on).
+        java.lang.reflect.Field stateField = BirdBoxBleChannel.class.getDeclaredField("lastKnownConnectionState");
+        stateField.setAccessible(true);
+        stateField.setInt(channel, BluetoothProfile.STATE_DISCONNECTED);
+        Result reconnect = call("prepareControlledReconnect", Collections.emptyMap());
+        assertEquals(1, reconnect.completions); assertNull(reconnect.code);
+        verify(oldGatt).close();
+        assertEquals("already_disconnected",
+                lastEvent("controlled_release_immediate").get("resultCode"));
+    }
+
+    /** BLE1019 R2: ownership expectations gate both the write and the release. */
+    @Test public void controlledReconnectRejectsStaleOwnershipArgs() {
+        Result mismatched = call("prepareControlledReconnect",
+                Map.of("expectedConnectionGeneration", 99, "expectedGattInstanceId", 1));
+        mismatched.failed("gatt_owner_mismatch");
+        verify(oldGatt, never()).disconnect();
+        Result partial = call("prepareControlledReconnect",
+                Map.of("expectedConnectionGeneration", 1));
+        partial.failed("invalid_request");
+        // The matching pair retires normally.
+        Result matched = call("prepareControlledReconnect",
+                Map.of("expectedConnectionGeneration", 1, "expectedGattInstanceId", 1));
+        assertEquals(0, matched.completions);
+        platform.callback.onConnectionStateChange(oldGatt, 0, BluetoothProfile.STATE_DISCONNECTED); drain();
+        assertEquals(1, matched.completions); assertNull(matched.code);
+    }
+
+    /** After a confirmed release the same generation facts yield an idempotent success. */
+    @Test public void controlledReconnectAfterConfirmedReleaseIsIdempotentForMatchingGeneration() {
+        Result first = call("prepareControlledReconnect", Collections.emptyMap());
+        platform.callback.onConnectionStateChange(oldGatt, 0, BluetoothProfile.STATE_DISCONNECTED); drain();
+        assertEquals(1, first.completions);
+        Result again = call("prepareControlledReconnect",
+                Map.of("expectedConnectionGeneration", 1, "expectedGattInstanceId", 1));
+        assertEquals(1, again.completions); assertNull(again.code);
+        assertEquals("idempotent_release",
+                lastEvent("controlled_reconnect_already_released").get("resultCode"));
+        // Unknown generation facts stay invalid_state.
+        Result unknown = call("prepareControlledReconnect",
+                Map.of("expectedConnectionGeneration", 7, "expectedGattInstanceId", 7));
+        unknown.failed("invalid_state");
+    }
+
+    /** BLE1019 R2: the public preflight write rechecks the real bond state. */
+    @Test public void preflightWriteRejectsBondedAndBondingWithoutCreateBond() {
+        BluetoothGattCharacteristic preflight = new BluetoothGattCharacteristic(
+                uuid(7), BluetoothGattCharacteristic.PROPERTY_WRITE, 0);
+        service.addCharacteristic(preflight);
+        platform.bond = BluetoothDevice.BOND_BONDED;
+        Result bonded = call("writePairingPreflight", Map.of("value", new byte[]{1}));
+        bonded.failed("bond_state_not_none");
+        platform.bond = BluetoothDevice.BOND_BONDING;
+        Result bonding = call("writePairingPreflight", Map.of("value", new byte[]{1}));
+        bonding.failed("bond_state_not_none");
+        assertEquals(0, platform.creates);
+        verifyWritesNeverHappened(oldGatt);
+        assertEquals("bonding", lastEvent("pairing_preflight_bond_rejected").get("resultCode"));
+    }
+
+    /** An unreadable bond state rejects the write instead of risking the public frame. */
+    @Test public void preflightWriteRejectsUnreadableBondStateAsBondStateUnknown() {
+        BluetoothGattCharacteristic preflight = new BluetoothGattCharacteristic(
+                uuid(7), BluetoothGattCharacteristic.PROPERTY_WRITE, 0);
+        service.addCharacteristic(preflight);
+        platform.bondStateThrows = true;
+        Result result = call("writePairingPreflight", Map.of("value", new byte[]{1}));
+        result.failed("bond_state_unknown");
+    }
+
+    /** Stale generation/instance expectations never reach the GATT. */
+    @Test public void preflightWriteRejectsStaleGenerationAndInstance() {
+        BluetoothGattCharacteristic preflight = new BluetoothGattCharacteristic(
+                uuid(7), BluetoothGattCharacteristic.PROPERTY_WRITE, 0);
+        service.addCharacteristic(preflight);
+        Map<String, Object> staleGeneration = Map.of("value", new byte[]{1},
+                "expectedConnectionGeneration", 42, "expectedGattInstanceId", 1);
+        call("writePairingPreflight", staleGeneration).failed("gatt_owner_mismatch");
+        Map<String, Object> staleInstance = Map.of("value", new byte[]{1},
+                "expectedConnectionGeneration", 1, "expectedGattInstanceId", 42);
+        call("writePairingPreflight", staleInstance).failed("gatt_owner_mismatch");
+        Map<String, Object> partial = Map.of("value", new byte[]{1}, "expectedGattInstanceId", 1);
+        call("writePairingPreflight", partial).failed("invalid_request");
+        verifyWritesNeverHappened(oldGatt);
+    }
+
+    /** The preflight write never touches the GATT when a gate rejects it. */
+    private void verifyWritesNeverHappened(BluetoothGatt gatt) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            verify(gatt, never()).writeCharacteristic(any(BluetoothGattCharacteristic.class), any(byte[].class), anyInt());
+        } else {
+            verify(gatt, never()).writeCharacteristic(any(BluetoothGattCharacteristic.class));
+        }
+    }
+
+    /** Matching expectations plus BOND_NONE write through and complete on the callback. */
+    @Test public void preflightWriteWithMatchingOwnershipAndNoneBondWritesThrough() {
+        BluetoothGattCharacteristic preflight = new BluetoothGattCharacteristic(
+                uuid(7), BluetoothGattCharacteristic.PROPERTY_WRITE, 0);
+        service.addCharacteristic(preflight);
+        Result write = call("writePairingPreflight", Map.of("value", new byte[]{1, 2},
+                "expectedConnectionGeneration", 1, "expectedGattInstanceId", 1));
+        assertEquals(0, write.completions);
+        platform.callback.onCharacteristicWrite(oldGatt, preflight, 0); drain();
+        assertEquals(1, write.completions); assertNull(write.code);
+    }
+
+    /** R3: a ready link is never reported as a stale "discovering". */
+    @Test public void ownershipStateReportsReadyOnceLinkReadyInsteadOfStaleDiscovering() {
+        Map<?, ?> state = (Map<?, ?>) call("getGattOwnershipState", Collections.emptyMap()).value;
+        assertEquals("ready", state.get("discoveryState"));
+        assertEquals(Boolean.FALSE, state.get("retiring"));
+    }
+
+    /** R3: the ownership snapshot exposes the retire barrier window. */
+    @Test public void ownershipStateExposesRetiringDuringReleaseBarrier() {
+        call("prepareControlledReconnect", Collections.emptyMap());
+        Map<?, ?> state = (Map<?, ?>) call("getGattOwnershipState", Collections.emptyMap()).value;
+        assertEquals(Boolean.FALSE, state.get("connected"));
+        assertEquals(0, state.get("gattInstanceId"));
+        assertEquals("absent", state.get("discoveryState"));
+        assertEquals(Boolean.TRUE, state.get("retiring"));
+        platform.callback.onConnectionStateChange(oldGatt, 0, BluetoothProfile.STATE_DISCONNECTED); drain();
+        state = (Map<?, ?>) call("getGattOwnershipState", Collections.emptyMap()).value;
+        assertEquals(Boolean.FALSE, state.get("retiring"));
     }
 
     @Test public void retainedEnginePluginReattachesActivityAndEngineDestructionTerminatesOnce() {

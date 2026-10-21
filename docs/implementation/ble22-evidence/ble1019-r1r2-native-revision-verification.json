@@ -1,0 +1,52 @@
+{
+  "schema_version": 4,
+  "batch": "BLE1019-R1R2-NATIVE-REVISION",
+  "date": "2026-10-21",
+  "branch": "thirdtime",
+  "base_commit": "6ba80b0d9525d6bb8b6b65a0c35fdbbf3abe4e34",
+  "scope": "Native Android only (BirdBoxBleChannel.java + BirdBoxBleBridgeTest.java + contract doc). No Dart changes.",
+  "addresses": {
+    "R1": "Shared retire barrier for pre_connect_reset/controlled_reconnect/requested; real-disconnect completion for controlled release; 3s guard fail-fast gatt_release_unconfirmed; connect gate during barrier; settle window before fresh dial; disconnect event keeps barrier-start timing with additive gattInstanceId.",
+    "R2": "writePairingPreflight optional paired expectedConnectionGeneration/expectedGattInstanceId with main-thread serialized validation (gatt_owner_mismatch) and real BOND_NONE recheck (bond_state_not_none/bond_state_unknown, never createBond); prepareControlledReconnect same ownership args, in-flight busy guard, idempotent release anchor.",
+    "R3": "discoveryState lifecycle documented; ready no longer masked as discovering; additive retiring field in ownership map."
+  },
+  "pre_connect_reset_guard_note": "Keeps force-close-then-dial on 3s timeout (reviewed A6 behavior); controlled release uses fail-fast instead.",
+  "checks": [
+    {
+      "name": "android_unit_tests",
+      "command": "./gradlew :app:testBirdDebugUnitTest --console=plain",
+      "result": "220 passed, 0 failed, 0 skipped, 12 suites",
+      "delta": "BirdBoxBleBridgeTest 61 -> 131 tests: +8 R1 barrier, +5 R2 gates, +2 R3; 5 existing tests updated to drive real disconnect callbacks per new barrier semantics"
+    },
+    {
+      "name": "flutter_connection_and_contracts",
+      "command": "flutter test test/bird_companion/features/connection test/contracts",
+      "result": "380 passed, 2 skipped, 0 failed (Dart untouched; peer integration baseline preserved)"
+    },
+    {
+      "name": "flutter_analyze",
+      "command": "flutter analyze --no-pub",
+      "result": "No issues found"
+    }
+  ],
+  "new_error_codes": ["gatt_owner_mismatch", "bond_state_not_none", "gatt_release_unconfirmed"],
+  "new_diagnostics": [
+    "controlled_release_disconnect_confirmed",
+    "controlled_release_disconnect_timeout",
+    "controlled_release_immediate",
+    "controlled_reconnect_already_released",
+    "pairing_preflight_bond_rejected"
+  ],
+  "abi_notes": "expectedConnectionGeneration/expectedGattInstanceId: optional int pair on writePairingPreflight and prepareControlledReconnect; partial pair -> invalid_request; mismatch -> gatt_owner_mismatch with no GATT side effects. Ownership map additive field retiring: bool. Disconnect stream event additive field gattInstanceId.",
+  "not_claimed": [
+    "phone or simulated-box acceptance",
+    "APK build/fingerprint",
+    "system dialog counts",
+    "physical ACL capture"
+  ],
+  "releasable": false,
+  "evidence_files": [
+    "docs/contracts/ble-pairing-preflight-1019-dart-native-contract.md",
+    "doc/任务/给乙_BLE1019_R1R2原生修订回执与ABI确认_2026-10-21.md"
+  ]
+}
