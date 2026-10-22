@@ -213,6 +213,13 @@ abstract final class UserMessageMapper {
           error,
           '本盒子固件暂未开放全量备份，请使用“复制照片”按批次或按选择复制。',
         ),
+        // 返修 P1-10（2026-10-22 现场）：纯 RAW 选「仅复制 JPEG/HEIF」时板端
+        // 用此码阻止空任务；此前落 422 兜底误导成连接问题。
+        'COPY_SCOPE_EMPTY' => _copyMessage(
+          '所选照片没有可复制的文件',
+          error,
+          '所选照片中没有符合当前 RAW/JPEG 策略的可复制文件，请改为复制 RAW 或重新选择照片。',
+        ),
         'METADATA_EXPORT_UNAVAILABLE' => _copyMessage(
           '审阅信息导出暂不可用',
           error,

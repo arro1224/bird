@@ -210,10 +210,16 @@ class _JobListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stats = job.stats;
+    // 返修 P1-5：同名跳过不是失败，不能显示成「文件 4/5」像没完成。
+    // 有跳过时按「处理完成 N/N（复制 X，跳过 Y）」口径展示。
     final progress = stats == null
         ? null
         : stats.totalFiles > 0
-        ? '文件 ${stats.copiedFiles + stats.failedFiles}/${stats.totalFiles}'
+        ? stats.skippedFiles > 0
+        ? '处理完成 ${stats.copiedFiles + stats.failedFiles + stats.skippedFiles}/${stats.totalFiles}'
+              '（复制 ${stats.copiedFiles}，跳过 ${stats.skippedFiles}'
+              '${stats.failedFiles > 0 ? '，失败 ${stats.failedFiles}' : ''}）'
+        : '文件 ${stats.copiedFiles + stats.failedFiles}/${stats.totalFiles}'
         : null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -276,9 +282,12 @@ class _JobListTile extends StatelessWidget {
     );
   }
 
-  String _formatDate(DateTime time) =>
-      '${time.month.toString().padLeft(2, '0')}-${time.day.toString().padLeft(2, '0')} '
-      '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  String _formatDate(DateTime time) {
+    // 后端时间为 ISO-8601 UTC（返修 P1-4）：展示层统一转手机本地时区。
+    final local = time.toLocal();
+    return '${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} '
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
 }
 
 class _StateIcon extends StatelessWidget {

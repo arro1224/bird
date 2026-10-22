@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
@@ -85,18 +86,15 @@ class _CopyJobDetailViewState extends State<_CopyJobDetailView> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 final error = state.error;
-                return ListView(
-                  children: [
-                    ErrorNotice(
-                      title: error == null
-                          ? '任务不存在'
-                          : UserMessageMapper.fromError(error).title,
-                      message: error == null
-                          ? '未找到该复制任务，可能已被盒子清理。'
-                          : UserMessageMapper.fromError(error).message,
-                      onRetry: cubit.load,
-                    ),
-                  ],
+                return _FirstLoadErrorView(
+                  title: error == null ? '任务不存在' : UserMessageMapper.fromError(error).title,
+                  message: error == null
+                      ? '未找到该复制任务，可能已被盒子清理。'
+                      : UserMessageMapper.fromError(error).message,
+                  // 首次加载失败（网络抖动/瞬时超时）不代表任务消失：盒子上的
+                  // 任务可能仍在继续（返修 P0-2），自动退避轮询同一 job_id。
+                  onRetry: cubit.load,
+                  onPoll: cubit.pollTick,
                 );
               }
               return _DetailView(
@@ -110,6 +108,112 @@ class _CopyJobDetailViewState extends State<_CopyJobDetailView> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 首次详情加载失败页：保留错误展示 + 手动重试，同时自动退避轮询
+/// （2s→4s→8s→…上限 15s）。任务可能仍在盒子上运行，轮询成功即正常
+/// 进入详情页（返修 P0-2：单次失败不能让页面停止刷新）。
+class _FirstLoadErrorView extends StatefulWidget {
+  const _FirstLoadErrorView({
+    required this.title,
+    required this.message,
+    required this.onRetry,
+    required this.onPoll,
+  });
+
+  final String title;
+  final String message;
+  final Future<void> Function() onRetry;
+  final Future<void> Function() onPoll;
+
+  @override
+  State<_FirstLoadErrorView> createState() => _FirstLoadErrorViewState();
+}
+
+class _FirstLoadErrorViewState extends State<_FirstLoadErrorView> with WidgetsBindingObserver {
+  Timer? _timer;
+  Duration _backoff = const Duration(seconds: 2);
+  bool _waiting = false;
+
+  static const _maxBackoff = Duration(seconds: 15);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleTick();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _backoff = const Duration(seconds: 2);
+      unawaited(_tick());
+    }
+    _syncTimer();
+  }
+
+  bool get _resumed =>
+      WidgetsBinding.instance.lifecycleState == null ||
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+
+  void _scheduleTick() {
+    _timer?.cancel();
+    if (!_resumed) {
+      _timer = null;
+      return;
+    }
+    _timer = Timer(_backoff, _tick);
+  }
+
+  void _syncTimer() {
+    if (!_resumed) {
+      _timer?.cancel();
+      _timer = null;
+    } else if (_timer == null) {
+      _scheduleTick();
+    }
+  }
+
+  Future<void> _tick() async {
+    if (!mounted || _waiting) return;
+    _waiting = true;
+    try {
+      await widget.onPoll();
+      // 轮询成功说明盒子可读；失败状态下 pollTick 内部转调 load()，
+      // 成功后整个页面被 detail 非空的分支替换，本组件随之销毁。
+      _backoff = (_backoff * 2) > _maxBackoff ? _maxBackoff : _backoff * 2;
+    } on Object {
+      // 请求本身抛错也继续退避，不在错误页叠加错误。
+    } finally {
+      _waiting = false;
+      if (mounted) _scheduleTick();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      children: [
+        ErrorNotice(title: widget.title, message: widget.message, onRetry: widget.onRetry),
+        const SizedBox(height: 4),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: Text(
+            '盒子上的任务可能仍在继续，将自动重试读取进度；也可手动重试。',
+            style: TextStyle(color: AppColors.inkMuted, fontSize: 12.5),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -778,6 +882,8 @@ class _EventsSection extends StatelessWidget {
 
   String _time(DateTime? time) {
     if (time == null) return '—';
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:${time.second.toString().padLeft(2, '0')}';
+    // 后端时间为 ISO-8601 UTC（返修 P1-4）：展示层统一转手机本地时区。
+    final local = time.toLocal();
+    return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}:${local.second.toString().padLeft(2, '0')}';
   }
 }

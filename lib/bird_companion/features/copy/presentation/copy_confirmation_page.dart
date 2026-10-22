@@ -564,7 +564,7 @@ class CopyContentStep extends StatelessWidget {
 
   static String _pairPolicySubtitle(PairPolicy policy) => switch (policy) {
     PairPolicy.rawOnly => '有 RAW 时复制 RAW，无 RAW 时复制可用成片（默认）',
-    PairPolicy.jpegOnly => '仅复制 JPEG/HEIF，无成片时该项记为不适用',
+    PairPolicy.jpegOnly => '优先复制 JPEG/HEIF，独立成片时按保留规则处理，无成片时该项记为不适用',
     PairPolicy.both => 'RAW 与 JPEG/HEIF 都复制',
   };
 

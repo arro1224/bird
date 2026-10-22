@@ -41,7 +41,7 @@ void main() {
     expect(find.text('暂无文件'), findsOneWidget);
   });
 
-  testWidgets('行渲染：源路径→目标路径 + 冲突徽标', (tester) async {
+  testWidgets('行渲染：截断态显示文件名尾部，点击展开完整路径（返修 P1-12）', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: CopyPreviewItemsSheet(
@@ -69,11 +69,24 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('DCIM/100MSDCF/DSC05000'), findsOneWidget);
+    // 截断态：深层路径优先显示文件名尾部+扩展名；短路径（≤2 段）原样。
+    expect(find.text('…/100MSDCF/DSC05000'), findsOneWidget);
     expect(find.text('→ 20260901/DSC05000.ARW'), findsOneWidget);
+    expect(find.text('…/100MSDCF/DSC05001'), findsOneWidget);
     expect(find.text('跳过'), findsOneWidget);
-    expect(find.text('DCIM/100MSDCF/DSC05001'), findsOneWidget);
     expect(find.byKey(const Key('copy-preview-items-unavailable')), findsNothing);
+    // 完整路径未展开前不出现。
+    expect(find.text('DCIM/100MSDCF/DSC05000'), findsNothing);
+
+    // 点击行 → 展开完整路径。
+    await tester.tap(find.text('…/100MSDCF/DSC05000'));
+    await tester.pumpAndSettle();
+    expect(find.text('DCIM/100MSDCF/DSC05000'), findsOneWidget);
+    // 再点收起。
+    await tester.tap(find.text('DCIM/100MSDCF/DSC05000'));
+    await tester.pumpAndSettle();
+    expect(find.text('DCIM/100MSDCF/DSC05000'), findsNothing);
+    expect(find.text('…/100MSDCF/DSC05000'), findsOneWidget);
   });
 
   testWidgets('hasMore → 自动加载下一页（分页不去重）', (tester) async {

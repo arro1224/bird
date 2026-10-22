@@ -33,9 +33,13 @@ enum CopyScope {
 }
 
 /// RAW+JPEG 配对策略（主协议 §6.2）。
+///
+/// 返修 P1-11（2026-10-22 现场）：`raw_only` 实际语义是 RAW 优先（无 RAW
+/// 时复制可用成片），`jpeg_only` 也有独立图片保留规则，标题按语义改，
+/// wire 值保持不变。
 enum PairPolicy {
-  rawOnly('raw_only', '仅复制 RAW'),
-  jpegOnly('jpeg_only', '仅复制 JPEG/HEIF'),
+  rawOnly('raw_only', 'RAW 优先'),
+  jpegOnly('jpeg_only', '优先 JPEG/HEIF'),
   both('both', 'RAW 与 JPEG/HEIF 都复制');
 
   const PairPolicy(this.wireValue, this.label);

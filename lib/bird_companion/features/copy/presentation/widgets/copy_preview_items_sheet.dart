@@ -158,53 +158,87 @@ class _CopyPreviewItemsSheetState extends State<CopyPreviewItemsSheet> {
   }
 }
 
-class _ItemRow extends StatelessWidget {
+class _ItemRow extends StatefulWidget {
   const _ItemRow({required this.item});
 
   final CopyJobItem item;
 
   @override
+  State<_ItemRow> createState() => _ItemRowState();
+}
+
+class _ItemRowState extends State<_ItemRow> {
+  // 返修 P1-12（2026-10-22 现场）：单行截断看不到完整目标文件名及 (1)/(2)
+  // 编号。点击行在「紧凑（文件名尾部优先）↔ 完整路径」间切换。
+  bool _expanded = false;
+
+  /// 截断态优先显示文件名尾部+扩展名（目录截断成 …/ 前缀）。
+  String? _tailPath(String? path) {
+    final raw = path?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    final segments = raw.split(RegExp(r'[/\\]')).where((s) => s.isNotEmpty).toList();
+    if (segments.length <= 2) return raw;
+    return '…/${segments.sublist(segments.length - 2).join('/')}';
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final item = widget.item;
     final conflict = item.conflictDecision;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.sourceRelativePath ?? item.copyItemId,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '→ ${item.targetPath ?? '—'}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          if (item.sourceSize != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                _formatBytes(item.sourceSize!),
-                style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
+    final targetFull = item.targetPath;
+    final targetDisplay = _expanded ? targetFull : _tailPath(targetFull);
+    final sourceFull = item.sourceRelativePath;
+    final sourceDisplay = _expanded ? sourceFull : _tailPath(sourceFull);
+    return GestureDetector(
+      onTap: () => setState(() => _expanded = !_expanded),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    sourceDisplay ?? item.copyItemId,
+                    maxLines: _expanded ? null : 1,
+                    overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '→ ${targetDisplay ?? '—'}',
+                    maxLines: _expanded ? null : 1,
+                    overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
+                  ),
+                  if (!_expanded) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '点击展开完整路径',
+                      style: TextStyle(fontSize: 11, color: AppColors.inkMuted.withValues(alpha: .7)),
+                    ),
+                  ],
+                ],
               ),
             ),
-          if (conflict != null && conflict.isNotEmpty) ...[
             const SizedBox(width: 8),
-            _ConflictBadge(decision: conflict),
+            if (item.sourceSize != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  _formatBytes(item.sourceSize!),
+                  style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
+                ),
+              ),
+            if (conflict != null && conflict.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              _ConflictBadge(decision: conflict),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
