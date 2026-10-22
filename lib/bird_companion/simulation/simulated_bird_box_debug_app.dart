@@ -4,8 +4,10 @@ import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
+import 'package:aves/bird_companion/core/session/client_identity_store.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/session_credential.dart';
+import 'package:aves/bird_companion/features/connection/data/direct_ap_pending_store.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/features/connection/data/health_api.dart';
@@ -79,13 +81,22 @@ class _SimulatedBirdBoxDebugAppState extends State<SimulatedBirdBoxDebugApp> {
   @override
   void initState() {
     super.initState();
+    // The direct AP handoff redeems the BLE pairing session through the
+    // production repository, so both layers share one in-memory authorization
+    // store and client identity instead of the Keystore-backed defaults.
+    final sharedAuthorizationStore = MemoryDirectApAuthorizationStore();
+    final sharedIdentity = MemoryClientIdentityStore();
     _repository = B7SimulatedProvisioningRepository(
       baseUri: widget.config.baseUri,
       deviceId: widget.config.deviceId,
+      directApAuthorizationStore: sharedAuthorizationStore,
+      clientIdentity: sharedIdentity,
     );
     _dependenciesFuture = BirdCompanionDependencies.create(
       connectEnvironmentTestEndpoint: false,
       restoreSavedSession: false,
+      directApAuthorizationStore: sharedAuthorizationStore,
+      clientIdentityStore: sharedIdentity,
     );
     unawaited(_captureDependencies());
   }

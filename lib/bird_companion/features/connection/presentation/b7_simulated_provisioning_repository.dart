@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:aves/bird_companion/core/session/client_identity_store.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_protocol_constants.dart';
+import 'package:aves/bird_companion/features/connection/data/direct_ap_pending_store.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
@@ -12,6 +14,8 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository,
     Uri? baseUri,
     this.deviceId = simulatedBirdBoxDeviceId,
     DateTime Function()? clock,
+    this.directApAuthorizationStore,
+    this.clientIdentity,
   }) : baseUri = baseUri ?? simulatedBirdBoxBaseUri,
        _clock = clock ?? DateTime.now,
        _networkStatus = _directApStatusFor(
@@ -29,6 +33,13 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository,
   final Uri baseUri;
   final String deviceId;
   final DateTime Function() _clock;
+
+  /// Bridged authorization store for the direct AP handoff; null in the pure
+  /// demo page where the HTTP session is taken imperatively instead.
+  final DirectApAuthorizationStore? directApAuthorizationStore;
+
+  /// Client identity shared with the production repository when bridged.
+  final ClientIdentityStore? clientIdentity;
   DateTime? _windowExpiresAt;
   DateTime? _sessionExpiresAt;
   int _attempts = 0;
@@ -118,6 +129,8 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository,
     _activeOperation = null;
     _sessionExpiresAt = null;
     _windowExpiresAt = null;
+    final store = directApAuthorizationStore;
+    if (store != null) await store.remove(deviceId);
     if (!_disposed) _disconnects.add(null);
   }
 
@@ -166,6 +179,18 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository,
     _windowExpiresAt = null;
     _sessionExpiresAt = _clock().add(const Duration(minutes: 2));
     _httpSessionUsed = false;
+    // The direct AP handoff redeems this session through the production
+    // repository's authorization store, so publish it there when bridged.
+    final store = directApAuthorizationStore;
+    final identity = clientIdentity;
+    if (store != null && identity != null) {
+      await store.write(deviceId, {
+        'device_id': deviceId,
+        'client_id': await identity.readOrCreate(),
+        'pairing_session_id': simulatedBirdBoxPairingSessionId,
+        'expires_at': _sessionExpiresAt!.toUtc().toIso8601String(),
+      });
+    }
     return PairingAuthorization.fromJson(const {
       'pairing_session_id': simulatedBirdBoxPairingSessionId,
       'expires_in': 120,

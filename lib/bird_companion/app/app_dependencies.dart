@@ -152,6 +152,8 @@ class BirdCompanionDependencies {
   static Future<BirdCompanionDependencies> create({
     bool connectEnvironmentTestEndpoint = true,
     bool restoreSavedSession = true,
+    DirectApAuthorizationStore? directApAuthorizationStore,
+    ClientIdentityStore? clientIdentityStore,
   }) async {
     final cache = await LocalCache.open();
     final apiClient = ApiClient();
@@ -181,9 +183,9 @@ class BirdCompanionDependencies {
       ),
       wifi: MethodChannelBirdBoxWifiPlatform(),
       dpp: MethodChannelBirdBoxDppPlatform(),
-      clientIdentityStore: AndroidKeystoreClientIdentityStore(),
+      clientIdentityStore: clientIdentityStore ?? AndroidKeystoreClientIdentityStore(),
       credentialStore: secureSessionStore,
-      directApAuthorizationStore: const EncryptedDirectApAuthorizationStore(),
+      directApAuthorizationStore: directApAuthorizationStore ?? const EncryptedDirectApAuthorizationStore(),
       healthApi: HealthApi(apiClient),
       pairingApi: pairingApi,
       sessionCoordinator: sessionCoordinator,
