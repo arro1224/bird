@@ -1619,7 +1619,7 @@ class MockBoxServer {
       'device_id': deviceId,
       'device_name': 'K7 模拟盒子',
       'api_version': 'v1',
-      'network_mode': 'manual',
+      'network_mode': 'direct_ap',
       'signal_strength': 92,
       'is_paired': !requireAuthentication || _activeToken != null,
     },
