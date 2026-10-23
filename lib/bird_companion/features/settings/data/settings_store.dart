@@ -15,8 +15,7 @@ String migrateLegacyCopyMode(String? value) => switch (value) {
   _ => 'keptAssets',
 };
 
-bool migrateLegacyReviewExport(String? value) =>
-    value == null || value != '不导出标记';
+bool migrateLegacyReviewExport(String? value) => value == null || value != '不导出标记';
 
 class BirdSettingsSnapshot {
   const BirdSettingsSnapshot({

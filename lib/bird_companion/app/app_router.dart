@@ -67,9 +67,13 @@ abstract final class BirdRoutes {
 void openReconnectConnection(BuildContext context) {
   unawaited(() async {
     final dependencies = BirdCompanionScope.maybeOf(context);
-    dependencies?.connectionAttempts.begin('explicit_reconnect');
-    if (await dependencies?.deviceSessionCubit.verifySavedSession() == true) return;
+    final verification = dependencies?.deviceSessionCubit.verifySavedSession();
+    final attemptId = dependencies?.deviceSessionCubit.activeAttemptId;
+    if (await verification == true) return;
     if (!context.mounted) return;
+    if (dependencies != null && (dependencies.deviceSessionCubit.activeAttemptId != attemptId || dependencies.deviceSessionCubit.provisioningHandoffActive)) return;
+    // A pending authenticated event gate is retried on the same saved device.
+    if (dependencies?.deviceSessionCubit.state.verificationStage == 'events') return;
     unawaited(
       Navigator.of(
         context,
@@ -177,7 +181,7 @@ abstract final class BirdAppRouter {
               ? args
               : null,
         );
-        page = id == null ? _invalid('复制任务详情', '缺少任务编号') : CopyJobDetailPage(copyJobId: id);
+        page = id == null ? _invalid('复制任务详情', '缺少任务编号') : CopyJobDetailPage(copyJobId: id, deviceId: args is CopyJobDetailArgs ? args.deviceId : null, createdJob: args is CopyJobDetailArgs ? args.createdJob : null);
       case BirdRoutes.jobDetail:
         final args = settings.arguments;
         final id = _clean(

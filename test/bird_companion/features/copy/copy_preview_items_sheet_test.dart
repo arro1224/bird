@@ -53,6 +53,7 @@ void main() {
                 targetRelativeDirectory: '20260901',
                 targetFilename: 'DSC05000.ARW',
                 conflictDecision: 'skip',
+                planState: CopyPlanState.skipConflict,
               ),
               const CopyJobItem(
                 copyItemId: 'item_0002',
@@ -73,7 +74,7 @@ void main() {
     expect(find.text('…/100MSDCF/DSC05000'), findsOneWidget);
     expect(find.text('→ 20260901/DSC05000.ARW'), findsOneWidget);
     expect(find.text('…/100MSDCF/DSC05001'), findsOneWidget);
-    expect(find.text('跳过'), findsOneWidget);
+    expect(find.text('将跳过'), findsOneWidget);
     expect(find.byKey(const Key('copy-preview-items-unavailable')), findsNothing);
     // 完整路径未展开前不出现。
     expect(find.text('DCIM/100MSDCF/DSC05000'), findsNothing);

@@ -5,6 +5,7 @@ import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_config_cubit.dart';
 import 'package:aves/bird_companion/features/copy/presentation/widgets/copy_preview_items_sheet.dart';
 import 'package:aves/bird_companion/features/copy/presentation/widgets/copy_scope_card.dart';
@@ -61,6 +62,7 @@ class CopyConfirmationPage extends StatefulWidget {
 class _CopyConfirmationPageState extends State<CopyConfirmationPage> {
   BirdCompanionDependencies? _dependencies;
   Future<DeviceStatus?>? _statusFuture;
+  String? _deviceId;
 
   @override
   void didChangeDependencies() {
@@ -68,6 +70,7 @@ class _CopyConfirmationPageState extends State<CopyConfirmationPage> {
     final dependencies = BirdCompanionScope.of(context);
     if (identical(_dependencies, dependencies)) return;
     _dependencies = dependencies;
+    _deviceId ??= dependencies.deviceSessionCubit.state.device?.id;
     final preferences = dependencies.settingsStore.read();
     _statusFuture = preferences.lowBatteryReminder ? _readStatus(dependencies) : Future<DeviceStatus?>.value();
   }
@@ -81,6 +84,7 @@ class _CopyConfirmationPageState extends State<CopyConfirmationPage> {
         final scope = _initialScope(dependencies);
         return CopyConfigCubit(
           dependencies.copyRepository,
+          planRepository: dependencies.copyJobRepository,
           batchId: widget.batchId,
           scope: scope,
           selectionId: widget.selectionId,
@@ -99,6 +103,20 @@ class _CopyConfirmationPageState extends State<CopyConfirmationPage> {
                   ),
                 ),
           dataChanges: dependencies.dataChangeBus,
+          sessionChanges: dependencies.deviceSessionCubit.stream.map((_) {}),
+          refreshSignals: dependencies.refreshCoordinator.changes.map((_) {}),
+          diagnostic: (event) => dependencies.connectionAttempts.record({...event, 'device_id': _deviceId}),
+          canUseDevice: () => _deviceId != null && dependencies.copyJobRecovery.canRead(_deviceId!),
+          onJobCreated: (job) async {
+            final device = _deviceId;
+            if (device == null) throw StateError('Missing copy device identity');
+            try {
+              await dependencies.activeCopyJobs.remember(device, job.copyJobId, CopyJobState.fromWire(job.state));
+            } catch (error) {
+              dependencies.copyDiagnostics.record('active_task_store', job.copyJobId, deviceId: device, error: error);
+              rethrow;
+            }
+          },
           // rc3 每次新任务默认关闭审阅导出，不能沿用旧 App 本地偏好。
           initialReviewExportEnabled: false,
           initialEmbedReviewMetadata: true,
@@ -108,6 +126,7 @@ class _CopyConfirmationPageState extends State<CopyConfirmationPage> {
         future: _statusFuture,
         builder: (context, snapshot) => CopyConfigFlow(
           batchId: widget.batchId,
+          deviceId: _deviceId,
           lowBatteryPercent: _lowBatteryPercent(snapshot.data),
         ),
       ),
@@ -142,11 +161,12 @@ class _CopyConfirmationPageState extends State<CopyConfirmationPage> {
 
 /// 成功提交后的反馈：主按钮「查看任务进度」跳 RC3 任务详情（阶段 D）。
 class _CopySubmitResult extends StatelessWidget {
-  const _CopySubmitResult({required this.batchId, required this.jobId, required this.fullBackup});
+  const _CopySubmitResult({required this.batchId, required this.jobId, required this.fullBackup, this.persistenceNotice});
 
   final String? batchId;
   final String jobId;
   final bool fullBackup;
+  final String? persistenceNotice;
 
   @override
   Widget build(BuildContext context) => AlertDialog(
@@ -156,11 +176,13 @@ class _CopySubmitResult extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('任务编号 $jobId'),
+        if (persistenceNotice != null) ...[
+          const SizedBox(height: 8),
+          Text(persistenceNotice!),
+        ],
         const SizedBox(height: 10),
         Text(
-          fullBackup
-              ? '盒子将在后台完成摄影资料全量备份。可在任务详情页查看实时进度与结果。'
-              : '盒子将按确认的范围复制照片。可在任务详情页查看实时进度与结果。',
+          fullBackup ? '盒子将在后台完成摄影资料全量备份。可在任务详情页查看实时进度与结果。' : '盒子将按确认的范围复制照片。可在任务详情页查看实时进度与结果。',
           style: const TextStyle(height: 1.5),
         ),
       ],
@@ -188,18 +210,51 @@ class CopyConfigFlow extends StatefulWidget {
     required this.batchId,
     this.lowBatteryPercent,
     this.onSubmitted,
+    this.deviceId,
   });
 
   final String? batchId;
   final int? lowBatteryPercent;
   final ValueChanged<String>? onSubmitted;
+  final String? deviceId;
 
   @override
   State<CopyConfigFlow> createState() => _CopyConfigFlowState();
 }
 
-class _CopyConfigFlowState extends State<CopyConfigFlow> {
+class _CopyConfigFlowState extends State<CopyConfigFlow> with WidgetsBindingObserver {
   var _step = _CopyFlowStep.content;
+  CopyConfigCubit? _cubit;
+  bool _resumed = true;
+  bool _inspectingPreview = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _cubit = context.read<CopyConfigCubit>();
+    _syncVisibility();
+  }
+
+  void _syncVisibility() => _cubit?.setPageActive(_resumed && (_inspectingPreview || (ModalRoute.of(context)?.isCurrent ?? true)));
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _resumed = state == AppLifecycleState.resumed;
+    _syncVisibility();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cubit?.setPageActive(false);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => BlocConsumer<CopyConfigCubit, CopyConfigState>(
@@ -219,13 +274,14 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> {
           batchId: widget.batchId,
           jobId: state.createdJob!.copyJobId,
           fullBackup: state.fullBackup,
+          persistenceNotice: state.persistenceNotice,
         ),
       ).then((openProgress) async {
         if (!mounted) return;
         if (openProgress == true) {
           await Navigator.of(context).pushNamed(
             BirdRoutes.copyJobDetail,
-            arguments: CopyJobDetailArgs(state.createdJob!.copyJobId),
+            arguments: CopyJobDetailArgs(state.createdJob!.copyJobId, deviceId: widget.deviceId, createdJob: state.createdJob),
           );
         }
         if (mounted) Navigator.of(context).pop();
@@ -261,6 +317,10 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> {
               onBack: state.loadingPreview || state.submitting ? null : () => setState(() => _step = _CopyFlowStep.content),
               onRefreshPreview: state.submitting ? null : () => context.read<CopyConfigCubit>().fetchPreview(),
               onSubmit: context.read<CopyConfigCubit>().submit,
+              onInspectChanged: (inspecting) {
+                _inspectingPreview = inspecting;
+                if (mounted) _syncVisibility();
+              },
             ),
     ),
   );
@@ -330,6 +390,13 @@ class CopyContentStep extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _StateMessages(state: state),
+          if (state.planNotice != null)
+            Text(
+              state.planNotice!,
+              key: const Key('copy-plan-changed'),
+              style: const TextStyle(color: AppColors.warning),
+            ),
+          if (state.loadingPreview) TextButton(onPressed: context.read<CopyConfigCubit>().cancelPlanVerification, child: const Text('取消核对')),
           SizedBox(
             width: double.infinity,
             height: 54,
@@ -483,12 +550,7 @@ class CopyContentStep extends StatelessWidget {
   /// 目标列表包含在线可选设备与「在场但被禁用」的设备，卡片必须显示不可选
   /// 原因，不得仅灰掉选项（§4.3）。
   static List<StorageDeviceSummary> _targetCandidates(CopyConfigState state) {
-    final all = state.devices;
-    return all
-        .where(
-          (device) => (device.online && device.canBeTarget) || !device.online || device.targetBlockReasons.isNotEmpty,
-        )
-        .toList(growable: false);
+    return state.targetCandidates;
   }
 
   static bool _isLastUsedForBatch(
@@ -528,9 +590,7 @@ class CopyContentStep extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           secondary: const Icon(Icons.description_outlined, color: AppColors.brand),
           title: const Text('保存 XMP 与审阅 CSV', style: TextStyle(fontWeight: FontWeight.w700)),
-          subtitle: Text(state.reviewExportReady
-              ? '在目标盘写入评分、标签、鸟种和保留状态'
-              : '当前盒子尚未开放审阅信息导出，仍可正常复制照片'),
+          subtitle: Text(state.reviewExportReady ? '在目标盘写入评分、标签、鸟种和保留状态' : '当前盒子尚未开放审阅信息导出，仍可正常复制照片'),
           value: state.reviewExport.enabled,
           onChanged: state.loadingDevices || !state.reviewExportReady ? null : onReviewExportChanged,
         ),
@@ -583,6 +643,7 @@ class CopyFinalConfirmationStep extends StatelessWidget {
     required this.onRefreshPreview,
     required this.onSubmit,
     this.lowBatteryPercent,
+    this.onInspectChanged,
   });
 
   final CopyConfigState state;
@@ -590,6 +651,7 @@ class CopyFinalConfirmationStep extends StatelessWidget {
   final VoidCallback? onRefreshPreview;
   final VoidCallback onSubmit;
   final int? lowBatteryPercent;
+  final ValueChanged<bool>? onInspectChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -606,13 +668,26 @@ class CopyFinalConfirmationStep extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _StateMessages(state: state),
+          if (state.planNotice != null)
+            Text(
+              state.planNotice!,
+              key: const Key('copy-plan-changed'),
+              style: const TextStyle(color: AppColors.warning),
+            ),
+          if (state.loadingPreview || state.checkingPlan) TextButton(onPressed: context.read<CopyConfigCubit>().cancelPlanVerification, child: const Text('取消核对')),
           SizedBox(
             width: double.infinity,
             height: 54,
             child: FilledButton(
               key: const Key('copy-final-submit'),
               onPressed: canSubmit ? onSubmit : null,
-              child: Text(state.submitting ? '正在创建任务…' : '开始复制'),
+              child: Text(
+                state.checkingPlan
+                    ? '正在核对预检…'
+                    : state.submitting
+                    ? '正在创建任务…'
+                    : '开始复制',
+              ),
             ),
           ),
           if (blockReason != null) ...[
@@ -633,8 +708,17 @@ class CopyFinalConfirmationStep extends StatelessWidget {
       ),
       children: [
         if (preview == null) ...[
-          const Card(
-            child: SizedBox(height: 96, child: Center(child: CircularProgressIndicator())),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  if (state.loadingPreview) const LinearProgressIndicator(),
+                  Text(state.preflightNotice ?? '请重新获取预检后开始复制。'),
+                  TextButton(key: const Key('copy-recheck-preview'), onPressed: state.loadingPreview || state.submitting || !state.sessionAvailable ? null : onRefreshPreview, child: const Text('重新预检')),
+                ],
+              ),
+            ),
           ),
         ] else ...[
           Card(
@@ -645,7 +729,9 @@ class CopyFinalConfirmationStep extends StatelessWidget {
                   _SummaryRow(icon: Icons.photo_library_outlined, label: '复制范围', value: _scopeLabel(state)),
                   _SummaryRow(icon: Icons.sd_card_outlined, label: '源设备', value: preview.source.presentationName),
                   _SummaryRow(icon: Icons.save_alt_rounded, label: '目标设备', value: preview.target.presentationName),
-                  _SummaryRow(icon: Icons.photo_outlined, label: '照片数', value: '${_formatCount(preview.logicalPhotoCount)} 张逻辑照片 · ${_formatCount(preview.actualFileCount)} 个文件'),
+                  _SummaryRow(icon: Icons.photo_outlined, label: '照片数', value: '${_formatCount(preview.logicalPhotoCount)} 张逻辑照片 · ${_formatCount(preview.plannedFileCount)} 个将复制文件'),
+                  _SummaryRow(icon: Icons.list_alt, label: '计划核对', value: state.planIntegrity?.verified == true ? state.planIntegrity!.summary : state.planIntegrity?.message ?? '正在核对预检…'),
+                  if (state.loadingPreview) const LinearProgressIndicator(),
                   if (state.fullBackup) ...[
                     _SummaryRow(icon: Icons.videocam_outlined, label: '视频 / 伴随文件', value: '${_formatCount(preview.videoCount)} / ${_formatCount(preview.companionCount)}'),
                   ] else ...[
@@ -670,20 +756,27 @@ class CopyFinalConfirmationStep extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
               key: const Key('copy-preview-items-open'),
-              onPressed: () {
+              onPressed: () async {
                 final repository = BirdCompanionScope.maybeOf(context)?.copyJobRepository;
                 if (repository == null) return;
-                showCopyPreviewItemsSheet(
-                  context,
-                  repository: repository,
-                  previewToken: preview.previewToken,
-                  summaryFileCount: preview.actualFileCount,
-                );
+                onInspectChanged?.call(true);
+                try {
+                  await showCopyPreviewItemsSheet(
+                    context,
+                    repository: repository,
+                    previewToken: preview.previewToken,
+                    summaryFileCount: preview.plannedFileCount,
+                    verifiedPlan: state.planIntegrity,
+                  );
+                } finally {
+                  onInspectChanged?.call(false);
+                }
               },
               icon: const Icon(Icons.list_alt_rounded, size: 18),
-              label: Text('查看预检明细（${_formatCount(preview.actualFileCount)} 个文件）'),
+              label: Text('查看预检明细（${state.planIntegrity?.verified == true ? '${state.planIntegrity!.items.length} 条' : '尚未核对完成'}）'),
             ),
           ),
+          if (!state.loadingPreview && !state.submitting && state.submissionBlockReason != null) TextButton(key: const Key('copy-recheck-preview'), onPressed: state.sessionAvailable ? onRefreshPreview : null, child: const Text('重新预检')),
           const SizedBox(height: 12),
           Container(
             key: const Key('copy-production-safety-notice'),
@@ -1043,6 +1136,13 @@ class _StateMessages extends StatelessWidget {
     children: [
       // RC3 能力门控：预检 COPY_SCOPE_UNSUPPORTED（01 文档 §二 P0-2），
       // 不得进入创建流程；琥珀提示而非错误红字。
+      if (state.loadingPreview) const Text('正在核对预检…', key: Key('copy-plan-checking')),
+      if (state.planIntegrity?.message != null)
+        Text(
+          state.planIntegrity!.message!,
+          key: const Key('copy-plan-integrity-notice'),
+          style: const TextStyle(color: AppColors.danger, fontSize: 12.5),
+        ),
       if (state.scopeUnavailable) ...[
         const SizedBox(height: 8),
         Container(
@@ -1077,6 +1177,21 @@ class _StateMessages extends StatelessWidget {
           style: const TextStyle(color: AppColors.danger, fontSize: 12.5),
         ),
       ],
+      if (state.preflightNotice != null) ...[
+        const SizedBox(height: 8),
+        Text(
+          state.preflightNotice!,
+          key: const Key('copy-preflight-notice'),
+          style: const TextStyle(color: AppColors.inkMuted, fontSize: 12.5),
+        ),
+      ],
+      if (!state.submitted)
+        TextButton.icon(
+          key: const Key('copy-refresh-devices'),
+          onPressed: state.refreshingDevices || state.loadingDevices || state.submitting ? null : () => context.read<CopyConfigCubit>().refreshDevices(),
+          icon: const Icon(Icons.refresh_rounded),
+          label: Text(state.refreshingDevices ? '正在检测设备…' : '重新检测设备'),
+        ),
       if (state.error != null && !state.scopeUnavailable) ...[
         const SizedBox(height: 8),
         Text(
@@ -1088,7 +1203,7 @@ class _StateMessages extends StatelessWidget {
   );
 
   static String _errorText(Object error) {
-    final message = UserMessageMapper.fromError(error);
+    final message = UserMessageMapper.fromCopyConfigurationError(error);
     return '${message.title}：${message.message}';
   }
 }

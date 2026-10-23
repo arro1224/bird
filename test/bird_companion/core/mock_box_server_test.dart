@@ -9,6 +9,8 @@ import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/features/batches/data/batch_api.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_plan_integrity.dart';
+import 'package:aves/bird_companion/features/copy/data/copy_repository_impl.dart';
 import 'package:aves/bird_companion/features/gallery/data/photo_api.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/review/data/review_api.dart';
@@ -299,6 +301,12 @@ void main() {
     expect(itemPage.items, hasLength(20));
     expect(itemPage.hasMore, isTrue);
     expect(itemPage.items.map((item) => item.conflictDecision), contains('skip'));
+    final integrity = await const CopyPlanVerifier().verify(preview, CopyRepositoryImpl(copyApi), isCurrent: () => true);
+    expect(integrity.verified, true);
+    expect(integrity.items.length, 67);
+    expect(integrity.copyCount, 64);
+    expect(integrity.skippedCount, 3);
+    expect(integrity.copyBytes, preview.totalBytes);
   });
 
   test('RC3 复制任务闭环：capabilities/预检拒绝全量备份/创建→轮询部分完成/动作版本冲突/安全移除', () async {
@@ -342,9 +350,7 @@ void main() {
         ),
       ),
       throwsA(
-        isA<ApiException>()
-            .having((error) => error.code, 'code', 'COPY_SCOPE_UNSUPPORTED')
-            .having((error) => error.statusCode, 'status', 422),
+        isA<ApiException>().having((error) => error.code, 'code', 'COPY_SCOPE_UNSUPPORTED').having((error) => error.statusCode, 'status', 422),
       ),
     );
 

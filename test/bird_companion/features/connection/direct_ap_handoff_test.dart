@@ -42,6 +42,65 @@ Future<void> until(bool Function() condition) async {
 }
 
 void main() {
+  test('slow pending cleanup cannot turn verified success into a timeout', () async {
+    final store = _DelayedRemoveStorage();
+    final cubit = DirectApHandoffCubit(store: store, window: const Duration(milliseconds: 50), verify: (_, _) async {});
+    await cubit.begin(pending);
+    await until(() => store.started);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(cubit.state.phase, DirectApHandoffPhase.directApConnected);
+    store.release.complete();
+    await cubit.close();
+  });
+
+  test('pending cleanup failure stays connected and records cleanup separately', () async {
+    final store = _DelayedRemoveStorage()..fail = true;
+    final traces = <Map<String, dynamic>>[];
+    final cubit = DirectApHandoffCubit(store: store, verify: (_, _) async {}, diagnostic: traces.add);
+    await cubit.begin(pending);
+    await until(() => store.started);
+    store.release.complete();
+    await until(() => traces.any((e) => e['event'] == 'direct_ap_pending_clear_failed'));
+    expect(cubit.state.phase, DirectApHandoffPhase.directApConnected);
+    await cubit.close();
+  });
+
+  test('old cleanup serializes with a new page pending record', () async {
+    final store = _DelayedRemoveStorage();
+    final old = DirectApHandoffCubit(store: store, verify: (_, _) async {});
+    final newRequest = Completer<void>();
+    final next = DirectApHandoffCubit(store: store, verify: (_, _) => newRequest.future);
+    await old.begin(pending);
+    await until(() => store.started);
+    final beginning = next.begin(PendingDirectAp(deviceId: deviceId, baseUri: pending.baseUri, operationId: 'op-new', attemptId: 'new-intent'));
+    store.release.complete();
+    await beginning;
+    expect(store.read<Map>(DirectApHandoffCubit.pendingKey)?['attempt_id'], 'new-intent');
+    await old.close();
+    expect(store.read<Map>(DirectApHandoffCubit.pendingKey)?['attempt_id'], 'new-intent');
+    await next.cancel();
+    newRequest.complete();
+    await next.close();
+  });
+
+  test('superseded page ignores late success and cannot clear new pending metadata', () async {
+    final store = MemoryHandoffStorage();
+    var current = 'old-intent';
+    final gate = Completer<void>();
+    final cubit = DirectApHandoffCubit(store: store, verify: (_, _) => gate.future, isIntentCurrent: (p) => p.attemptId == current);
+    await cubit.begin(PendingDirectAp(deviceId: deviceId, baseUri: pending.baseUri, operationId: 'op-old', attemptId: current));
+    await until(() => cubit.state.attempt == 1);
+    current = 'new-intent';
+    await store.write(DirectApHandoffCubit.pendingKey, {...pending.toJson(), 'attempt_id': current});
+    gate.complete();
+    await cubit.continueVerification();
+    await Future<void>.delayed(Duration.zero);
+    expect(cubit.state.phase, isNot(DirectApHandoffPhase.directApConnected));
+    await cubit.cancel();
+    expect(store.read<Map>(DirectApHandoffCubit.pendingKey)?['attempt_id'], current);
+    await cubit.close();
+  });
+
   test('already ready AP is reused without a second start command', () async {
     final info = ProvisioningDeviceInfo.fromJson(jsonDecode(File('test/contracts/fixtures/ble-device-info.rc4.json').readAsStringSync()) as Map<String, dynamic>);
     final snapshot = ProvisioningEvent.fromJson(jsonDecode(File('test/contracts/fixtures/ble-network-status.rc4.json').readAsStringSync()) as Map<String, dynamic>).payload as ProvisioningNetworkStatus;
@@ -53,6 +112,8 @@ void main() {
     addTearDown(repository.dispose);
     await network.startDirectAp(info);
     await until(() => handoff.state.phase == DirectApHandoffPhase.directApConnected);
+    expect(network.attemptId, isNotEmpty);
+    expect(handoff.state.pending!.attemptId, network.attemptId);
     expect(repository.calls.where((call) => call == 'startDirectAp'), isEmpty);
     expect(repository.calls.where((call) => call == 'getNetworkStatus'), hasLength(1));
   });
@@ -92,7 +153,8 @@ void main() {
     addTearDown(cubit.close);
     await cubit.begin(pending);
     await until(() => cubit.state.phase == DirectApHandoffPhase.waitingForPhoneApJoin);
-    expect(store.read<Map>(DirectApHandoffCubit.pendingKey), pending.toJson());
+    expect(store.read<Map>(DirectApHandoffCubit.pendingKey), {...pending.toJson(), 'attempt_id': cubit.state.pending!.attemptId});
+    expect(cubit.state.pending!.attemptId, isNotEmpty);
     cubit.lifecycleChanged(resumed: false);
     cubit.lifecycleChanged(resumed: true);
     cubit.networkChanged();
@@ -230,7 +292,6 @@ void main() {
             cubit: cubit,
             onBack: () {
               back = true;
-              unawaited(cubit.cancel());
             },
           ),
         ),
@@ -247,6 +308,7 @@ void main() {
     await tester.tap(find.text('返回连接方式'));
     await tester.pump();
     expect(back, isTrue);
+    await tester.runAsync(cubit.cancel);
     completion.complete();
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.runAsync(cubit.close);
@@ -267,4 +329,16 @@ void main() {
       isFalse,
     );
   });
+}
+
+class _DelayedRemoveStorage extends MemoryHandoffStorage {
+  final release = Completer<void>();
+  bool started = false, fail = false;
+  @override
+  Future<void> remove(String key) async {
+    started = true;
+    await release.future;
+    if (fail) throw StateError('storage unavailable');
+    await super.remove(key);
+  }
 }

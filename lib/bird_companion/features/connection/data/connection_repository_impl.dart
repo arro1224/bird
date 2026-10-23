@@ -1,5 +1,7 @@
 import 'package:aves/bird_companion/core/models/device_models.dart';
-import 'package:aves/bird_companion/core/storage/local_cache.dart';
+import 'package:aves/bird_companion/core/storage/diagnostic_storage.dart';
+import '../domain/connection_attempt.dart';
+import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/storage/cache_schema_migrator.dart';
 import 'package:aves/bird_companion/features/connection/data/connection_api.dart';
 import 'package:aves/bird_companion/features/connection/data/device_discovery_source.dart';
@@ -12,7 +14,15 @@ class ConnectionRepositoryImpl implements ConnectionRepository {
   ConnectionRepositoryImpl(this._api, this._cache, this._discoverySource);
 
   final ConnectionApi _api;
-  final LocalCache _cache;
+  final DiagnosticStorage _cache;
+  Future<void> _writes = Future<void>.value();
+
+  Future<void> _persist(Future<void> Function() operation) {
+    final write = _writes.catchError((Object _) {}).then((_) => operation());
+    _writes = write;
+    return write;
+  }
+
   final DeviceDiscoverySource _discoverySource;
 
   @override
@@ -77,43 +87,48 @@ class ConnectionRepositoryImpl implements ConnectionRepository {
   Future<void> _save(
     DeviceStatus status,
     CancelToken? cancelToken,
-  ) async {
-    if (cancelToken?.isCancelled == true) {
-      throw StateError('Connection cancelled before the device was saved.');
-    }
-    final device = status.connection;
-    final recent = _unique([device, ...await recentDevices()]).take(10).toList();
-    await _cache.write(
-      CacheSchemaMigrator.recentDevicesKey,
-      recent.map((item) => item.toJson()).toList(),
-    );
-    await _cache.write(
-      CacheSchemaMigrator.activeDeviceKey,
-      device.toJson(),
-    );
-  }
+  ) => _persist(
+    () => ConnectionAttempt.runFor(cancelToken, 'saved_address_write', () async {
+      cancelToken?.throwIfCancellationRequested();
+      final device = status.connection;
+      final recent = _unique([device, ...await recentDevices()]).take(10).toList();
+      cancelToken?.throwIfCancellationRequested();
+      await _cache.write(
+        CacheSchemaMigrator.recentDevicesKey,
+        recent.map((item) => item.toJson()).toList(),
+      );
+      cancelToken?.throwIfCancellationRequested();
+      await _cache.write(
+        CacheSchemaMigrator.activeDeviceKey,
+        device.toJson(),
+      );
+      cancelToken?.throwIfCancellationRequested();
+    }),
+  );
 
   @override
   Future<DeviceStatus> reconnect({CancelToken? cancelToken}) async {
     final device = await savedDevice();
+    cancelToken?.throwIfCancellationRequested();
     if (device == null) throw StateError('没有可重连的盒子设备。');
     // A live saved HTTP session must not wait for mDNS or restart BLE pairing.
     Object? lastError;
     try {
       return await connectExpected(device.baseUri, networkMode: device.networkMode, expectedDeviceId: device.id, cancelToken: cancelToken);
     } catch (error) {
-      if (error is EventSessionNotReadyException) rethrow;
+      if (error is EventSessionNotReadyException || error is PairingRequiredException || error is ApiException && {401, 403}.contains(error.statusCode)) rethrow;
       lastError = error;
       cancelToken?.throwIfCancellationRequested();
     }
     List<DeviceConnection> discovered;
     try {
-      discovered = await _discoverySource.discover();
+      discovered = await ConnectionAttempt.runFor(cancelToken, 'discovery', _discoverySource.discover);
     } catch (_) {
       // Discovery is only the preferred fresh-address source. A saved
       // address hint is still worth trying when mDNS is temporarily absent.
       discovered = const [];
     }
+    cancelToken?.throwIfCancellationRequested();
     final endpoints = <String>{device.baseUri.toString()};
     final candidates = discovered.where((candidate) => candidate.id == device.id && endpoints.add(candidate.baseUri.toString()));
     for (final candidate in candidates) {

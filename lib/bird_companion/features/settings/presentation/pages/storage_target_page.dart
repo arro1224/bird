@@ -107,13 +107,9 @@ class _StorageTargetPageState extends State<StorageTargetPage> {
                 _DeviceRow(
                   key: Key('storage-device-${device.mediaId}'),
                   device: device,
-                  recommended:
-                      _recommendedTargetMediaId != null &&
-                      device.mediaId == _recommendedTargetMediaId,
+                  recommended: _recommendedTargetMediaId != null && device.mediaId == _recommendedTargetMediaId,
                   onRename: () => _renameDevice(device),
-                  onSafeRemove: device.online && device.canBeTarget
-                      ? () => _safeRemoveDevice(device)
-                      : null,
+                  onSafeRemove: device.online && device.canBeTarget ? () => _safeRemoveDevice(device) : null,
                 ),
                 const SizedBox(height: AppSpacing.md),
               ],
@@ -176,9 +172,7 @@ class _StorageTargetPageState extends State<StorageTargetPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            result.safeToRemove
-                ? '现在可以拔出「${device.presentationName}」（保持期 60 秒）'
-                : result.reason ?? '暂时不能移除该设备',
+            result.safeToRemove ? '现在可以拔出「${device.presentationName}」（保持期 60 秒）' : result.reason ?? '暂时不能移除该设备',
           ),
         ),
       );
@@ -260,10 +254,7 @@ class _DeviceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final used = device.capacityBytes <= 0
-        ? 0.0
-        : ((device.capacityBytes - device.freeBytes) / device.capacityBytes)
-              .clamp(0.0, 1.0);
+    final used = device.capacityBytes <= 0 ? 0.0 : ((device.capacityBytes - device.freeBytes) / device.capacityBytes).clamp(0.0, 1.0);
     final online = device.online;
     return BirdSettingsCard(
       borderColor: online ? null : AppColors.outline,
@@ -331,8 +322,7 @@ class _DeviceRow extends StatelessWidget {
                     style: const TextStyle(fontSize: 12.5, color: AppColors.mutedInk),
                   ),
                   const SizedBox(width: AppSpacing.xs),
-                  if (device.filesystem.trim().isNotEmpty)
-                    _Badge(device.filesystem.toUpperCase(), AppColors.forestPrimary, AppColors.forestSoft),
+                  if (device.filesystem.trim().isNotEmpty) _Badge(device.filesystem.toUpperCase(), AppColors.forestPrimary, AppColors.forestSoft),
                   if (device.canBeSource) ...[
                     const SizedBox(width: AppSpacing.xs),
                     const _Badge('源', AppColors.forestPrimary, AppColors.forestSoft),

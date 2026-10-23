@@ -136,10 +136,8 @@ void main() {
     'the connection page must close its owned network cubit',
   );
   const provisioningCubitPath = 'lib/bird_companion/features/connection/presentation/provisioning_cubit.dart';
-  _requireContains(failures, provisioningCubitPath, '!retainSession',
-      'successful handoff must preserve the live session');
-  _requireContains(failures, provisioningCubitPath, '_control!.endSession(_owner!)',
-      'unfinished provisioning must release only the owned session');
+  _requireContains(failures, provisioningCubitPath, '!retainSession', 'successful handoff must preserve the live session');
+  _requireContains(failures, provisioningCubitPath, '_control!.endSession(_owner!)', 'unfinished provisioning must release only the owned session');
 
   const provisioningRepositoryPath = 'lib/bird_companion/features/connection/data/provisioning_repository_impl.dart';
   _requireContains(

@@ -89,17 +89,12 @@ abstract final class TaskHomeCapabilityResolver {
     final targetWriteBusy = blockingJobs.any(
       (job) => job.type == BirdJobType.copy,
     );
-    final targetWriteReason = targetWriteBusy
-        ? '已有复制/备份任务正在使用目标设备'
-        : null;
+    final targetWriteReason = targetWriteBusy ? '已有复制/备份任务正在使用目标设备' : null;
 
     final projectPipelineBusy =
         hasProject &&
         blockingJobs.any(
-          (job) =>
-              (job.type == BirdJobType.import ||
-                  job.type == BirdJobType.analysis) &&
-              _belongsToProject(job, projectId),
+          (job) => (job.type == BirdJobType.import || job.type == BirdJobType.analysis) && _belongsToProject(job, projectId),
         );
     final analysisReason = !hasProject
         ? '当前没有可用批次'
@@ -111,8 +106,7 @@ abstract final class TaskHomeCapabilityResolver {
 
     final cardPresent = deviceStatus.card.inserted;
     final remoteCopyReady = remote == null || remote.copyReady;
-    final remoteFullBackupSupported =
-        remote == null || remote.supportedScopes.contains(CopyScope.mediaFullBackup);
+    final remoteFullBackupSupported = remote == null || remote.supportedScopes.contains(CopyScope.mediaFullBackup);
     final copyReason = !hasProject
         ? '当前没有可用批次'
         : !hasPhotos

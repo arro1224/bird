@@ -9,6 +9,32 @@ abstract interface class SecureSessionStore {
   Future<void> delete(String deviceId);
 }
 
+/// All connection owners share this queue. An in-flight platform write from
+/// an obsolete intent must finish before the newer credential is written.
+class SerializedSecureSessionStore implements SecureSessionStore {
+  SerializedSecureSessionStore(this.delegate);
+  final SecureSessionStore delegate;
+  Future<void> _writes = Future<void>.value();
+
+  Future<void> _enqueue(Future<void> Function() operation) {
+    final next = _writes.catchError((Object _) {}).then((_) => operation());
+    _writes = next;
+    return next;
+  }
+
+  @override
+  Future<SessionCredential?> read(String deviceId) async {
+    await _writes.catchError((Object _) {});
+    return delegate.read(deviceId);
+  }
+
+  @override
+  Future<void> write(SessionCredential credential) => _enqueue(() => delegate.write(credential));
+
+  @override
+  Future<void> delete(String deviceId) => _enqueue(() => delegate.delete(deviceId));
+}
+
 /// Stores the encrypted credential payload through the Android Keystore
 /// channel implemented by MainActivity. No plaintext token is written to Hive.
 class AndroidKeystoreSessionStore implements SecureSessionStore {

@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/features/copy/domain/copy_job_presentation.dart';
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
@@ -33,9 +34,12 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
   bool _loadMoreFailed = false;
   String? _cursor;
   Object? _error;
+  BirdCompanionDependencies? _dependencies;
+  StreamSubscription<void>? _sessionSubscription;
+  String? _deviceId;
+  int _generation = 0;
 
-  CopyJobRepository? get _repository =>
-      widget.repository ?? BirdCompanionScope.maybeOf(context)?.copyJobRepository;
+  CopyJobRepository? get _repository => widget.repository ?? BirdCompanionScope.maybeOf(context)?.copyJobRepository;
 
   @override
   void initState() {
@@ -43,8 +47,46 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.repository != null || _dependencies != null) return;
+    final dependencies = BirdCompanionScope.maybeOf(context);
+    if (dependencies == null) return;
+    _dependencies = dependencies;
+    _deviceId = dependencies.deviceSessionCubit.state.device?.id;
+    _sessionSubscription = dependencies.copyJobRecovery.sessionRefreshes.listen((_) {
+      if (!mounted) return;
+      final device = dependencies.deviceSessionCubit.state.device?.id;
+      if (device != _deviceId) {
+        _jobs.clear();
+        _hasMore = false;
+        _deviceId = device;
+      }
+      unawaited(_reload());
+    });
+  }
+
+  @override
+  void dispose() {
+    ++_generation;
+    unawaited(_sessionSubscription?.cancel());
+    super.dispose();
+  }
+
+  bool get _readable => _dependencies == null || (_deviceId != null && _dependencies!.copyJobRecovery.canRead(_deviceId!));
+
   Future<void> _reload() async {
     final repository = _repository;
+    final generation = ++_generation;
+    if (!_readable) {
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+        _error = StateError('连接盒子后可继续读取复制任务。');
+      });
+      return;
+    }
     if (repository == null) {
       if (mounted) setState(() => _loading = false);
       return;
@@ -53,10 +95,11 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
       _loading = true;
       _error = null;
       _loadMoreFailed = false;
+      _loadingMore = false;
     });
     try {
       final page = await repository.listJobs();
-      if (!mounted) return;
+      if (!mounted || generation != _generation || !_readable) return;
       setState(() {
         _jobs
           ..clear()
@@ -66,7 +109,7 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _error = error;
         _loading = false;
@@ -76,14 +119,15 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
 
   Future<void> _loadMore() async {
     final repository = _repository;
-    if (repository == null || _loadingMore || !_hasMore) return;
+    if (repository == null || _loading || _loadingMore || !_hasMore || !_readable) return;
+    final generation = _generation;
     setState(() {
       _loadingMore = true;
       _loadMoreFailed = false;
     });
     try {
       final page = await repository.listJobs(cursor: _cursor);
-      if (!mounted) return;
+      if (!mounted || generation != _generation || !_readable) return;
       setState(() {
         _jobs.addAll(page.items);
         _hasMore = page.hasMore;
@@ -92,7 +136,7 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
       });
     } catch (error) {
       // 失败置错误态、不自动重试：footer 重建循环会反复打后端（死循环）。
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _loadingMore = false;
         _loadMoreFailed = true;
@@ -188,10 +232,10 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
                     onTap: () async {
                       await Navigator.of(context).pushNamed(
                         BirdRoutes.copyJobDetail,
-                        arguments: CopyJobDetailArgs(job.copyJobId),
+                        arguments: CopyJobDetailArgs(job.copyJobId, deviceId: _deviceId),
                       );
                       // 详情页可能已执行动作（取消/重试），返回后刷新列表。
-                      await _reload();
+                      if (mounted) await _reload();
                     },
                   );
                 },
@@ -210,17 +254,7 @@ class _JobListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stats = job.stats;
-    // 返修 P1-5：同名跳过不是失败，不能显示成「文件 4/5」像没完成。
-    // 有跳过时按「处理完成 N/N（复制 X，跳过 Y）」口径展示。
-    final progress = stats == null
-        ? null
-        : stats.totalFiles > 0
-        ? stats.skippedFiles > 0
-        ? '处理完成 ${stats.copiedFiles + stats.failedFiles + stats.skippedFiles}/${stats.totalFiles}'
-              '（复制 ${stats.copiedFiles}，跳过 ${stats.skippedFiles}'
-              '${stats.failedFiles > 0 ? '，失败 ${stats.failedFiles}' : ''}）'
-        : '文件 ${stats.copiedFiles + stats.failedFiles}/${stats.totalFiles}'
-        : null;
+    final progress = stats == null ? null : CopyTaskProgress.fromStats(stats, job.state).summary(job.state);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Card(

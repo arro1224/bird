@@ -326,7 +326,11 @@ class _TestDeviceSessionCubit extends Cubit<DeviceSessionState> implements Devic
   bool verificationResult = false;
   int verificationCount = 0;
   @override
-  Future<bool> verifySavedSession({Duration timeout = const Duration(seconds: 12), String? expectedDeviceId}) async {
+  String? get activeAttemptId => 'test-verification';
+  @override
+  bool get provisioningHandoffActive => false;
+  @override
+  Future<bool> verifySavedSession({Duration timeout = const Duration(seconds: 20), String? expectedDeviceId, String intent = 'explicit_reconnect'}) async {
     ++verificationCount;
     return verificationResult;
   }

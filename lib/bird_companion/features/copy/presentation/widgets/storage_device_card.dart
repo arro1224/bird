@@ -1,5 +1,6 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_device_policy.dart';
 import 'package:flutter/material.dart';
 
 /// 协议设备卡片（§4.1/§4.2 展示规则）。
@@ -24,15 +25,11 @@ class StorageDeviceCard extends StatelessWidget {
   final VoidCallback? onTap;
   final bool lastUsedForBatch;
 
-  bool get _canFillRole =>
-      device.online && (role == '源设备' ? device.canBeSource : device.canBeTarget);
+  bool get _canFillRole => device.online && (role == '源设备' ? device.canBeSource : CopyDevicePolicy.canSelectTarget(device, null));
 
   @override
   Widget build(BuildContext context) {
-    final used = device.capacityBytes <= 0
-        ? 0.0
-        : ((device.capacityBytes - device.freeBytes) / device.capacityBytes)
-              .clamp(0.0, 1.0);
+    final used = device.capacityBytes <= 0 ? 0.0 : ((device.capacityBytes - device.freeBytes) / device.capacityBytes).clamp(0.0, 1.0);
     final blockReason = _blockReason();
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -101,9 +98,7 @@ class StorageDeviceCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          device.detail.isEmpty
-                              ? _typeConfidenceHint()
-                              : '${device.detail} · ${_filesystemLabel()}',
+                          device.detail.isEmpty ? _typeConfidenceHint() : '${device.detail} · ${_filesystemLabel()}',
                           style: const TextStyle(
                             color: AppColors.inkMuted,
                             fontSize: 12,
@@ -137,9 +132,7 @@ class StorageDeviceCard extends StatelessWidget {
                       '${_formatBytes(device.freeBytes)} 可用 / ${_formatBytes(device.capacityBytes)} · $role',
                       style: TextStyle(
                         fontSize: 12.5,
-                        color: _canFillRole
-                            ? AppColors.forestDeep
-                            : AppColors.inkMuted,
+                        color: _canFillRole ? AppColors.forestDeep : AppColors.inkMuted,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -206,6 +199,7 @@ class StorageDeviceCard extends StatelessWidget {
   }
 
   String? _blockReason() {
+    if (role != '源设备') return CopyDevicePolicy.targetDisabledReason(device);
     if (_canFillRole) return null;
     if (!device.online) return '设备已拔出或不可用';
     if (!device.identityStable) return '身份已变化，不能作为${role == '源设备' ? '源' : '目标'}设备';
@@ -217,9 +211,7 @@ class StorageDeviceCard extends StatelessWidget {
 
   /// §4.2 第 5 条：无可靠证据时显示普通说明，不伪装成确定类型。
   String _typeConfidenceHint() {
-    if (device.kind == 'unknown' ||
-        device.kindConfidence == 'low' ||
-        device.kindConfidence == 'unknown') {
+    if (device.kind == 'unknown' || device.kindConfidence == 'low' || device.kindConfidence == 'unknown') {
       return 'USB 存储设备（类型未确认）';
     }
     return _kindLabel;
@@ -244,9 +236,9 @@ class StorageDeviceCard extends StatelessWidget {
   IconData get _kindIcon => switch (device.kind) {
     'memory_card' || 'card_reader' => Icons.sd_card_outlined,
     'usb_flash' => Icons.usb_rounded,
-    'usb_storage' || 'removable_storage' || 'unknown' =>
-      Icons.storage_rounded,
-    'external_hdd' => Icons.storage_rounded,    'external_ssd' => Icons.speed_rounded,
+    'usb_storage' || 'removable_storage' || 'unknown' => Icons.storage_rounded,
+    'external_hdd' => Icons.storage_rounded,
+    'external_ssd' => Icons.speed_rounded,
     _ => Icons.storage_rounded,
   };
 }

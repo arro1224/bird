@@ -71,9 +71,11 @@ void main() {
 class _NoExportRepository extends _FakeCopyRepository {
   @override
   Future<CopyCapabilities> capabilities() async => const CopyCapabilities(
-    revision: '1.0-rc3', copyReady: true,
+    revision: '1.0-rc3',
+    copyReady: true,
     supportedScopes: [CopyScope.recognizedAssets],
-    recognitionPolicyVersion: 'recognized-assets-v1', reviewExportReady: false,
+    recognitionPolicyVersion: 'recognized-assets-v1',
+    reviewExportReady: false,
   );
 }
 
@@ -117,8 +119,7 @@ class _FakeCopyRepository implements CopyRepository {
   );
 
   @override
-  Future<CopyPreferences> preferences() async =>
-      const CopyPreferences(pairPolicy: PairPolicy.rawOnly, version: 1, origin: 'factory_default');
+  Future<CopyPreferences> preferences() async => const CopyPreferences(pairPolicy: PairPolicy.rawOnly, version: 1, origin: 'factory_default');
 
   @override
   Future<CopyPreferences> savePreferences(

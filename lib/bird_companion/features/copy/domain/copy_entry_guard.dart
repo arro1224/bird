@@ -35,10 +35,7 @@ CopyEntryDecision resolveCurrentCopyEntry({
   }
 
   final targetWriteBusy = jobs.any(
-    (job) =>
-        _blocksNewWork(job) &&
-        job.type == BirdJobType.copy &&
-        _belongsToProject(job, currentId),
+    (job) => _blocksNewWork(job) && job.type == BirdJobType.copy && _belongsToProject(job, currentId),
   );
   if (targetWriteBusy) {
     return const CopyEntryDecision.blocked('已有复制/备份任务正在使用目标设备');

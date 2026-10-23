@@ -217,6 +217,8 @@ class CopyJobStats {
     this.bytesPerSecond,
     this.currentFile,
     this.progressPercent,
+    this.knownFileCounts = const {'total_files', 'copied_files', 'failed_files', 'skipped_files', 'not_applicable_files'},
+    this.copiedBytesKnown = true,
   });
 
   final int totalFiles;
@@ -226,13 +228,17 @@ class CopyJobStats {
   final int notApplicableFiles;
   final int totalBytes;
   final int copiedBytes;
-  final int? elapsedSeconds;
+  final num? elapsedSeconds;
   final int? etaSeconds;
-  final int? bytesPerSecond;
+  final num? bytesPerSecond;
   final String? currentFile;
 
   /// 后端 P1-5 反馈当前为假值：UI 对 0/null 必须不渲染进度卡。
   final double? progressPercent;
+
+  /// Missing/invalid fields must not become evidence of zero outcomes.
+  final Set<String> knownFileCounts;
+  final bool copiedBytesKnown;
 
   factory CopyJobStats.fromJson(Map<String, dynamic> json) => CopyJobStats(
     totalFiles: _int(json, 'total_files') ?? 0,
@@ -242,19 +248,20 @@ class CopyJobStats {
     notApplicableFiles: _int(json, 'not_applicable_files') ?? 0,
     totalBytes: _int(json, 'total_bytes') ?? 0,
     copiedBytes: _int(json, 'copied_bytes') ?? 0,
-    elapsedSeconds: _int(json, 'elapsed_seconds'),
+    elapsedSeconds: _nonNegativeNumber(json['elapsed_seconds']),
     etaSeconds: _int(json, 'eta_seconds'),
-    bytesPerSecond: _int(json, 'bytes_per_second'),
+    bytesPerSecond: _nonNegativeNumber(json['bytes_per_second']),
     currentFile: json['current_file']?.toString(),
     progressPercent: _progressPercent(json['progress_percent']),
+    copiedBytesKnown: json['copied_bytes'] is int && (json['copied_bytes'] as int) >= 0,
+    knownFileCounts: Set.unmodifiable({'total_files', 'copied_files', 'failed_files', 'skipped_files', 'not_applicable_files'}.where((key) => json[key] is int && (json[key] as int) >= 0)),
   );
 
-  /// 无显式进度时按文件数推导（copied/total）；两者皆无则 null。
+  /// Only use valid server progress. total_files outcome coverage is not yet
+  /// confirmed on the board; copied/total cannot be used as a substitute.
   double? get effectiveProgressPercent {
     final explicit = progressPercent;
-    if (explicit != null) return explicit;
-    if (totalFiles <= 0) return null;
-    return (copiedFiles / totalFiles).clamp(0.0, 1.0);
+    return explicit != null && explicit.isFinite && explicit > 0 && explicit <= 1 ? explicit : null;
   }
 }
 
@@ -277,10 +284,10 @@ class CopyJobDeviceSnapshot {
 
   String? get presentationLabel {
     final alias = userAlias?.trim();
-    if (alias != null && alias.isNotEmpty) return alias;
+    if (_usableDeviceName(alias, mediaId)) return alias;
     final name = displayName?.trim();
-    if (name != null && name.isNotEmpty) return name;
-    return mediaId;
+    if (_usableDeviceName(name, mediaId)) return name;
+    return null;
   }
 
   factory CopyJobDeviceSnapshot.fromJson(Map<String, dynamic> json) => CopyJobDeviceSnapshot(
@@ -308,6 +315,7 @@ class CopyJobDetail {
     this.createdAt,
     this.startedAt,
     this.finishedAt,
+    this.reviewExportEnabled,
   });
 
   /// 唯一必填字段：没有任务 id 时该响应不可用，直接抛协议异常。
@@ -330,6 +338,9 @@ class CopyJobDetail {
   final DateTime? startedAt;
   final DateTime? finishedAt;
 
+  /// Frozen task configuration, never the phone's current preference.
+  final bool? reviewExportEnabled;
+
   bool get isFullBackup => scopeWire == 'media_full_backup';
 
   factory CopyJobDetail.fromJson(Map<String, dynamic> json) {
@@ -338,8 +349,6 @@ class CopyJobDetail {
       throw const ProtocolCompatibilityException('state', '不能为空');
     }
     final rawStats = json['stats'] ?? json['progress'];
-    final rawSource = json['source_device'];
-    final rawTarget = json['target_device'];
     final rawActions = json['allowed_actions'];
     return CopyJobDetail(
       copyJobId: ProtocolValidation.requiredId(json, 'copy_job_id'),
@@ -347,8 +356,8 @@ class CopyJobDetail {
       stateVersion: _int(json, 'state_version') ?? _int(json, 'expected_state_version') ?? _int(json, 'version') ?? 0,
       eventSeq: _int(json, 'event_seq') ?? 0,
       stats: rawStats is Map ? CopyJobStats.fromJson(Map<String, dynamic>.from(rawStats)) : null,
-      sourceDevice: rawSource is Map ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawSource)) : null,
-      targetDevice: rawTarget is Map ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawTarget)) : null,
+      sourceDevice: _jobDeviceSnapshot(json, 'source'),
+      targetDevice: _jobDeviceSnapshot(json, 'target'),
       allowedActions: (rawActions is List ? rawActions : const []).map((action) => CopyAllowedAction.fromWire(action?.toString())).whereType<CopyAllowedAction>().toList(growable: false),
       scopeWire: _string(json, 'scope'),
       batchId: _string(json, 'batch_id'),
@@ -356,6 +365,7 @@ class CopyJobDetail {
       createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
       startedAt: ProtocolValidation.optionalDateTime(json, 'started_at'),
       finishedAt: ProtocolValidation.optionalDateTime(json, 'finished_at'),
+      reviewExportEnabled: json['review_export'] is Map && (json['review_export'] as Map)['enabled'] is bool ? (json['review_export'] as Map)['enabled'] as bool : null,
     );
   }
 }
@@ -390,6 +400,31 @@ class CopyJobListItem {
   }
 }
 
+/// 计划结论独立于执行 state；缺失或未来状态不能推断为将复制。
+enum CopyPlanState {
+  copy,
+  skipConflict,
+  notApplicable,
+  blocked,
+  unknown;
+
+  static CopyPlanState fromWire(Object? value) => switch (value) {
+    'copy' => copy,
+    'skip_conflict' => skipConflict,
+    'not_applicable' => notApplicable,
+    'blocked' => blocked,
+    _ => unknown,
+  };
+
+  String get label => switch (this) {
+    copy => '将复制',
+    skipConflict => '将跳过',
+    notApplicable => '不适用',
+    blocked => '已阻止',
+    unknown => '计划未确认',
+  };
+}
+
 /// 文件项（§10.2）。任务详情失败项与预检明细复用同一模型。
 class CopyJobItem {
   const CopyJobItem({
@@ -402,6 +437,8 @@ class CopyJobItem {
     this.targetRelativeDirectory,
     this.targetFilename,
     this.state = CopyItemState.pending,
+    this.planState = CopyPlanState.unknown,
+    this.planMetadataValid = true,
     this.conflictDecision,
     this.errorCode,
     this.errorMessage,
@@ -417,6 +454,10 @@ class CopyJobItem {
   final String? targetRelativeDirectory;
   final String? targetFilename;
   final CopyItemState state;
+  final CopyPlanState planState;
+
+  /// Strict validation for preflight only; task history remains tolerant.
+  final bool planMetadataValid;
 
   /// 预检明细：skip / overwrite / keep_both；任务项可能缺失。
   final String? conflictDecision;
@@ -432,12 +473,7 @@ class CopyJobItem {
   /// 都没有时回退通用文案（不硬编码任何一种失败语义）。
   String get failureText {
     final raw = errorMessage?.trim();
-    final usable = raw != null &&
-        raw.isNotEmpty &&
-        !raw.contains(RegExp(r'[/\\]')) &&
-        !raw.contains('Exception') &&
-        !raw.contains('http://') &&
-        !raw.contains('https://');
+    final usable = raw != null && raw.isNotEmpty && !raw.contains(RegExp(r'[/\\]')) && !raw.contains('Exception') && !raw.contains('http://') && !raw.contains('https://');
     if (usable) return raw;
     final code = errorCode;
     if (code == null || code.isEmpty) return '复制失败，可重试失败项。';
@@ -475,6 +511,12 @@ class CopyJobItem {
       targetRelativeDirectory: _string(json, 'target_relative_directory'),
       targetFilename: _string(json, 'target_filename'),
       state: CopyItemState.fromWire(json['state']?.toString()),
+      planState: CopyPlanState.fromWire(json['plan_state']),
+      planMetadataValid:
+          json['source_size'] is int &&
+          json['source_relative_path'] is String &&
+          (json['source_mtime_ns'] == null || json['source_mtime_ns'] is int) &&
+          ['asset_id', 'source_media_id', 'target_relative_directory', 'target_filename', 'conflict_decision'].every((key) => json[key] == null || json[key] is String),
       conflictDecision: _string(json, 'conflict_decision'),
       errorCode: _string(json, 'error_code') ?? _string(json, 'failure_reason'),
       errorMessage: _string(json, 'error_message') ?? _string(json, 'failure_message'),
@@ -491,6 +533,8 @@ class CopyJobItem {
     targetRelativeDirectory: targetRelativeDirectory,
     targetFilename: targetFilename,
     state: state ?? this.state,
+    planState: planState,
+    planMetadataValid: planMetadataValid,
     conflictDecision: conflictDecision,
     errorCode: errorCode,
     errorMessage: errorMessage,
@@ -515,16 +559,18 @@ class _PageFields {
 
 /// 文件明细分页。
 class CopyJobItemPage {
-  const CopyJobItemPage({required this.items, required this.hasMore, this.nextCursor});
+  const CopyJobItemPage({required this.items, required this.hasMore, this.nextCursor, this.protocolComplete = true});
 
   final List<CopyJobItem> items;
   final bool hasMore;
   final String? nextCursor;
+  final bool protocolComplete;
 
   factory CopyJobItemPage.fromJson(Map<String, dynamic> json) {
     final page = _PageFields.fromJson(json);
     final rawItems = json['items'];
     return CopyJobItemPage(
+      protocolComplete: json['has_more'] is bool && rawItems is List && rawItems.every((item) => item is Map),
       items: rawItems is List ? rawItems.whereType<Map>().map((item) => CopyJobItem.fromJson(Map<String, dynamic>.from(item))).toList(growable: false) : const [],
       hasMore: page.hasMore,
       nextCursor: page.nextCursor,
@@ -650,8 +696,8 @@ class CopyReport {
   final int? videoCount;
   final int? companionCount;
   final int? totalBytes;
-  final int? elapsedSeconds;
-  final int? bytesPerSecond;
+  final num? elapsedSeconds;
+  final num? bytesPerSecond;
   final int? xmpCount;
 
   /// csv 导出状态 wire 值（success/failed/...，未冻结）。
@@ -665,36 +711,33 @@ class CopyReport {
 
   /// “部分成功不得显示成成功”：有失败文件、CSV 导出失败或嵌入降级
   /// 都按部分完成渲染。
-  bool get isPartialSuccess =>
-      (failedFiles ?? 0) > 0 || csvStatus == 'failed' || (embedDegradedCount ?? 0) > 0 || (exportFailedCount ?? 0) > 0;
+  bool get isPartialSuccess => (failedFiles ?? 0) > 0 || csvStatus == 'failed' || (embedDegradedCount ?? 0) > 0 || (exportFailedCount ?? 0) > 0;
 
   factory CopyReport.fromJson(Map<String, dynamic> json) {
-    final rawSource = json['source_device'];
-    final rawTarget = json['target_device'];
     return CopyReport(
       copyJobId: _string(json, 'copy_job_id'),
       selectionId: _string(json, 'selection_id'),
       reviewSnapshotId: _string(json, 'review_snapshot_id'),
-      logicalPhotoCount: _int(json, 'logical_photo_count'),
-      actualFileCount: _int(json, 'actual_file_count'),
-      copiedFiles: _int(json, 'copied_files'),
-      failedFiles: _int(json, 'failed_files'),
-      skippedFiles: _int(json, 'skipped_files'),
-      notApplicableFiles: _int(json, 'not_applicable_files'),
-      rawCount: _int(json, 'raw_count'),
-      jpegCount: _int(json, 'jpeg_count'),
-      videoCount: _int(json, 'video_count'),
-      companionCount: _int(json, 'companion_count'),
-      totalBytes: _int(json, 'total_bytes'),
-      elapsedSeconds: _int(json, 'elapsed_seconds'),
-      bytesPerSecond: _int(json, 'bytes_per_second'),
-      xmpCount: _int(json, 'xmp_count'),
+      logicalPhotoCount: _nonNegativeCount(json['logical_photo_count']),
+      actualFileCount: _nonNegativeCount(json['actual_file_count']),
+      copiedFiles: _nonNegativeCount(json['copied_files']),
+      failedFiles: _nonNegativeCount(json['failed_files']),
+      skippedFiles: _nonNegativeCount(json['skipped_files']),
+      notApplicableFiles: _nonNegativeCount(json['not_applicable_files']),
+      rawCount: _nonNegativeCount(json['raw_count']),
+      jpegCount: _nonNegativeCount(json['jpeg_count']),
+      videoCount: _nonNegativeCount(json['video_count']),
+      companionCount: _nonNegativeCount(json['companion_count']),
+      totalBytes: _nonNegativeCount(json['total_bytes']),
+      elapsedSeconds: _nonNegativeNumber(json['elapsed_seconds']),
+      bytesPerSecond: _nonNegativeNumber(json['bytes_per_second']),
+      xmpCount: _nonNegativeCount(json['xmp_count']),
       csvStatus: _string(json, 'csv_status'),
-      embedSuccessCount: _int(json, 'embed_success_count'),
-      embedDegradedCount: _int(json, 'embed_degraded_count'),
-      exportFailedCount: _int(json, 'export_failed_count'),
-      sourceDevice: rawSource is Map ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawSource)) : null,
-      targetDevice: rawTarget is Map ? CopyJobDeviceSnapshot.fromJson(Map<String, dynamic>.from(rawTarget)) : null,
+      embedSuccessCount: _nonNegativeCount(json['embed_success_count']),
+      embedDegradedCount: _nonNegativeCount(json['embed_degraded_count']),
+      exportFailedCount: _nonNegativeCount(json['export_failed_count']),
+      sourceDevice: _jobDeviceSnapshot(json, 'source'),
+      targetDevice: _jobDeviceSnapshot(json, 'target'),
       generatedAt: ProtocolValidation.optionalDateTime(json, 'generated_at'),
     );
   }
@@ -771,8 +814,31 @@ bool _bool(Map<String, dynamic> json, String key, {required bool fallback}) {
 }
 
 double? _progressPercent(Object? raw) {
-  if (raw is! num || !raw.isFinite || raw < 0) return null;
+  if (raw is! num || !raw.isFinite || raw < 0 || raw > 100) return null;
   // 0..1 视为比例，>1 视为百分数（契约未冻结，两形态都接受）。
   if (raw <= 1) return raw.toDouble();
-  return (raw / 100).clamp(0.0, 1.0).toDouble();
+  return (raw / 100).toDouble();
+}
+
+num? _nonNegativeNumber(Object? raw) {
+  final value = raw is num
+      ? raw
+      : raw is String
+      ? num.tryParse(raw.trim())
+      : null;
+  return value != null && value.isFinite && value >= 0 ? value : null;
+}
+
+bool _usableDeviceName(String? value, String? mediaId) => value != null && value.isNotEmpty && value != mediaId && !RegExp(r'^(media_|/dev/|/mnt/|/media/|[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,})').hasMatch(value);
+
+int? _nonNegativeCount(Object? raw) {
+  final number = _nonNegativeNumber(raw);
+  return number != null && number == number.roundToDouble() ? number.toInt() : null;
+}
+
+CopyJobDeviceSnapshot? _jobDeviceSnapshot(Map<String, dynamic> json, String role) {
+  final raw = json['${role}_device'];
+  final fields = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+  fields['media_id'] ??= json['${role}_media_id'];
+  return fields.isEmpty || fields.values.every((value) => value == null) ? null : CopyJobDeviceSnapshot.fromJson(fields);
 }

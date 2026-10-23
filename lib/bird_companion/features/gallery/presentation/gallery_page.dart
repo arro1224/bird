@@ -828,6 +828,7 @@ class _AlbumDeviceArea extends StatelessWidget {
     if (offline) {
       return _OfflineConnectionBanner(
         onReconnect: () => openReconnectConnection(context),
+        session: BirdCompanionScope.of(context).deviceSessionCubit.state,
       );
     }
     return const _AlbumDeviceAlert();
@@ -835,9 +836,10 @@ class _AlbumDeviceArea extends StatelessWidget {
 }
 
 class _OfflineConnectionBanner extends StatelessWidget {
-  const _OfflineConnectionBanner({required this.onReconnect});
+  const _OfflineConnectionBanner({required this.onReconnect, required this.session});
 
   final VoidCallback onReconnect;
+  final DeviceSessionState session;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -856,10 +858,10 @@ class _OfflineConnectionBanner extends StatelessWidget {
           child: Icon(Icons.link_off_rounded, color: Colors.white, size: 20),
         ),
         const SizedBox(width: 12),
-        const Expanded(
+        Expanded(
           child: Text(
-            '设备连接已断开',
-            style: TextStyle(
+            session.isVerifying ? '正在恢复盒子连接 · 当前为手机缓存' : '设备连接已断开 · 当前为手机缓存',
+            style: const TextStyle(
               color: AppColors.danger,
               fontWeight: FontWeight.w800,
               fontSize: 16,
@@ -867,7 +869,7 @@ class _OfflineConnectionBanner extends StatelessWidget {
           ),
         ),
         TextButton.icon(
-          onPressed: onReconnect,
+          onPressed: session.isVerifying ? null : onReconnect,
           iconAlignment: IconAlignment.end,
           icon: const Icon(Icons.chevron_right_rounded),
           label: const Text('重新连接'),
@@ -936,7 +938,8 @@ class _AlbumDeviceAlert extends StatelessWidget {
   }
 
   String? _message(DeviceStatus? status, DeviceSessionState session) {
-    if (!session.isConnected) return '设备连接已断开';
+    if (session.isVerifying) return session.message ?? '正在验证盒子连接，当前为手机缓存';
+    if (!session.isConnected) return '设备连接已断开，当前为手机缓存';
     if (status == null) return null;
     if (status.hasError) return status.errorMessage ?? '设备发生异常，请检查后重试';
     if (status.temperatureCelsius != null && status.temperatureCelsius! >= 70) {

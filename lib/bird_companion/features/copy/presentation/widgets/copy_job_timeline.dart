@@ -5,8 +5,7 @@ import 'package:flutter/material.dart';
 
 /// 复制任务七阶段时间线（迁移对照 §3.5）。
 ///
-/// 只渲染 [CopyTimeline.compute] 的结果；阶段 5/6 无后端信号时恒 pending，
-/// OpenAPI 冻结后在 compute 单点接入。
+/// 只渲染有依据的阶段；无独立证据时明确显示未知。
 class CopyJobTimeline extends StatelessWidget {
   const CopyJobTimeline({super.key, required this.timeline});
 
@@ -42,6 +41,8 @@ class _StageRow extends StatelessWidget {
       CopyStageStatus.done => (Icons.check_circle, AppColors.success),
       CopyStageStatus.failed => (Icons.cancel, AppColors.danger),
       CopyStageStatus.skipped => (Icons.remove_circle_outline, AppColors.inkMuted),
+      CopyStageStatus.unknown => (Icons.help_outline, AppColors.inkMuted),
+      CopyStageStatus.partial => (Icons.warning_amber, AppColors.warning),
     };
     return IntrinsicHeight(
       child: Row(
@@ -55,9 +56,7 @@ class _StageRow extends StatelessWidget {
                   child: Container(
                     width: 2,
                     margin: const EdgeInsets.symmetric(vertical: 2),
-                    color: stage.status == CopyStageStatus.done
-                        ? AppColors.success.withValues(alpha: .45)
-                        : AppColors.outline,
+                    color: stage.status == CopyStageStatus.done ? AppColors.success.withValues(alpha: .45) : AppColors.outline,
                   ),
                 ),
             ],
@@ -70,15 +69,13 @@ class _StageRow extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      stage.label,
+                      stage.note == null ? stage.label : '${stage.label}\n${stage.note}',
                       style: TextStyle(
-                        fontWeight: stage.status == CopyStageStatus.active
-                            ? FontWeight.w800
-                            : FontWeight.w500,
+                        fontWeight: stage.status == CopyStageStatus.active ? FontWeight.w800 : FontWeight.w500,
                         color: switch (stage.status) {
-                          CopyStageStatus.pending ||
-                          CopyStageStatus.skipped => AppColors.inkMuted,
+                          CopyStageStatus.pending || CopyStageStatus.unknown || CopyStageStatus.skipped => AppColors.inkMuted,
                           CopyStageStatus.failed => AppColors.danger,
+                          CopyStageStatus.partial => AppColors.warning,
                           _ => AppColors.forestDeep,
                         },
                       ),
@@ -88,8 +85,14 @@ class _StageRow extends StatelessWidget {
                     const Text('进行中', style: TextStyle(fontSize: 12, color: AppColors.forestPrimary))
                   else if (stage.status == CopyStageStatus.failed)
                     const Text('失败', style: TextStyle(fontSize: 12, color: AppColors.danger))
+                  else if (stage.status == CopyStageStatus.partial)
+                    const Text('部分完成', style: TextStyle(fontSize: 12, color: AppColors.warning))
                   else if (stage.status == CopyStageStatus.skipped)
-                    const Text('已跳过', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+                    const Text('不适用', style: TextStyle(fontSize: 12, color: AppColors.inkMuted))
+                  else if (stage.status == CopyStageStatus.unknown)
+                    const Text('未知', style: TextStyle(fontSize: 12, color: AppColors.inkMuted))
+                  else if (stage.status == CopyStageStatus.pending)
+                    const Text('尚未开始', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
                 ],
               ),
             ),

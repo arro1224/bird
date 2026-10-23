@@ -1,6 +1,5 @@
 import 'package:aves/bird_companion/features/connection/domain/ble_pairing_progress.dart';
 import 'dart:async';
-import 'package:dio/dio.dart';
 import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
 import 'package:aves/bird_companion/features/connection/presentation/pages/direct_ap_handoff_panel.dart';
 
@@ -109,11 +108,13 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
   StreamSubscription<DirectApHandoffState>? _handoffSubscription;
   StreamSubscription<void>? _networkSubscription;
   StreamSubscription<ProvisioningState>? _provisioningTrace;
-  CancelToken? _resumeCancel;
   bool _checkingExisting = false;
   bool _entered = false;
   bool _initialized = false;
   bool _starting = true;
+  String? _bleIntentId;
+  BirdCompanionDependencies? _dependencies;
+  ProvisioningPhase? _previousProvisioningPhase;
 
   @override
   void initState() {
@@ -128,10 +129,23 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
     if (_initialized) return;
     _initialized = true;
     final dependencies = BirdCompanionScope.maybeOf(context);
+    _dependencies = dependencies;
     _handoff = dependencies?.createDirectApHandoff();
-    _networkCubit = NetworkProvisioningCubit(widget.repository, directApHandoff: _handoff, resolveStaEndpoint: dependencies?.resolveStaEndpoint, diagnostic: dependencies?.connectionAttempts.record);
+    _networkCubit = NetworkProvisioningCubit(
+      widget.repository,
+      directApHandoff: _handoff,
+      resolveStaEndpoint: dependencies?.resolveStaEndpoint,
+      diagnostic: dependencies?.connectionAttempts.record,
+      onIntentStarted: dependencies?.deviceSessionCubit.beginNetworkIntent,
+      onIntentEnded: dependencies?.deviceSessionCubit.endNetworkIntent,
+    );
     _provisioningTrace = _provisioningCubit.stream.listen((state) {
-      if (state.phase == ProvisioningPhase.connecting) dependencies?.connectionAttempts.begin('ble_connect', scanId: state.latestScanDiagnostic?.scanSessionId);
+      if (state.phase == ProvisioningPhase.connecting && _previousProvisioningPhase != ProvisioningPhase.connecting) {
+        final id = dependencies?.connectionAttempts.begin('ble_connect', scanId: state.latestScanDiagnostic?.scanSessionId);
+        _bleIntentId = id;
+        if (id != null) dependencies?.deviceSessionCubit.beginNetworkIntent(id);
+      }
+      _previousProvisioningPhase = state.phase;
       dependencies?.connectionAttempts.record({
         'event': 'provisioning_page_state',
         'phase': state.phase.name,
@@ -145,7 +159,9 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
     _handoffSubscription = _handoff?.stream.listen((state) {
       if (!mounted) return;
       setState(() {});
-      if (state.phase == DirectApHandoffPhase.directApConnected) _enterConnectedShell();
+      if (state.phase == DirectApHandoffPhase.directApConnected && dependencies?.deviceSessionCubit.activeAttemptId == state.pending?.attemptId && dependencies?.deviceSessionCubit.state.device?.id == state.pending?.deviceId) {
+        _enterConnectedShell();
+      }
     });
     _networkSubscription = dependencies?.connectivityMonitor.onTransportChanged.listen((_) => _handoff?.networkChanged());
     unawaited(_start());
@@ -176,19 +192,16 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
 
   Future<void> _resumeExistingEndpoint(BirdCompanionDependencies dependencies, ProvisioningDeviceInfo info) async {
     if (!mounted || _checkingExisting || _entered || _handoff?.state.active == true) return;
-    final token = CancelToken();
-    _resumeCancel?.cancel('Superseded');
-    _resumeCancel = token;
+    final pending = dependencies.pendingVerifiedBleEndpoint(info);
+    if (pending == null) return;
     setState(() => _checkingExisting = true);
-    final deadline = Timer(const Duration(seconds: 10), () => token.cancel('Existing endpoint verification deadline'));
     try {
-      final resumed = await Future.any<bool>([dependencies.resumeVerifiedBleEndpoint(info, token), token.whenCancel.then<bool>((_) => false)]);
-      if (mounted && !token.isCancelled && resumed) _enterConnectedShell();
+      dependencies.deviceSessionCubit.beginNetworkIntent(pending.attemptId!);
+      await _handoff?.begin(pending);
     } catch (error) {
       dependencies.connectionAttempts.record({'event': 'existing_endpoint_not_resumed', 'device_id': info.deviceId, 'error_class': error.runtimeType.toString(), 'error_code': directApErrorKind(error)});
       // Being authorized does not imply WLAN is reachable. Keep normal choices.
     } finally {
-      deadline.cancel();
       if (mounted) setState(() => _checkingExisting = false);
     }
   }
@@ -219,7 +232,8 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
     unawaited(_handoffSubscription?.cancel());
     unawaited(_networkSubscription?.cancel());
     unawaited(_provisioningTrace?.cancel());
-    _resumeCancel?.cancel('Connection view disposed');
+    final id = _bleIntentId;
+    if (id != null) _dependencies?.deviceSessionCubit.endNetworkIntent(id);
     unawaited(_handoff?.close());
     unawaited(_provisioningCubit.close());
     unawaited(_networkCubit.close());

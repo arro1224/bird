@@ -77,7 +77,6 @@ const _caseChecks = <String, List<String>>{
   'SIM-10': ['secret_free_logs'],
 };
 
-
 class BleProvisioningRc4AcceptanceReport {
   BleProvisioningRc4AcceptanceReport({
     required this.baseUri,
@@ -87,9 +86,7 @@ class BleProvisioningRc4AcceptanceReport {
   final Uri baseUri;
   final List<Map<String, Object?>> cases;
 
-  String get result => cases.every((value) => value['result'] == 'pass')
-      ? 'pass'
-      : 'fail';
+  String get result => cases.every((value) => value['result'] == 'pass') ? 'pass' : 'fail';
 
   List<String> get caseIds => [
     for (final value in cases) value['id']! as String,
@@ -107,22 +104,13 @@ class BleProvisioningRc4AcceptanceReport {
 
 Uri _baseUri(List<String> arguments) {
   const prefix = '--base-url=';
-  final raw = arguments
-          .where((value) => value.startsWith(prefix))
-          .map((value) => value.substring(prefix.length))
-          .firstOrNull ??
-      _syntheticBaseUri;
+  final raw = arguments.where((value) => value.startsWith(prefix)).map((value) => value.substring(prefix.length)).firstOrNull ?? _syntheticBaseUri;
   final uri = Uri.tryParse(raw);
   return _validateBaseUri(uri, raw: raw);
 }
 
 Uri _validateBaseUri(Uri? uri, {String? raw}) {
-  if (uri == null ||
-      !uri.hasScheme ||
-      uri.host.isEmpty ||
-      uri.userInfo.isNotEmpty ||
-      uri.query.isNotEmpty ||
-      uri.fragment.isNotEmpty) {
+  if (uri == null || !uri.hasScheme || uri.host.isEmpty || uri.userInfo.isNotEmpty || uri.query.isNotEmpty || uri.fragment.isNotEmpty) {
     throw FormatException('Invalid --base-url: ${raw ?? uri}');
   }
   return uri;

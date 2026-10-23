@@ -55,12 +55,10 @@ class _GapRepository implements CopyJobRepository {
   Future<CopyReport> jobReport(String copyJobId) async => const CopyReport();
 
   @override
-  Future<CopyJobItemPage> jobItems(String copyJobId, {String? cursor, String? state}) async =>
-      const CopyJobItemPage(items: [], hasMore: false);
+  Future<CopyJobItemPage> jobItems(String copyJobId, {String? cursor, String? state}) async => const CopyJobItemPage(items: [], hasMore: false);
 
   @override
-  Future<CopyJobPage> listJobs({String? cursor}) async =>
-      const CopyJobPage(items: [], hasMore: false);
+  Future<CopyJobPage> listJobs({String? cursor}) async => const CopyJobPage(items: [], hasMore: false);
 
   @override
   Future<CopyJobDetail?> jobAction(
@@ -70,8 +68,7 @@ class _GapRepository implements CopyJobRepository {
   }) async => null;
 
   @override
-  Future<CopyJobItemPage> previewItems(String previewId, {String? cursor}) async =>
-      const CopyJobItemPage(items: [], hasMore: false);
+  Future<CopyJobItemPage> previewItems(String previewId, {String? cursor}) async => const CopyJobItemPage(items: [], hasMore: false);
 
   @override
   Future<SafeRemoveResult> safeRemoveDevice(
@@ -151,9 +148,7 @@ void main() {
     ];
     var incrementalIndex = 0;
     repository.incrementalOverride = (_) {
-      final page = incrementalResponses[
-        incrementalIndex < incrementalResponses.length ? incrementalIndex : incrementalResponses.length - 1
-      ];
+      final page = incrementalResponses[incrementalIndex < incrementalResponses.length ? incrementalIndex : incrementalResponses.length - 1];
       incrementalIndex++;
       return page;
     };
@@ -173,7 +168,8 @@ void main() {
     // 第二次缺口（6 → 9）→ 已用过恢复机会，报错且不再重拉。
     await cubit.pollTick();
     expect(repository.fullCalls, 2, reason: '二次缺口不得再次触发重拉');
-    expect(cubit.state.error, isA<StateError>());
+    expect(cubit.state.eventsError, isA<StateError>());
+    expect(cubit.state.error, isNull, reason: '事件错误不属于任务详情错误');
   });
 
   test('无缺口时增量正常合并，lastEventSeq 推进', () async {

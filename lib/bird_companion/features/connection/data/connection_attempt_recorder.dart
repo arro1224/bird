@@ -25,14 +25,15 @@ final class ConnectionAttemptRecorder {
   void record(Map<String, dynamic> event) {
     final id = event['attempt_id'] as String? ?? activeId;
     final parentId = activeId;
-    if (event['event'] == 'sta_intent_started') {
+    final startsIntent = const {'sta_intent_started', 'ap_intent_started', 'network_intent_started', 'connection_intent_started'}.contains(event['event']);
+    if (startsIntent) {
       _active = id;
       unawaited(store.write(key, id).catchError((Object _) {}));
     }
     // Allow-list: never serialize commands, payloads, credentials or arbitrary
     // exception messages. Endpoint is restricted to its public scheme/host/port.
     final safe = <String, dynamic>{};
-    if (event['event'] == 'sta_intent_started') safe['parent_attempt_id'] = parentId;
+    if (startsIntent && parentId != id) safe['parent_attempt_id'] = parentId;
     for (final entry in event.entries) {
       if (const {
         'event',
@@ -63,6 +64,15 @@ final class ConnectionAttemptRecorder {
         'attempt',
         'network_mode',
         'device_id_verified',
+        'elapsed_ms',
+        'phase_elapsed_ms',
+        'timeout_ms',
+        'outcome',
+        'http_status',
+        'final_trigger',
+        'saved_device_present',
+        'endpoint_source',
+        'has_network',
       }.contains(entry.key)) {
         safe[entry.key] = entry.value;
       }

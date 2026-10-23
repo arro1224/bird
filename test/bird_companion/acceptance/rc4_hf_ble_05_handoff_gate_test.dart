@@ -137,28 +137,30 @@ void main() {
     expect(failures, contains('does not exist'));
   });
 
-  test('checked-in external-lab package is intact and remains pending', () {
-    final packageRoot = Directory('outputs/RC4-HF-BLE-05').absolute;
-    final checkedInManifest =
-        jsonDecode(
-              File(
-                '${packageRoot.path}${Platform.pathSeparator}handoff-manifest.json',
-              ).readAsStringSync(),
-            )
-            as Map<String, dynamic>;
+  test(
+    'checked-in external-lab package is intact and remains pending',
+    () {
+      final packageRoot = Directory('outputs/RC4-HF-BLE-05').absolute;
+      final checkedInManifest =
+          jsonDecode(
+                File(
+                  '${packageRoot.path}${Platform.pathSeparator}handoff-manifest.json',
+                ).readAsStringSync(),
+              )
+              as Map<String, dynamic>;
 
-    final result = Rc4HfBle05HandoffGateValidator.validate(
-      manifest: checkedInManifest,
-      packageRoot: packageRoot,
-    );
+      final result = Rc4HfBle05HandoffGateValidator.validate(
+        manifest: checkedInManifest,
+        packageRoot: packageRoot,
+      );
 
-    expect(result.passed, isTrue, reason: result.failures.join('\n'));
-    expect(result.toJson()['status'], 'handoff_ready');
-    expect(result.toJson()['hardware_status'], 'pending');
-    expect(result.toJson()['releasable'], isFalse);
-  }, skip: !File('outputs/RC4-HF-BLE-05/handoff-manifest.json').existsSync()
-      ? 'External historical BLE-05 delivery artifacts are not distributed in this source checkout; no hardware acceptance is implied.'
-      : false);
+      expect(result.passed, isTrue, reason: result.failures.join('\n'));
+      expect(result.toJson()['status'], 'handoff_ready');
+      expect(result.toJson()['hardware_status'], 'pending');
+      expect(result.toJson()['releasable'], isFalse);
+    },
+    skip: !File('outputs/RC4-HF-BLE-05/handoff-manifest.json').existsSync() ? 'External historical BLE-05 delivery artifacts are not distributed in this source checkout; no hardware acceptance is implied.' : false,
+  );
 }
 
 const _passedBle03Validation = Rc4HfBle03EvidenceValidation(

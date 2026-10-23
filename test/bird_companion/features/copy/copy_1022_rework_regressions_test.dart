@@ -21,7 +21,7 @@ void main() {
   });
 
   group('P1-5 列表跳过统计', () {
-    testWidgets('有跳过项 → 「处理完成 N/N（复制 X，跳过 Y）」而非 文件 4/5', (tester) async {
+    testWidgets('有跳过项 → 四类处理数量，不用复制数冒充总进度', (tester) async {
       final repository = _ListFakeRepository(
         jobs: [
           _job(
@@ -35,18 +35,18 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: CopyJobListPage(repository: repository)));
       await tester.pumpAndSettle();
 
-      expect(find.text('处理完成 5/5（复制 4，跳过 1）'), findsOneWidget);
+      expect(find.text('处理完成 5 项（复制 4，跳过 1，失败 0，不适用 0）'), findsOneWidget);
       expect(find.text('文件 4/5'), findsNothing);
     });
 
-    testWidgets('无跳过项 → 维持原「文件 X/Y」口径', (tester) async {
+    testWidgets('无跳过项也区分复制与失败，统一处理数量', (tester) async {
       final repository = _ListFakeRepository(
         jobs: [_job(id: 'copy_plain', total: 5, copied: 4, failed: 1)],
       );
       await tester.pumpWidget(MaterialApp(home: CopyJobListPage(repository: repository)));
       await tester.pumpAndSettle();
 
-      expect(find.text('文件 5/5'), findsOneWidget);
+      expect(find.text('处理完成 5 项（复制 4，跳过 0，失败 1，不适用 0）'), findsOneWidget);
     });
   });
 
@@ -90,8 +90,7 @@ class _ListFakeRepository implements CopyJobRepository {
   final List<CopyJobListItem> jobs;
 
   @override
-  Future<CopyJobPage> listJobs({String? cursor}) async =>
-      CopyJobPage(items: jobs, hasMore: false, nextCursor: null);
+  Future<CopyJobPage> listJobs({String? cursor}) async => CopyJobPage(items: jobs, hasMore: false, nextCursor: null);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();

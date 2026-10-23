@@ -54,8 +54,7 @@ List<String> validateBondFirstEvidence(Map<String, dynamic> value) {
   check(sha(map(builds['app'])['apk_sha256']) && sha(map(builds['box'])['apk_sha256']), 'both actual APK hashes are required.');
   final app = map(value['app_evidence']);
   if (app.containsKey('capture_status')) {
-    check(app['capture_status'] == 'completed' && app['command_attempted'] == true && app['failure_stage'] == null,
-        'early scan/connect/notification failures cannot count as scenario acceptance.');
+    check(app['capture_status'] == 'completed' && app['command_attempted'] == true && app['failure_stage'] == null, 'early scan/connect/notification failures cannot count as scenario acceptance.');
   }
   if (value.containsKey('run_status')) check(value['run_status'] == 'passed', 'phone runner did not complete all required checks.');
   check(app['schema_version'] == 2 && app['security_flow'] == 'bond_first' && app['scenario'] == scenario, 'app evidence does not match this bond-first run.');

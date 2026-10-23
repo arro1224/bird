@@ -148,6 +148,7 @@ class BirdSettingsController extends ChangeNotifier {
       resource: AppDataResource.copyPreferences,
     );
   }
+
   void toggleTechnicalDetails() => _set(() => technicalDetailsExpanded = !technicalDetailsExpanded);
   void beginDeviceSearch() => _set(() => searchingDevices = true);
 

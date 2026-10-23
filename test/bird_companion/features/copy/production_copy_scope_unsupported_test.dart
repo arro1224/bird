@@ -60,8 +60,7 @@ class _ScopeUnsupportedRepository implements CopyRepository {
   );
 
   @override
-  Future<CopyPreferences> preferences() async =>
-      const CopyPreferences(pairPolicy: PairPolicy.rawOnly, version: 1, origin: 'factory_default');
+  Future<CopyPreferences> preferences() async => const CopyPreferences(pairPolicy: PairPolicy.rawOnly, version: 1, origin: 'factory_default');
 
   @override
   Future<CopyPreferences> savePreferences(
@@ -99,40 +98,42 @@ class _ScopeUnsupportedRepository implements CopyRepository {
   );
 
   @override
-  Future<CopyDeviceList> devices() async => const CopyDeviceList(devices: [
-    StorageDeviceSummary(
-      mediaId: 'media_source_1',
-      displayName: '相机卡（读卡器）',
-      kind: 'card_reader',
-      kindConfidence: 'high',
-      detail: '',
-      capacityBytes: 128000000000,
-      freeBytes: 96400000000,
-      filesystem: 'exfat',
-      label: '',
-      roleState: 'available',
-      canBeSource: true,
-      canBeTarget: false,
-      targetBlockReasons: [],
-      identityConfidence: 'stable_uuid',
-    ),
-    StorageDeviceSummary(
-      mediaId: _repositoryTargetId,
-      displayName: 'U 盘 Ee',
-      kind: 'usb_flash',
-      kindConfidence: 'medium',
-      detail: '',
-      capacityBytes: 30765203456,
-      freeBytes: 30500000000,
-      filesystem: 'exfat',
-      label: '',
-      roleState: 'available',
-      canBeSource: false,
-      canBeTarget: true,
-      targetBlockReasons: [],
-      identityConfidence: 'stable_uuid',
-    ),
-  ]);
+  Future<CopyDeviceList> devices() async => const CopyDeviceList(
+    devices: [
+      StorageDeviceSummary(
+        mediaId: 'media_source_1',
+        displayName: '相机卡（读卡器）',
+        kind: 'card_reader',
+        kindConfidence: 'high',
+        detail: '',
+        capacityBytes: 128000000000,
+        freeBytes: 96400000000,
+        filesystem: 'exfat',
+        label: '',
+        roleState: 'available',
+        canBeSource: true,
+        canBeTarget: false,
+        targetBlockReasons: [],
+        identityConfidence: 'stable_uuid',
+      ),
+      StorageDeviceSummary(
+        mediaId: _repositoryTargetId,
+        displayName: 'U 盘 Ee',
+        kind: 'usb_flash',
+        kindConfidence: 'medium',
+        detail: '',
+        capacityBytes: 30765203456,
+        freeBytes: 30500000000,
+        filesystem: 'exfat',
+        label: '',
+        roleState: 'available',
+        canBeSource: false,
+        canBeTarget: true,
+        targetBlockReasons: [],
+        identityConfidence: 'stable_uuid',
+      ),
+    ],
+  );
 
   @override
   Future<CopyPreview> preview(CopyRequestDraft draft) async {

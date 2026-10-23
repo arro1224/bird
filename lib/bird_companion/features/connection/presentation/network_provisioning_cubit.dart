@@ -110,8 +110,16 @@ final class NetworkProvisioningState {
 }
 
 final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
-  NetworkProvisioningCubit(this._repository, {this.directApHandoff, this.resolveStaEndpoint, this.diagnostic, this.reconciliationWindow = const Duration(seconds: 60), this.pollInterval = const Duration(seconds: 2)})
-    : super(const NetworkProvisioningState()) {
+  NetworkProvisioningCubit(
+    this._repository, {
+    this.directApHandoff,
+    this.resolveStaEndpoint,
+    this.diagnostic,
+    this.onIntentStarted,
+    this.onIntentEnded,
+    this.reconciliationWindow = const Duration(seconds: 60),
+    this.pollInterval = const Duration(seconds: 2),
+  }) : super(const NetworkProvisioningState()) {
     _eventSubscription = _repository.events.listen(
       _onEvent,
       onError: _onEventError,
@@ -122,11 +130,38 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   final DirectApHandoffCubit? directApHandoff;
   final Future<Uri?> Function(String deviceId)? resolveStaEndpoint;
   final void Function(Map<String, dynamic>)? diagnostic;
+  final void Function(String id)? onIntentStarted, onIntentEnded;
   final Duration reconciliationWindow, pollInterval;
   Timer? _staDeadline, _staPoll;
   bool _readingSta = false;
   String? _attemptId;
   String? get attemptId => _attemptId;
+  void _beginIntent(String event) {
+    _attemptId = SecureRequestIdFactory().create();
+    onIntentStarted?.call(_attemptId!);
+    _trace(event);
+  }
+
+  void _endIntent() {
+    final id = _attemptId;
+    if (id != null) onIntentEnded?.call(id);
+  }
+
+  @override
+  void emit(NetworkProvisioningState state) {
+    super.emit(state);
+    if (const {
+      NetworkProvisioningPhase.failure,
+      NetworkProvisioningPhase.cancelled,
+      NetworkProvisioningPhase.stopped,
+      NetworkProvisioningPhase.recovered,
+      NetworkProvisioningPhase.methodUnavailable,
+      NetworkProvisioningPhase.dppUnavailable,
+    }.contains(state.phase)) {
+      _endIntent();
+    }
+  }
+
   void _trace(String event, {Object? error, StackTrace? stack, Map<String, dynamic> fields = const {}}) {
     diagnostic?.call({
       'event': event,
@@ -180,6 +215,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
         operationState: NetworkOperationState.startingAp,
       ),
     );
+    _beginIntent('ap_intent_started');
     try {
       if (directApHandoff != null) {
         final current = await _repository.getNetworkStatus();
@@ -257,7 +293,9 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   /// the source of truth.
   Future<void> resumeAfterBleReconnect(ProvisioningDeviceInfo info, {bool handoffDirectAp = true}) async {
     _resumeConsumed = true;
+    if (directApHandoff?.state.active == true) return;
     final generation = ++_generation;
+    if (handoffDirectAp) _beginIntent('network_intent_started');
     _clearScanAccumulator();
     emit(
       NetworkProvisioningState(
@@ -343,6 +381,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       }
       // idle/none deliberately remains idle so a fresh pairing continues to
       // the normal connection-method chooser.
+      _endIntent();
     } catch (error) {
       if (isClosed || generation != _generation) return;
       emit(
@@ -361,6 +400,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   void backToMethodSelection() {
+    _endIntent();
     _stopStaReconciliation();
     if (directApHandoff?.state.active == true) unawaited(directApHandoff!.cancel());
     _generation++;
@@ -538,7 +578,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       return;
     }
     final generation = ++_generation;
-    _attemptId = SecureRequestIdFactory().create();
+    _beginIntent('network_intent_started');
     _trace('sta_intent_started', fields: {'network_identity_hash': sha256.convert(utf8.encode(configuration.ssid)).toString()});
     emit(
       state.copyWith(
@@ -595,6 +635,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
         canCancel: false,
       ),
     );
+    _beginIntent('network_intent_started');
     try {
       final accepted = await _repository.startDppProvisioning();
       if (isClosed || generation != _generation) return;
@@ -930,7 +971,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       ),
     );
     final id = state.trustedDeviceId;
-    if (id != null) unawaited(directApHandoff?.begin(PendingDirectAp(deviceId: id, baseUri: baseUri, operationId: operationId, ssid: ssid)));
+    if (id != null) unawaited(directApHandoff?.begin(PendingDirectAp(deviceId: id, baseUri: baseUri, operationId: operationId, ssid: ssid, attemptId: _attemptId)));
   }
 
   Future<void> _confirmSta(int generation) async {
@@ -1015,6 +1056,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   @override
   Future<void> close() async {
+    _endIntent();
     _stopStaReconciliation();
     _generation++;
     await _eventSubscription.cancel();

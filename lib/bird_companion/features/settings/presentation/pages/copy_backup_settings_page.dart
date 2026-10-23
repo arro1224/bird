@@ -61,9 +61,7 @@ class CopyBackupSettingsPage extends StatelessWidget {
                   titleFontSize: 16,
                   trailing: Switch(
                     value: controller.embedReviewMetadata,
-                    onChanged: controller.reviewExportEnabled
-                        ? controller.setEmbedReviewMetadata
-                        : null,
+                    onChanged: controller.reviewExportEnabled ? controller.setEmbedReviewMetadata : null,
                   ),
                   minHeight: 60,
                 ),

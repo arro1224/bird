@@ -7,6 +7,7 @@ import 'package:aves/bird_companion/features/connection/domain/connection_addres
 import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:dio/dio.dart';
+import '../domain/connection_attempt.dart';
 
 class PairingRequiredException implements Exception {
   const PairingRequiredException(this.status);
@@ -29,33 +30,45 @@ class ConnectionApi {
     String? expectedDeviceId,
   }) async {
     final normalized = _normalizeBaseUri(baseUri);
-    final status = await _publicStatus(
-      normalized,
-      networkMode,
-      cancelToken: cancelToken,
+    final status = await ConnectionAttempt.runFor(
+      cancelToken,
+      'identity',
+      () => _publicStatus(
+        normalized,
+        networkMode,
+        cancelToken: cancelToken,
+      ),
     );
     _checkIdentity(status, expectedDeviceId);
     if (cancelToken?.isCancelled == true) {
       throw StateError('Connection cancelled before the device session was configured.');
     }
-    final restored = await _sessionCoordinator.restore(
-      deviceId: status.connection.id,
-      baseUri: normalized,
-      cancelToken: cancelToken,
+    final restored = await ConnectionAttempt.runFor(
+      cancelToken,
+      'credential_restore',
+      () => _sessionCoordinator.restore(
+        deviceId: status.connection.id,
+        baseUri: normalized,
+        cancelToken: cancelToken,
+      ),
     );
     if (!restored) throw PairingRequiredException(status);
     if (cancelToken?.isCancelled == true) {
       throw StateError('Connection cancelled before the device session was configured.');
     }
-    final verified = await _publicStatus(
-      normalized,
-      networkMode,
-      cancelToken: cancelToken,
+    final verified = await ConnectionAttempt.runFor(
+      cancelToken,
+      'identity_recheck',
+      () => _publicStatus(
+        normalized,
+        networkMode,
+        cancelToken: cancelToken,
+      ),
     );
     _checkIdentity(verified, expectedDeviceId);
     if (expectedDeviceId != null) {
-      await _apiClient.verifyAuthenticatedSession(cancelToken);
-      _sessionCoordinator.requireConnectedSession(expectedDeviceId, normalized);
+      await ConnectionAttempt.runFor(cancelToken, 'protected_http', () => _apiClient.verifyAuthenticatedSession(cancelToken));
+      await ConnectionAttempt.runFor(cancelToken, 'events', () async => _sessionCoordinator.requireConnectedSession(expectedDeviceId, normalized));
     }
     return verified;
   }
@@ -99,7 +112,7 @@ class ConnectionApi {
     if (cancelToken?.isCancelled == true) {
       throw StateError('Connection cancelled before the device session was configured.');
     }
-    await _sessionCoordinator.activate(credential);
+    await _sessionCoordinator.activate(credential, cancelToken: cancelToken);
     return _publicStatus(
       normalized,
       networkMode,

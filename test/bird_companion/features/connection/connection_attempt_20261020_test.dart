@@ -7,6 +7,36 @@ import 'package:flutter_test/flutter_test.dart';
 import 'ble_diagnostic_snapshot_test.dart' show MemoryStorage, OfflineFiles, scan;
 
 void main() {
+  test('AP and cold restore adopt intent ids while late phase callbacks keep the newer intent current', () async {
+    final storage = MemoryStorage(), events = BleConnectionDiagnosticStore(MemoryStorage());
+    final recorder = ConnectionAttemptRecorder(storage, events);
+    recorder.record({'event': 'ap_intent_started', 'attempt_id': 'AP'});
+    expect(recorder.activeId, 'AP');
+    recorder.record({'event': 'connection_intent_started', 'attempt_id': 'restore', 'intent': 'cold_restore'});
+    recorder.record({
+      'event': 'connection_phase_finished',
+      'attempt_id': 'AP',
+      'phase': 'events',
+      'phase_elapsed_ms': 5100,
+      'elapsed_ms': 6200,
+      'outcome': 'ok',
+      'saved_device_present': true,
+      'has_network': true,
+      'endpoint_source': 'saved',
+      'final_trigger': 'verified_session',
+      'http_status': 200,
+      'password': 'never-save-this',
+    });
+    expect(recorder.activeId, 'restore');
+    await events.flush();
+    final output = events.exportJson();
+    for (final field in ['phase_elapsed_ms', 'elapsed_ms', 'saved_device_present', 'has_network', 'endpoint_source', 'final_trigger', 'http_status']) {
+      expect(output, contains(field));
+    }
+    expect(output, isNot(contains('never-save-this')));
+    await events.dispose();
+  });
+
   test('new scan export keeps prior failed intent and current network session evidence after restart', () async {
     final storage = MemoryStorage();
     final scans = BleScanDiagnosticStore(storage), events = BleConnectionDiagnosticStore(storage);
