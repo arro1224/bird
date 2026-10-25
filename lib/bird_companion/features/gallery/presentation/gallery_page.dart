@@ -343,6 +343,9 @@ class _GalleryView extends StatelessWidget {
               ),
             ),
           ),
+          // Reserve the panel's actual height so the last photo can always
+          // scroll fully into view, including with large text and safe insets.
+          bottomNavigationBar: _SelectionActionPanel(batchId: batchId),
           body: BlocBuilder<GalleryCubit, GalleryState>(
             builder: (context, state) {
               if (state.loading && state.items.isEmpty && !state.filtering) {
@@ -541,7 +544,6 @@ class _GalleryView extends StatelessWidget {
                               )
                             : const SizedBox.shrink(),
                       ),
-                    _SelectionActionOverlay(batchId: batchId),
                   ],
                 ),
               );
@@ -595,16 +597,16 @@ class _SelectablePhotoTile extends StatelessWidget {
   }
 }
 
-class _SelectionActionOverlay extends StatefulWidget {
-  const _SelectionActionOverlay({required this.batchId});
+class _SelectionActionPanel extends StatefulWidget {
+  const _SelectionActionPanel({required this.batchId});
 
   final String batchId;
 
   @override
-  State<_SelectionActionOverlay> createState() => _SelectionActionOverlayState();
+  State<_SelectionActionPanel> createState() => _SelectionActionPanelState();
 }
 
-class _SelectionActionOverlayState extends State<_SelectionActionOverlay> {
+class _SelectionActionPanelState extends State<_SelectionActionPanel> {
   var _creatingSelection = false;
 
   @override
@@ -612,20 +614,15 @@ class _SelectionActionOverlayState extends State<_SelectionActionOverlay> {
     builder: (context, selection) {
       if (selection.ids.isEmpty) return const SizedBox.shrink();
       final ids = selection.ids.toList(growable: false);
-      return Positioned(
-        left: 0,
-        right: 0,
-        bottom: 0,
-        child: SelectionActionBar(
-          count: ids.length,
-          busy: selection.submitting || _creatingSelection,
-          failedCount: selection.failed.length,
-          onClear: () => context.read<SelectionCubit>().clear(),
-          onAddTags: () => _showTagDialog(context, widget.batchId, ids, remove: false),
-          onRemoveTags: () => _showTagDialog(context, widget.batchId, ids, remove: true),
-          onAction: (action) => _requestBatchAction(context, widget.batchId, ids, action),
-          onCopy: () => _copySelected(context, ids),
-        ),
+      return SelectionActionBar(
+        count: ids.length,
+        busy: selection.submitting || _creatingSelection,
+        failedCount: selection.failed.length,
+        onClear: () => context.read<SelectionCubit>().clear(),
+        onAddTags: () => _showTagDialog(context, widget.batchId, ids, remove: false),
+        onRemoveTags: () => _showTagDialog(context, widget.batchId, ids, remove: true),
+        onAction: (action) => _requestBatchAction(context, widget.batchId, ids, action),
+        onCopy: () => _copySelected(context, ids),
       );
     },
   );
