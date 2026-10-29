@@ -492,6 +492,23 @@ class MockBoxServer {
       await _serveStorageDevices(request);
       return;
     }
+    // RC3 联调补齐（B6 验收 2026-10-23 §3：独立模拟器已补、仓库 mock 缺失）。
+    if (method == 'GET' && path == '/api/v1/storage/source') {
+      await _serveStorageSource(request);
+      return;
+    }
+    if (method == 'GET' && path == '/api/v1/copy-preferences') {
+      await _serveCopyPreferences(request);
+      return;
+    }
+    if (method == 'POST' && path == '/api/v1/copy-preferences') {
+      await _saveCopyPreferences(request);
+      return;
+    }
+    if (method == 'POST' && path == '/api/v1/copy-scope-options') {
+      await _serveCopyScopeOptions(request);
+      return;
+    }
     if (method == 'POST' && path == '/api/v1/copy-jobs/preview') {
       await _serveCopyJobPreview(request);
       return;
@@ -845,6 +862,94 @@ class MockBoxServer {
     });
   }
 
+  Future<void> _serveStorageSource(HttpRequest request) async {
+    await _json(request, HttpStatus.ok, {
+      'source_media_id': 'media_2d6dee77bb5ecc73e3d34787',
+      'display_name': '相机卡（读卡器）',
+      'source_binding_token': 'source_binding_mock_${_clock().millisecondsSinceEpoch}',
+      'expires_at': _clock().add(const Duration(minutes: 30)).toIso8601String(),
+      'verified_read_only': true,
+    });
+  }
+
+  int _copyPreferencesVersion = 1;
+  String _copyPairPolicy = 'raw_only';
+
+  Future<void> _serveCopyPreferences(HttpRequest request) async {
+    await _json(request, HttpStatus.ok, {
+      'pair_policy': _copyPairPolicy,
+      'preferences_version': _copyPreferencesVersion,
+      'origin': 'server_default',
+      'updated_at': _clock().toIso8601String(),
+    });
+  }
+
+  Future<void> _saveCopyPreferences(HttpRequest request) async {
+    final body = await _requestJson(request);
+    final expected = body['expected_preferences_version'];
+    if (expected is! int || expected != _copyPreferencesVersion) {
+      await _copyV1Error(request, HttpStatus.conflict, 'COPY_PREFERENCES_CONFLICT');
+      return;
+    }
+    final policy = body['pair_policy']?.toString();
+    if (!const {'raw_only', 'jpeg_only', 'both'}.contains(policy)) {
+      await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_PAIR_POLICY_INVALID');
+      return;
+    }
+    _copyPairPolicy = policy!;
+    _copyPreferencesVersion += 1;
+    await _json(request, HttpStatus.ok, {
+      'pair_policy': _copyPairPolicy,
+      'preferences_version': _copyPreferencesVersion,
+      'origin': 'app',
+      'updated_at': _clock().toIso8601String(),
+    });
+  }
+
+  Future<void> _serveCopyScopeOptions(HttpRequest request) async {
+    await _requestJson(request);
+    // RC3：固定五个复制范围；selected_assets 无相册选择时不可用，全量备份未开放。
+    await _json(request, HttpStatus.ok, {
+      'options': [
+        {
+          'scope': 'selected_assets',
+          'available': false,
+          'count_state': 'selection_required',
+          'unavailable_reason': 'selection_required',
+          'navigation_action': 'go_to_selection',
+        },
+        {
+          'scope': 'filtered_assets',
+          'available': true,
+          'logical_assets': 21,
+          'count_state': 'known',
+          'navigation_action': 'none',
+        },
+        {
+          'scope': 'recognized_assets',
+          'available': true,
+          'logical_assets': 47,
+          'count_state': 'known',
+          'navigation_action': 'none',
+        },
+        {
+          'scope': 'batch_all_assets',
+          'available': true,
+          'logical_assets': 120,
+          'count_state': 'known',
+          'navigation_action': 'none',
+        },
+        {
+          'scope': 'media_full_backup',
+          'available': false,
+          'count_state': 'preview_required',
+          'unavailable_reason': 'unsupported',
+          'navigation_action': 'none',
+        },
+      ],
+    });
+  }
+
   Future<void> _serveCopyJobPreview(HttpRequest request) async {
     final body = await _requestJson(request);
     final scope = body['scope']?.toString();
@@ -925,9 +1030,25 @@ class MockBoxServer {
       await _copyV1Error(request, HttpStatus.conflict, 'COPY_PREVIEW_EXPIRED');
       return;
     }
-    // RC3 任务固定 2 个文件项（第 2 项校验失败），演示「部分完成 + 失败项重试」。
+    // RC3 任务保留完整预检计划（B6 验收 2026-10-23 §3.3）；预检失效时回退演示项。
     final now = _clock();
     final jobId = 'copy_job_${now.millisecondsSinceEpoch}';
+    final previewItems = _previewItemsByToken[previewToken];
+    final items = <Map<String, dynamic>>[
+      if (previewItems != null)
+        for (var i = 0; i < previewItems.length; i++)
+          {
+            'copy_item_id': 'copy_item_${(i + 1).toString().padLeft(4, '0')}',
+            ...previewItems[i],
+            // 预检判定为跳过的项直接进入跳过终态，不参与复制推进。
+            'state': previewItems[i]['plan_state'] == 'skip_conflict' ? 'skipped_conflict' : 'pending',
+            'will_fail': i == previewItems.length - 1,
+          }
+      else ...[
+        _copyJobItemWire('copy_item_0001', 'DSC05001.ARW', willFail: false),
+        _copyJobItemWire('copy_item_0002', 'DSC05002.JPG', willFail: true),
+      ],
+    ];
     final job = <String, dynamic>{
       'copy_job_id': jobId,
       'state': 'queued',
@@ -944,10 +1065,7 @@ class MockBoxServer {
       'running_last_tick': null,
       'source_device': _mockCameraDevice(),
       'target_device': _mockUsbDevice(),
-      'items': <Map<String, dynamic>>[
-        _copyJobItemWire('copy_item_0001', 'DSC05001.ARW', willFail: false),
-        _copyJobItemWire('copy_item_0002', 'DSC05002.JPG', willFail: true),
-      ],
+      'items': items,
       'events': <Map<String, dynamic>>[
         {
           'seq': 1,
@@ -1259,9 +1377,19 @@ class MockBoxServer {
   Map<String, dynamic> _copyJobStatsWire(Map<String, dynamic> job) {
     var copied = 0;
     var failed = 0;
+    var skipped = 0;
+    var notApplicable = 0;
     for (final item in job['items'] as List<Map<String, dynamic>>) {
-      if (item['state'] == 'copied') copied++;
-      if (item['state'] == 'failed') failed++;
+      switch (item['state'] as String) {
+        case 'copied':
+          copied++;
+        case 'failed':
+          failed++;
+        case 'skipped_conflict':
+          skipped++;
+        case 'not_applicable':
+          notApplicable++;
+      }
     }
     final total = (job['items'] as List).length;
     const itemBytes = 28 * 1024 * 1024;
@@ -1272,12 +1400,12 @@ class MockBoxServer {
       'total_files': total,
       'copied_files': copied,
       'failed_files': failed,
-      'skipped_files': 0,
-      'not_applicable_files': 0,
+      'skipped_files': skipped,
+      'not_applicable_files': notApplicable,
       'total_bytes': total * itemBytes,
       'copied_bytes': copied * itemBytes,
       'elapsed_seconds': startedAt == null ? null : now.difference(DateTime.parse(startedAt)).inSeconds,
-      'eta_seconds': _copyJobIsTerminal(state) || total == 0 ? null : max(total - copied - failed, 1) * 2,
+      'eta_seconds': _copyJobIsTerminal(state) || total == 0 ? null : max(total - copied - failed - skipped - notApplicable, 1) * 2,
       'bytes_per_second': state == 'running' ? itemBytes ~/ 2 : null,
       'current_file': state == 'running'
           ? (job['items'] as List<Map<String, dynamic>>).firstWhere(
@@ -1285,7 +1413,7 @@ class MockBoxServer {
               orElse: () => (job['items'] as List<Map<String, dynamic>>).first,
             )['target_filename']
           : null,
-      'progress_percent': total == 0 ? null : (copied + failed) / total,
+      'progress_percent': total == 0 ? null : (copied + failed + skipped + notApplicable) / total,
     };
   }
 
@@ -1350,7 +1478,13 @@ class MockBoxServer {
             'not_applicable',
           }.contains(item['state']),
         )) {
-          _copyJobTransitionTimed(job, 'completed_with_errors', now, '任务部分完成：1 个文件失败');
+          final failed = (job['items'] as List<Map<String, dynamic>>).where((item) => item['state'] == 'failed').length;
+          _copyJobTransitionTimed(
+            job,
+            failed > 0 ? 'completed_with_errors' : 'completed',
+            now,
+            failed > 0 ? '任务部分完成：$failed 个文件失败' : '任务完成',
+          );
           return true;
         }
         return false;
@@ -1398,6 +1532,14 @@ class MockBoxServer {
     while (progressed) {
       progressed = false;
       for (final item in job['items'] as List<Map<String, dynamic>>) {
+        if (const {
+          'copied',
+          'failed',
+          'skipped_conflict',
+          'not_applicable',
+        }.contains(item['state'])) {
+          continue; // 终态项跳过，继续找下一个待处理项
+        }
         switch (item['state'] as String) {
           case 'pending':
             if (activeMs >= itemStartMs) {
@@ -1430,7 +1572,8 @@ class MockBoxServer {
           default:
             break;
         }
-        if (progressed) break; // 串行：同一时刻只推进一个文件项
+        // 串行：同一时刻只推进一个非终态项（B6 2026-10-23 §3.5），即使未到期也不再拉起后续项
+        break;
       }
     }
   }
@@ -2985,7 +3128,6 @@ class MockBoxServer {
       'finished_at': null,
     });
   }
-
 
   Future<Map<String, dynamic>> _requestJson(HttpRequest request) async {
     final raw = await utf8.decoder.bind(request).join();
