@@ -343,6 +343,9 @@ class _GalleryView extends StatelessWidget {
               ),
             ),
           ),
+          // Reserve the panel's actual height so the last photo can always
+          // scroll fully into view, including with large text and safe insets.
+          bottomNavigationBar: _SelectionActionPanel(batchId: batchId),
           body: BlocBuilder<GalleryCubit, GalleryState>(
             builder: (context, state) {
               if (state.loading && state.items.isEmpty && !state.filtering) {
@@ -541,7 +544,6 @@ class _GalleryView extends StatelessWidget {
                               )
                             : const SizedBox.shrink(),
                       ),
-                    _SelectionActionOverlay(batchId: batchId),
                   ],
                 ),
               );
@@ -595,16 +597,16 @@ class _SelectablePhotoTile extends StatelessWidget {
   }
 }
 
-class _SelectionActionOverlay extends StatefulWidget {
-  const _SelectionActionOverlay({required this.batchId});
+class _SelectionActionPanel extends StatefulWidget {
+  const _SelectionActionPanel({required this.batchId});
 
   final String batchId;
 
   @override
-  State<_SelectionActionOverlay> createState() => _SelectionActionOverlayState();
+  State<_SelectionActionPanel> createState() => _SelectionActionPanelState();
 }
 
-class _SelectionActionOverlayState extends State<_SelectionActionOverlay> {
+class _SelectionActionPanelState extends State<_SelectionActionPanel> {
   var _creatingSelection = false;
 
   @override
@@ -612,20 +614,15 @@ class _SelectionActionOverlayState extends State<_SelectionActionOverlay> {
     builder: (context, selection) {
       if (selection.ids.isEmpty) return const SizedBox.shrink();
       final ids = selection.ids.toList(growable: false);
-      return Positioned(
-        left: 0,
-        right: 0,
-        bottom: 0,
-        child: SelectionActionBar(
-          count: ids.length,
-          busy: selection.submitting || _creatingSelection,
-          failedCount: selection.failed.length,
-          onClear: () => context.read<SelectionCubit>().clear(),
-          onAddTags: () => _showTagDialog(context, widget.batchId, ids, remove: false),
-          onRemoveTags: () => _showTagDialog(context, widget.batchId, ids, remove: true),
-          onAction: (action) => _requestBatchAction(context, widget.batchId, ids, action),
-          onCopy: () => _copySelected(context, ids),
-        ),
+      return SelectionActionBar(
+        count: ids.length,
+        busy: selection.submitting || _creatingSelection,
+        failedCount: selection.failed.length,
+        onClear: () => context.read<SelectionCubit>().clear(),
+        onAddTags: () => _showTagDialog(context, widget.batchId, ids, remove: false),
+        onRemoveTags: () => _showTagDialog(context, widget.batchId, ids, remove: true),
+        onAction: (action) => _requestBatchAction(context, widget.batchId, ids, action),
+        onCopy: () => _copySelected(context, ids),
       );
     },
   );
@@ -828,6 +825,7 @@ class _AlbumDeviceArea extends StatelessWidget {
     if (offline) {
       return _OfflineConnectionBanner(
         onReconnect: () => openReconnectConnection(context),
+        session: BirdCompanionScope.of(context).deviceSessionCubit.state,
       );
     }
     return const _AlbumDeviceAlert();
@@ -835,9 +833,10 @@ class _AlbumDeviceArea extends StatelessWidget {
 }
 
 class _OfflineConnectionBanner extends StatelessWidget {
-  const _OfflineConnectionBanner({required this.onReconnect});
+  const _OfflineConnectionBanner({required this.onReconnect, required this.session});
 
   final VoidCallback onReconnect;
+  final DeviceSessionState session;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -856,10 +855,10 @@ class _OfflineConnectionBanner extends StatelessWidget {
           child: Icon(Icons.link_off_rounded, color: Colors.white, size: 20),
         ),
         const SizedBox(width: 12),
-        const Expanded(
+        Expanded(
           child: Text(
-            '设备连接已断开',
-            style: TextStyle(
+            session.isVerifying ? '正在恢复盒子连接 · 当前为手机缓存' : '设备连接已断开 · 当前为手机缓存',
+            style: const TextStyle(
               color: AppColors.danger,
               fontWeight: FontWeight.w800,
               fontSize: 16,
@@ -867,7 +866,7 @@ class _OfflineConnectionBanner extends StatelessWidget {
           ),
         ),
         TextButton.icon(
-          onPressed: onReconnect,
+          onPressed: session.isVerifying ? null : onReconnect,
           iconAlignment: IconAlignment.end,
           icon: const Icon(Icons.chevron_right_rounded),
           label: const Text('重新连接'),
@@ -936,7 +935,8 @@ class _AlbumDeviceAlert extends StatelessWidget {
   }
 
   String? _message(DeviceStatus? status, DeviceSessionState session) {
-    if (!session.isConnected) return '设备连接已断开';
+    if (session.isVerifying) return session.message ?? '正在验证盒子连接，当前为手机缓存';
+    if (!session.isConnected) return '设备连接已断开，当前为手机缓存';
     if (status == null) return null;
     if (status.hasError) return status.errorMessage ?? '设备发生异常，请检查后重试';
     if (status.temperatureCelsius != null && status.temperatureCelsius! >= 70) {

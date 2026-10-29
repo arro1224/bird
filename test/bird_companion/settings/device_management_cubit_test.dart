@@ -100,7 +100,7 @@ class _TestSession extends Cubit<DeviceSessionState> implements DeviceSessionCub
   DeviceConnection? connectedDevice;
 
   @override
-  Future<void> setConnectedFromStatus(dynamic status) async {
+  Future<void> setConnectedFromStatus(dynamic status, {dynamic attempt}) async {
     connectedDevice = (status as DeviceStatus).connection;
   }
 

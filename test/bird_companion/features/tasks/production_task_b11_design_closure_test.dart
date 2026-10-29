@@ -162,9 +162,7 @@ void main() {
   });
 }
 
-Matcher hasDisabledReason(String reason) => isA<TaskHomeActionCapability>()
-    .having((item) => item.enabled, 'enabled', isFalse)
-    .having((item) => item.disabledReason, 'disabledReason', reason);
+Matcher hasDisabledReason(String reason) => isA<TaskHomeActionCapability>().having((item) => item.enabled, 'enabled', isFalse).having((item) => item.disabledReason, 'disabledReason', reason);
 
 TaskHomeActionCapability _for(
   List<TaskHomeActionCapability> capabilities,

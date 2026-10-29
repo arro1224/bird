@@ -18,6 +18,19 @@ class UserMessage {
 }
 
 abstract final class UserMessageMapper {
+  /// A missing copy endpoint/resource must not be described as a deleted photo.
+  /// Explicit copy business errors retain their more specific explanations.
+  static UserMessage fromCopyConfigurationError(Object error) {
+    if (error is ApiException && error.statusCode == 404 && !(error.code?.toUpperCase().startsWith('COPY_') ?? false)) {
+      return const UserMessage(
+        title: '复制资源暂不可用',
+        message: '盒子没有返回所需的复制配置或预检资源。请重新检测；若仍然失败，请检查或更新盒子服务。',
+        actionLabel: '重新检测设备',
+      );
+    }
+    return fromError(error);
+  }
+
   static UserMessage fromStorageFailure({String? code, String? message}) => fromError(ApiException(message: message ?? '', code: code));
 
   static UserMessage fromJobFailure({String? code, String? message}) {
@@ -118,18 +131,8 @@ abstract final class UserMessageMapper {
           error,
           '请为复制任务选择不同的源设备和目标设备。',
         ),
-        'COPY_SOURCE_NOT_PRESENT' => _copyMessage(
-          '等待相机存储卡',
-          error,
-          '源设备当前不在线，请重新插入后重试。',
-          actionLabel: '重试',
-        ),
-        'COPY_TARGET_NOT_PRESENT' => _copyMessage(
-          '等待目标存储设备',
-          error,
-          '目标设备当前不在线，请重新插入同一设备后重试；不会自动更换其他设备。',
-          actionLabel: '重试',
-        ),
+        'COPY_SOURCE_NOT_PRESENT' => const UserMessage(title: '等待相机存储卡', message: '相机卡已断开，请重新插入后重新预检。', actionLabel: '重新检测'),
+        'COPY_TARGET_NOT_PRESENT' => const UserMessage(title: '等待目标存储设备', message: '目标 U 盘已断开，请重新插入或选择其他目标设备。', actionLabel: '重新检测'),
         'COPY_MEDIA_ID_CHANGED' => _copyMessage(
           '存储设备身份已变化',
           error,
@@ -398,7 +401,7 @@ abstract final class UserMessageMapper {
     String? actionLabel,
   }) {
     final normalized = error.message.trim();
-    final usable = normalized.isNotEmpty && !normalized.contains(RegExp(r'[/\\]')) && !normalized.contains('Exception') && !normalized.contains('http://') && !normalized.contains('https://');
+    final usable = normalized.isNotEmpty && !normalized.contains(RegExp(r'[/\\]|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b')) && !normalized.contains('Exception') && !normalized.contains('http://') && !normalized.contains('https://');
     return UserMessage(
       title: title,
       message: usable ? normalized : fallbackMessage,

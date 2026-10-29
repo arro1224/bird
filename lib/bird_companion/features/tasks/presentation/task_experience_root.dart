@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:aves/bird_companion/features/recognition/recognition_widgets.dart';
 import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_task_tile.dart';
+import 'package:aves/bird_companion/features/copy/presentation/widgets/active_copy_jobs_banner.dart';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
@@ -115,6 +116,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       onOpenTask: _openTask,
       onStartTask: _startTask,
       onOpenCopyJobs: _openCopyJobs,
+      copyRecoveryBanner: ActiveCopyJobsBanner(recovery: BirdCompanionScope.of(context).copyJobRecovery),
     );
   }
 

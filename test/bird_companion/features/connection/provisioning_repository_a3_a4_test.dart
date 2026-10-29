@@ -57,7 +57,7 @@ void main() {
       final ready = harness.repository.events.firstWhere((event) => event.type == ProvisioningEventType.staConnected);
       harness.ble.emitEvent(
         _event(ProvisioningEventType.staConnected, _apRequest, {
-        'operation_id': 'op_sta_transport_loss',
+          'operation_id': 'op_sta_transport_loss',
           'active_mode': 'infrastructure_sta',
           'ssid': 'test-network',
           'ipv4': '192.0.2.10',

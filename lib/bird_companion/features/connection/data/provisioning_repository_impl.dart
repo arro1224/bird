@@ -168,12 +168,13 @@ final class ProvisioningRepositoryImpl
         cancelToken.throwIfCancellationRequested();
         throw const ProvisioningException(code: ProvisioningErrorCode.authorizationRequired, retryable: false);
       }
+      cancelToken.throwIfCancellationRequested();
       _directApUnsavedCredentials[deviceId] = credential;
     }
     cancelToken.throwIfCancellationRequested();
     if (credential.deviceId != deviceId) throw const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false);
     final relocated = SessionCredential(deviceId: deviceId, baseUri: completion.baseUri, accessToken: credential.accessToken, expiresAt: credential.expiresAt, apiVersion: credential.apiVersion, clientId: credential.clientId);
-    await _saveCredential(relocated);
+    await _saveCredential(relocated, cancelToken: cancelToken);
     cancelToken.throwIfCancellationRequested();
     _directApUnsavedCredentials.remove(deviceId);
     if (_deviceInfo?.deviceId == deviceId) _credential = relocated;
@@ -1005,12 +1006,14 @@ final class ProvisioningRepositoryImpl
     await _sessionCoordinator?.activate(credential, persist: false);
   }
 
-  Future<void> _saveCredential(SessionCredential credential) async {
+  Future<void> _saveCredential(SessionCredential credential, {CancelToken? cancelToken}) async {
+    cancelToken?.throwIfCancellationRequested();
     try {
       await _credentialStore.write(credential);
     } catch (_) {
       throw const ProvisioningCredentialSaveException();
     }
+    cancelToken?.throwIfCancellationRequested();
   }
 
   Future<void> _launchDppSystemFlow(DppBootstrapReady ready) async {

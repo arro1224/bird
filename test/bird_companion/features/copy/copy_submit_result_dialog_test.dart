@@ -1,3 +1,4 @@
+import 'fakes/synthetic_copy_plan.dart';
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/bird_route_args.dart';
@@ -69,6 +70,7 @@ void main() {
     final detailIndex = routeNames.indexOf('/copy-job-detail');
     expect(routeArgs[detailIndex], isA<CopyJobDetailArgs>());
     expect((routeArgs[detailIndex] as CopyJobDetailArgs).copyJobId, _WidgetFakeRepository.jobId);
+    expect((routeArgs[detailIndex] as CopyJobDetailArgs).createdJob?.copyJobId, _WidgetFakeRepository.jobId);
     // 复制页已关闭，停留在任务详情页。
     expect(find.text('复制任务详情占位'), findsOneWidget);
     expect(find.text('home'), findsNothing);
@@ -126,7 +128,11 @@ void main() {
   });
 }
 
-class _WidgetFakeRepository implements CopyRepository {
+class _WidgetFakeRepository with SyntheticCopyPlan implements CopyRepository {
+  @override
+  int get syntheticFileCount => 239;
+  @override
+  int get syntheticBytes => 7017070592;
   static const targetId = 'media_target_1';
   static const jobId = 'copy_job_widget_1';
 
@@ -149,8 +155,7 @@ class _WidgetFakeRepository implements CopyRepository {
   );
 
   @override
-  Future<CopyPreferences> preferences() async =>
-      const CopyPreferences(pairPolicy: PairPolicy.rawOnly, version: 1, origin: 'factory_default');
+  Future<CopyPreferences> preferences() async => const CopyPreferences(pairPolicy: PairPolicy.rawOnly, version: 1, origin: 'factory_default');
 
   @override
   Future<CopyPreferences> savePreferences(
@@ -178,40 +183,42 @@ class _WidgetFakeRepository implements CopyRepository {
   ];
 
   @override
-  Future<CopyDeviceList> devices() async => const CopyDeviceList(devices: [
-    StorageDeviceSummary(
-      mediaId: 'media_source_1',
-      displayName: '相机卡（读卡器）',
-      kind: 'card_reader',
-      kindConfidence: 'high',
-      detail: '',
-      capacityBytes: 128000000000,
-      freeBytes: 96400000000,
-      filesystem: 'exfat',
-      label: '',
-      roleState: 'available',
-      canBeSource: true,
-      canBeTarget: false,
-      targetBlockReasons: [],
-      identityConfidence: 'stable_uuid',
-    ),
-    StorageDeviceSummary(
-      mediaId: targetId,
-      displayName: 'U 盘 Ee',
-      kind: 'usb_flash',
-      kindConfidence: 'medium',
-      detail: '',
-      capacityBytes: 30765203456,
-      freeBytes: 30500000000,
-      filesystem: 'exfat',
-      label: '',
-      roleState: 'available',
-      canBeSource: false,
-      canBeTarget: true,
-      targetBlockReasons: [],
-      identityConfidence: 'stable_uuid',
-    ),
-  ]);
+  Future<CopyDeviceList> devices() async => const CopyDeviceList(
+    devices: [
+      StorageDeviceSummary(
+        mediaId: 'media_source_1',
+        displayName: '相机卡（读卡器）',
+        kind: 'card_reader',
+        kindConfidence: 'high',
+        detail: '',
+        capacityBytes: 128000000000,
+        freeBytes: 96400000000,
+        filesystem: 'exfat',
+        label: '',
+        roleState: 'available',
+        canBeSource: true,
+        canBeTarget: false,
+        targetBlockReasons: [],
+        identityConfidence: 'stable_uuid',
+      ),
+      StorageDeviceSummary(
+        mediaId: targetId,
+        displayName: 'U 盘 Ee',
+        kind: 'usb_flash',
+        kindConfidence: 'medium',
+        detail: '',
+        capacityBytes: 30765203456,
+        freeBytes: 30500000000,
+        filesystem: 'exfat',
+        label: '',
+        roleState: 'available',
+        canBeSource: false,
+        canBeTarget: true,
+        targetBlockReasons: [],
+        identityConfidence: 'stable_uuid',
+      ),
+    ],
+  );
 
   @override
   Future<CopyPreview> preview(CopyRequestDraft draft) async => CopyPreview(
@@ -233,13 +240,12 @@ class _WidgetFakeRepository implements CopyRepository {
   );
 
   @override
-  Future<CopyJobSummary> createJob(CopyRequestDraft draft, String previewToken) async =>
-      CopyJobSummary(
-        copyJobId: jobId,
-        state: 'queued',
-        eventSeq: 1,
-        createdAt: DateTime.now(),
-      );
+  Future<CopyJobSummary> createJob(CopyRequestDraft draft, String previewToken) async => CopyJobSummary(
+    copyJobId: jobId,
+    state: 'queued',
+    eventSeq: 1,
+    createdAt: DateTime.now(),
+  );
 
   @override
   Future<CopySelectionSnapshot> createSelection(

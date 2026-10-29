@@ -10,27 +10,47 @@ import 'package:flutter_test/flutter_test.dart';
 import 'ble_diagnostic_snapshot_test.dart' show MemoryStorage, OfflineFiles, scan;
 
 const chain = [
-  'user_start_pairing', 'bond_receiver_registered', 'create_bond_invoked', 'create_bond_returned',
-  'bond_state_changed', 'system_bond_result', 'gatt_rebuild_started', 'gatt_services_discovered',
-  'gatt_notification_descriptor_write', 'gatt_rebuild_completed', 'security_write_api_invoked',
-  'security_write_callback_timeout', 'security_write_retry_started', 'security_write_retry_result',
-  'command_failed', 'security_write_fact_finalized', 'teardown_started',
+  'user_start_pairing',
+  'bond_receiver_registered',
+  'create_bond_invoked',
+  'create_bond_returned',
+  'bond_state_changed',
+  'system_bond_result',
+  'gatt_rebuild_started',
+  'gatt_services_discovered',
+  'gatt_notification_descriptor_write',
+  'gatt_rebuild_completed',
+  'security_write_api_invoked',
+  'security_write_callback_timeout',
+  'security_write_retry_started',
+  'security_write_retry_result',
+  'command_failed',
+  'security_write_fact_finalized',
+  'teardown_started',
 ];
 Map<String, Object?> row(String type, {String flow = 'flow', String request = 'request', String? note}) => {
-  'flow_id': flow, 'trace_id': 'scan', 'request_id': request, 'attempt_id': '$request:1:1:1000',
-  'event_type': type, 'source': 'synthetic_local_test', 'occurred_at': DateTime.utc(2026, 10, 11).toIso8601String(),
+  'flow_id': flow,
+  'trace_id': 'scan',
+  'request_id': request,
+  'attempt_id': '$request:1:1:1000',
+  'event_type': type,
+  'source': 'synthetic_local_test',
+  'occurred_at': DateTime.utc(2026, 10, 11).toIso8601String(),
   'sanitized_message': ?note,
 };
 BleDiagnosticJournal journal(MemoryStorage storage, {int max = 500, int bytes = 2 * 1024 * 1024, int requests = 4}) =>
-    BleDiagnosticJournal(storage, key: 'journal', legacyKeys: const [], maximumRecords: max, maximumBytes: bytes,
-      pinCurrentAttempt: true, maximumProtectedRequests: requests);
+    BleDiagnosticJournal(storage, key: 'journal', legacyKeys: const [], maximumRecords: max, maximumBytes: bytes, pinCurrentAttempt: true, maximumProtectedRequests: requests);
 
 void main() {
   test('more than 500 observations preserve the entire critical chain and bounded bytes after restart', () async {
     final storage = MemoryStorage();
     final j = journal(storage);
-    for (final type in chain) { await j.record(row(type)); }
-    for (var i = 0; i < 620; i++) { await j.record(row('observation', note: '鸟🐦 $i')); }
+    for (final type in chain) {
+      await j.record(row(type));
+    }
+    for (var i = 0; i < 620; i++) {
+      await j.record(row('observation', note: '鸟🐦 $i'));
+    }
     final snapshot = await journal(storage).snapshot();
     expect(snapshot.records.length, 500);
     expect(snapshot.records.map((r) => r['event_type']), containsAll(chain));
@@ -47,9 +67,13 @@ void main() {
     final storage = MemoryStorage();
     final active = journal(storage, max: 60);
     for (var attempt = 0; attempt < 3; attempt++) {
-      for (final type in chain) { await active.record(row(type, request: 'req-$attempt')); }
+      for (final type in chain) {
+        await active.record(row(type, request: 'req-$attempt'));
+      }
     }
-    for (var i = 0; i < 100; i++) { await active.record(row('observation', request: 'new', flow: 'other')); }
+    for (var i = 0; i < 100; i++) {
+      await active.record(row('observation', request: 'new', flow: 'other'));
+    }
     final restored = await journal(storage, max: 60).snapshot();
     for (var attempt = 0; attempt < 3; attempt++) {
       expect(restored.records.where((r) => r['request_id'] == 'req-$attempt').map((r) => r['event_type']), containsAll(chain));
@@ -60,8 +84,12 @@ void main() {
 
   test('critical capacity loss and expired request window are explicitly marked', () async {
     final storage = MemoryStorage(), j = journal(storage, max: 5, requests: 1);
-    for (final type in chain) { await j.record(row(type, request: 'old')); }
-    for (final type in chain.take(4)) { await j.record(row(type, request: 'new')); }
+    for (final type in chain) {
+      await j.record(row(type, request: 'old'));
+    }
+    for (final type in chain.take(4)) {
+      await j.record(row(type, request: 'new'));
+    }
     final info = (await j.snapshot()).retentionFor('flow', 5);
     expect(info['critical_events_missing'], true);
     expect(info['critical_dropped'], greaterThan(0));
@@ -92,7 +120,13 @@ void main() {
 
   test('old cache with unknown prior critical losses never claims intact evidence', () async {
     final storage = MemoryStorage();
-    storage.values['journal'] = {'records': [row('create_bond_invoked')], 'flows': {'flow': {'total': 20, 'dropped': 19, 'history_unknown': false}}, 'next_sequence': 21};
+    storage.values['journal'] = {
+      'records': [row('create_bond_invoked')],
+      'flows': {
+        'flow': {'total': 20, 'dropped': 19, 'history_unknown': false},
+      },
+      'next_sequence': 21,
+    };
     final active = journal(storage);
     final info = (await active.snapshot()).retentionFor('flow', 1);
     expect(info['critical_history_unknown'], true);
@@ -104,7 +138,13 @@ void main() {
   test('migration seeds the recent request window before a bounded snapshot trims old records', () async {
     final storage = MemoryStorage();
     final records = [for (var i = 0; i < 100; i++) row('observation', request: 'new'), ...chain.map(row)];
-    storage.values['journal'] = {'records': records, 'flows': {'flow': {'total': records.length, 'dropped': 0, 'history_unknown': false}}, 'next_sequence': records.length + 1};
+    storage.values['journal'] = {
+      'records': records,
+      'flows': {
+        'flow': {'total': records.length, 'dropped': 0, 'history_unknown': false},
+      },
+      'next_sequence': records.length + 1,
+    };
     final snapshot = await journal(storage, max: 20).snapshot();
     expect(snapshot.records.map((record) => record['event_type']), containsAll(chain));
     expect(snapshot.retentionFor('flow', 20)['critical_events_missing'], false);
@@ -112,13 +152,21 @@ void main() {
 
   test('native counters and failure stage round trip independently', () {
     final event = BleConnectionDiagnosticEvent.fromPlatform({
-      'traceId': 'scan', 'eventType': 'security_write_fact_finalized', 'occurredAtMs': 0,
-      'createBondCallCount': 1, 'commandAttemptCount': 2, 'attWriteCallCount': 17, 'writeFragmentIndex': 9,
-      'preparationStep': 'notification_1', 'failurePhase': 'restoring_notifications',
+      'traceId': 'scan',
+      'eventType': 'security_write_fact_finalized',
+      'occurredAtMs': 0,
+      'createBondCallCount': 1,
+      'commandAttemptCount': 2,
+      'attWriteCallCount': 17,
+      'writeFragmentIndex': 9,
+      'preparationStep': 'notification_1',
+      'failurePhase': 'restoring_notifications',
     });
     final restored = BleConnectionDiagnosticEvent.fromJson(Map<String, dynamic>.from(event.toJson()));
-    expect(restored.commandAttemptCount, 2); expect(restored.attWriteCallCount, 17);
-    expect(restored.writeFragmentIndex, 9); expect(restored.preparationStep, 'notification_1');
+    expect(restored.commandAttemptCount, 2);
+    expect(restored.attWriteCallCount, 17);
+    expect(restored.writeFragmentIndex, 9);
+    expect(restored.preparationStep, 'notification_1');
     expect(restored.failurePhase, 'restoring_notifications');
   });
 
@@ -126,15 +174,30 @@ void main() {
     final storage = MemoryStorage();
     final scanStore = BleScanDiagnosticStore(storage), events = BleConnectionDiagnosticStore(storage);
     await scanStore.record(scan('scan'));
-    Future<void> record(String type, int second, String note) => events.record(BleConnectionDiagnosticEvent(
-      traceId: 'scan', flowId: 'flow', requestId: 'synthetic-local-request', attemptId: 'synthetic-local-attempt',
-      occurredAt: DateTime.utc(2026, 10, 11).add(Duration(seconds: second)), eventType: type, source: 'synthetic_local_test',
-      sanitizedMessage: note, createBondCallCount: 1, commandAttemptCount: 2, attWriteCallCount: 8, writeFragmentIndex: 4,
-    ));
-    for (var i = 0; i < chain.length; i++) { await record(chain[i], i, '本地合成记录，非手机无线实测'); }
+    Future<void> record(String type, int second, String note) => events.record(
+      BleConnectionDiagnosticEvent(
+        traceId: 'scan',
+        flowId: 'flow',
+        requestId: 'synthetic-local-request',
+        attemptId: 'synthetic-local-attempt',
+        occurredAt: DateTime.utc(2026, 10, 11).add(Duration(seconds: second)),
+        eventType: type,
+        source: 'synthetic_local_test',
+        sanitizedMessage: note,
+        createBondCallCount: 1,
+        commandAttemptCount: 2,
+        attWriteCallCount: 8,
+        writeFragmentIndex: 4,
+      ),
+    );
+    for (var i = 0; i < chain.length; i++) {
+      await record(chain[i], i, '本地合成记录，非手机无线实测');
+    }
     final capture = BleDiagnosticSnapshotService(scanStore, events, OfflineFiles());
     final plain = await capture.capture('scan');
-    for (var i = 0; i < 600; i++) { await record('observation', i + 20, '鸟🐦' * 150); }
+    for (var i = 0; i < 600; i++) {
+      await record('observation', i + 20, '鸟🐦' * 150);
+    }
     final large = await capture.capture('scan');
     final full = jsonDecode(large.fullJson) as Map, retention = full['retention']['connection_events'] as Map;
     expect((full['connection_events'] as List).length, 500);
@@ -149,6 +212,7 @@ void main() {
         File('${directory.path}/summary.json').writeAsStringSync(entry.value.summaryJson, encoding: utf8);
       }
     }
-    await scanStore.dispose(); await events.dispose();
+    await scanStore.dispose();
+    await events.dispose();
   });
 }

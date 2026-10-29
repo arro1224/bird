@@ -258,9 +258,7 @@ void main() {
     await expectLater(
       repo.preview(backupDraft),
       throwsA(
-        isA<ApiException>()
-            .having((error) => error.code, 'code', 'COPY_SCOPE_UNSUPPORTED')
-            .having((error) => error.statusCode, 'status', 422),
+        isA<ApiException>().having((error) => error.code, 'code', 'COPY_SCOPE_UNSUPPORTED').having((error) => error.statusCode, 'status', 422),
       ),
     );
   });

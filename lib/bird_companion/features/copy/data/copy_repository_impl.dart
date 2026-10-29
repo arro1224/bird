@@ -83,8 +83,7 @@ class CopyRepositoryImpl implements CopyRepository, CopyJobRepository {
   }) => _api.jobItems(copyJobId, cursor: cursor, state: state);
 
   @override
-  Future<CopyJobEventPage> jobEvents(String copyJobId, {int? afterSeq}) =>
-      _api.jobEvents(copyJobId, afterSeq: afterSeq);
+  Future<CopyJobEventPage> jobEvents(String copyJobId, {int? afterSeq}) => _api.jobEvents(copyJobId, afterSeq: afterSeq);
 
   @override
   Future<CopyReport> jobReport(String copyJobId) => _api.jobReport(copyJobId);
@@ -97,8 +96,7 @@ class CopyRepositoryImpl implements CopyRepository, CopyJobRepository {
   }) => _api.jobAction(copyJobId, actionWire, expectedStateVersion: expectedStateVersion);
 
   @override
-  Future<CopyJobItemPage> previewItems(String previewId, {String? cursor}) =>
-      _api.previewItems(previewId, cursor: cursor);
+  Future<CopyJobItemPage> previewItems(String previewId, {String? cursor}) => _api.previewItems(previewId, cursor: cursor);
 
   @override
   Future<SafeRemoveResult> safeRemoveDevice(

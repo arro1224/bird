@@ -1,6 +1,7 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_repository.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_plan_integrity.dart';
 import 'package:flutter/material.dart';
 
 /// 预检文件明细底部弹层（§10.2）。
@@ -14,13 +15,15 @@ class CopyPreviewItemsSheet extends StatefulWidget {
     required this.repository,
     required this.previewToken,
     required this.summaryFileCount,
+    this.verifiedPlan,
   });
 
   final CopyJobRepository repository;
   final String previewToken;
 
-  /// 预检统计中的实际文件数（CopyPreview.actualFileCount）。
+  /// 旧调用的计划复制文件数，仅用于缺失明细警告；不是明细总数。
   final int summaryFileCount;
+  final CopyPlanIntegrity? verifiedPlan;
 
   @override
   State<CopyPreviewItemsSheet> createState() => _CopyPreviewItemsSheetState();
@@ -32,14 +35,25 @@ class _CopyPreviewItemsSheetState extends State<CopyPreviewItemsSheet> {
   bool _hasMore = false;
   String? _cursor;
   Object? _error;
+  bool _requestInFlight = false;
+  final Set<String> _seenCursors = {};
 
   @override
   void initState() {
     super.initState();
-    _loadPage();
+    final plan = widget.verifiedPlan;
+    if (plan != null) {
+      _items.addAll(plan.items);
+      _loading = false;
+      if (!plan.verified) _error = StateError('plan unavailable');
+    } else {
+      _loadPage();
+    }
   }
 
   Future<void> _loadPage() async {
+    if (_requestInFlight) return;
+    _requestInFlight = true;
     setState(() {
       _loading = true;
       _error = null;
@@ -50,6 +64,12 @@ class _CopyPreviewItemsSheetState extends State<CopyPreviewItemsSheet> {
         cursor: _cursor,
       );
       if (!mounted) return;
+      if (!page.protocolComplete ||
+          page.items.any((item) => _items.any((old) => old.copyItemId == item.copyItemId)) ||
+          page.items.map((item) => item.copyItemId).toSet().length != page.items.length ||
+          (page.hasMore && (page.items.isEmpty || page.nextCursor == null || !_seenCursors.add(page.nextCursor!)))) {
+        throw StateError('invalid plan pagination');
+      }
       setState(() {
         _items.addAll(page.items);
         _hasMore = page.hasMore;
@@ -62,12 +82,14 @@ class _CopyPreviewItemsSheetState extends State<CopyPreviewItemsSheet> {
         _error = error;
         _loading = false;
       });
+    } finally {
+      _requestInFlight = false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final detailUnavailable = !_loading && _items.isEmpty && widget.summaryFileCount > 0;
+    final detailUnavailable = !_loading && (_error != null || (_items.isEmpty && widget.summaryFileCount > 0));
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -78,7 +100,7 @@ class _CopyPreviewItemsSheetState extends State<CopyPreviewItemsSheet> {
               children: [
                 Expanded(
                   child: Text(
-                    '预检明细（${widget.summaryFileCount} 个文件）',
+                    widget.verifiedPlan?.verified == true ? widget.verifiedPlan!.summary : '预检明细（已读取 ${_items.length} 条${_hasMore ? '，尚未读完' : ''}）',
                     style: Theme.of(
                       context,
                     ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
@@ -109,8 +131,7 @@ class _CopyPreviewItemsSheetState extends State<CopyPreviewItemsSheet> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '预检明细暂不可用，盒子未返回文件清单。这不影响任务创建，'
-                        '复制结果以任务报告为准。',
+                        '预检明细暂不可用或核对未完成，请重新预检后再创建任务。',
                         style: TextStyle(color: AppColors.ink, fontSize: 13, height: 1.35),
                       ),
                     ),
@@ -120,12 +141,14 @@ class _CopyPreviewItemsSheetState extends State<CopyPreviewItemsSheet> {
             else if (!_loading && _items.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: Text('暂无文件', style: TextStyle(color: AppColors.inkMuted))),
+                child: Center(
+                  child: Text('暂无文件', style: TextStyle(color: AppColors.inkMuted)),
+                ),
               )
             else
               Expanded(
                 child: ListView.builder(
-                  itemCount: _items.length + (_hasMore || _loading ? 1 : 0),
+                  itemCount: _items.length + (_hasMore || _loading || _error != null ? 1 : 0),
                   itemBuilder: (context, index) {
                     if (index >= _items.length) {
                       if (_error != null) {
@@ -140,7 +163,7 @@ class _CopyPreviewItemsSheetState extends State<CopyPreviewItemsSheet> {
                         );
                       }
                       WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted && _hasMore) _loadPage();
+                        if (mounted && _hasMore && !_loading && _error == null) _loadPage();
                       });
                       return const Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
@@ -184,7 +207,6 @@ class _ItemRowState extends State<_ItemRow> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final conflict = item.conflictDecision;
     final targetFull = item.targetPath;
     final targetDisplay = _expanded ? targetFull : _tailPath(targetFull);
     final sourceFull = item.sourceRelativePath;
@@ -233,10 +255,14 @@ class _ItemRowState extends State<_ItemRow> {
                   style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
                 ),
               ),
-            if (conflict != null && conflict.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              _ConflictBadge(decision: conflict),
-            ],
+            const SizedBox(width: 8),
+            Column(
+              children: [
+                _ConflictBadge(decision: item.planState.label),
+                if (item.conflictDecision == 'overwrite') const Text('覆盖', style: TextStyle(fontSize: 11)),
+                if (item.conflictDecision == 'keep_both') const Text('两份保留', style: TextStyle(fontSize: 11)),
+              ],
+            ),
           ],
         ),
       ),
@@ -262,9 +288,9 @@ class _ConflictBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color, bg) = switch (decision) {
-      'skip' => ('跳过', AppColors.warning, AppColors.amberLight),
-      'overwrite' => ('覆盖', AppColors.danger, AppColors.dangerSoft),
-      'keep_both' => ('两份保留', AppColors.forestPrimary, AppColors.forestSoft),
+      '将跳过' => ('将跳过', AppColors.warning, AppColors.amberLight),
+      '已阻止' => ('已阻止', AppColors.danger, AppColors.dangerSoft),
+      '将复制' => ('将复制', AppColors.forestPrimary, AppColors.forestSoft),
       _ => (decision, AppColors.inkMuted, AppColors.outline),
     };
     return Container(
@@ -280,6 +306,7 @@ Future<void> showCopyPreviewItemsSheet(
   required CopyJobRepository repository,
   required String previewToken,
   required int summaryFileCount,
+  CopyPlanIntegrity? verifiedPlan,
 }) => showModalBottomSheet<void>(
   context: context,
   isScrollControlled: true,
@@ -291,5 +318,6 @@ Future<void> showCopyPreviewItemsSheet(
     repository: repository,
     previewToken: previewToken,
     summaryFileCount: summaryFileCount,
+    verifiedPlan: verifiedPlan,
   ),
 );

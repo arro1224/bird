@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_repository.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
@@ -17,15 +18,78 @@ import 'package:flutter_test/flutter_test.dart';
 /// （负向路径只能注入 fake，见 10-14 走查教训），在此用注入失败的
 /// fake 仓储验证。
 void main() {
+  testWidgets('明确 404 停止自动轮询，保留列表入口及手动 GET 重试', (tester) async {
+    final repository = _MissingJobRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CopyJobDetailPage(copyJobId: 'job-1', repository: repository),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('任务已不存在或已被清理'), findsOneWidget);
+    expect(find.text('查看复制任务列表'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 30));
+    expect(repository.getJobCalls, 1);
+    repository.missing = false;
+    await tester.tap(find.text('重试'));
+    await tester.pumpAndSettle();
+    expect(repository.getJobCalls, 2);
+    expect(find.text('任务已不存在或已被清理'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('每次失败经历 loading 重建后退避仍累积，并在后台停止', (tester) async {
+    final repository = _DelayedFailureRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CopyJobDetailPage(copyJobId: 'job-1', repository: repository),
+      ),
+    );
+    expect(repository.getJobCalls, 1);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(seconds: 2));
+    expect(repository.getJobCalls, 2);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(seconds: 2));
+    expect(repository.getJobCalls, 2, reason: '组件重建后第二次仍等待完整 4 秒');
+    await tester.pump(const Duration(seconds: 2));
+    expect(repository.getJobCalls, 3);
+    await tester.pump(const Duration(milliseconds: 500));
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump(const Duration(seconds: 30));
+    expect(repository.getJobCalls, 3);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(repository.getJobCalls, 4);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(seconds: 14));
+    expect(repository.getJobCalls, 4);
+    await tester.pump(const Duration(seconds: 1));
+    expect(repository.getJobCalls, 5);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('首载失败后自动退避轮询；任务可读时自动进入详情页', (tester) async {
     final repository = _FirstLoadFakeRepository();
     await tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: CopyJobDetailPage(copyJobId: 'job-1', repository: repository))),
+      MaterialApp(
+        home: Scaffold(
+          body: CopyJobDetailPage(
+            copyJobId: 'job-1',
+            repository: repository,
+            createdJob: const CopyJobSummary(copyJobId: 'job-1', state: 'queued', eventSeq: 0),
+          ),
+        ),
+      ),
     );
     await tester.pump();
 
     // 首载失败：错误页出现（StateError 不含内部细节映射，走通用文案）。
     expect(find.text('任务不存在'), findsNothing); // error 非 null，不走「任务不存在」
+    expect(find.textContaining('任务已创建；创建时状态：'), findsOneWidget);
     expect(find.text('盒子上的任务可能仍在继续，将自动重试读取进度；也可手动重试。'), findsOneWidget);
     expect(repository.getJobCalls, 1);
 
@@ -49,10 +113,14 @@ void main() {
     // 运行态任务的动作区按 allowed_actions 渲染（fake 返回空，仅验证进入详情）。
   });
 
-  testWidgets('任意首载失败（含任务暂不存在）都走退避轮询，任务出现后自动恢复', (tester) async {
+  testWidgets('瞬时不可读保留自动重试，随后可读时自动恢复', (tester) async {
     final repository = _NotFoundFakeRepository();
     await tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: CopyJobDetailPage(copyJobId: 'job-1', repository: repository))),
+      MaterialApp(
+        home: Scaffold(
+          body: CopyJobDetailPage(copyJobId: 'job-1', repository: repository),
+        ),
+      ),
     );
     await tester.pump();
 
@@ -95,15 +163,13 @@ class _FirstLoadFakeRepository implements CopyJobRepository {
   }
 
   @override
-  Future<CopyJobEventPage> jobEvents(String copyJobId, {int? afterSeq}) async =>
-      const CopyJobEventPage(events: [], hasMore: false);
+  Future<CopyJobEventPage> jobEvents(String copyJobId, {int? afterSeq}) async => const CopyJobEventPage(events: [], hasMore: false);
 
   @override
   Future<CopyReport> jobReport(String copyJobId) async => const CopyReport();
 
   @override
-  Future<CopyJobItemPage> jobItems(String copyJobId, {String? cursor, String? state}) async =>
-      const CopyJobItemPage(items: [], hasMore: false);
+  Future<CopyJobItemPage> jobItems(String copyJobId, {String? cursor, String? state}) async => const CopyJobItemPage(items: [], hasMore: false);
 
   @override
   Future<CopyJobDetail?> jobAction(
@@ -113,8 +179,7 @@ class _FirstLoadFakeRepository implements CopyJobRepository {
   }) async => null;
 
   @override
-  Future<CopyJobItemPage> previewItems(String previewId, {String? cursor}) async =>
-      const CopyJobItemPage(items: [], hasMore: false);
+  Future<CopyJobItemPage> previewItems(String previewId, {String? cursor}) async => const CopyJobItemPage(items: [], hasMore: false);
 
   @override
   Future<SafeRemoveResult> safeRemoveDevice(
@@ -133,6 +198,25 @@ class _NotFoundFakeRepository extends _FirstLoadFakeRepository {
     if (!appear) {
       throw StateError('job not found');
     }
+    return _runningDetail();
+  }
+}
+
+class _DelayedFailureRepository extends _FirstLoadFakeRepository {
+  @override
+  Future<CopyJobDetail> getJob(String copyJobId) async {
+    getJobCalls++;
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    throw StateError('delayed failure');
+  }
+}
+
+class _MissingJobRepository extends _FirstLoadFakeRepository {
+  bool missing = true;
+  @override
+  Future<CopyJobDetail> getJob(String copyJobId) async {
+    getJobCalls++;
+    if (missing) throw const ApiException(message: 'not found', statusCode: 404);
     return _runningDetail();
   }
 }

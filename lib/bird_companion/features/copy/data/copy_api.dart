@@ -13,6 +13,7 @@ class CopyApi {
   CopyApi(this._c);
   final ApiClient _c;
   final Map<String, StorageDeviceSummary> _deviceCache = {};
+  int _deviceReadGeneration = 0;
 
   static const _protocolHeader = {
     'X-BirdBox-Protocol': 'birdbox-copy-v1',
@@ -80,6 +81,8 @@ class CopyApi {
   }
 
   Future<CopyDeviceList> devices() async {
+    final generation = ++_deviceReadGeneration;
+    final baseUri = _c.baseUri;
     final raw = await _c.get(
       ApiEndpoints.storageDevices,
       headers: _protocolHeader,
@@ -100,9 +103,11 @@ class CopyApi {
           return StorageDeviceSummary.fromJson(Map<String, dynamic>.from(item));
         })
         .toList(growable: false);
-    _deviceCache
-      ..clear()
-      ..addEntries(parsed.map((device) => MapEntry(device.mediaId, device)));
+    if (generation == _deviceReadGeneration && baseUri == _c.baseUri) {
+      _deviceCache
+        ..clear()
+        ..addEntries(parsed.map((device) => MapEntry(device.mediaId, device)));
+    }
     return CopyDeviceList(
       devices: parsed,
       recommendedTargetMediaId: (raw['last_successful_target_media_id'] ?? raw['recommended_target_media_id'])?.toString(),
@@ -170,8 +175,10 @@ class CopyApi {
       data: draft.toJson(),
       headers: _protocolHeader,
     );
+    String? builtPreviewId;
     if (raw['state'] == 'building') {
       final previewId = ProtocolValidation.requiredId(raw, 'preview_id');
+      builtPreviewId = previewId;
       for (var attempt = 0; attempt < 20; attempt++) {
         raw = await _c.get(
           ApiEndpoints.copyPreviewDetail.replaceFirst(
@@ -202,6 +209,7 @@ class CopyApi {
     final categories = counts is Map ? Map<String, dynamic>.from(counts) : const <String, dynamic>{};
     return CopyPreview.fromJson({
       ...raw,
+      'preview_id': raw['preview_id'] ?? builtPreviewId,
       'source': _deviceToJson(source),
       'target': _deviceToJson(target),
       'logical_photo_count': raw['logical_assets'] ?? raw['logical_photo_count'],
@@ -387,6 +395,7 @@ class CopyApi {
     'role_state': device.roleState,
     'can_be_source': device.canBeSource,
     'can_be_target': device.canBeTarget,
+    if (device.productRole != null) 'product_role': device.productRole,
     'target_block_reasons': device.targetBlockReasons,
     'identity_confidence': device.identityConfidence,
     'last_seen_at': device.lastSeenAt?.toIso8601String(),

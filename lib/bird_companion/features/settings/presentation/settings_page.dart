@@ -20,8 +20,7 @@ class SettingsPage extends StatelessWidget {
     child: Scaffold(
       backgroundColor: AppColors.paper,
       body: BlocConsumer<SettingsCubit, SettingsState>(
-        listenWhen: (before, after) =>
-            after.message.isNotEmpty && before.message != after.message,
+        listenWhen: (before, after) => after.message.isNotEmpty && before.message != after.message,
         listener: (context, state) => ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(state.message))),
@@ -80,16 +79,8 @@ class SettingsPage extends StatelessWidget {
                       CacheManagementCard(
                         imageBytes: state.imageCacheBytes,
                         albumBytes: state.albumCacheBytes,
-                        onClearImages: state.loading
-                            ? null
-                            : () => context
-                                  .read<SettingsCubit>()
-                                  .clearImageCache(),
-                        onClearAlbumData: state.loading
-                            ? null
-                            : () => context
-                                  .read<SettingsCubit>()
-                                  .clearAlbumCache(),
+                        onClearImages: state.loading ? null : () => context.read<SettingsCubit>().clearImageCache(),
+                        onClearAlbumData: state.loading ? null : () => context.read<SettingsCubit>().clearAlbumCache(),
                       ),
                       const SizedBox(height: 18),
                       const _SectionTitle('遇到问题'),
@@ -216,17 +207,13 @@ class _DeviceHero extends StatelessWidget {
                           Icon(
                             Icons.circle,
                             size: 10,
-                            color: session.isConnected
-                                ? AppColors.success
-                                : AppColors.inkMuted,
+                            color: session.isConnected ? AppColors.success : AppColors.inkMuted,
                           ),
                           const SizedBox(width: 6),
                           Text(
                             session.isConnected ? '在线' : '等待连接',
                             style: TextStyle(
-                              color: session.isConnected
-                                  ? AppColors.success
-                                  : AppColors.inkMuted,
+                              color: session.isConnected ? AppColors.success : AppColors.inkMuted,
                             ),
                           ),
                         ],
@@ -244,9 +231,7 @@ class _DeviceHero extends StatelessWidget {
             ),
             _DeviceRow(
               label: '连接地址',
-              value: device?.baseUri.host.isNotEmpty == true
-                  ? device!.baseUri.host
-                  : '未连接',
+              value: device?.baseUri.host.isNotEmpty == true ? device!.baseUri.host : '未连接',
             ),
           ],
         ),
@@ -340,9 +325,7 @@ class _SettingsTile extends StatelessWidget {
     minVerticalPadding: 10,
     leading: Icon(icon, color: enabled ? iconColor : AppColors.inkMuted),
     title: Text(title, style: const TextStyle(fontSize: 17, height: 1.3)),
-    subtitle: subtitle == null
-        ? null
-        : Text(subtitle!, style: const TextStyle(fontSize: 15, height: 1.3)),
+    subtitle: subtitle == null ? null : Text(subtitle!, style: const TextStyle(fontSize: 15, height: 1.3)),
     trailing: value == null
         ? const Icon(Icons.chevron_right)
         : Text(

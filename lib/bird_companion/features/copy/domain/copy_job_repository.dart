@@ -35,7 +35,8 @@ abstract interface class CopyJobRepository {
     required int expectedStateVersion,
   });
 
-  /// GET copy-previews/{id}/items —— 预检文件明细（preview_id 暂同 preview_token）。
+  /// GET copy-previews/{id}/items —— 预检文件明细。
+  /// 优先显式 preview_id；旧响应无 id 时沿用 token，关系仍待实机复核。
   Future<CopyJobItemPage> previewItems(String previewId, {String? cursor});
 
   /// POST storage/devices/{media_id}/safe-remove —— 安全移除（§4.5）。

@@ -17,9 +17,7 @@ void main() {
     final fixture = jsonDecode(await utf8.decoder.bind(response).join()) as Map;
     http.close();
     final client = ApiClient()..configure(base);
-    final pair = await client.post(ApiEndpoints.devicePair,
-        data: {'pairing_code': '123456', 'client_name': 'Dart HTTP contract check'},
-        idempotencyKey: 'dart-http-contract');
+    final pair = await client.post(ApiEndpoints.devicePair, data: {'pairing_code': '123456', 'client_name': 'Dart HTTP contract check'}, idempotencyKey: 'dart-http-contract');
     client.setSession(accessToken: pair['access_token'] as String);
     final api = CopyApi(client);
     final normal = fixture['normal_job'] as String;
@@ -38,6 +36,5 @@ void main() {
     expect(cubit.state.events.length, greaterThan(1000));
     expect(cubit.state.lastEventSeq, cubit.state.events.length);
     await cubit.close();
-  }, skip: Platform.environment['BIRDBOX_CONTRACT_BASE'] == null
-      ? 'Requires the separately started Python HTTP contract fixture.' : false);
+  }, skip: Platform.environment['BIRDBOX_CONTRACT_BASE'] == null ? 'Requires the separately started Python HTTP contract fixture.' : false);
 }

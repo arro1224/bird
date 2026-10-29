@@ -56,11 +56,20 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
     _initialized = true;
     final dependencies = BirdCompanionScope.maybeOf(context);
     _handoff = dependencies?.createDirectApHandoff();
-    _cubit = NetworkProvisioningCubit(widget.repository, directApHandoff: _handoff, resolveStaEndpoint: dependencies?.resolveStaEndpoint, diagnostic: dependencies?.connectionAttempts.record);
+    _cubit = NetworkProvisioningCubit(
+      widget.repository,
+      directApHandoff: _handoff,
+      resolveStaEndpoint: dependencies?.resolveStaEndpoint,
+      diagnostic: dependencies?.connectionAttempts.record,
+      onIntentStarted: dependencies?.deviceSessionCubit.beginNetworkIntent,
+      onIntentEnded: dependencies?.deviceSessionCubit.endNetworkIntent,
+    );
     _handoffSubscription = _handoff?.stream.listen((state) {
       if (!mounted) return;
       setState(() {});
-      if (state.phase == DirectApHandoffPhase.directApConnected) Navigator.of(context).pop();
+      if (state.phase == DirectApHandoffPhase.directApConnected && dependencies?.deviceSessionCubit.activeAttemptId == state.pending?.attemptId && dependencies?.deviceSessionCubit.state.device?.id == state.pending?.deviceId) {
+        Navigator.of(context).pop();
+      }
     });
     _networkSubscription = dependencies?.connectivityMonitor.onTransportChanged.listen((_) => _handoff?.networkChanged());
     final sessionRepository = widget.repository is ProvisioningSessionRepository ? widget.repository as ProvisioningSessionRepository : null;

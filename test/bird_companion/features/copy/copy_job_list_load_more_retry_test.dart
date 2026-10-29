@@ -97,8 +97,7 @@ class _PagingFakeRepository implements CopyJobRepository {
   Future<CopyJobDetail> getJob(String copyJobId) => throw UnimplementedError();
 
   @override
-  Future<CopyJobItemPage> jobItems(String copyJobId, {String? cursor, String? state}) =>
-      throw UnimplementedError();
+  Future<CopyJobItemPage> jobItems(String copyJobId, {String? cursor, String? state}) => throw UnimplementedError();
 
   @override
   Future<CopyJobEventPage> jobEvents(String copyJobId, {int? afterSeq}) => throw UnimplementedError();

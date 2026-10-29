@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 
 class PhotoSequencePage {
   const PhotoSequencePage({required this.ids, required this.hasMore});
@@ -229,8 +230,10 @@ class JobDetailArgs {
 
 /// RC3 复制任务详情页参数（阶段 D）。
 class CopyJobDetailArgs {
-  const CopyJobDetailArgs(this.copyJobId);
+  const CopyJobDetailArgs(this.copyJobId, {this.deviceId, this.createdJob});
   final String copyJobId;
+  final String? deviceId;
+  final CopyJobSummary? createdJob;
 }
 
 /// SmartFollow 运行页参数（联合任务书 §6.5/§6.6）。

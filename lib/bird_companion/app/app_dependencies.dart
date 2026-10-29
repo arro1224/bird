@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:aves/bird_companion/features/connection/data/connection_attempt_recorder.dart';
 import 'package:flutter/services.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_cancellation.dart';
+import 'package:aves/bird_companion/features/connection/domain/connection_attempt.dart';
+import 'package:aves/bird_companion/features/connection/domain/request_id_factory.dart';
 import 'package:aves/bird_companion/features/connection/domain/ble_connection_diagnostics.dart';
 import 'package:dio/dio.dart';
 import 'package:aves/bird_companion/features/connection/data/direct_ap_pending_store.dart';
@@ -62,6 +64,9 @@ import 'package:aves/bird_companion/features/review/data/review_checkpoint_store
 import 'package:aves/bird_companion/features/review/data/review_repository_impl.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_api.dart';
+import 'package:aves/bird_companion/features/copy/data/active_copy_job_store.dart';
+import 'package:aves/bird_companion/features/copy/data/copy_request_diagnostics.dart';
+import 'package:aves/bird_companion/features/copy/presentation/copy_job_recovery.dart';
 import 'package:aves/bird_companion/features/copy/data/copy_repository_impl.dart';
 import 'package:aves/bird_companion/features/copy/data/mock_copy_repository.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_repository.dart';
@@ -97,6 +102,7 @@ class BirdCompanionDependencies {
     required this.reviewCheckpointStore,
     required this.copyRepository,
     required this.copyJobRepository,
+    required this.activeCopyJobs,
     required this.jobRepository,
     required this.storageRepository,
     required this.deviceSessionCubit,
@@ -111,6 +117,7 @@ class BirdCompanionDependencies {
     required this.mediaAssetService,
     required this.bleScanDiagnosticStore,
     required this.bleConnectionDiagnosticStore,
+    required this.connectionAttempts,
   }) {
     // R3：WebSocket 只当唤醒信号，仓储收到后重读会话（不拿 payload 数字改状态）。
     // 断线期间漏掉的通知由页面/前台的显式 refresh 补齐，不依赖这条订阅。
@@ -138,6 +145,17 @@ class BirdCompanionDependencies {
   final ReviewCheckpointStore reviewCheckpointStore;
   final CopyRepository copyRepository;
   final CopyJobRepository copyJobRepository;
+  final ActiveCopyJobStore activeCopyJobs;
+  late final copyDiagnostics = CopyRequestDiagnostics.forJournal(bleConnectionDiagnosticStore);
+  late final copyJobRecovery = CopyJobRecovery(
+    repository: copyJobRepository,
+    store: activeCopyJobs,
+    currentDeviceId: () => deviceSessionCubit.state.device?.id,
+    isConnected: () => deviceSessionCubit.state.isConnected,
+    sessionChanges: deviceSessionCubit.stream.map((_) {}),
+    refreshes: refreshCoordinator.changes.map((_) {}),
+    diagnostics: copyDiagnostics,
+  );
   final JobRepository jobRepository;
   final StorageRepository storageRepository;
   final DeviceSessionCubit deviceSessionCubit;
@@ -154,7 +172,7 @@ class BirdCompanionDependencies {
   final BleConnectionDiagnosticStore bleConnectionDiagnosticStore;
   final bleDiagnosticFilePlatform = const MethodChannelBirdBoxBleDiagnosticFilePlatform();
   late final bleDiagnosticSnapshotService = BleDiagnosticSnapshotService(bleScanDiagnosticStore, bleConnectionDiagnosticStore, bleDiagnosticFilePlatform);
-  late final connectionAttempts = ConnectionAttemptRecorder(cache, bleConnectionDiagnosticStore);
+  final ConnectionAttemptRecorder connectionAttempts;
   StreamSubscription<EventConnectionState>? _sessionTrace;
   StreamSubscription? _deviceTrace;
   String? _traceDeviceId;
@@ -168,7 +186,7 @@ class BirdCompanionDependencies {
     final cache = await LocalCache.open();
     final apiClient = ApiClient();
     final eventClient = EventClient();
-    final secureSessionStore = AndroidKeystoreSessionStore();
+    final secureSessionStore = SerializedSecureSessionStore(AndroidKeystoreSessionStore());
     final sessionCoordinator = SessionCoordinator(
       apiClient,
       eventClient,
@@ -231,12 +249,15 @@ class BirdCompanionDependencies {
       (fileId) => reviewRepository.acceptRemoteDecision(fileId),
       (photo) => reviewRepository.acceptSyncedPhoto(photo),
     );
+    final connectionAttempts = ConnectionAttemptRecorder(cache, bleConnectionDiagnosticStore);
     deviceSessionCubit = DeviceSessionCubit(
       connectionRepository,
       connectivityMonitor,
       eventClient,
       refreshCoordinator,
       sessionCoordinator: sessionCoordinator,
+      diagnostic: connectionAttempts.record,
+      transportChanges: connectivityMonitor.onTransportChanged,
       onConnectionRecovered: () async {
         await birdSyncService.synchronize();
       },
@@ -301,6 +322,7 @@ class BirdCompanionDependencies {
       // 任务闭环（RC3）与创建流程共用同一实例（阶段 D 实施计划 §3）。
       copyRepository: copyRepositoryImpl,
       copyJobRepository: copyJobRepositoryImpl,
+      activeCopyJobs: useMockCopyRepository ? ActiveCopyJobStore.memory() : ActiveCopyJobStore(cache),
       jobRepository: JobRepositoryImpl(JobApi(apiClient)),
       storageRepository: StorageRepositoryImpl(StorageApi(apiClient)),
       deviceSessionCubit: deviceSessionCubit,
@@ -315,11 +337,13 @@ class BirdCompanionDependencies {
       mediaAssetService: mediaAssetService,
       bleScanDiagnosticStore: bleScanDiagnosticStore,
       bleConnectionDiagnosticStore: bleConnectionDiagnosticStore,
+      connectionAttempts: connectionAttempts,
     );
     dependencies.birdSyncService.start();
+    unawaited(dependencies.copyJobRecovery.recover());
     dependencies._sessionTrace = eventClient.connectionStates.listen((state) => dependencies.connectionAttempts.record({'event': 'session_ws_state', 'device_id': sessionCoordinator.activeDeviceId, 'ws_state': state.name}));
     dependencies._deviceTrace = deviceSessionCubit.stream.listen((state) {
-      dependencies.connectionAttempts.record({'event': 'global_session_state', 'device_id': state.device?.id, 'phase': state.phase.name});
+      dependencies.connectionAttempts.record({'event': 'global_session_state', 'attempt_id': state.attemptId, 'operation_id': state.operationId, 'device_id': state.device?.id, 'phase': state.phase.name});
       // 换盒子就把 SmartFollow 的会话快照与能力缓存丢掉：session_id/能力属于某台盒子。
       final deviceId = state.device?.id.trim();
       if (deviceId != null && deviceId.isNotEmpty && deviceId != dependencies._traceDeviceId) {
@@ -348,7 +372,13 @@ class BirdCompanionDependencies {
       }
     }
     if (restoreSavedSession && cache.read<Map>(DirectApHandoffCubit.pendingKey) == null && !deviceSessionCubit.state.isConnected) {
-      await deviceSessionCubit.restoreSavedSession();
+      try {
+        final saved = await connectionRepository.savedDevice();
+        if (saved != null) deviceSessionCubit.seedSavedDevice(saved);
+      } catch (error) {
+        connectionAttempts.record({'event': 'saved_device_read_failed', ...ConnectionAttempt.errorFields(error)});
+      }
+      unawaited(deviceSessionCubit.restoreSavedSession());
     }
     return dependencies;
   }
@@ -377,10 +407,13 @@ class BirdCompanionDependencies {
       throw StateError('Provisioned device identity does not match the connected box.');
     }
     cancelToken?.throwIfCancellationRequested();
-    await deviceSessionCubit.setConnectedFromStatus(status);
+    final attempt = ConnectionAttempt.forToken(cancelToken);
+    attempt?.check();
+    await deviceSessionCubit.setConnectedFromStatus(status, attempt: attempt);
   }
 
   Future<void> completeDirectApHandoff(PendingDirectAp pending, CancelToken token) async {
+    final attempt = deviceSessionCubit.beginEndpointVerification(attemptId: pending.attemptId!, deviceId: pending.deviceId, operationId: pending.operationId, token: token);
     connectionAttempts.record({'event': 'network_identity_check_started', 'attempt_id': pending.attemptId, 'operation_id': pending.operationId, 'device_id': pending.deviceId, 'base_uri': pending.baseUri.toString()});
     Map<String, dynamic> phoneNetwork;
     try {
@@ -403,10 +436,13 @@ class BirdCompanionDependencies {
       ),
     );
     // Read public identity BEFORE sending pairing material or activating a token.
-    await ConnectionApi(apiClient, PairingApi(apiClient), sessionCoordinator).verifyDirectApIdentity(pending.baseUri, pending.deviceId, token, networkMode: pending.isSta ? NetworkMode.infrastructureSta : NetworkMode.directAp);
+    await attempt.run(
+      'identity',
+      () => ConnectionApi(apiClient, PairingApi(apiClient), sessionCoordinator).verifyDirectApIdentity(pending.baseUri, pending.deviceId, token, networkMode: pending.isSta ? NetworkMode.infrastructureSta : NetworkMode.directAp),
+    );
     token.throwIfCancellationRequested();
     final repository = provisioningRepository;
-    if (repository is DirectApHttpPreparation) await (repository as DirectApHttpPreparation).prepareDirectApHttp(pending.completion, token);
+    if (repository is DirectApHttpPreparation) await attempt.run('authorization', () => (repository as DirectApHttpPreparation).prepareDirectApHttp(pending.completion, token));
     token.throwIfCancellationRequested();
     await completeProvisioning(pending.completion, cancelToken: token);
     connectionAttempts.record({
@@ -429,38 +465,58 @@ class BirdCompanionDependencies {
     return snapshot?.activeMode == ProvisioningNetworkMode.infrastructureSta ? snapshot?.baseUri : null;
   }
 
-  Future<bool> resumeVerifiedBleEndpoint(ProvisioningDeviceInfo info, CancelToken token) async {
+  PendingDirectAp? pendingVerifiedBleEndpoint(ProvisioningDeviceInfo info) {
     final repository = provisioningRepository;
     final snapshot = repository is ProvisioningEndpointSnapshot ? (repository as ProvisioningEndpointSnapshot).lastNetworkSnapshot : null;
     final endpoint = snapshot?.baseUri;
-    if (snapshot == null || snapshot.busy || snapshot.lastError != null || endpoint == null || !{NetworkOperationState.staConnected, NetworkOperationState.apReady}.contains(snapshot.operationState)) return false;
-    await completeDirectApHandoff(PendingDirectAp(deviceId: info.deviceId, baseUri: endpoint, operationId: snapshot.operationId ?? 'existing-network', networkMode: snapshot.activeMode, attemptId: connectionAttempts.activeId), token);
-    return true;
+    if (snapshot == null || snapshot.busy || snapshot.lastError != null || endpoint == null || !{NetworkOperationState.staConnected, NetworkOperationState.apReady}.contains(snapshot.operationState)) return null;
+    return PendingDirectAp(deviceId: info.deviceId, baseUri: endpoint, operationId: snapshot.operationId ?? 'existing-network', networkMode: snapshot.activeMode, attemptId: SecureRequestIdFactory().create());
   }
 
-  DirectApHandoffCubit createDirectApHandoff() => DirectApHandoffCubit(
-    store: cache,
-    verify: completeDirectApHandoff,
-    activeChanged: (active) {
-      deviceSessionCubit.provisioningHandoffActive = active;
-      if (active) deviceSessionCubit.disconnected('正在验证盒子网络连接。');
-    },
-    onCancel: (id) async {
-      final repository = provisioningRepository;
-      if (repository is DirectApHttpPreparation) await (repository as DirectApHttpPreparation).cancelDirectApHttp(id);
-    },
-    diagnostic: (event) {
-      connectionAttempts.record(event);
-      final trace = event['operation_id'] as String? ?? 'direct-ap';
-      unawaited(
-        bleConnectionDiagnosticStore.record(
-          BleConnectionDiagnosticEvent(traceId: trace, flowId: trace, occurredAt: DateTime.now(), eventType: event['event'] as String, source: 'app_network', operationName: 'direct_ap_handoff', sanitizedMessage: jsonEncode(event)),
-        ),
-      );
-    },
-  );
+  DirectApHandoffCubit createDirectApHandoff() {
+    final owner = Object();
+    String? ownedIntentId;
+    return DirectApHandoffCubit(
+      store: cache,
+      verify: completeDirectApHandoff,
+      onBegin: (pending, restored) {
+        final id = pending.attemptId!;
+        if (restored) {
+          if (deviceSessionCubit.provisioningHandoffActive) return false;
+          deviceSessionCubit.beginNetworkIntent(id);
+        }
+        final accepted = deviceSessionCubit.acceptsNetworkIntent(id);
+        if (accepted) ownedIntentId = id;
+        return accepted;
+      },
+      isIntentCurrent: (pending) => deviceSessionCubit.acceptsNetworkIntent(pending.attemptId!),
+      onVerificationStopped: (message) {
+        if (ownedIntentId != null && deviceSessionCubit.acceptsNetworkIntent(ownedIntentId!)) deviceSessionCubit.disconnected(message ?? '盒子连接验证暂未完成，可以继续验证。');
+      },
+      activeChanged: (active) {
+        deviceSessionCubit.setHandoffActive(owner, active);
+        if (active) deviceSessionCubit.disconnected('正在验证盒子网络连接。');
+        if (!active && ownedIntentId != null) deviceSessionCubit.endNetworkIntent(ownedIntentId!);
+      },
+      onCancel: (id) async {
+        final repository = provisioningRepository;
+        if (repository is DirectApHttpPreparation) await (repository as DirectApHttpPreparation).cancelDirectApHttp(id);
+      },
+      diagnostic: (event) {
+        connectionAttempts.record(event);
+        final trace = event['operation_id'] as String? ?? 'direct-ap';
+        unawaited(
+          bleConnectionDiagnosticStore.record(
+            BleConnectionDiagnosticEvent(traceId: trace, flowId: trace, occurredAt: DateTime.now(), eventType: event['event'] as String, source: 'app_network', operationName: 'direct_ap_handoff', sanitizedMessage: jsonEncode(event)),
+          ),
+        );
+      },
+    );
+  }
 
   void dispose() {
+    copyJobRecovery.dispose();
+    activeCopyJobs.dispose();
     unawaited(_sessionTrace?.cancel());
     unawaited(_deviceTrace?.cancel());
     recognitionRepository.dispose();

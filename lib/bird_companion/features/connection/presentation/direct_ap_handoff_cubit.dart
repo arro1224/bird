@@ -8,6 +8,7 @@ import 'package:aves/bird_companion/features/connection/domain/provisioning_erro
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../domain/request_id_factory.dart';
 
 enum DirectApHandoffPhase { idle, waitingForPhoneApJoin, verifyingDirectApHttp, directApConnected, directApJoinTimeout, failure }
 
@@ -50,13 +51,26 @@ final class DirectApHandoffState {
 /// One cancellable network handoff (legacy name kept for persisted AP compatibility).
 /// STA and AP share identity/authentication checks; neither reissues a BLE command.
 final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
-  DirectApHandoffCubit({required this.store, required this.verify, this.onCancel, this.activeChanged, this.window = const Duration(seconds: 90), this.retryUnit = const Duration(seconds: 1), this.diagnostic})
-    : super(const DirectApHandoffState());
+  DirectApHandoffCubit({
+    required this.store,
+    required this.verify,
+    this.onCancel,
+    this.activeChanged,
+    this.onBegin,
+    this.isIntentCurrent,
+    this.onVerificationStopped,
+    this.window = const Duration(seconds: 90),
+    this.retryUnit = const Duration(seconds: 1),
+    this.diagnostic,
+  }) : super(const DirectApHandoffState());
   static const pendingKey = 'connection:pending-direct-ap:v1';
   final DiagnosticStorage store;
   final Future<void> Function(PendingDirectAp, CancelToken) verify;
   final Future<void> Function(String deviceId)? onCancel;
   final void Function(bool active)? activeChanged;
+  final bool Function(PendingDirectAp pending, bool restored)? onBegin;
+  final bool Function(PendingDirectAp pending)? isIntentCurrent;
+  final void Function(String? message)? onVerificationStopped;
   final void Function(Map<String, dynamic>)? diagnostic;
   final Duration window, retryUnit;
   CancelToken? _cancel;
@@ -68,9 +82,12 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
   bool _backgrounded = false;
   bool _initialized = false;
   Future<void> _writes = Future<void>.value();
+  static final _storageWrites = Expando<Future<void>>();
 
   Future<void> _persist(Future<void> Function() operation) {
-    _writes = _writes.catchError((Object _) {}).then((_) => operation());
+    final previous = _storageWrites[store] ?? Future<void>.value();
+    _writes = previous.catchError((Object _) {}).then((_) => operation());
+    _storageWrites[store] = _writes;
     return _writes;
   }
 
@@ -83,7 +100,7 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
     if (raw == null) return false;
     try {
       await begin(PendingDirectAp.fromJson(raw), restored: true);
-      return true;
+      return state.active;
     } on FormatException {
       await store.remove(pendingKey);
       return false;
@@ -96,6 +113,10 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
   Future<void> begin(PendingDirectAp pending, {bool restored = false}) async {
     if (isClosed || state.active) return;
     PendingDirectAp.fromJson(pending.toJson());
+    if (pending.attemptId == null) {
+      pending = PendingDirectAp(deviceId: pending.deviceId, baseUri: pending.baseUri, operationId: pending.operationId, ssid: pending.ssid, networkMode: pending.networkMode, attemptId: SecureRequestIdFactory().create());
+    }
+    if (onBegin?.call(pending, restored) == false) return;
     final generation = ++_generation;
     _initialized = false;
     activeChanged?.call(true);
@@ -113,6 +134,7 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
 
   Future<void> continueVerification() {
     if (isClosed || !_initialized || !state.active || state.phase == DirectApHandoffPhase.directApConnected || !state.canContinue) return Future<void>.value();
+    if (isIntentCurrent?.call(state.pending!) == false) return Future<void>.value();
     if (_running != null) {
       _wakeRetry();
       return _running!;
@@ -160,7 +182,7 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
     });
     _countdown = countdown;
     try {
-      while (!isClosed && generation == _generation && !token.isCancelled && stopwatch.elapsed < window) {
+      while (!isClosed && generation == _generation && !token.isCancelled && stopwatch.elapsed < window && isIntentCurrent?.call(pending) != false) {
         if (_backgrounded) {
           await _wait(retryUnit);
           continue;
@@ -169,16 +191,20 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
         _log('direct_ap_http_attempt');
         try {
           await Future.any<void>([verify(pending, token), token.whenCancel.then<void>((error) => throw error)]);
-          if (isClosed || generation != _generation) return;
+          if (isClosed || generation != _generation || isIntentCurrent?.call(pending) == false) return;
           if (token.isCancelled) throw token.cancelError!;
-          await _persist(() => store.remove(pendingKey));
-          if (isClosed || generation != _generation || token.isCancelled) return;
+          // Verification has committed. Local cleanup has its own outcome and
+          // must never turn an authenticated connection into a join timeout.
+          deadline.cancel();
+          countdown.cancel();
           activeChanged?.call(false);
           _emit(DirectApHandoffPhase.directApConnected);
           _log('direct_ap_http_verified', {'device_id_verified': true});
+          unawaited(_clearPending(pending));
           return;
         } catch (error, stack) {
-          if (isClosed || generation != _generation || token.isCancelled) break;
+          if (isClosed || generation != _generation || isIntentCurrent?.call(pending) == false) return;
+          if (token.isCancelled) break;
           final transient = isTransientDirectApError(error);
           final classification = directApErrorKind(error);
           _log('direct_ap_http_error', {
@@ -198,15 +224,26 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
         }
         await _wait(retryUnit * state.attempt.clamp(1, 3));
       }
-      if (!isClosed && generation == _generation) {
+      if (!isClosed && generation == _generation && isIntentCurrent?.call(pending) != false) {
         _emit(DirectApHandoffPhase.directApJoinTimeout, remaining: 0, message: pending.isSta ? '验证暂未完成。请确认手机与盒子连接同一 Wi-Fi，然后继续验证，无需重新配网。' : '等待手机连接热点超时，可连接后继续验证，无需重新配对。');
-        _log('direct_ap_join_timeout');
+        _log('direct_ap_join_timeout', {'timeout_ms': window.inMilliseconds, 'final_trigger': 'handoff_deadline'});
       }
     } finally {
       deadline.cancel();
       countdown.cancel();
       if (generation == _generation) _wakeRetry();
       if (identical(_cancel, token)) _cancel = null;
+    }
+  }
+
+  Future<void> _clearPending(PendingDirectAp pending) async {
+    try {
+      await _persist(() async {
+        final raw = store.read<Map>(pendingKey);
+        if (raw?['attempt_id'] == pending.attemptId) await store.remove(pendingKey);
+      });
+    } catch (_) {
+      _log('direct_ap_pending_clear_failed');
     }
   }
 
@@ -237,6 +274,7 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
         lastError: firstError ?? state.lastError,
       ),
     );
+    if (phase == DirectApHandoffPhase.failure || phase == DirectApHandoffPhase.directApJoinTimeout) onVerificationStopped?.call(message);
   }
 
   Future<void> cancel() async {
@@ -249,14 +287,13 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
     _wakeRetry();
     _log('direct_ap_cancelled');
     _initialized = false;
-    activeChanged?.call(false);
     emit(const DirectApHandoffState());
     try {
-      await _persist(() => store.remove(pendingKey));
-    } catch (_) {
-      _log('direct_ap_pending_clear_failed');
+      if (pending != null) await _clearPending(pending);
+      if (pending != null && isIntentCurrent?.call(pending) != false) await onCancel?.call(pending.deviceId);
+    } finally {
+      activeChanged?.call(false);
     }
-    if (pending != null) await onCancel?.call(pending.deviceId);
   }
 
   @override

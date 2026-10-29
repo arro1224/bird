@@ -10,7 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('XMP 失败不能被成功 CSV 和零复制失败数掩盖', () {
     final report = CopyReport.fromJson({
-      'failed_files': 0, 'csv_status': 'success', 'export_failed_count': 1,
+      'failed_files': 0,
+      'csv_status': 'success',
+      'export_failed_count': 1,
     });
     expect(report.exportFailedCount, 1);
     expect(report.isPartialSuccess, isTrue);
@@ -311,32 +313,32 @@ void main() {
   });
 
   group('CopyTimeline.compute', () {
-    test('运行中按 stats 推导复制/校验阶段', () {
+    test('运行中不根据文件计数推断独立校验阶段', () {
       final copying = CopyTimeline.compute(
         state: CopyJobState.fromWire('running'),
         stats: CopyJobStats.fromJson({'total_files': 2, 'copied_files': 0}),
       );
       expect(copying.stages[CopyTimelineStageId.copyingFiles.index].status, CopyStageStatus.active);
-      expect(copying.stages[CopyTimelineStageId.verifyingFiles.index].status, CopyStageStatus.pending);
+      expect(copying.stages[CopyTimelineStageId.verifyingFiles.index].status, CopyStageStatus.unknown);
 
       final verifying = CopyTimeline.compute(
         state: CopyJobState.fromWire('running'),
         stats: CopyJobStats.fromJson({'total_files': 2, 'copied_files': 2}),
       );
-      expect(verifying.stages[CopyTimelineStageId.copyingFiles.index].status, CopyStageStatus.done);
-      expect(verifying.stages[CopyTimelineStageId.verifyingFiles.index].status, CopyStageStatus.active);
+      expect(verifying.stages[CopyTimelineStageId.copyingFiles.index].status, CopyStageStatus.active);
+      expect(verifying.stages[CopyTimelineStageId.verifyingFiles.index].status, CopyStageStatus.unknown);
     });
 
-    test('终态成功全 done；取消跳过审阅/同步/完成；失败标记当前阶段', () {
+    test('终态只确认整体结果；取消和失败不虚构未提供的阶段', () {
       final completed = CopyTimeline.compute(state: CopyJobState.fromWire('completed_with_errors'));
-      expect(completed.stages.every((stage) => stage.status == CopyStageStatus.done), isTrue);
+      expect(completed.stages[CopyTimelineStageId.done.index].status, CopyStageStatus.partial);
 
       final cancelled = CopyTimeline.compute(state: CopyJobState.fromWire('cancelled'));
       expect(cancelled.stages[CopyTimelineStageId.done.index].status, CopyStageStatus.skipped);
-      expect(cancelled.stages[CopyTimelineStageId.writingReview.index].status, CopyStageStatus.skipped);
+      expect(cancelled.stages[CopyTimelineStageId.writingReview.index].status, CopyStageStatus.unknown);
 
       final failed = CopyTimeline.compute(state: CopyJobState.fromWire('failed'));
-      expect(failed.stages[CopyTimelineStageId.copyingFiles.index].status, CopyStageStatus.failed);
+      expect(failed.stages[CopyTimelineStageId.copyingFiles.index].status, CopyStageStatus.unknown);
     });
   });
 }

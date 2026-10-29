@@ -19,11 +19,14 @@ void main() {
   test('lifecycle error preserves native stage and gives a reconnect action', () async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       methodChannel,
-      (_) async => throw PlatformException(code: 'ble_session_ended', details: {
-        'teardownReason': 'engine_destroyed',
-        'preparationStep': 'notification_1',
-        'failurePhase': 'restoring_notifications',
-      }),
+      (_) async => throw PlatformException(
+        code: 'ble_session_ended',
+        details: {
+          'teardownReason': 'engine_destroyed',
+          'preparationStep': 'notification_1',
+          'failurePhase': 'restoring_notifications',
+        },
+      ),
     );
     try {
       await MethodChannelBirdBoxBlePlatform().preparePairing('request', 'open_pairing');

@@ -1,3 +1,5 @@
+import 'fakes/synthetic_copy_plan.dart';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
@@ -145,6 +147,66 @@ void main() {
       expect(repository.createCalls, 1);
     });
 
+    test('任务创建后本机保存失败仍为成功，再次提交不会重复 POST', () async {
+      final repository = _CopyRepository();
+      final savedIds = <String>[];
+      final cubit = CopyConfigCubit(
+        repository,
+        batchId: 'batch-1',
+        scope: CopyScope.batchAllAssets,
+        onJobCreated: (job) async {
+          savedIds.add(job.copyJobId);
+          throw StateError('disk unavailable');
+        },
+      );
+      addTearDown(cubit.close);
+      await cubit.initialize();
+      cubit.selectTarget('media_target_1');
+      cubit.setConflictStrategy(ConflictStrategy.skip);
+      await cubit.fetchPreview();
+      expect(await cubit.submit(), isTrue);
+      expect(cubit.state.submitted, isTrue);
+      expect(cubit.state.createdJob?.copyJobId, 'copy_job_r3');
+      expect(cubit.state.error, isNull);
+      expect(cubit.state.persistenceNotice, contains('任务已创建'));
+      expect(await cubit.submit(), isFalse);
+      expect(repository.createCalls, 1);
+      expect(savedIds, ['copy_job_r3']);
+    });
+
+    test('创建响应晚于页面关闭仍记录原任务 ID', () async {
+      final repository = _CopyRepository()..pendingCreate = Completer<CopyJobSummary>();
+      final savedIds = <String>[];
+      final cubit = CopyConfigCubit(repository, batchId: 'batch-1', scope: CopyScope.batchAllAssets, onJobCreated: (job) async => savedIds.add(job.copyJobId));
+      await cubit.initialize();
+      cubit.selectTarget('media_target_1');
+      cubit.setConflictStrategy(ConflictStrategy.skip);
+      await cubit.fetchPreview();
+      final submit = cubit.submit();
+      await Future<void>.delayed(Duration.zero);
+      expect(repository.createCalls, 1);
+      await cubit.close();
+      repository.pendingCreate!.complete(const CopyJobSummary(copyJobId: 'late-job', state: 'queued', eventSeq: 0));
+      await submit;
+      expect(savedIds, ['late-job']);
+      expect(repository.createCalls, 1);
+    });
+
+    test('预检期间切换设备，不能向新盒子提交原计划', () async {
+      var available = true;
+      final repository = _CopyRepository();
+      final cubit = CopyConfigCubit(repository, batchId: 'batch-1', scope: CopyScope.batchAllAssets, canUseDevice: () => available);
+      addTearDown(cubit.close);
+      await cubit.initialize();
+      cubit.selectTarget('media_target_1');
+      cubit.setConflictStrategy(ConflictStrategy.skip);
+      await cubit.fetchPreview();
+      repository.onPreview = () => available = false;
+      expect(await cubit.submit(), isFalse);
+      expect(repository.createCalls, 0);
+      expect(cubit.state.error, isNotNull);
+    });
+
     test('full backup scope requires no batch id', () async {
       final repository = _CopyRepository();
       final cubit = CopyConfigCubit(
@@ -244,7 +306,13 @@ const _offlineTarget = StorageDeviceSummary(
   identityConfidence: 'degraded',
 );
 
-class _CopyRepository implements CopyRepository {
+class _CopyRepository with SyntheticCopyPlan implements CopyRepository {
+  @override
+  int get syntheticFileCount => 67;
+  @override
+  int get syntheticBytes => 1073741824;
+  Completer<CopyJobSummary>? pendingCreate;
+  void Function()? onPreview;
   int previewCalls = 0;
   int createCalls = 0;
   CopyRequestDraft? createdDraft;
@@ -313,8 +381,7 @@ class _CopyRepository implements CopyRepository {
   ];
 
   @override
-  Future<CopyDeviceList> devices() async =>
-      const CopyDeviceList(devices: [_sourceDevice, _target1, _target2, _offlineTarget]);
+  Future<CopyDeviceList> devices() async => const CopyDeviceList(devices: [_sourceDevice, _target1, _target2, _offlineTarget]);
 
   @override
   Future<CopySelectionSnapshot> createSelection(
@@ -329,6 +396,7 @@ class _CopyRepository implements CopyRepository {
   @override
   Future<CopyPreview> preview(CopyRequestDraft draft) async {
     previewCalls += 1;
+    onPreview?.call();
     final target = const [_target1, _target2, _offlineTarget].firstWhere((device) => device.mediaId == draft.targetMediaId);
     return CopyPreview(
       previewToken: 'preview_mock_$previewCalls',
@@ -357,6 +425,7 @@ class _CopyRepository implements CopyRepository {
   ) async {
     createCalls += 1;
     createdDraft = draft;
+    if (pendingCreate != null) return pendingCreate!.future;
     return const CopyJobSummary(
       copyJobId: 'copy_job_r3',
       state: 'queued',

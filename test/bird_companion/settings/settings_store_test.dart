@@ -100,8 +100,7 @@ void main() {
 class _MemorySettingsStore implements SettingsStore {
   _MemorySettingsStore() : snapshot = const BirdSettingsSnapshot();
 
-  _MemorySettingsStore.withJson(Map<String, dynamic> json)
-    : snapshot = BirdSettingsSnapshot.fromJson(json);
+  _MemorySettingsStore.withJson(Map<String, dynamic> json) : snapshot = BirdSettingsSnapshot.fromJson(json);
 
   BirdSettingsSnapshot snapshot;
 

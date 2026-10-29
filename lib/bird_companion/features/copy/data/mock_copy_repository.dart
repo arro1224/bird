@@ -263,15 +263,17 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
     final stats = _scopeStats(draft);
     final safetyReserve = max(target.capacityBytes ~/ 20, 1 << 30);
     final previewToken = 'preview_mock_${_nextToken()}';
-    _previewItems[previewToken] = _buildPreviewItems(stats.files, stats.conflicts);
+    final items = _buildPreviewItems(stats.files, stats.conflicts, stats.bytes, draft);
+    _previewItems[previewToken] = items;
+    final copies = items.where((item) => item.planState == CopyPlanState.copy).toList();
     return CopyPreview(
       previewToken: previewToken,
       expiresAt: _now().add(const Duration(minutes: 15)),
       source: source,
       target: target,
       logicalPhotoCount: stats.logical,
-      actualFileCount: stats.files,
-      totalBytes: stats.bytes,
+      actualFileCount: copies.length,
+      totalBytes: copies.fold(0, (sum, item) => sum + item.sourceSize!),
       rawCount: stats.raw,
       jpegCount: stats.jpeg,
       videoCount: stats.video,
@@ -625,19 +627,21 @@ class MockCopyRepository implements CopyRepository, CopyJobRepository {
     }
   }
 
-  /// 确定性预检明细：文件名按序号生成，前 [conflicts] 个标 skip。
-  List<CopyJobItem> _buildPreviewItems(int files, int conflicts) {
+  /// 合成计划，显式区分计划结论与冲突策略；非实机契约样本。
+  List<CopyJobItem> _buildPreviewItems(int files, int conflicts, int bytes, CopyRequestDraft draft) {
     return List.unmodifiable([
       for (var i = 0; i < files; i++)
         CopyJobItem(
           copyItemId: 'item_${i.toString().padLeft(4, '0')}',
+          sourceMediaId: draft.sourceMediaId,
           sourceRelativePath: 'DCIM/100MSDCF/DSC0${(5000 + i).toString()}',
-          sourceSize: 28 * 1024 * 1024,
+          sourceSize: bytes ~/ files + (i < bytes % files ? 1 : 0),
           sourceMtimeNs: 1726000000000000000 + i * 1000000000,
           targetRelativeDirectory: '20260901',
           targetFilename: 'DSC0${(5000 + i).toString()}${i.isEven ? '.ARW' : '.JPG'}',
           state: CopyItemState.pending,
-          conflictDecision: i < conflicts ? 'skip' : null,
+          planState: i < conflicts && draft.conflictStrategy == ConflictStrategy.skip ? CopyPlanState.skipConflict : CopyPlanState.copy,
+          conflictDecision: i < conflicts ? draft.conflictStrategy?.wireValue : null,
         ),
     ]);
   }
@@ -982,9 +986,7 @@ class _MockCopyItemState {
   int enteredAtMs = 0;
 
   /// jobItems 返回的展示项：失败时携带错误码与后端 message。
-  CopyJobItem get exposed => state == CopyItemState.failed && errorCode != null
-      ? item.copyWith(state: state).copyWithItem(errorCode: errorCode, errorMessage: errorMessage)
-      : item.copyWith(state: state);
+  CopyJobItem get exposed => state == CopyItemState.failed && errorCode != null ? item.copyWith(state: state).copyWithItem(errorCode: errorCode, errorMessage: errorMessage) : item.copyWith(state: state);
 }
 
 extension _MockCopyItemCopy on CopyJobItem {

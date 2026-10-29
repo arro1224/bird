@@ -14,6 +14,7 @@ class TaskHomePage extends StatelessWidget {
     this.onOpenTask,
     this.onStartTask,
     this.onOpenCopyJobs,
+    this.copyRecoveryBanner,
   });
 
   final TaskExperienceController controller;
@@ -22,6 +23,7 @@ class TaskHomePage extends StatelessWidget {
   final ValueChanged<String>? onOpenTask;
   final ValueChanged<TaskType>? onStartTask;
   final VoidCallback? onOpenCopyJobs;
+  final Widget? copyRecoveryBanner;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -42,6 +44,7 @@ class TaskHomePage extends StatelessWidget {
                   sliver: SliverList.list(
                     children: [
                       _header(context),
+                      ?copyRecoveryBanner,
                       if (controller.hasDisconnectedTask) ...[
                         const SizedBox(height: 12),
                         const TaskDisconnectedNotice(),

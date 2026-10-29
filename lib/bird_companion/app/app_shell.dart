@@ -89,6 +89,8 @@ class _BirdAppShellState extends State<BirdAppShell> with WidgetsBindingObserver
               BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
                 bloc: BirdCompanionScope.of(context).deviceSessionCubit,
                 builder: (context, state) => DisconnectedBanner(
+                  isVerifying: state.isVerifying,
+                  message: state.message,
                   isConnected: state.isConnected,
                   lastUpdatedAt: state.lastUpdatedAt,
                   onReconnect: () => openReconnectConnection(context),

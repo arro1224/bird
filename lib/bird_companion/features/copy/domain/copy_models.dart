@@ -243,6 +243,7 @@ class StorageDeviceSummary {
     required this.identityConfidence,
     this.lastSeenAt,
     this.userAlias,
+    this.productRole,
   });
 
   final String mediaId;
@@ -270,6 +271,10 @@ class StorageDeviceSummary {
   final String identityConfidence;
   final DateTime? lastSeenAt;
   final String? userAlias;
+
+  /// Optional extension. Only the confirmed import_source exclusion is used;
+  /// absence or other values fall back to capability and binding checks.
+  final String? productRole;
 
   bool get online => roleState != 'removed' && roleState != 'unavailable' && roleState != 'offline';
   bool get identityStable => identityConfidence == 'stable_uuid';
@@ -328,6 +333,7 @@ class StorageDeviceSummary {
       identityConfidence: ProtocolValidation.requiredId(json, 'identity_confidence'),
       lastSeenAt: ProtocolValidation.optionalDateTime(json, 'last_seen_at'),
       userAlias: (json['alias'] ?? json['user_alias'])?.toString(),
+      productRole: json['product_role'] as String?,
     );
   }
 }
@@ -358,11 +364,12 @@ class CopySelectionSnapshot {
 class CopyPreview {
   const CopyPreview({
     required this.previewToken,
+    this.previewId,
     required this.expiresAt,
     required this.source,
     required this.target,
     required this.logicalPhotoCount,
-    required this.actualFileCount,
+    required int actualFileCount,
     required this.totalBytes,
     required this.rawCount,
     required this.jpegCount,
@@ -375,9 +382,13 @@ class CopyPreview {
     this.unsupportedCount = 0,
     this.missingCount = 0,
     this.permissionErrorCount = 0,
-  });
+  }) : plannedFileCount = actualFileCount;
 
   final String previewToken;
+
+  /// 明细查询标识；旧协议未单独返回时才沿用 token。
+  final String? previewId;
+  String get itemsId => previewId ?? previewToken;
   final DateTime expiresAt;
   final StorageDeviceSummary source;
   final StorageDeviceSummary target;
@@ -385,8 +396,11 @@ class CopyPreview {
   /// 逻辑照片数（RAW+JPEG 视为一个）。
   final int logicalPhotoCount;
 
-  /// 实际文件数。
-  final int actualFileCount;
+  /// 计划复制文件数（planned_files 的领域映射），不包含跳过等明细。
+  final int plannedFileCount;
+
+  /// Legacy API/model callers; never use this as detail total.
+  int get actualFileCount => plannedFileCount;
   final int totalBytes;
 
   /// RAW/JPEG/视频/伴随文件分类统计。
@@ -406,7 +420,7 @@ class CopyPreview {
 
   bool get hasEnoughSpace => targetFreeBytes - safetyReserveBytes >= totalBytes;
 
-  bool get isExpired => DateTime.now().isAfter(expiresAt);
+  bool get isExpired => !DateTime.now().isBefore(expiresAt);
 
   factory CopyPreview.fromJson(Map<String, dynamic> json) {
     final rawSource = json['source'];
@@ -419,6 +433,7 @@ class CopyPreview {
     }
     return CopyPreview(
       previewToken: ProtocolValidation.requiredId(json, 'preview_token'),
+      previewId: json['preview_id'] == null ? null : ProtocolValidation.requiredId(json, 'preview_id'),
       expiresAt: _requiredDateTime(json, 'expires_at'),
       source: StorageDeviceSummary.fromJson(Map<String, dynamic>.from(rawSource)),
       target: StorageDeviceSummary.fromJson(Map<String, dynamic>.from(rawTarget)),

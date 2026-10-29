@@ -7,10 +7,12 @@ import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/core/session/secure_session_store.dart';
 import 'package:aves/bird_companion/core/session/session_credential.dart';
+import 'package:aves/bird_companion/features/connection/domain/connection_attempt.dart';
 
 class SessionAuthenticationFailure {
-  const SessionAuthenticationFailure(this.statusCode);
+  const SessionAuthenticationFailure(this.statusCode, {this.generation});
   final int statusCode;
+  final int? generation;
 }
 
 class SessionAddressChange {
@@ -59,11 +61,14 @@ class SessionCoordinator {
   SessionCredential? _activeCredential;
   bool _invalidating = false;
   int _activationGeneration = 0;
+  Future<void>? _connectingEvents;
+  Future<void> _credentialWrites = Future<void>.value();
 
   Stream<SessionAuthenticationFailure> get authenticationFailures => _authenticationFailures.stream;
   Stream<SessionAddressChange> get addressChanges => _addressChanges.stream;
   String? get activeDeviceId => _activeCredential?.deviceId;
   Uri? get activeBaseUri => _activeCredential?.baseUri;
+  bool isCurrentAuthenticationFailure(SessionAuthenticationFailure failure) => failure.generation == null || failure.generation == _activationGeneration;
 
   /// A WS socket alone is not identity proof; callers first validate public
   /// identity and a protected REST request for this exact active credential.
@@ -78,7 +83,9 @@ class SessionCoordinator {
     CancelToken? cancelToken,
   }) async {
     cancelToken?.throwIfCancellationRequested();
-    final generation = ++_activationGeneration;
+    final current = _activeCredential;
+    final sameCredential = current?.deviceId == credential.deviceId && current?.baseUri == credential.baseUri && current?.accessToken == credential.accessToken;
+    final generation = sameCredential && _eventClient.currentState != EventConnectionState.disconnected ? _activationGeneration : ++_activationGeneration;
     void checkCurrent() {
       cancelToken?.throwIfCancellationRequested();
       if (generation != _activationGeneration) throw StateError('Session activation superseded');
@@ -87,12 +94,26 @@ class SessionCoordinator {
     if (!credential.isUsableAt(_clock(), clockSkew: clockSkew)) {
       throw StateError('配对凭据已过期，请重新配对。');
     }
-    final current = _activeCredential;
-    if (current?.deviceId == credential.deviceId && current?.baseUri == credential.baseUri && current?.accessToken == credential.accessToken && _eventClient.currentState == EventConnectionState.connected) return;
+    if (sameCredential) {
+      if (_eventClient.currentState == EventConnectionState.connected) return;
+      // Reuse this authenticated socket's ongoing connect/reconnect. Restarting
+      // it for every REST retry can prevent a slow socket from ever converging.
+      if (_eventClient.currentState == EventConnectionState.connecting || _eventClient.currentState == EventConnectionState.reconnecting) {
+        await ConnectionAttempt.runFor(cancelToken, 'events', () async => await _connectingEvents);
+        checkCurrent();
+        return;
+      }
+    }
     if (persist) {
       // Persist first. A process death must never leave an active token that
       // cannot be restored securely.
-      await _store.write(credential);
+      final write = _credentialWrites.catchError((Object _) {}).then((_) async {
+        checkCurrent();
+        await _store.write(credential);
+        checkCurrent();
+      });
+      _credentialWrites = write;
+      await write;
       checkCurrent();
     }
     await _eventClient.disconnect();
@@ -109,11 +130,17 @@ class SessionCoordinator {
       query: null,
       fragment: null,
     );
-    await _eventClient.connect(
+    final connecting = _eventClient.connect(
       eventUri,
       accessToken: credential.accessToken,
       apiVersion: credential.apiVersion,
     );
+    _connectingEvents = connecting;
+    try {
+      await ConnectionAttempt.runFor(cancelToken, 'events', () => connecting);
+    } finally {
+      if (identical(_connectingEvents, connecting)) _connectingEvents = null;
+    }
     checkCurrent();
     if (!_addressChanges.isClosed) {
       _addressChanges.add(
@@ -172,12 +199,15 @@ class SessionCoordinator {
     final invalidDeviceId = _activeCredential?.deviceId;
     unawaited(
       (() async {
-        await clearMemory();
+        final clearing = clearMemory();
+        final generation = _activationGeneration;
+        await clearing;
+        if (generation != _activationGeneration) return;
         if (invalidDeviceId != null) {
           await _store.delete(invalidDeviceId);
         }
-        if (!_authenticationFailures.isClosed) {
-          _authenticationFailures.add(SessionAuthenticationFailure(statusCode));
+        if (generation == _activationGeneration && !_authenticationFailures.isClosed) {
+          _authenticationFailures.add(SessionAuthenticationFailure(statusCode, generation: generation));
         }
       })().whenComplete(() => _invalidating = false),
     );

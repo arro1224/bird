@@ -876,18 +876,20 @@ class MockBoxServer {
       _ => (body['selection_id']?.toString().length ?? 4) % 9 + 2,
     };
     final files = logical * 2 - 1;
+    final skipped = body['conflict_strategy'] == 'skip' ? 3 : 0;
     final previewToken = 'preview_mock_${_clock().millisecondsSinceEpoch}';
     _previewItemsByToken[previewToken] = [
       for (var i = 0; i < files; i++)
         {
           'copy_item_id': 'item_${i.toString().padLeft(4, '0')}',
           'source_relative_path': 'DCIM/100MSDCF/DSC0${5000 + i}',
-          'source_size': 28 * 1024 * 1024,
+          'source_size': 24 * 1024 * 1024,
           'source_mtime_ns': 1726000000000000000 + i * 1000000000,
           'target_relative_directory': '20260901',
           'target_filename': 'DSC0${5000 + i}${i.isEven ? '.ARW' : '.JPG'}',
           'state': 'pending',
-          if (i < 3) 'conflict_decision': 'skip',
+          if (i < 3) 'conflict_decision': body['conflict_strategy'],
+          'plan_state': i < skipped ? 'skip_conflict' : 'copy',
         },
     ];
     await _json(request, HttpStatus.ok, {
@@ -896,8 +898,8 @@ class MockBoxServer {
       'source': _mockCameraDevice(),
       'target': _mockUsbDevice(),
       'logical_photo_count': logical,
-      'actual_file_count': files,
-      'total_bytes': files * 24 * 1024 * 1024,
+      'actual_file_count': files - skipped,
+      'total_bytes': (files - skipped) * 24 * 1024 * 1024,
       'raw_count': logical,
       'jpeg_count': logical - 1,
       'video_count': 0,

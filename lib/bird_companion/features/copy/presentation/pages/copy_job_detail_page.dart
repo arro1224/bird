@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
+import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
@@ -8,6 +9,8 @@ import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_repository.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_timeline.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_job_presentation.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_job_detail_cubit.dart';
 import 'package:aves/bird_companion/features/copy/presentation/widgets/copy_job_timeline.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_design_components.dart';
@@ -15,49 +18,80 @@ import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_nat
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-/// 复制任务详情页（RC3 任务闭环主页面，审计 P0-3 验收：
-/// “创建任务后能进入任务详情，能看到真实状态、文件数和结果”）。
 class CopyJobDetailPage extends StatefulWidget {
-  const CopyJobDetailPage({super.key, required this.copyJobId, this.repository});
+  const CopyJobDetailPage({super.key, required this.copyJobId, this.deviceId, this.createdJob, this.repository, this.deviceReader});
 
   final String copyJobId;
-
-  /// 测试注入；生产从 [BirdCompanionScope] 取 `copyJobRepository`。
+  final String? deviceId;
+  final CopyJobSummary? createdJob;
   final CopyJobRepository? repository;
+  final Future<CopyDeviceList> Function()? deviceReader;
 
   @override
   State<CopyJobDetailPage> createState() => _CopyJobDetailPageState();
 }
 
 class _CopyJobDetailPageState extends State<CopyJobDetailPage> {
-  CopyJobDetailCubit? _cubit;
+  String? _deviceId;
+
+  @override
+  void didUpdateWidget(CopyJobDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.copyJobId != widget.copyJobId || oldWidget.deviceId != widget.deviceId) _deviceId = null;
+  }
 
   @override
   Widget build(BuildContext context) {
-    // repository 必须在页面自己的 build 里解析：create 回调内调用
-    // BirdCompanionScope.maybeOf 会触发 dependOnInheritedWidget，
-    // 属于 provider 禁止的 "listen during create" 生命周期（真机红屏）。
-    final repository =
-        widget.repository ?? BirdCompanionScope.maybeOf(context)!.copyJobRepository;
+    // Resolve inherited dependencies before provider.create, never inside it.
+    final dependencies = widget.repository == null ? BirdCompanionScope.maybeOf(context) : null;
+    final repository = widget.repository ?? dependencies!.copyJobRepository;
+    _deviceId ??= widget.deviceId ?? dependencies?.deviceSessionCubit.state.device?.id;
+    final deviceId = _deviceId;
+    final jobId = widget.copyJobId;
     return BlocProvider<CopyJobDetailCubit>(
-      create: (_) => _cubit ??= CopyJobDetailCubit(repository, copyJobId: widget.copyJobId),
-      child: const _CopyJobDetailView(),
+      key: ValueKey((jobId, deviceId, repository)),
+      create: (_) => CopyJobDetailCubit(
+        repository,
+        copyJobId: jobId,
+        deviceId: deviceId,
+        deviceReader: widget.deviceReader ?? dependencies?.copyRepository.devices,
+        activeJobs: dependencies?.activeCopyJobs,
+        diagnostics: dependencies?.copyDiagnostics,
+        detailReader: dependencies == null ? null : (trigger) => dependencies.copyJobRecovery.readJob(deviceId ?? '', jobId, trigger: trigger),
+        canRead: dependencies == null ? null : () => deviceId != null && dependencies.copyJobRecovery.canRead(deviceId),
+        sessionRefreshes: dependencies?.copyJobRecovery.sessionRefreshes,
+      ),
+      child: _CopyJobDetailView(createdJob: widget.createdJob),
     );
   }
 }
 
 class _CopyJobDetailView extends StatefulWidget {
-  const _CopyJobDetailView();
+  const _CopyJobDetailView({this.createdJob});
+  final CopyJobSummary? createdJob;
 
   @override
   State<_CopyJobDetailView> createState() => _CopyJobDetailViewState();
 }
 
-class _CopyJobDetailViewState extends State<_CopyJobDetailView> {
+class _CopyJobDetailViewState extends State<_CopyJobDetailView> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    context.read<CopyJobDetailCubit>().load();
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    context.read<CopyJobDetailCubit>().startPolling(foreground: lifecycle == null || lifecycle == AppLifecycleState.resumed);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    context.read<CopyJobDetailCubit>().setForeground(state == AppLifecycleState.resumed);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override
@@ -80,27 +114,33 @@ class _CopyJobDetailViewState extends State<_CopyJobDetailView> {
               }
             },
             builder: (context, state) {
-              final detail = state.detail;
-              if (detail == null) {
-                if (state.loading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+              if (state.detail == null) {
+                if (state.loading && state.error == null) return const Center(child: CircularProgressIndicator());
                 final error = state.error;
                 return _FirstLoadErrorView(
-                  title: error == null ? '任务不存在' : UserMessageMapper.fromError(error).title,
-                  message: error == null
-                      ? '未找到该复制任务，可能已被盒子清理。'
+                  jobId: cubit.copyJobId,
+                  title: !cubit.deviceAvailable
+                      ? '请连接原盒子'
+                      : state.jobMissing
+                      ? '任务已不存在或已被清理'
+                      : error == null
+                      ? '正在读取任务'
+                      : UserMessageMapper.fromError(error).title,
+                  message: !cubit.deviceAvailable
+                      ? '连接创建此任务的盒子后，将自动继续读取进度。'
+                      : error == null
+                      ? '正在读取盒子上的任务状态。'
                       : UserMessageMapper.fromError(error).message,
-                  // 首次加载失败（网络抖动/瞬时超时）不代表任务消失：盒子上的
-                  // 任务可能仍在继续（返修 P0-2），自动退避轮询同一 job_id。
+                  automatic: !state.jobMissing && cubit.deviceAvailable,
                   onRetry: cubit.load,
-                  onPoll: cubit.pollTick,
+                  createdJob: widget.createdJob,
                 );
               }
               return _DetailView(
                 state: state,
+                deviceAvailable: cubit.deviceAvailable,
                 onRefresh: cubit.load,
-                onPoll: cubit.pollTick,
+                onRetrySupplemental: cubit.retrySupplemental,
                 onAction: cubit.act,
                 onLoadMoreFailed: cubit.loadMoreFailedItems,
               );
@@ -112,222 +152,91 @@ class _CopyJobDetailViewState extends State<_CopyJobDetailView> {
   }
 }
 
-/// 首次详情加载失败页：保留错误展示 + 手动重试，同时自动退避轮询
-/// （2s→4s→8s→…上限 15s）。任务可能仍在盒子上运行，轮询成功即正常
-/// 进入详情页（返修 P0-2：单次失败不能让页面停止刷新）。
-class _FirstLoadErrorView extends StatefulWidget {
-  const _FirstLoadErrorView({
-    required this.title,
-    required this.message,
-    required this.onRetry,
-    required this.onPoll,
-  });
-
-  final String title;
-  final String message;
+/// Scheduling belongs to the Cubit, so loading/error rebuilds cannot reset it.
+class _FirstLoadErrorView extends StatelessWidget {
+  const _FirstLoadErrorView({required this.jobId, required this.title, required this.message, required this.automatic, required this.onRetry, this.createdJob});
+  final String jobId, title, message;
+  final bool automatic;
   final Future<void> Function() onRetry;
-  final Future<void> Function() onPoll;
+  final CopyJobSummary? createdJob;
 
   @override
-  State<_FirstLoadErrorView> createState() => _FirstLoadErrorViewState();
-}
-
-class _FirstLoadErrorViewState extends State<_FirstLoadErrorView> with WidgetsBindingObserver {
-  Timer? _timer;
-  Duration _backoff = const Duration(seconds: 2);
-  bool _waiting = false;
-
-  static const _maxBackoff = Duration(seconds: 15);
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _scheduleTick();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _backoff = const Duration(seconds: 2);
-      unawaited(_tick());
-    }
-    _syncTimer();
-  }
-
-  bool get _resumed =>
-      WidgetsBinding.instance.lifecycleState == null ||
-      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
-
-  void _scheduleTick() {
-    _timer?.cancel();
-    if (!_resumed) {
-      _timer = null;
-      return;
-    }
-    _timer = Timer(_backoff, _tick);
-  }
-
-  void _syncTimer() {
-    if (!_resumed) {
-      _timer?.cancel();
-      _timer = null;
-    } else if (_timer == null) {
-      _scheduleTick();
-    }
-  }
-
-  Future<void> _tick() async {
-    if (!mounted || _waiting) return;
-    _waiting = true;
-    try {
-      await widget.onPoll();
-      // 轮询成功说明盒子可读；失败状态下 pollTick 内部转调 load()，
-      // 成功后整个页面被 detail 非空的分支替换，本组件随之销毁。
-      _backoff = (_backoff * 2) > _maxBackoff ? _maxBackoff : _backoff * 2;
-    } on Object {
-      // 请求本身抛错也继续退避，不在错误页叠加错误。
-    } finally {
-      _waiting = false;
-      if (mounted) _scheduleTick();
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      children: [
-        ErrorNotice(title: widget.title, message: widget.message, onRetry: widget.onRetry),
-        const SizedBox(height: 4),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: Text(
-            '盒子上的任务可能仍在继续，将自动重试读取进度；也可手动重试。',
-            style: TextStyle(color: AppColors.inkMuted, fontSize: 12.5),
-          ),
+  Widget build(BuildContext context) => ListView(
+    children: [
+      ErrorNotice(title: title, message: message, onRetry: onRetry),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        child: Text('任务编号 $jobId', style: const TextStyle(color: AppColors.inkMuted, fontSize: 12.5)),
+      ),
+      if (createdJob != null)
+        Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Text('任务已创建；创建时状态：${CopyJobState.fromWire(createdJob!.state).label}。当前进度正在读取。'),
         ),
-      ],
-    );
-  }
+      if (automatic)
+        const Padding(
+          padding: EdgeInsets.all(AppSpacing.md),
+          child: Text('盒子上的任务可能仍在继续，将自动重试读取进度；也可手动重试。', style: TextStyle(color: AppColors.inkMuted, fontSize: 12.5)),
+        ),
+      TextButton(onPressed: () => Navigator.of(context).pushReplacementNamed(BirdRoutes.copyJobs), child: const Text('查看复制任务列表')),
+    ],
+  );
 }
 
-/// 按任务状态驱动轮询：运行态 2s / 等待设备 5s / 终态停止；后台不轮询，
-/// 回前台立即 tick 一次（AppLifecycleListener）。
-class _DetailView extends StatefulWidget {
-  const _DetailView({
-    required this.state,
-    required this.onRefresh,
-    required this.onPoll,
-    required this.onAction,
-    required this.onLoadMoreFailed,
-  });
-
+class _DetailView extends StatelessWidget {
+  const _DetailView({required this.state, required this.deviceAvailable, required this.onRefresh, required this.onRetrySupplemental, required this.onAction, required this.onLoadMoreFailed});
   final CopyJobDetailState state;
-  final Future<void> Function() onRefresh;
-  final Future<void> Function() onPoll;
+  final bool deviceAvailable;
+  final Future<void> Function() onRefresh, onRetrySupplemental;
   final ValueChanged<CopyAllowedAction> onAction;
   final VoidCallback onLoadMoreFailed;
 
   @override
-  State<_DetailView> createState() => _DetailViewState();
-}
-
-class _DetailViewState extends State<_DetailView> with WidgetsBindingObserver {
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _syncTimer();
-  }
-
-  @override
-  void didUpdateWidget(_DetailView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _syncTimer();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _pollEnabled) {
-      widget.onPoll();
-    }
-    _syncTimer();
-  }
-
-  bool get _lifecycleResumed =>
-      WidgetsBinding.instance.lifecycleState == null ||
-      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
-
-  bool get _pollEnabled =>
-      _lifecycleResumed && !(widget.state.detail?.state.isTerminal ?? true);
-
-  void _syncTimer() {
-    final waiting = widget.state.detail?.state.isWaitingDevice ?? false;
-    final interval = waiting ? const Duration(seconds: 5) : const Duration(seconds: 2);
-    if (!_pollEnabled) {
-      _timer?.cancel();
-      _timer = null;
-      _currentInterval = null;
-      return;
-    }
-    if (_timer != null && _timer!.isActive && _currentInterval == interval) return;
-    _timer?.cancel();
-    _currentInterval = interval;
-    _timer = Timer.periodic(interval, (_) => widget.onPoll());
-  }
-
-  Duration? _currentInterval;
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final detail = widget.state.detail!;
+    final detail = state.detail!;
     return RefreshIndicator(
-      onRefresh: widget.onRefresh,
+      onRefresh: onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
           _WaitingBanner(state: detail.state),
-          _StateHeader(detail: detail, state: widget.state),
-          _ProgressCard(detail: detail),
+          _StateHeader(detail: detail, state: state),
+          if (state.error != null)
+            ErrorNotice(
+              title: state.jobMissing
+                  ? '任务已不存在或已被清理'
+                  : deviceAvailable
+                  ? '暂时无法读取最新进度'
+                  : '请连接原盒子',
+              message: '以上为最后一次读取的状态。连接创建此任务的盒子后可继续读取。',
+              onRetry: onRefresh,
+            ),
+          _ProgressCard(detail: detail, report: state.report),
           const SizedBox(height: 12),
           CopyJobTimeline(
-            timeline: CopyTimeline.compute(state: detail.state, stats: detail.stats),
+            timeline: CopyTimeline.compute(state: detail.state, stats: detail.stats, report: state.report, reviewExportEnabled: detail.reviewExportEnabled),
           ),
           const SizedBox(height: 12),
-          _DeviceSnapshotCard(detail: detail),
+          _DeviceSnapshotCard(detail: detail, report: state.report, devices: state.devices, sourceSnapshot: state.sourceNameSnapshot, targetSnapshot: state.targetNameSnapshot),
           const SizedBox(height: 12),
-          _ActionsSection(
-            detail: detail,
-            acting: widget.state.acting,
-            onAction: widget.onAction,
-          ),
-          if (widget.state.failedItems.isNotEmpty || detail.state.isTerminal) ...[
+          _ActionsSection(detail: detail, acting: state.acting || !deviceAvailable || state.jobMissing, onAction: onAction),
+          if (state.eventsError != null || state.reportError != null || state.failedItemsError != null)
+            ErrorNotice(
+              title: '部分任务信息暂不可用',
+              message: [if (state.eventsError != null) '任务动态读取失败', if (state.reportError != null) '结果报告读取失败', if (state.failedItemsError != null) '失败项读取失败'].join('；'),
+              onRetry: onRetrySupplemental,
+            ),
+          if (state.failedItems.isNotEmpty || detail.state.isTerminal) ...[
             const SizedBox(height: 12),
-            _FailedItemsSection(state: widget.state, onLoadMore: widget.onLoadMoreFailed),
+            _FailedItemsSection(state: state, onLoadMore: onLoadMoreFailed),
           ],
-          if (widget.state.report != null) ...[
+          if (state.report != null) ...[
             const SizedBox(height: 12),
-            _ReportCard(report: widget.state.report!),
+            _ReportCard(report: state.report!, taskState: detail.state),
           ],
           const SizedBox(height: 12),
-          _EventsSection(state: widget.state),
+          _EventsSection(state: state),
         ],
       ),
     );
@@ -392,7 +301,9 @@ class _StateHeader extends StatelessWidget {
     final partial = state.report?.isPartialSuccess ?? false;
     final color = switch (detail.state.wire) {
       'completed' when !partial => AppColors.success,
-      'completed_with_errors' || 'failed' => AppColors.danger,
+      'completed' when partial => AppColors.warning,
+      'completed_with_errors' => AppColors.warning,
+      'failed' => AppColors.danger,
       'cancelled' => AppColors.inkMuted,
       _ => AppColors.forestPrimary,
     };
@@ -415,7 +326,7 @@ class _StateHeader extends StatelessWidget {
                   borderRadius: BorderRadius.circular(99),
                 ),
                 child: Text(
-                  detail.state.label,
+                  detail.state == CopyJobState.completed && partial ? '部分完成' : detail.state.label,
                   style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12.5),
                 ),
               ),
@@ -432,61 +343,45 @@ class _StateHeader extends StatelessWidget {
   }
 }
 
-/// 进度卡：后端 P1-5 反馈当前进度为假值——0/null 一律不渲染。
+/// Outcomes, byte counts and box timing remain distinct from job completion.
 class _ProgressCard extends StatelessWidget {
-  const _ProgressCard({required this.detail});
-
+  const _ProgressCard({required this.detail, this.report});
   final CopyJobDetail detail;
+  final CopyReport? report;
 
   @override
   Widget build(BuildContext context) {
-    final stats = detail.stats;
-    final progress = stats?.effectiveProgressPercent;
-    if (stats == null || progress == null || progress <= 0) {
-      return const SizedBox.shrink();
-    }
-    final total = stats.totalFiles;
-    final done = stats.copiedFiles + stats.failedFiles + stats.skippedFiles;
+    final frozen = detail.state.isTerminal ? report : null;
+    final progress = frozen == null ? CopyTaskProgress.fromStats(detail.stats, detail.state) : CopyTaskProgress.fromReport(frozen);
+    final timing = CopyTaskTiming.forTask(detail, frozen);
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: TaskSurface(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const TaskSectionTitle('复制进度'),
-            Row(
-              children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: LinearProgressIndicator(
-                      value: progress.clamp(0.0, 1.0),
-                      minHeight: 9,
-                      color: AppColors.forestPrimary,
-                      backgroundColor: AppColors.forestSoft,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '${(progress * 100).toStringAsFixed(0)}%',
-                  style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.forestPrimary),
-                ),
-              ],
+            const TaskSectionTitle('任务处理情况'),
+            if (progress.percent != null) ...[
+              LinearProgressIndicator(key: const Key('copy-job-progress-bar'), value: progress.percent, minHeight: 9, color: AppColors.forestPrimary, backgroundColor: AppColors.forestSoft),
+              Text('${(progress.percent! * 100).toStringAsFixed(0)}%', key: const Key('copy-job-progress-percent')),
+            ] else
+              const Text('进度百分比暂不可用', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+            const SizedBox(height: 6),
+            Text(
+              progress.summary(detail.state),
+              key: const Key('copy-job-outcomes'),
+              style: const TextStyle(fontSize: 12.5, color: AppColors.inkMuted),
             ),
-            if (total > 0) ...[
-              const SizedBox(height: 6),
-              Text(
-                '文件 $done/$total'
-                '${stats.failedFiles > 0 ? '，失败 ${stats.failedFiles}' : ''}'
-                '${stats.skippedFiles > 0 ? '，同名跳过 ${stats.skippedFiles}' : ''}',
-                style: const TextStyle(fontSize: 12.5, color: AppColors.inkMuted),
-              ),
-            ],
-            if (stats.currentFile?.trim().isNotEmpty == true) ...[
+            if (progress.total != null) Text('盒子文件总数：${progress.total}', style: const TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+            if (frozen == null && progress.copiedBytes != null) Text('已复制字节：${formatBytes(progress.copiedBytes!)}'),
+            const SizedBox(height: 6),
+            Text('耗时（盒子统计）：${timing.elapsedLabel}', key: const Key('copy-job-elapsed')),
+            Text('速度（盒子统计）：${timing.speedLabel}', key: const Key('copy-job-speed')),
+            Text('统计来源：${timing.source}', style: const TextStyle(fontSize: 11, color: AppColors.inkMuted)),
+            if (!detail.state.isTerminal && detail.stats?.currentFile?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 4),
               Text(
-                '当前：${stats.currentFile}',
+                '当前：${detail.stats!.currentFile}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
@@ -500,9 +395,12 @@ class _ProgressCard extends StatelessWidget {
 }
 
 class _DeviceSnapshotCard extends StatelessWidget {
-  const _DeviceSnapshotCard({required this.detail});
+  const _DeviceSnapshotCard({required this.detail, this.report, this.devices = const [], this.sourceSnapshot, this.targetSnapshot});
 
   final CopyJobDetail detail;
+  final CopyReport? report;
+  final List<StorageDeviceSummary> devices;
+  final CopyJobDeviceSnapshot? sourceSnapshot, targetSnapshot;
 
   @override
   Widget build(BuildContext context) => TaskSurface(
@@ -510,14 +408,14 @@ class _DeviceSnapshotCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const TaskSectionTitle('存储设备'),
-        _deviceRow('源设备', detail.sourceDevice),
+        _deviceRow('源设备', copyTaskDeviceName(source: true, snapshot: sourceSnapshot ?? detail.sourceDevice, reportSnapshot: report?.sourceDevice, devices: devices)),
         const Divider(height: 20),
-        _deviceRow('目标设备', detail.targetDevice),
+        _deviceRow('目标设备', copyTaskDeviceName(source: false, snapshot: targetSnapshot ?? detail.targetDevice, reportSnapshot: report?.targetDevice, devices: devices)),
       ],
     ),
   );
 
-  Widget _deviceRow(String label, CopyJobDeviceSnapshot? device) => Row(
+  Widget _deviceRow(String label, String name) => Row(
     children: [
       SizedBox(
         width: 72,
@@ -525,7 +423,7 @@ class _DeviceSnapshotCard extends StatelessWidget {
       ),
       Expanded(
         child: Text(
-          device?.presentationLabel ?? '—',
+          name,
           style: const TextStyle(fontWeight: FontWeight.w600),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -692,7 +590,7 @@ class _FailedItemsSection extends StatelessWidget {
       children: [
         TaskSectionTitle('失败项（${state.failedItems.length}）'),
         if (state.failedItems.isEmpty)
-          const Text('没有失败项。', style: TextStyle(fontSize: 13, color: AppColors.inkMuted))
+          Text(state.failedItemsError == null ? '没有失败项。' : '失败项尚未读取，请重试。', style: const TextStyle(fontSize: 13, color: AppColors.inkMuted))
         else
           for (final (index, item) in state.failedItems.indexed)
             Padding(
@@ -736,15 +634,27 @@ class _FailedItemsSection extends StatelessWidget {
 /// 终态报告卡：部分成功不得显示成成功（迁移对照 §3.6）。
 /// 审阅导出结果（XMP/CSV/嵌入）有数据时必须展示，CSV 失败计为部分完成。
 class _ReportCard extends StatelessWidget {
-  const _ReportCard({required this.report});
+  const _ReportCard({required this.report, required this.taskState});
 
   final CopyReport report;
+  final CopyJobState taskState;
 
   @override
   Widget build(BuildContext context) {
-    final partial = report.isPartialSuccess;
-    final accent = partial ? AppColors.warning : AppColors.success;
-    final title = partial ? '部分完成（有失败项）' : '复制完成';
+    final partial = report.isPartialSuccess || taskState == CopyJobState.completedWithErrors;
+    final unsuccessful = taskState == CopyJobState.failed || taskState == CopyJobState.cancelled;
+    final accent = unsuccessful
+        ? AppColors.danger
+        : partial
+        ? AppColors.warning
+        : AppColors.success;
+    final title = taskState == CopyJobState.failed
+        ? '任务失败报告'
+        : taskState == CopyJobState.cancelled
+        ? '任务取消报告'
+        : partial
+        ? '部分完成（有失败或降级）'
+        : '复制完成';
     return TaskSurface(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -753,25 +663,27 @@ class _ReportCard extends StatelessWidget {
             children: [
               Expanded(child: TaskSectionTitle(title)),
               Icon(
-                partial ? Icons.report : Icons.verified_outlined,
+                unsuccessful
+                    ? Icons.cancel_outlined
+                    : partial
+                    ? Icons.report
+                    : Icons.verified_outlined,
                 color: accent,
               ),
             ],
           ),
+          Text(CopyTaskProgress.fromReport(report).summary(taskState), key: const Key('copy-report-outcomes')),
           _metric('实际文件数', '${report.actualFileCount ?? '—'}'),
           _metric('已复制', '${report.copiedFiles ?? '—'}'),
           _metric('失败', '${report.failedFiles ?? '—'}', danger: (report.failedFiles ?? 0) > 0),
           _metric('同名跳过', '${report.skippedFiles ?? '—'}'),
           _metric('不适用', '${report.notApplicableFiles ?? '—'}'),
-          if (report.totalBytes != null)
-            _metric('总字节数', _bytes(report.totalBytes!)),
-          if (report.elapsedSeconds != null)
-            _metric('耗时', _duration(report.elapsedSeconds!)),
-          if (report.bytesPerSecond != null)
-            _metric('有效吞吐', '${_bytes(report.bytesPerSecond!)}/s'),
+          if (report.totalBytes != null) _metric('总字节数', _bytes(report.totalBytes!)),
+          _metric('耗时（盒子统计）', CopyTaskTiming.fromReport(report).elapsedLabel),
+          _metric('速度（盒子统计）', CopyTaskTiming.fromReport(report).speedLabel),
           if (_hasReviewExportMetrics) ...[
             const Divider(height: 20),
-            _metric('审阅 XMP', '${report.xmpCount ?? 0}'),
+            _metric('审阅 XMP', '${report.xmpCount ?? '—'}'),
             _metric(
               '审阅 CSV',
               switch (report.csvStatus) {
@@ -783,12 +695,11 @@ class _ReportCard extends StatelessWidget {
               },
               danger: report.csvStatus == 'failed',
             ),
-            if ((report.exportFailedCount ?? 0) > 0)
-              _metric('审阅导出失败', '${report.exportFailedCount}', danger: true),
+            if ((report.exportFailedCount ?? 0) > 0) _metric('审阅导出失败', '${report.exportFailedCount}', danger: true),
             if (report.embedSuccessCount != null || report.embedDegradedCount != null)
               _metric(
                 '嵌入副本',
-                '${report.embedSuccessCount ?? 0} 成功${(report.embedDegradedCount ?? 0) > 0 ? ' · ${report.embedDegradedCount} 降级外置' : ''}',
+                '${report.embedSuccessCount ?? '—'} 成功${(report.embedDegradedCount ?? 0) > 0 ? ' · ${report.embedDegradedCount} 降级外置' : ''}',
                 danger: (report.embedDegradedCount ?? 0) > 0,
               ),
           ],
@@ -798,11 +709,7 @@ class _ReportCard extends StatelessWidget {
   }
 
   /// 后端返回了任一审阅导出字段才渲染导出区（字段缺失不占位）。
-  bool get _hasReviewExportMetrics =>
-      report.xmpCount != null ||
-      report.csvStatus != null ||
-      report.embedSuccessCount != null ||
-      report.embedDegradedCount != null;
+  bool get _hasReviewExportMetrics => report.xmpCount != null || report.csvStatus != null || report.embedSuccessCount != null || report.embedDegradedCount != null;
 
   Widget _metric(String label, String value, {bool danger = false}) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 3),
@@ -830,14 +737,6 @@ class _ReportCard extends StatelessWidget {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / 1024).toStringAsFixed(0)} KB';
-  }
-
-  String _duration(int seconds) {
-    if (seconds >= 60) {
-      final minutes = seconds ~/ 60;
-      return '$minutes 分 ${seconds % 60} 秒';
-    }
-    return '$seconds 秒';
   }
 }
 

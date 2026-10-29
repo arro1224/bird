@@ -107,7 +107,6 @@ Future<B12AK7AcceptanceReport> runB12AK7Acceptance(
     final thumbnail = await client.downloadSignedBytes(thumbnailUri!);
     _require(thumbnail.bytes.length > 1000, '白鹭 thumbnail is empty');
 
-
     final jobApi = JobApi(client);
     final initialJobs = await jobApi.page(pageSize: 100);
     final exercisedJobs = <String>[];
