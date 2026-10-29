@@ -1396,6 +1396,9 @@ class MockBoxServer {
     final state = job['state'] as String;
     final startedAt = job['started_at'] as String?;
     final now = _clock();
+    // 终态耗时冻结（B6 2026-10-23 §3.4）：以 finished_at 为止点，不随读数继续增长。
+    final finishedAt = _copyJobIsTerminal(state) ? DateTime.tryParse(job['finished_at'] as String? ?? '') : null;
+    final elapsedEnd = finishedAt ?? now;
     return {
       'total_files': total,
       'copied_files': copied,
@@ -1404,7 +1407,7 @@ class MockBoxServer {
       'not_applicable_files': notApplicable,
       'total_bytes': total * itemBytes,
       'copied_bytes': copied * itemBytes,
-      'elapsed_seconds': startedAt == null ? null : now.difference(DateTime.parse(startedAt)).inSeconds,
+      'elapsed_seconds': startedAt == null ? null : elapsedEnd.difference(DateTime.parse(startedAt)).inSeconds,
       'eta_seconds': _copyJobIsTerminal(state) || total == 0 ? null : max(total - copied - failed - skipped - notApplicable, 1) * 2,
       'bytes_per_second': state == 'running' ? itemBytes ~/ 2 : null,
       'current_file': state == 'running'
