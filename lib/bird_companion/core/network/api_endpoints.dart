@@ -14,6 +14,13 @@ abstract final class ApiEndpoints {
   static String smartFollowSession(String sessionId) => '$apiV1Prefix/smart-follow-sessions/$sessionId';
   static String smartFollowCopyJobs(String sessionId) => '${smartFollowSession(sessionId)}/copy-jobs';
   static String smartFollowActions(String sessionId) => '${smartFollowSession(sessionId)}/actions';
+  // SmartFollow 信息统一更新（联合开发任务书 §6.8）。与上面四项同在
+  // /api/v1 下，同样不进上方冻结的 birdbox-v1@1.0.0 清单。
+  static String smartFollowMetadataAvailability(String sessionId) => '${smartFollowSession(sessionId)}/metadata-update-availability';
+  static String smartFollowMetadataPreview(String sessionId) => '${smartFollowSession(sessionId)}/metadata-updates/preview';
+  static String smartFollowMetadataUpdates(String sessionId) => '${smartFollowSession(sessionId)}/metadata-updates';
+  static const smartFollowMetadataPreviewDetail = '$apiV1Prefix/smart-follow-metadata-previews/{previewId}';
+  static const smartFollowMetadataUpdateDetail = '$apiV1Prefix/smart-follow-metadata-updates/{updateId}';
   static final mediaPathPattern = RegExp('^${RegExp.escape(apiV1Prefix)}/files/[^/]+/(thumbnail|preview)\$');
   static const pairing = '$apiV1Prefix/pairing';
   static const deviceStatus = '/api/v1/device/status';

@@ -2,6 +2,7 @@ import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
+import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_models.dart';
 import 'package:dio/dio.dart';
 
 class UserMessage {
@@ -38,6 +39,13 @@ abstract final class UserMessageMapper {
   }
 
   static UserMessage fromError(Object error) {
+    if (error is SmartFollowOutcomeUnknown) {
+      return const UserMessage(
+        title: '还没确认跟随是否已开始',
+        message: '创建请求超时，盒子可能已经开始跟随。请不要新建任务；点“重试”会用同一次请求去查询原结果。',
+        actionLabel: '重试',
+      );
+    }
     if (error is ProvisioningCredentialSaveException) {
       return const UserMessage(title: '连接凭据未保存', message: '设备授权已完成，但手机未能保存连接凭据。请重试保存。', actionLabel: '重试保存连接');
     }
@@ -224,6 +232,87 @@ abstract final class UserMessageMapper {
           '审阅信息导出暂不可用',
           error,
           '盒子暂时无法导出审阅信息，照片副本本身不受影响。',
+        ),
+        // SmartFollow 边识别边复制（联合开发任务书 §8 最低集合，14 条）。
+        // 后端 message 已是普通语言时优先展示；否则用 App 侧说明，绝不把
+        // "连接超时"当通用兜底（App 修改任务书 §8）。
+        'SMART_FOLLOW_UNAVAILABLE' => _copyMessage(
+          '当前盒子不支持边识别边复制',
+          error,
+          '盒子固件没有开放这个能力，请升级盒子后再使用；现在仍可复制已识别的照片。',
+        ),
+        'SMART_FOLLOW_ALREADY_ACTIVE' => _copyMessage(
+          '这个识别任务已经在跟随复制',
+          error,
+          '已为你打开原来的跟随任务，不会创建第二个。',
+          actionLabel: '查看进度',
+        ),
+        'SMART_FOLLOW_JOB_NOT_RUNNING' => _copyMessage(
+          '识别任务当前没有运行',
+          error,
+          '只有正在识别的任务才能开启边识别边复制；可以先开始识别再试。',
+        ),
+        'SMART_FOLLOW_JOB_ALREADY_TERMINAL' => _copyMessage(
+          '识别已经结束',
+          error,
+          '这一轮识别已经完成，请直接使用“复制已识别照片”。',
+        ),
+        'SMART_FOLLOW_TARGET_UNAVAILABLE' => _copyMessage(
+          '等待目标存储设备',
+          error,
+          '目标盘当前不在线或不可写入。插回原来的目标盘后会继续，不会自动换到其他盘。',
+          actionLabel: '重试',
+        ),
+        'SMART_FOLLOW_SOURCE_UNAVAILABLE' => _copyMessage(
+          '等待原相机卡',
+          error,
+          '复制还需要原相机卡，请插回同一张卡后继续。',
+          actionLabel: '重试',
+        ),
+        'SMART_FOLLOW_TARGET_IDENTITY_CHANGED' => _copyMessage(
+          '插入了不同的目标盘',
+          error,
+          '当前插入的存储设备与任务记录的不一致，已暂停写入；请插回原来的目标盘。',
+        ),
+        'SMART_FOLLOW_INSUFFICIENT_SPACE' => _copyMessage(
+          '目标盘空间不足',
+          error,
+          '目标盘剩余空间不够继续复制，请更换目标盘或减少复制范围。',
+          actionLabel: '重试',
+        ),
+        'SMART_FOLLOW_STATE_VERSION_CONFLICT' => _copyMessage(
+          '跟随任务状态已更新',
+          error,
+          '盒子上的状态刚刚变化，已经为你刷新；请确认最新状态后再操作。',
+          actionLabel: '重新加载',
+        ),
+        'SMART_FOLLOW_ACTION_NOT_ALLOWED' => _copyMessage(
+          '当前操作不可用',
+          error,
+          '这个状态不允许该操作，请按页面上的可用按钮操作。',
+          actionLabel: '重新加载',
+        ),
+        'SMART_FOLLOW_IDEMPOTENCY_CONFLICT' => _copyMessage(
+          '请求与之前的记录不一致',
+          error,
+          '同一次创建请求被用于不同内容，已停止以免重复建任务；请返回后重新确认。',
+        ),
+        'SMART_FOLLOW_RECONCILIATION_REQUIRED' => _copyMessage(
+          '识别结果需要核对',
+          error,
+          '盒子发现识别结果与最终记录不一致，已停止自动复制；已复制的照片保留，请查看诊断信息。',
+          actionLabel: '查看详情',
+        ),
+        'SMART_FOLLOW_METADATA_NOT_AVAILABLE' => _copyMessage(
+          '当前没有可更新的信息',
+          error,
+          '没有检测到比副本更新的识别或审阅信息，照片副本不受影响。',
+        ),
+        'SMART_FOLLOW_METADATA_PARTIAL_CONFIRMATION_REQUIRED' => _copyMessage(
+          '部分照片的信息无法更新',
+          error,
+          '有些副本已被外部修改或不在可信范围内。请查看预览，确认后只更新可安全处理的部分。',
+          actionLabel: '查看预览',
         ),
         'card_not_inserted' => const UserMessage(
           title: '未插入存储卡',

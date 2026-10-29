@@ -10,6 +10,8 @@ import 'package:aves/bird_companion/features/connection/domain/provisioning_repo
 import 'package:aves/bird_companion/features/copy/presentation/copy_confirmation_page.dart';
 import 'package:aves/bird_companion/features/copy/presentation/pages/copy_job_detail_page.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_job_list_page.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/run/smart_follow_child_jobs_view.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/run/smart_follow_run_page.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_page.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/scene_list_page.dart';
@@ -47,6 +49,8 @@ abstract final class BirdRoutes {
   static const fullBackup = '/full-backup';
   static const copyJobs = '/copy-jobs';
   static const copyJobDetail = '/copy-job-detail';
+  // SmartFollow 运行页（联合任务书 §9：入口随识别状态变化，运行页独立路由）。
+  static const smartFollowRun = '/smart-follow-run';
   static const jobDetail = '/job-detail';
   static const jobCenter = '/job-center';
   static const batches = '/batches';
@@ -168,6 +172,14 @@ abstract final class BirdAppRouter {
         );
       case BirdRoutes.copyJobs:
         page = const CopyJobListPage();
+      case BirdRoutes.smartFollowRun:
+        final args = settings.arguments;
+        final runArgs = args is SmartFollowRunArgs
+            ? args
+            : args is String && args.trim().isNotEmpty
+            ? SmartFollowRunArgs(args.trim())
+            : null;
+        page = runArgs == null ? _invalid('边识别边复制', '缺少跟随任务编号') : _SmartFollowRunRoute(args: runArgs);
       case BirdRoutes.copyJobDetail:
         final args = settings.arguments;
         final id = _clean(
@@ -328,8 +340,34 @@ class _SettingsControllerRouteState extends State<_SettingsControllerRoute> {
   Widget build(BuildContext context) => widget.builder(context, _controller!);
 }
 
+/// 运行页路由壳：仓储从依赖容器取（页面本身仍接受显式 repository，便于测试），
+/// 并把"复制批次"接到 RC3 child CopyJob 详情。
+class _SmartFollowRunRoute extends StatelessWidget {
+  const _SmartFollowRunRoute({required this.args});
+
+  final SmartFollowRunArgs args;
+
+  @override
+  Widget build(BuildContext context) {
+    final repository = BirdCompanionScope.of(context).smartFollowRepository;
+    return SmartFollowRunPage(
+      repository: repository,
+      sessionId: args.sessionId,
+      recognitionProcessed: args.recognitionProcessed,
+      recognitionTotal: args.recognitionTotal,
+      onOpenChildJobs: () => showSmartFollowChildJobsSheet(
+        context,
+        repository: repository,
+        sessionId: args.sessionId,
+        onOpenCopyJob: (copyJobId) => Navigator.of(context).pushNamed(BirdRoutes.copyJobDetail, arguments: CopyJobDetailArgs(copyJobId)),
+      ),
+    );
+  }
+}
+
 class _RouteErrorPage extends StatelessWidget {
   const _RouteErrorPage({required this.title, required this.message});
+
   final String title;
   final String message;
   @override

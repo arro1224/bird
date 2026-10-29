@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:aves/bird_companion/features/recognition/recognition_widgets.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_task_tile.dart';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
@@ -295,7 +296,25 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
           builder: (_) => TaskDetailPage(
             controller: controller,
             taskId: taskId,
-            incrementalPanel: refreshedTask.type == TaskType.aiAnalysis ? RecognitionPanel(repository: BirdCompanionScope.of(context).recognitionRepository, jobId: taskId) : null,
+            incrementalPanel: refreshedTask.type == TaskType.aiAnalysis
+                ? SmartFollowTaskTile(
+                    repository: BirdCompanionScope.of(context).smartFollowRepository,
+                    recognitionJobId: taskId,
+                    recognitionProcessed: refreshedTask.processed,
+                    recognitionTotal: refreshedTask.total,
+                    onOpenRun: (sessionId) => unawaited(
+                      Navigator.of(context).pushNamed<void>(
+                        BirdRoutes.smartFollowRun,
+                        arguments: SmartFollowRunArgs(
+                          sessionId,
+                          recognitionJobId: taskId,
+                          recognitionProcessed: refreshedTask.processed,
+                          recognitionTotal: refreshedTask.total,
+                        ),
+                      ),
+                    ),
+                  )
+                : null,
             allowDemoCompletion: false,
             onControl: _control,
             onExportLog: _exportTaskLog,

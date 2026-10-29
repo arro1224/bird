@@ -147,26 +147,6 @@ void main() {
     await api.dispose();
   });
 
-  testWidgets('recognition and copy counts are displayed separately', (tester) async {
-    final api = WidgetApi();
-    final bus = AppDataChangeBus();
-    final repo = RecognitionRepository(api, MemoryCache(), bus, () => 'box-1');
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: RecognitionPanel(repository: repo, jobId: 'job-1'),
-        ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(find.text('已产生结果 1 张 · 识别失败 0 张'), findsOneWidget);
-    expect(find.text('合格 1 张 · 待复制 1 张'), findsOneWidget);
-    expect(find.text('复制批次 0 个 · 已复制 0 组照片'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
-    repo.dispose();
-    await bus.dispose();
-    await api.dispose();
-  });
+  // 运行期的计数展示已迁到 SmartFollow 运行页（`smart_follow_run_page_test.dart`），
+  // 这里只保留识别仓储/入口选项的契约。原 RecognitionPanel 已随 E0 拆分删除。
 }

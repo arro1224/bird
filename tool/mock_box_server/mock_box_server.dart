@@ -78,6 +78,22 @@ class MockBoxServer {
   final Map<String, List<Map<String, dynamic>>> _history = {};
   final Map<String, Map<String, dynamic>> _createdProjects = {};
   final Map<String, Map<String, dynamic>> _jobs = {};
+  // SmartFollow 边识别边复制内存态（联合开发任务书 §6.3–§6.7）。
+  // 只模拟状态机与接口，不做真识别/真复制；推进靠 POST /mock/control/smart-follow。
+  String? _smartFollowSessionId;
+  String _smartFollowJobId = '';
+  String _smartFollowState = 'created';
+  int _smartFollowVersion = 0;
+  int _smartFollowRecognized = 0;
+  int _smartFollowEligible = 0;
+  int _smartFollowSealed = 0;
+  int _smartFollowCopied = 0;
+  int _smartFollowFailed = 0;
+  String? _smartFollowErrorCode;
+  String? _smartFollowErrorMessage;
+  int _smartFollowChildSeq = 0;
+  final List<Map<String, dynamic>> _smartFollowChildren = [];
+  final Set<int> _smartFollowEligibleSeqs = {};
   // birdbox-copy-v1 RC3 任务闭环内存态（§13.5/§13.6）：copy 任务不进通用
   // /api/v1/jobs 表（审计 P0-3），独立存储、惰性时间推进。
   final Map<String, Map<String, dynamic>> _copyJobsV1 = {};
@@ -356,6 +372,21 @@ class MockBoxServer {
       return;
     }
     if (!await _authorize(request)) return;
+    // SmartFollow 联调推进器：控制端点不要求幂等键（它是测试工具，不是业务写）。
+    // 必须先于下面的全局 POST 幂等门，否则会被要求 X-Idempotency-Key。
+    if (method == 'POST' && path == '/mock/control/smart-follow') {
+      final body = await _requestJson(request);
+      final error = _advanceSmartFollow(body);
+      if (error != null) {
+        await _json(request, HttpStatus.unprocessableEntity, {
+          'error_code': 'mock_control_invalid',
+          'error_message': error,
+        }, envelope: false);
+      } else {
+        await _json(request, HttpStatus.ok, _smartFollowSnapshot() ?? const {});
+      }
+      return;
+    }
     if (method == 'POST' && await _replayOrRegisterIdempotent(request)) {
       return;
     }
@@ -517,6 +548,56 @@ class MockBoxServer {
     final copyJobDetailV1 = RegExp(r'^/api/v1/copy-jobs/([^/]+)$').firstMatch(path);
     if (method == 'GET' && copyJobDetailV1 != null) {
       await _serveCopyJobDetail(request, copyJobDetailV1.group(1)!);
+      return;
+    }
+
+    // ---- SmartFollow 边识别边复制（联合开发任务书 §6.3–§6.7）----
+    // 信息统一更新在 mock 里声明为不可用：后端本身也可能本期不做（问询单第 6 条），
+    // App 必须能在 capability=false 时不出现入口，这里正好用来验那条。
+    if (method == 'GET' && path == '/api/v1/recognition-capabilities') {
+      await _json(request, HttpStatus.ok, _recognitionCapabilitiesMock());
+      return;
+    }
+    final recognitionEvents = RegExp(r'^/api/v1/jobs/([^/]+)/recognition-events$').firstMatch(path);
+    if (method == 'GET' && recognitionEvents != null) {
+      await _json(request, HttpStatus.ok, _recognitionEventsMock(recognitionEvents.group(1)!, request.uri.queryParameters));
+      return;
+    }
+    final smartFollowStart = RegExp(r'^/api/v1/jobs/([^/]+)/smart-follow-sessions$').firstMatch(path);
+    if (method == 'POST' && smartFollowStart != null) {
+      // 幂等由上面的全局 POST 门统一处理，这里**不要**再调一次（会自锁在同一个
+      // in-flight completer 上，请求永远不返回——本次踩过）。
+      final body = await _requestJson(request);
+      final started = _startSmartFollowMock(smartFollowStart.group(1)!, body);
+      if (started == null) {
+        await _json(request, HttpStatus.unprocessableEntity, {
+          'error_code': 'SMART_FOLLOW_TARGET_UNAVAILABLE',
+          'error_message': 'target_media_id is required.',
+        }, envelope: false);
+      } else {
+        await _json(request, HttpStatus.created, started);
+      }
+      return;
+    }
+    final smartFollowSession = RegExp(r'^/api/v1/smart-follow-sessions/([^/]+)$').firstMatch(path);
+    if (method == 'GET' && smartFollowSession != null) {
+      final snapshot = _smartFollowSnapshot();
+      if (snapshot == null) {
+        await _notFound(request, 'Unknown smart follow session: ${smartFollowSession.group(1)}');
+      } else {
+        await _json(request, HttpStatus.ok, snapshot);
+      }
+      return;
+    }
+    final smartFollowCopyJobs = RegExp(r'^/api/v1/smart-follow-sessions/([^/]+)/copy-jobs$').firstMatch(path);
+    if (method == 'GET' && smartFollowCopyJobs != null) {
+      await _json(request, HttpStatus.ok, _smartFollowChildJobsPage(request.uri.queryParameters));
+      return;
+    }
+    final smartFollowActions = RegExp(r'^/api/v1/smart-follow-sessions/([^/]+)/actions$').firstMatch(path);
+    if (method == 'POST' && smartFollowActions != null) {
+      final body = await _requestJson(request);
+      await _applySmartFollowAction(request, body);
       return;
     }
 
@@ -1442,6 +1523,18 @@ class MockBoxServer {
       projectId,
       workflowStage: type == 'import' ? 'importing' : 'analyzing',
     );
+    // 联合任务书 §6.2：识别任务与跟随会话在同一请求里原子创建。
+    final smartFollow = body['smart_follow'];
+    if (type == 'analysis' && smartFollow is Map) {
+      _smartFollowJobId = job['job_id'].toString();
+      _smartFollowSessionId ??= 'sf_mock_1';
+      if (_smartFollowState == 'created') {
+        _smartFollowState = 'following';
+        _smartFollowVersion++;
+      }
+      job['smart_follow_session_id'] = _smartFollowSessionId;
+      job['smart_follow'] = _smartFollowSnapshot();
+    }
     await _json(request, HttpStatus.accepted, job);
     await _emitJob(job);
   }
@@ -2642,6 +2735,255 @@ class MockBoxServer {
   };
 
   bool _isKnownBatch(String value) => _createdProjects.containsKey(value) || value == 'mock-batch-current' || value.startsWith('mock-batch-history-');
+
+  // ---- SmartFollow mock（联合开发任务书 §6.3–§6.7）----
+  //
+  // 只实现"状态机 + 接口"，不做真识别/真复制：
+  //   POST /mock/control/smart-follow {"action":"commit","count":3,"eligible":true}
+  //   {"action":"finish_recognition"} / {"action":"complete_children"} / {"action":"wait_target"}
+  //   {"action":"fail","code":"...","message":"..."} / {"action":"reset"}
+  // 默认批参数 8/2000ms；信息统一更新声明为不可用（capability=false）。
+
+  static const _smartFollowBatchSize = 8;
+
+  Map<String, dynamic> _recognitionCapabilitiesMock() => {
+    'incremental_recognition_results': {'available': true, 'schema_version': 'birdbox.pipeline_result.v1'},
+    'smart_follow_copy': {
+      'available': true,
+      'contract_version': 'smart-follow-v1',
+      'eligibility_mode': 'recognized_only_v1',
+      'default_batch_size': _smartFollowBatchSize,
+      'default_collect_window_ms': 2000,
+      'batch_size_range': [1, 32],
+      'collect_window_ms_range': [250, 10000],
+    },
+    'smart_follow_metadata_update': {'available': false},
+  };
+
+  Map<String, dynamic> _recognitionEventsMock(String jobId, Map<String, String> query) {
+    final after = int.tryParse(query['after_event_seq'] ?? '0') ?? 0;
+    final items = <Map<String, dynamic>>[];
+    for (var seq = after + 1; seq <= _smartFollowRecognized; seq++) {
+      final eligible = _smartFollowEligibleSeqs.contains(seq);
+      items.add({
+        'event_seq': seq,
+        'recognition_job_id': jobId,
+        'project_id': 'mock-batch-current',
+        'file_id': 'mock_file_$seq',
+        'verdict': eligible ? 'high' : 'medium',
+        'top1_class': eligible ? 'Ithaginis_cruentus' : null,
+        'eligible': eligible,
+      });
+    }
+    final running = _smartFollowState == 'created' || _smartFollowState == 'following' || _smartFollowState == 'paused';
+    return {
+      'recognition_job_id': jobId,
+      'items': items,
+      'last_event_seq': _smartFollowRecognized,
+      'has_more': false,
+      'committed_count': _smartFollowRecognized,
+      'failed_count': _smartFollowFailed,
+      'state': running ? 'running' : 'completed',
+      'smart_follow_session_id': _smartFollowSessionId,
+    };
+  }
+
+  Map<String, dynamic>? _startSmartFollowMock(String jobId, Map<String, dynamic> body) {
+    final target = (body['target_media_id'] ?? '').toString();
+    if (target.trim().isEmpty) return null;
+    _smartFollowJobId = jobId;
+    _smartFollowSessionId ??= 'sf_mock_1';
+    if (_smartFollowState == 'created') {
+      _smartFollowState = 'following';
+      _smartFollowVersion++;
+    }
+    return _smartFollowSnapshot()!;
+  }
+
+  Map<String, dynamic>? _smartFollowSnapshot() {
+    final sessionId = _smartFollowSessionId;
+    if (sessionId == null) return null;
+    return {
+      'session_id': sessionId,
+      'recognition_job_id': _smartFollowJobId,
+      'state': _smartFollowState,
+      'state_version': _smartFollowVersion,
+      'eligibility_mode': 'recognized_only_v1',
+      'target_media_id': 'mock-media-usb-1',
+      'batch_size': _smartFollowBatchSize,
+      'collect_window_ms': 2000,
+      'last_consumed_event_seq': _smartFollowRecognized,
+      'cutoff_event_seq': null,
+      'recognized_count': _smartFollowRecognized,
+      'eligible_count': _smartFollowEligible,
+      'pending_count': _smartFollowEligible - _smartFollowSealed,
+      'assigned_count': _smartFollowSealed,
+      'copied_asset_count': _smartFollowCopied,
+      'copied_file_count': _smartFollowCopied,
+      'failed_asset_count': _smartFollowFailed,
+      'child_job_count': _smartFollowChildren.length,
+      // capability 里信息统一更新为 false，会话也就不宣称"可更新"（避免自相矛盾）。
+      'metadata_update_available': false,
+      'active_metadata_update_id': null,
+      'allowed_actions': _smartFollowAllowedActions(),
+      'error_code': _smartFollowErrorCode,
+      'error_message': _smartFollowErrorMessage,
+      'created_at': _clock().toUtc().toIso8601String(),
+      'updated_at': _clock().toUtc().toIso8601String(),
+      'finished_at': _smartFollowState == 'completed' || _smartFollowState == 'completed_partial' || _smartFollowState == 'failed' ? _clock().toUtc().toIso8601String() : null,
+    };
+  }
+
+  List<String> _smartFollowAllowedActions() => switch (_smartFollowState) {
+    'following' => const ['pause', 'finish_current_results', 'stop_following'],
+    'paused' => const ['resume', 'finish_current_results', 'stop_following'],
+    'waiting_for_target' || 'waiting_for_source' => const ['pause', 'stop_following'],
+    _ => const <String>[],
+  };
+
+  Map<String, dynamic> _smartFollowChildJobsPage(Map<String, String> query) {
+    final start = int.tryParse(query['cursor'] ?? '0') ?? 0;
+    final pageSize = int.tryParse(query['page_size'] ?? '50') ?? 50;
+    final end = (start + pageSize).clamp(0, _smartFollowChildren.length);
+    return {
+      'items': _smartFollowChildren.sublist(start, end),
+      'has_more': end < _smartFollowChildren.length,
+      'next_cursor': end < _smartFollowChildren.length ? '$end' : null,
+    };
+  }
+
+  Future<void> _applySmartFollowAction(HttpRequest request, Map<String, dynamic> body) async {
+    final error = _advanceSmartFollow({...body, 'from_action': true});
+    if (error != null) {
+      await _json(request, HttpStatus.conflict, {
+        'error_code': error,
+        'error_message': switch (error) {
+          'SMART_FOLLOW_STATE_VERSION_CONFLICT' => 'state_version mismatch',
+          'SMART_FOLLOW_ACTION_NOT_ALLOWED' => 'action not allowed in current state',
+          _ => 'smart follow action rejected',
+        },
+      }, envelope: false);
+      return;
+    }
+    await _json(request, HttpStatus.ok, _smartFollowSnapshot() ?? const {});
+  }
+
+  /// 返回 null 表示成功，否则返回错误码（供动作接口与 /mock/control 共用）。
+  String? _advanceSmartFollow(Map<String, dynamic> body) {
+    final action = (body['action'] ?? '').toString();
+    if (action.isEmpty) return 'action is required';
+    if (body['from_action'] == true) {
+      final expected = body['expected_state_version'];
+      if (expected is num && expected.toInt() != _smartFollowVersion) return 'SMART_FOLLOW_STATE_VERSION_CONFLICT';
+      if (!_smartFollowAllowedActions().contains(action)) return 'SMART_FOLLOW_ACTION_NOT_ALLOWED';
+      switch (action) {
+        case 'pause':
+          _smartFollowState = 'paused';
+        case 'resume':
+          _smartFollowState = 'following';
+        case 'finish_current_results':
+          _sealSmartFollowRemainder();
+          _smartFollowState = 'draining';
+        case 'stop_following':
+          _smartFollowState = 'draining';
+        case 'retry':
+          _smartFollowFailed = 0;
+      }
+      _smartFollowVersion++;
+      return null;
+    }
+    switch (action) {
+      case 'commit':
+        final count = (body['count'] as num?)?.toInt() ?? 1;
+        final eligible = body['eligible'] != false;
+        for (var i = 0; i < count; i++) {
+          _smartFollowRecognized++;
+          if (eligible) {
+            _smartFollowEligible++;
+            _smartFollowEligibleSeqs.add(_smartFollowRecognized);
+          }
+        }
+        _sealSmartFollowFilledBatches();
+        _smartFollowVersion++;
+      case 'finish_recognition':
+        _sealSmartFollowRemainder();
+        _smartFollowState = 'draining';
+        _smartFollowVersion++;
+      case 'complete_children':
+        for (final child in _smartFollowChildren) {
+          if (child['state'] != 'completed') {
+            child['state'] = 'completed';
+            _smartFollowCopied += (child['asset_count'] as num?)?.toInt() ?? 0;
+          }
+        }
+        if (_smartFollowState == 'draining') {
+          _smartFollowState = 'completed';
+        }
+        _smartFollowVersion++;
+      case 'wait_target':
+        _smartFollowErrorCode = 'SMART_FOLLOW_TARGET_UNAVAILABLE';
+        _smartFollowErrorMessage = '目标盘已拔出';
+        _smartFollowState = 'waiting_for_target';
+        _smartFollowVersion++;
+      case 'recover':
+        _smartFollowErrorCode = null;
+        _smartFollowErrorMessage = null;
+        _smartFollowState = 'following';
+        _smartFollowVersion++;
+      case 'fail':
+        _smartFollowErrorCode = (body['code'] ?? 'SMART_FOLLOW_RECONCILIATION_REQUIRED').toString();
+        _smartFollowErrorMessage = (body['message'] ?? '识别结果需要核对').toString();
+        _smartFollowState = 'failed';
+        _smartFollowVersion++;
+      case 'reset':
+        _smartFollowSessionId = null;
+        _smartFollowState = 'created';
+        _smartFollowVersion = 0;
+        _smartFollowRecognized = 0;
+        _smartFollowEligible = 0;
+        _smartFollowSealed = 0;
+        _smartFollowCopied = 0;
+        _smartFollowFailed = 0;
+        _smartFollowErrorCode = null;
+        _smartFollowErrorMessage = null;
+        _smartFollowChildren.clear();
+        _smartFollowEligibleSeqs.clear();
+        _smartFollowChildSeq = 0;
+      default:
+        return 'unknown action: $action';
+    }
+    return null;
+  }
+
+  void _sealSmartFollowFilledBatches() {
+    while (_smartFollowEligible - _smartFollowSealed >= _smartFollowBatchSize) {
+      _sealSmartFollowBatch(_smartFollowBatchSize);
+    }
+  }
+
+  void _sealSmartFollowRemainder() {
+    final remainder = _smartFollowEligible - _smartFollowSealed;
+    if (remainder > 0) _sealSmartFollowBatch(remainder);
+  }
+
+  void _sealSmartFollowBatch(int assets) {
+    _smartFollowSealed += assets;
+    _smartFollowChildSeq++;
+    _smartFollowChildren.add({
+      'copy_job_id': 'cj_mock_$_smartFollowChildSeq',
+      'index': _smartFollowChildSeq,
+      'state': 'running',
+      'asset_count': assets,
+      'file_count': assets,
+      'total_bytes': assets * 1024 * 1024,
+      'copied_file_count': 0,
+      'skipped_file_count': 0,
+      'failed_file_count': 0,
+      'created_at': _clock().toUtc().toIso8601String(),
+      'finished_at': null,
+    });
+  }
+
 
   Future<Map<String, dynamic>> _requestJson(HttpRequest request) async {
     final raw = await utf8.decoder.bind(request).join();

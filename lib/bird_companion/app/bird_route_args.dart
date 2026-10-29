@@ -233,6 +233,24 @@ class CopyJobDetailArgs {
   final String copyJobId;
 }
 
+/// SmartFollow 运行页参数（联合任务书 §6.5/§6.6）。
+///
+/// 只带 `sessionId`：页面其余数据全部来自后端会话快照，避免路由参数
+/// 与盒子状态各说一套。识别进度（可选）用于运行页的"识别已处理/总数"。
+class SmartFollowRunArgs {
+  const SmartFollowRunArgs(
+    this.sessionId, {
+    this.recognitionJobId,
+    this.recognitionProcessed,
+    this.recognitionTotal,
+  });
+
+  final String sessionId;
+  final String? recognitionJobId;
+  final int? recognitionProcessed;
+  final int? recognitionTotal;
+}
+
 class ComparisonReviewArgs {
   const ComparisonReviewArgs({
     required this.groupId,

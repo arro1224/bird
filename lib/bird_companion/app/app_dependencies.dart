@@ -10,7 +10,8 @@ import 'package:aves/bird_companion/features/connection/presentation/direct_ap_h
 import 'package:aves/bird_companion/features/connection/data/ble/ble_diagnostic_snapshot_service.dart';
 import 'package:aves/bird_companion/features/connection/data/platform/birdbox_ble_diagnostic_file_platform.dart';
 import 'package:aves/bird_companion/features/recognition/recognition_repository.dart';
-
+import 'package:aves/bird_companion/features/smart_follow/data/smart_follow_api.dart';
+import 'package:aves/bird_companion/features/smart_follow/data/smart_follow_repository.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
@@ -110,10 +111,18 @@ class BirdCompanionDependencies {
     required this.mediaAssetService,
     required this.bleScanDiagnosticStore,
     required this.bleConnectionDiagnosticStore,
-  });
+  }) {
+    // R3：WebSocket 只当唤醒信号，仓储收到后重读会话（不拿 payload 数字改状态）。
+    // 断线期间漏掉的通知由页面/前台的显式 refresh 补齐，不依赖这条订阅。
+    smartFollowRepository.bindEvents(eventClient.events);
+  }
 
   final ApiClient apiClient;
   late final recognitionRepository = RecognitionRepository(apiClient, cache, dataChangeBus, () => deviceSessionCubit.state.device?.id);
+
+  /// SmartFollow 边识别边复制（F3）。页面经它读写会话，禁止直接拿 ApiClient
+  /// 调 smart-follow 端点，否则快照合并与幂等规则会被绕过。
+  late final smartFollowRepository = SmartFollowRepository(SmartFollowApi(apiClient));
   final EventClient eventClient;
   final ConnectivityMonitor connectivityMonitor;
   final LocalCache cache;
@@ -148,6 +157,7 @@ class BirdCompanionDependencies {
   late final connectionAttempts = ConnectionAttemptRecorder(cache, bleConnectionDiagnosticStore);
   StreamSubscription<EventConnectionState>? _sessionTrace;
   StreamSubscription? _deviceTrace;
+  String? _traceDeviceId;
 
   static Future<BirdCompanionDependencies> create({
     bool connectEnvironmentTestEndpoint = true,
@@ -308,7 +318,15 @@ class BirdCompanionDependencies {
     );
     dependencies.birdSyncService.start();
     dependencies._sessionTrace = eventClient.connectionStates.listen((state) => dependencies.connectionAttempts.record({'event': 'session_ws_state', 'device_id': sessionCoordinator.activeDeviceId, 'ws_state': state.name}));
-    dependencies._deviceTrace = deviceSessionCubit.stream.listen((state) => dependencies.connectionAttempts.record({'event': 'global_session_state', 'device_id': state.device?.id, 'phase': state.phase.name}));
+    dependencies._deviceTrace = deviceSessionCubit.stream.listen((state) {
+      dependencies.connectionAttempts.record({'event': 'global_session_state', 'device_id': state.device?.id, 'phase': state.phase.name});
+      // 换盒子就把 SmartFollow 的会话快照与能力缓存丢掉：session_id/能力属于某台盒子。
+      final deviceId = state.device?.id.trim();
+      if (deviceId != null && deviceId.isNotEmpty && deviceId != dependencies._traceDeviceId) {
+        dependencies._traceDeviceId = deviceId;
+        dependencies.smartFollowRepository.resetForDeviceChange();
+      }
+    });
     const testBaseUrl = String.fromEnvironment('BIRD_TEST_BASE_URL');
     const testPairingCode = String.fromEnvironment('BIRD_TEST_PAIRING_CODE');
     if (connectEnvironmentTestEndpoint && testBaseUrl.isNotEmpty) {
@@ -446,6 +464,7 @@ class BirdCompanionDependencies {
     unawaited(_sessionTrace?.cancel());
     unawaited(_deviceTrace?.cancel());
     recognitionRepository.dispose();
+    smartFollowRepository.dispose();
     unawaited(provisioningRepository.dispose());
     unawaited(mediaAssetCoordinator.dispose());
     mediaAssetService.dispose();

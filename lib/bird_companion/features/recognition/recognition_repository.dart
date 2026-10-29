@@ -81,6 +81,11 @@ class RecognitionRepository extends ChangeNotifier {
     } while (current());
   }
 
+  /// 旧版跟随入口（原 `RecognitionPanel` 已删除，仅保留给既有契约测试）。
+  ///
+  /// **新代码不要用这三个方法**：传裸 Map、动作不做白名单校验，也没有
+  /// `state_version` 合并、创建超时查询与幂等键规则。页面一律走
+  /// `SmartFollowRepository`（`features/smart_follow/data/`）。
   Future<void> startFollow(String job, Map<String, dynamic> config) async {
     await api.post(ApiEndpoints.startSmartFollow(job), data: config, idempotencyKey: 'follow-start-$job');
     await sync(job);
