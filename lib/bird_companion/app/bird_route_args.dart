@@ -207,6 +207,7 @@ class CopyConfirmationArgs {
     this.selectionPhotoCount,
     this.selectionDiscardedCount,
     this.filter,
+    this.enableSmartFollow = false,
   });
 
   final String batchId;
@@ -215,6 +216,10 @@ class CopyConfirmationArgs {
   final int? selectionPhotoCount;
   final int? selectionDiscardedCount;
   final Map<String, dynamic>? filter;
+
+  /// Only the task copy entry offers a whole-recognition-run mode. Album
+  /// selections and filters keep their explicitly requested static scope.
+  final bool enableSmartFollow;
 }
 
 /// 摄影资料全量备份入口参数（§3.1：独立入口，不依赖当前批次）。
@@ -236,10 +241,25 @@ class CopyJobDetailArgs {
   final CopyJobSummary? createdJob;
 }
 
-/// SmartFollow 运行页参数（联合任务书 §6.5/§6.6）。
-///
-/// 只带 `sessionId`：页面其余数据全部来自后端会话快照，避免路由参数
-/// 与盒子状态各说一套。识别进度（可选）用于运行页的"识别已处理/总数"。
+/// C1 carries identity only, binding internal navigation to its original box.
+class SmartFollowCompletionArgs {
+  const SmartFollowCompletionArgs(this.sessionId, {this.deviceId, this.deviceGeneration, this.baseUri});
+  final String sessionId;
+  final String? deviceId;
+  final int? deviceGeneration;
+  final String? baseUri;
+}
+
+class SmartFollowMetadataPreviewArgs extends SmartFollowCompletionArgs {
+  const SmartFollowMetadataPreviewArgs(super.sessionId, {super.deviceId, super.deviceGeneration, super.baseUri});
+}
+
+class SmartFollowMetadataUpdateArgs extends SmartFollowCompletionArgs {
+  const SmartFollowMetadataUpdateArgs(super.sessionId, {this.updateId, super.deviceId, super.deviceGeneration, super.baseUri});
+  final String? updateId;
+}
+
+/// SmartFollow 运行页参数。识别进度可选，实际数据重读权威会话。
 class SmartFollowRunArgs {
   const SmartFollowRunArgs(
     this.sessionId, {

@@ -7,10 +7,11 @@ import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_pag
 import 'package:flutter/material.dart';
 
 class BatchSetupPage extends StatefulWidget {
-  const BatchSetupPage({super.key, required this.controller, this.onStartImport, this.analysisOptions});
+  const BatchSetupPage({super.key, required this.controller, this.onStartImport, this.analysisOptions, this.canStartImport = true});
 
   final TaskExperienceController controller;
   final Widget? analysisOptions;
+  final bool canStartImport;
   final FutureOr<void> Function(String batchName)? onStartImport;
 
   @override
@@ -112,7 +113,7 @@ class _BatchSetupPageState extends State<BatchSetupPage> {
           const SizedBox(height: 12),
           TaskActionButton(
             _submitting ? '正在创建任务…' : '开始导入并建立索引',
-            onPressed: _submitting || widget.onStartImport == null
+            onPressed: _submitting || !widget.canStartImport || widget.onStartImport == null
                 ? null
                 : () async {
                     if (_nameController.text.trim().isEmpty) {

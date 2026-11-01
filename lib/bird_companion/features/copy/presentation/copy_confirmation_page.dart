@@ -10,6 +10,7 @@ import 'package:aves/bird_companion/features/copy/presentation/copy_config_cubit
 import 'package:aves/bird_companion/features/copy/presentation/widgets/copy_preview_items_sheet.dart';
 import 'package:aves/bird_companion/features/copy/presentation/widgets/copy_scope_card.dart';
 import 'package:aves/bird_companion/features/copy/presentation/widgets/storage_device_card.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_entry_section.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_nature_background.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -28,6 +29,7 @@ class CopyConfirmationPage extends StatefulWidget {
     this.selectionPhotoCount,
     this.selectionDiscardedCount,
     this.filter,
+    this.enableSmartFollow = false,
   });
 
   /// 摄影资料全量备份为 null；批次复制为批次 id。
@@ -39,6 +41,7 @@ class CopyConfirmationPage extends StatefulWidget {
   final int? selectionPhotoCount;
   final int? selectionDiscardedCount;
   final Map<String, dynamic>? filter;
+  final bool enableSmartFollow;
 
   factory CopyConfirmationPage.fromArgs({required Object? args}) {
     if (args is CopyConfirmationArgs) {
@@ -49,6 +52,7 @@ class CopyConfirmationPage extends StatefulWidget {
         selectionPhotoCount: args.selectionPhotoCount,
         selectionDiscardedCount: args.selectionDiscardedCount,
         filter: args.filter,
+        enableSmartFollow: args.enableSmartFollow,
       );
     }
     if (args is String) return CopyConfirmationPage(batchId: args);
@@ -128,6 +132,9 @@ class _CopyConfirmationPageState extends State<CopyConfirmationPage> {
           batchId: widget.batchId,
           deviceId: _deviceId,
           lowBatteryPercent: _lowBatteryPercent(snapshot.data),
+          recognizedModeBuilder: widget.enableSmartFollow && widget.batchId != null && widget.selectionId == null && widget.filter == null
+              ? (context, onModeChanged) => SmartFollowEntrySection(batchId: widget.batchId!, onModeChanged: onModeChanged)
+              : null,
         ),
       ),
     );
@@ -211,12 +218,14 @@ class CopyConfigFlow extends StatefulWidget {
     this.lowBatteryPercent,
     this.onSubmitted,
     this.deviceId,
+    this.recognizedModeBuilder,
   });
 
   final String? batchId;
   final int? lowBatteryPercent;
   final ValueChanged<String>? onSubmitted;
   final String? deviceId;
+  final Widget Function(BuildContext context, ValueChanged<bool> onModeChanged)? recognizedModeBuilder;
 
   @override
   State<CopyConfigFlow> createState() => _CopyConfigFlowState();
@@ -224,6 +233,7 @@ class CopyConfigFlow extends StatefulWidget {
 
 class _CopyConfigFlowState extends State<CopyConfigFlow> with WidgetsBindingObserver {
   var _step = _CopyFlowStep.content;
+  bool _following = false;
   CopyConfigCubit? _cubit;
   bool _resumed = true;
   bool _inspectingPreview = false;
@@ -241,7 +251,13 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> with WidgetsBindingObse
     _syncVisibility();
   }
 
-  void _syncVisibility() => _cubit?.setPageActive(_resumed && (_inspectingPreview || (ModalRoute.of(context)?.isCurrent ?? true)));
+  void _syncVisibility() => _cubit?.setPageActive(!_following && _resumed && (_inspectingPreview || (ModalRoute.of(context)?.isCurrent ?? true)));
+
+  void _selectMode(bool follow) {
+    if (_following == follow) return;
+    setState(() => _following = follow);
+    _syncVisibility();
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -297,8 +313,13 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> with WidgetsBindingObse
       child: _step == _CopyFlowStep.content
           ? CopyContentStep(
               state: state,
+              following: _following,
+              modeSelector: state.scope == CopyScope.recognizedAssets ? widget.recognizedModeBuilder?.call(context, _selectMode) : null,
               onBack: () => Navigator.maybePop(context),
-              onScopeSelected: (scope) => context.read<CopyConfigCubit>().setScope(scope),
+              onScopeSelected: (scope) {
+                _selectMode(false);
+                context.read<CopyConfigCubit>().setScope(scope);
+              },
               onSourceSelected: context.read<CopyConfigCubit>().selectSource,
               onTargetSelected: context.read<CopyConfigCubit>().selectTarget,
               onPairPolicySelected: context.read<CopyConfigCubit>().setPairPolicy,
@@ -363,6 +384,8 @@ class CopyContentStep extends StatelessWidget {
     required this.onEmbedChanged,
     required this.onSaveDefaults,
     required this.onNext,
+    this.modeSelector,
+    this.following = false,
   });
 
   final CopyConfigState state;
@@ -376,6 +399,8 @@ class CopyContentStep extends StatelessWidget {
   final ValueChanged<bool> onEmbedChanged;
   final VoidCallback onSaveDefaults;
   final VoidCallback onNext;
+  final Widget? modeSelector;
+  final bool following;
 
   @override
   Widget build(BuildContext context) {
@@ -383,46 +408,55 @@ class CopyContentStep extends StatelessWidget {
     return _CopyFlowFrame(
       key: const Key('copy-content-step'),
       title: fullBackup ? '摄影资料全量备份' : '复制照片',
-      subtitle: fullBackup ? '备份源设备全部摄影资料' : '步骤 1 / 2 · 配置复制',
+      subtitle: fullBackup
+          ? '备份源设备全部摄影资料'
+          : following
+          ? '持续跟随本轮识别'
+          : '步骤 1 / 2 · 配置复制',
       loading: state.loadingDevices || state.loadingPreview,
       onBack: onBack,
-      footer: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _StateMessages(state: state),
-          if (state.planNotice != null)
-            Text(
-              state.planNotice!,
-              key: const Key('copy-plan-changed'),
-              style: const TextStyle(color: AppColors.warning),
+      footer: following
+          ? const SizedBox.shrink()
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _StateMessages(state: state),
+                if (state.planNotice != null)
+                  Text(
+                    state.planNotice!,
+                    key: const Key('copy-plan-changed'),
+                    style: const TextStyle(color: AppColors.warning),
+                  ),
+                if (state.loadingPreview) TextButton(onPressed: context.read<CopyConfigCubit>().cancelPlanVerification, child: const Text('取消核对')),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: FilledButton(
+                    key: const Key('copy-content-next'),
+                    onPressed: state.canFetchPreview ? onNext : null,
+                    child: const Text('获取预检并继续'),
+                  ),
+                ),
+              ],
             ),
-          if (state.loadingPreview) TextButton(onPressed: context.read<CopyConfigCubit>().cancelPlanVerification, child: const Text('取消核对')),
-          SizedBox(
-            width: double.infinity,
-            height: 54,
-            child: FilledButton(
-              key: const Key('copy-content-next'),
-              onPressed: state.canFetchPreview ? onNext : null,
-              child: const Text('获取预检并继续'),
-            ),
-          ),
-        ],
-      ),
       children: [
         if (state.scope == CopyScope.selectedAssets) _selectedAssetsNotice(context),
+        ?modeSelector,
         if (!state.scopeFixed) _scopeSection(context),
-        if (!fullBackup) ...[
+        if (!following) ...[
+          if (!fullBackup) ...[
+            const SizedBox(height: 14),
+            _pairPolicySection(context),
+          ],
           const SizedBox(height: 14),
-          _pairPolicySection(context),
+          _deviceSections(context),
+          const SizedBox(height: 14),
+          _conflictSection(context),
+          const SizedBox(height: 14),
+          _reviewExportSection(context),
+          const SizedBox(height: 14),
+          _previewHint(context),
         ],
-        const SizedBox(height: 14),
-        _deviceSections(context),
-        const SizedBox(height: 14),
-        _conflictSection(context),
-        const SizedBox(height: 14),
-        _reviewExportSection(context),
-        const SizedBox(height: 14),
-        _previewHint(context),
       ],
     );
   }

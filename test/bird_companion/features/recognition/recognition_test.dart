@@ -6,8 +6,11 @@ import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/features/recognition/recognition_repository.dart';
 import 'package:aves/bird_companion/features/recognition/recognition_widgets.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../smart_follow/entry/configuration_fixtures.dart';
 
 class MemoryCache implements LocalCache {
   final values = <String, Object?>{};
@@ -110,15 +113,19 @@ void main() {
     await server.close(force: true);
   });
 
-  testWidgets('default is recognition only; enabling returns target and policy', (tester) async {
+  testWidgets('recognition only is default; following needs complete explicit confirmation', (tester) async {
     final api = WidgetApi();
     final bus = AppDataChangeBus();
     final repo = RecognitionRepository(api, MemoryCache(), bus, () => 'box-1');
     Map<String, dynamic>? config;
+    var ready = true;
+    final fixture = ConfigurationFixture();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: RecognitionOptions(repository: repo, onChanged: (value) => config = value),
+          body: SingleChildScrollView(
+            child: RecognitionOptions(repository: repo, configurationReader: fixture.reader(), onChanged: (value) => config = value, onReadyChanged: (value) => ready = value),
+          ),
         ),
       ),
     );
@@ -127,7 +134,68 @@ void main() {
     expect(tester.widget<SwitchListTile>(find.byKey(const Key('smart-follow-switch'))).value, false);
     await tester.tap(find.byKey(const Key('smart-follow-switch')));
     await tester.pumpAndSettle();
-    expect(config, {'target_media_id': 'usb-1', 'pair_policy': 'raw_only', 'conflict_strategy': 'skip'});
+    expect(config, isNull);
+    expect(ready, isFalse);
+    await tester.tap(find.byKey(const Key('storage-device-target-目标设备')));
+    await tester.pumpAndSettle();
+    final conflict = find.byType(DropdownButtonFormField<ConflictStrategy>);
+    await tester.ensureVisible(conflict);
+    await tester.tap(conflict);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(ConflictStrategy.skip.label).last);
+    await tester.pumpAndSettle();
+    final confirm = find.byKey(const Key('smart-follow-confirm-configuration'));
+    await tester.ensureVisible(confirm);
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(ready, isTrue);
+    expect(config, {
+      'target_media_id': 'target',
+      'eligibility_mode': 'recognized_only_v1',
+      'pair_policy': 'raw_only',
+      'conflict_strategy': 'skip',
+      'review_export': {'enabled': false, 'prefer_embedded': true},
+    });
+    await tester.ensureVisible(find.byKey(const Key('smart-follow-switch')));
+    await tester.tap(find.byKey(const Key('smart-follow-switch')));
+    await tester.pumpAndSettle();
+    expect(config, isNull);
+    expect(ready, isTrue);
+    await tester.pumpWidget(const SizedBox());
+    repo.dispose();
+    await bus.dispose();
+    await api.dispose();
+  });
+
+  testWidgets('standalone recognition dialog cannot submit an unconfirmed follow choice', (tester) async {
+    final api = WidgetApi();
+    final bus = AppDataChangeBus();
+    final repo = RecognitionRepository(api, MemoryCache(), bus, () => 'box-1');
+    final fixture = ConfigurationFixture();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => chooseRecognitionMode(context, repo, configurationReader: fixture.reader()),
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+    final start = find.widgetWithText(FilledButton, '开始识别');
+    expect(tester.widget<FilledButton>(start).onPressed, isNotNull);
+    await tester.tap(find.byKey(const Key('smart-follow-switch')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(start).onPressed, isNull);
+    await tester.tap(find.byKey(const Key('smart-follow-switch')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(start).onPressed, isNotNull);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox());
     repo.dispose();
     await bus.dispose();

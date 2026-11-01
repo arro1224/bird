@@ -7,6 +7,12 @@ import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
+import 'package:aves/bird_companion/features/recognition/recognition_repository.dart';
+import 'package:aves/bird_companion/features/smart_follow/data/smart_follow_api.dart';
+import 'package:aves/bird_companion/features/smart_follow/data/smart_follow_repository.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_configuration_controller.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_creation_service.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_entry_decision.dart';
 import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
 import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
@@ -30,6 +36,8 @@ import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/repository_task_experience_controller.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../features/smart_follow/entry/creation_fixtures.dart';
+import '../features/smart_follow/entry/configuration_fixtures.dart';
 
 import '../../../tool/mock_box_server/mock_box_server.dart';
 
@@ -98,6 +106,86 @@ void main() {
     await eventClient.dispose();
     await apiClient.dispose();
     await server.close();
+  });
+
+  test('import completion atomically starts the confirmed follow and never falls back to ordinary analysis', () async {
+    final cache = CreationCache();
+    final follows = SmartFollowRepository(SmartFollowApi(apiClient));
+    final recognition = RecognitionRepository(apiClient, cache, dataChanges, () => session.state.device?.id);
+    addTearDown(follows.dispose);
+    addTearDown(recognition.dispose);
+    String contextKey() => '${session.state.device?.id}|${apiClient.baseUri}';
+    final creation = SmartFollowCreationService(jobs: jobs, follows: follows, cache: cache, deviceId: () => session.state.device?.id, contextKey: contextKey);
+    final copies = CopyRepositoryImpl(CopyApi(apiClient));
+    // The shared HTTP mock does not implement RC3 /storage/source. Device
+    // configuration is an explicit typed fixture; import/jobs/session use HTTP.
+    final deviceConfiguration = ConfigurationFixture()..bindingBatch = null;
+    deviceConfiguration.devices[1] = configDevice('mock-media-usb-1', displayName: '测试目标盘');
+    SmartFollowConfigurationReader reader(String? batch) => SmartFollowConfigurationReader(
+      batchId: batch,
+      contextKey: contextKey(),
+      isCurrent: () => session.state.isConnected,
+      readSnapshot: () async => SmartFollowConfigurationSnapshot(
+        entry: batch == null
+            ? SmartFollowEntryDecision(phase: RecognitionEntryPhase.notStarted, capabilities: await follows.capabilities(forceRefresh: true))
+            : await SmartFollowEntryReader(
+                batchId: batch,
+                readPage: (cursor) => jobs.page(cursor: cursor, type: 'analysis'),
+                readCapabilities: () => follows.capabilities(forceRefresh: true),
+                readSession: follows.refreshForJob,
+                isCurrent: () => session.state.isConnected,
+              ).read(),
+        binding: deviceConfiguration.snapshot().binding,
+        preferences: deviceConfiguration.snapshot().preferences,
+        copyCapabilities: deviceConfiguration.snapshot().copyCapabilities,
+        devices: deviceConfiguration.snapshot().devices,
+      ),
+    );
+    final configuration = SmartFollowConfigurationController(reader(null));
+    expect(await configuration.refresh(), isTrue, reason: '${configuration.error}');
+    configuration.selectTarget(configuration.candidates.firstWhere((device) => configuration.targetBlockReason(device) == null).mediaId);
+    configuration.selectConflict(ConflictStrategy.skip);
+    expect(await configuration.confirm(), isTrue);
+    final intent = configuration.confirmed!;
+    configuration.dispose();
+    controller.dispose();
+    controller = RepositoryTaskExperienceController(
+      deviceRepository: DeviceRepositoryImpl(DeviceStatusApi(apiClient), eventClient, apiClient),
+      storageRepository: StorageRepositoryImpl(StorageApi(apiClient)),
+      batchRepository: batches,
+      jobRepository: jobs,
+      copyRepository: copies,
+      eventClient: eventClient,
+      deviceSessionCubit: session,
+      pendingOperationStore: pendingOperations,
+      recognitionRepository: recognition,
+      smartFollowCreation: creation,
+      smartFollowConfiguration: reader,
+      pollInterval: const Duration(seconds: 30),
+    );
+    await controller.initialize();
+    final project = await controller.startImportBatch('SF-B3 confirmed import', smartFollow: intent.request.toJson(), smartFollowIntent: intent);
+    await server.completeJob(controller.currentJobId!, emitEvent: false);
+    await controller.refreshFromBox();
+    await _waitUntil(() => controller.error != null || controller.jobs.any((job) => job.type == BirdJobType.analysis && job.sourceProjectId == project));
+    expect(controller.jobs.where((job) => job.type == BirdJobType.analysis && job.sourceProjectId == project), isNotEmpty, reason: '${controller.error}');
+    final analysis = controller.jobs.singleWhere((job) => job.type == BirdJobType.analysis && job.sourceProjectId == project);
+    final follow = await follows.refreshForJob(analysis.id);
+    expect(follow, isNotNull);
+    expect(follow!.recognitionJobId, analysis.id);
+    expect(analysis.smartFollowSessionId, follow.sessionId);
+    await controller.refreshFromBox();
+    expect(controller.jobs.where((job) => job.type == BirdJobType.analysis && job.sourceProjectId == project), hasLength(1));
+    expect(recognition.analysisOption(project), isNull);
+    expect(creation.hasStaged(project), isFalse);
+  });
+
+  test('unconfirmed legacy follow maps cannot bypass either creation entry', () async {
+    final before = controller.jobs.map((job) => job.id).toSet();
+    const unconfirmed = {'target_media_id': 'arbitrary'};
+    await expectLater(controller.startImportBatch('unconfirmed follow', smartFollow: unconfirmed), throwsStateError);
+    await expectLater(controller.startAnalysisForActiveProject(smartFollow: unconfirmed), throwsStateError);
+    expect(controller.jobs.map((job) => job.id).toSet(), before);
   });
 
   test('B1 computes home entries from frozen reads and device pending writes', () async {

@@ -16,10 +16,12 @@ class ImportJobRequest {
 }
 
 class AnalysisJobRequest {
-  const AnalysisJobRequest({this.includeGrouping = true, this.smartFollow});
+  const AnalysisJobRequest({this.includeGrouping = true, this.smartFollow, this.idempotencyKey});
 
   final bool includeGrouping;
   final Map<String, dynamic>? smartFollow;
+  // Transport-only. Never add this value to the analysis request body.
+  final String? idempotencyKey;
 
   Map<String, dynamic> toJson() => {
     'mode': 'standard',

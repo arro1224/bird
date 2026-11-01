@@ -14,6 +14,7 @@ import 'package:aves/bird_companion/features/connection/data/platform/birdbox_bl
 import 'package:aves/bird_companion/features/recognition/recognition_repository.dart';
 import 'package:aves/bird_companion/features/smart_follow/data/smart_follow_api.dart';
 import 'package:aves/bird_companion/features/smart_follow/data/smart_follow_repository.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_creation_service.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
@@ -129,7 +130,14 @@ class BirdCompanionDependencies {
 
   /// SmartFollow 边识别边复制（F3）。页面经它读写会话，禁止直接拿 ApiClient
   /// 调 smart-follow 端点，否则快照合并与幂等规则会被绕过。
-  late final smartFollowRepository = SmartFollowRepository(SmartFollowApi(apiClient));
+  late final smartFollowRepository = SmartFollowRepository(SmartFollowApi(apiClient), metadataStorage: cache, metadataDeviceId: () => deviceSessionCubit.state.device?.id);
+  late final smartFollowCreation = SmartFollowCreationService(
+    jobs: jobRepository,
+    follows: smartFollowRepository,
+    cache: cache,
+    deviceId: () => deviceSessionCubit.state.device?.id,
+    contextKey: () => deviceSessionCubit.state.isConnected ? '${deviceSessionCubit.state.device?.id}|${apiClient.baseUri}|${smartFollowRepository.deviceGeneration}' : null,
+  );
   final EventClient eventClient;
   final ConnectivityMonitor connectivityMonitor;
   final LocalCache cache;

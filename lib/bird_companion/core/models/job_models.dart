@@ -90,6 +90,7 @@ class BirdJobStatus extends Equatable {
     this.errorCode,
     this.errorMessage,
     this.version,
+    this.smartFollowSessionId,
   });
 
   final String id;
@@ -104,6 +105,7 @@ class BirdJobStatus extends Equatable {
   final String? sourceProjectId;
   final String? sourceProjectName;
   final String? workflowStage;
+  final String? smartFollowSessionId;
   final int skippedCount;
   final int? estimatedRemainingSeconds;
   final List<String> availableActions;
@@ -176,6 +178,7 @@ class BirdJobStatus extends Equatable {
       errorCode: json['error_code']?.toString(),
       errorMessage: json['error_message']?.toString(),
       version: ProtocolValidation.optionalNonNegativeInt(json, 'version'),
+      smartFollowSessionId: json['smart_follow_session_id']?.toString(),
     );
   }
 
@@ -202,10 +205,12 @@ class BirdJobStatus extends Equatable {
     if (errorCode != null) 'error_code': errorCode,
     if (errorMessage != null) 'error_message': errorMessage,
     if (version != null) 'version': version,
+    if (smartFollowSessionId != null) 'smart_follow_session_id': smartFollowSessionId,
   };
 
   @override
   List<Object?> get props => [
+    smartFollowSessionId,
     id,
     type,
     state,

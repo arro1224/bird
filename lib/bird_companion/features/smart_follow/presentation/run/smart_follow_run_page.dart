@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
+import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/features/smart_follow/data/smart_follow_repository.dart';
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_metadata.dart';
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_models.dart';
@@ -24,6 +25,11 @@ class SmartFollowRunPage extends StatefulWidget {
     this.metadataUpdate,
     this.onOpenChildJobs,
     this.onOpenCompletion,
+    this.readRecognition,
+    this.isCurrent,
+    this.refreshSignals,
+    this.pollInterval,
+    this.metadataSection,
   });
 
   final SmartFollowRepository repository;
@@ -39,22 +45,37 @@ class SmartFollowRunPage extends StatefulWidget {
 
   final VoidCallback? onOpenChildJobs;
   final VoidCallback? onOpenCompletion;
+  final Future<BirdJobStatus> Function(String jobId)? readRecognition;
+  final bool Function()? isCurrent;
+  final Stream<void>? refreshSignals;
+  final Duration? pollInterval;
+  final Widget? metadataSection;
 
   @override
   State<SmartFollowRunPage> createState() => _SmartFollowRunPageState();
 }
 
-class _SmartFollowRunPageState extends State<SmartFollowRunPage> {
+class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBindingObserver {
   bool _busy = false;
   bool _loaded = false;
   Object? _loadError;
+  BirdJobStatus? _recognition;
+  Timer? _timer;
+  StreamSubscription<void>? _signals;
+  Future<void>? _refreshing;
+  bool _foreground = true;
+  bool _routeVisible = true;
+  int _generation = 0, _failures = 0;
+  bool get _current => widget.isCurrent?.call() ?? true;
 
   SmartFollowSession? get _session => widget.repository.snapshot(widget.sessionId);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.repository.addListener(_changed);
+    _bindSignals();
     unawaited(_refresh(initial: true));
   }
 
@@ -62,31 +83,105 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _refresh({bool initial = false}) async {
-    try {
-      await widget.repository.refresh(widget.sessionId);
+  void _bindSignals() {
+    unawaited(_signals?.cancel());
+    _signals = widget.refreshSignals?.listen((_) {
       if (!mounted) return;
+      setState(() {});
+      if (_foreground && _routeVisible && _current) unawaited(_refresh());
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final visible = ModalRoute.isCurrentOf(context) ?? true;
+    if (_routeVisible != visible) {
+      _routeVisible = visible;
+      _timer?.cancel();
+      if (visible && _foreground && _current) unawaited(_refresh());
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant SmartFollowRunPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repository != widget.repository || oldWidget.sessionId != widget.sessionId) {
+      oldWidget.repository.removeListener(_changed);
+      widget.repository.addListener(_changed);
+      ++_generation;
+      _refreshing = null;
+      _recognition = null;
+      _loaded = false;
+      _loadError = null;
+      unawaited(_refresh(initial: true));
+    }
+    if (oldWidget.refreshSignals != widget.refreshSignals) _bindSignals();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    _timer?.cancel();
+    if (_foreground && _routeVisible && _current) unawaited(_refresh());
+  }
+
+  void _schedule() {
+    _timer?.cancel();
+    final interval = widget.pollInterval;
+    if (!mounted || !_foreground || !_routeVisible || !_current || interval == null || (_session?.isFinished == true && _loadError == null)) return;
+    final delay = Duration(milliseconds: (interval.inMilliseconds * (1 << _failures.clamp(0, 4))).clamp(1, 60000));
+    _timer = Timer(delay, () {
+      if (mounted && _foreground && _routeVisible && _current) unawaited(_refresh());
+    });
+  }
+
+  Future<void> _refresh({bool initial = false}) {
+    if (_refreshing != null) return _refreshing!;
+    if (!_foreground || !_routeVisible || !_current) return Future.value();
+    final generation = _generation;
+    return _refreshing = _read(initial: initial, generation: generation).whenComplete(() {
+      if (mounted && generation == _generation) {
+        _refreshing = null;
+        _schedule();
+      }
+    });
+  }
+
+  Future<void> _read({required bool initial, required int generation}) async {
+    try {
+      final session = await widget.repository.refresh(widget.sessionId);
+      if (!mounted || generation != _generation || !_current) return;
+      final read = widget.readRecognition;
+      if (read != null) {
+        final job = await read(session.recognitionJobId);
+        if (!mounted || generation != _generation || !_current) return;
+        if (job.id != session.recognitionJobId || job.type != BirdJobType.analysis) throw StateError('识别任务归属无法确认。');
+        if (_recognition?.version == null || job.version == null || job.version! >= _recognition!.version!) _recognition = job;
+      }
       setState(() {
         _loaded = true;
         _loadError = null;
+        _failures = 0;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation || !_current) return;
       setState(() {
         _loaded = true;
-        if (initial || _session == null) _loadError = error;
+        _loadError = error;
+        ++_failures;
       });
-      if (!initial) _showError(error);
     }
   }
 
   Future<void> _act(SmartFollowAction action) async {
     final session = _session;
-    if (session == null || _busy) return;
+    if (session == null || _busy || !_current || _loadError != null) return;
     if (action.destructive) {
       final confirmed = await _confirmDestructive(action);
       if (confirmed != true) return;
     }
+    if (!mounted || !_current) return;
     setState(() => _busy = true);
     try {
       await widget.repository.act(widget.sessionId, action);
@@ -120,6 +215,12 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_current) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('边识别边复制')),
+        body: const Center(child: Text('盒子连接已变化，请返回原盒子后重新打开任务。')),
+      );
+    }
     final session = _session;
     if (!_loaded && session == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -130,9 +231,12 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> {
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Text(
-              _loadError == null ? '会话加载中，请稍候' : UserMessageMapper.fromError(_loadError!).message,
-              textAlign: TextAlign.center,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_loadError == null ? '会话加载中，请稍候' : UserMessageMapper.fromError(_loadError!).message, textAlign: TextAlign.center),
+                TextButton(key: const Key('smart-follow-refresh'), onPressed: _refresh, child: const Text('重新读取任务')),
+              ],
             ),
           ),
         ),
@@ -156,23 +260,26 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (_loadError != null) const Text('暂时无法获取最新状态，以下为上次读取结果；正在等待重新读取。', key: Key('smart-follow-stale')),
             _StageCard(stage: stage, session: session),
             const SizedBox(height: 12),
-            if (widget.recognitionTotal != null && widget.recognitionProcessed != null) ...[
-              _RecognitionProgress(processed: widget.recognitionProcessed!, total: widget.recognitionTotal!),
+            if (_recognition != null || (widget.readRecognition == null && widget.recognitionTotal != null && widget.recognitionProcessed != null)) ...[
+              _RecognitionProgress(processed: _recognition?.finishedCount ?? widget.recognitionProcessed!, total: _recognition?.totalCount ?? widget.recognitionTotal!),
               const SizedBox(height: 12),
             ],
             _CountsCard(session: session),
             const SizedBox(height: 12),
             _ChildJobsCard(session: session, onOpen: widget.onOpenChildJobs),
-            if (session.metadataUpdateAvailable) ...[
+            if (widget.metadataSection != null)
+              widget.metadataSection!
+            else if (session.metadataUpdateAvailable) ...[
               const SizedBox(height: 12),
               _MetadataHintCard(session: session),
             ],
             const SizedBox(height: 16),
             _ActionsRow(
               session: session,
-              busy: _busy,
+              busy: _busy || _loadError != null,
               onAct: _act,
               onOpenCompletion: widget.onOpenCompletion,
             ),
@@ -186,6 +293,10 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> {
 
   @override
   void dispose() {
+    ++_generation;
+    _timer?.cancel();
+    unawaited(_signals?.cancel());
+    WidgetsBinding.instance.removeObserver(this);
     widget.repository.removeListener(_changed);
     super.dispose();
   }
@@ -298,8 +409,14 @@ class _CountsCard extends StatelessWidget {
     padding: const EdgeInsets.symmetric(vertical: 4),
     child: Row(
       children: [
-        Expanded(child: Text(label, style: const TextStyle(color: AppColors.mutedInk))),
-        Text(value, key: key, style: TextStyle(fontWeight: FontWeight.w600, color: danger ? AppColors.danger : null)),
+        Expanded(
+          child: Text(label, style: const TextStyle(color: AppColors.mutedInk)),
+        ),
+        Text(
+          value,
+          key: key,
+          style: TextStyle(fontWeight: FontWeight.w600, color: danger ? AppColors.danger : null),
+        ),
       ],
     ),
   );
@@ -318,9 +435,7 @@ class _ChildJobsCard extends StatelessWidget {
       leading: const Icon(Icons.layers_outlined),
       title: const Text('复制批次'),
       subtitle: Text('已创建 ${session.childJobCount} 批 · 每批创建后清单不再变化'),
-      trailing: onOpen == null
-          ? null
-          : const Icon(Icons.chevron_right),
+      trailing: onOpen == null ? null : const Icon(Icons.chevron_right),
       onTap: onOpen,
     ),
   );
@@ -363,7 +478,7 @@ class _ActionsRow extends StatelessWidget {
         if (canFinish)
           FilledButton(
             key: const Key('smart-follow-open-completion'),
-            onPressed: onOpenCompletion,
+            onPressed: busy ? null : onOpenCompletion,
             child: const Text('查看完成结果'),
           ),
         for (final action in session.allowedActions)

@@ -52,6 +52,7 @@ class FakeSmartFollowBackend implements SmartFollowGateway {
   int _blockedFiles = 0;
   bool _metadataPartial = false;
   bool metadataBlocked = false;
+  SmartFollowMetadataPreview? _metadataPreview;
 
   int startCalls = 0;
   int sessionCalls = 0;
@@ -272,7 +273,7 @@ class FakeSmartFollowBackend implements SmartFollowGateway {
   @override
   Future<SmartFollowMetadataPreview> previewMetadata(String sessionIdValue, {Map<String, dynamic>? data, String? idempotencyKey}) async {
     _metadataPartial = metadataBlocked;
-    return SmartFollowMetadataPreview.fromJson({
+    return _metadataPreview = SmartFollowMetadataPreview.fromJson({
       'preview_id': 'pv_fake',
       'preview_token': 'tok_fake',
       'expires_at': DateTime.now().add(const Duration(minutes: 10)).toUtc().toIso8601String(),
@@ -281,6 +282,9 @@ class FakeSmartFollowBackend implements SmartFollowGateway {
       'child_job_count': _children.length,
       'updatable_asset_count': _copiedAssets,
       'updatable_file_count': _copiedFiles,
+      'unchanged_count': 0,
+      'conflict_count': 0,
+      'estimated_bytes': _copiedFiles * 1024,
       'blocked_count': _metadataPartial ? 1 : 0,
       'requires_partial_confirmation': _metadataPartial,
       'write_mode': 'safe_embed_first',
@@ -289,7 +293,11 @@ class FakeSmartFollowBackend implements SmartFollowGateway {
   }
 
   @override
-  Future<SmartFollowMetadataPreview> previewDetail(String previewId) => previewMetadata(sessionId);
+  Future<SmartFollowMetadataPreview> previewDetail(String previewId) async {
+    final preview = _metadataPreview;
+    if (preview == null || preview.previewId != previewId) throw StateError('预览不存在');
+    return preview;
+  }
 
   @override
   Future<SmartFollowMetadataUpdate> createMetadataUpdate(

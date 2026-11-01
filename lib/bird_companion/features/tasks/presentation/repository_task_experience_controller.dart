@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:aves/bird_companion/features/recognition/recognition_repository.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_creation_service.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_configuration_controller.dart';
 
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/models/batch_models.dart';
@@ -44,6 +46,8 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     required PendingOperationStore pendingOperationStore,
     AppDataChangeBus? dataChangeBus,
     RecognitionRepository? recognitionRepository,
+    SmartFollowCreationService? smartFollowCreation,
+    SmartFollowConfigurationReader Function(String)? smartFollowConfiguration,
     Duration pollInterval = const Duration(seconds: 4),
   }) : this._(
          storageRepository: storageRepository,
@@ -57,6 +61,8 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
          pendingOperationStore: pendingOperationStore,
          dataChangeBus: dataChangeBus,
          recognitionRepository: recognitionRepository,
+         smartFollowCreation: smartFollowCreation,
+         smartFollowConfiguration: smartFollowConfiguration,
          pollInterval: pollInterval,
        );
 
@@ -72,6 +78,8 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     required this._pendingOperationStore,
     required this._dataChangeBus,
     required this.recognitionRepository,
+    required this.smartFollowCreation,
+    required this.smartFollowConfiguration,
     required this._pollInterval,
   }) : super(const ProductionTaskExperienceDataSource()) {
     setConnectionState(_mapConnection(_deviceSessionCubit.state.phase));
@@ -89,6 +97,8 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
 
   final DeviceRepository _deviceRepository;
   final RecognitionRepository? recognitionRepository;
+  final SmartFollowCreationService? smartFollowCreation;
+  final SmartFollowConfigurationReader Function(String)? smartFollowConfiguration;
   final StorageRepository _storageRepository;
   final BatchRepository _batchRepository;
   final JobRepository _jobRepository;
@@ -298,7 +308,8 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   }
 
   @override
-  Future<String> startImportBatch(String batchName, {Map<String, dynamic>? smartFollow}) async {
+  Future<String> startImportBatch(String batchName, {Map<String, dynamic>? smartFollow, SmartFollowConfiguredIntent? smartFollowIntent}) async {
+    if (smartFollow != null && (smartFollowIntent == null || smartFollowCreation == null)) throw StateError('请先完整确认跟随复制配置。');
     if (acting) {
       throw StateError('A task action is already in progress');
     }
@@ -331,6 +342,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       );
       _guardProductionId(project.id, 'project_id');
       await recognitionRepository?.rememberAnalysisOption(project.id, smartFollow);
+      if (smartFollowIntent != null) await smartFollowCreation!.stageForBatch(project.id, smartFollowIntent);
       final importJob = await _jobRepository.createImport(
         project.id,
         const ImportJobRequest(),
@@ -362,6 +374,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   }
 
   Future<String> startAnalysisForActiveProject({Map<String, dynamic>? smartFollow}) async {
+    if (smartFollow != null) throw StateError('跟随复制必须使用已确认的创建入口。');
     if (!_deviceSessionCubit.state.isConnected) {
       throw StateError('The box is not connected');
     }
@@ -375,6 +388,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     _guardProductionId(projectId, 'project_id');
 
     final inFlight = _analysisRequests[projectId];
+    if (smartFollowCreation?.hasPending(projectId) == true || smartFollowCreation?.hasStaged(projectId) == true) throw const SmartFollowCreationPending();
     if (inFlight != null) return inFlight;
     if (acting) {
       throw StateError('A task action is already in progress');
@@ -399,6 +413,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   }
 
   Future<String> _submitManualAnalysis(String projectId, Map<String, dynamic>? smartFollow) async {
+    if (smartFollow != null) throw StateError('跟随复制必须使用已确认的创建入口。');
     setBusyState(acting: true, clearError: true);
     _analysisRequestedProjects.add(projectId);
     try {
@@ -594,9 +609,20 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     _guardProductionId(projectId, 'project_id');
     if (!_analysisRequestedProjects.add(projectId)) return;
     try {
+      if (smartFollowCreation?.hasPending(projectId) == true && smartFollowCreation?.hasCreationRecord(projectId) != true) return;
+      if (recognitionRepository?.analysisOption(projectId) != null || smartFollowCreation?.hasStaged(projectId) == true || smartFollowCreation?.hasCreationRecord(projectId) == true) {
+        final service = smartFollowCreation, configuration = smartFollowConfiguration;
+        if (service == null || configuration == null || (!service.hasStaged(projectId) && !service.hasCreationRecord(projectId))) throw StateError('导入已完成，请重新确认设备与跟随复制策略。');
+        final session = service.hasCreationRecord(projectId) ? await service.recover(projectId) : await service.startStaged(projectId, configuration(projectId));
+        if (_disposed) return;
+        await recognitionRepository?.rememberAnalysisOption(projectId, null);
+        final job = await _jobRepository.detail(session.recognitionJobId);
+        if (!_disposed) _mergeJob(job);
+        return;
+      }
       final job = await _jobRepository.createAnalysis(
         projectId,
-        AnalysisJobRequest(smartFollow: recognitionRepository?.analysisOption(projectId)),
+        const AnalysisJobRequest(),
       );
       if (_disposed) return;
       _guardProductionId(job.id, 'job_id');

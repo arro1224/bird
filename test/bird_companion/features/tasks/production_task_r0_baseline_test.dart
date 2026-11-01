@@ -20,7 +20,7 @@ void main() {
       expect(root, contains('case TaskType.importIndex:'));
       expect(root, contains('_openSdCard();'));
       expect(root, contains('case TaskType.aiAnalysis:'));
-      expect(root, contains('chooseRecognitionMode(context,'));
+      expect(RegExp(r'chooseRecognitionMode\(\s*context,').hasMatch(root), isTrue);
       expect(root, contains('startAnalysisForActiveProject(smartFollow: choice.config)'));
       expect(root, contains('_openTask(jobId)'));
       expect(root, contains('case TaskType.copy:'));

@@ -61,6 +61,7 @@ class JobApi {
           normalizedProjectId,
         ),
         data: request.toJson(),
+        idempotencyKey: request.idempotencyKey,
       ),
     );
     if (job.type != BirdJobType.analysis) {

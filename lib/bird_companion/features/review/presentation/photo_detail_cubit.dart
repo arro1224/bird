@@ -63,15 +63,19 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
   final ReviewRepository _repository;
   final AppDataChangeBus? _dataChanges;
   final String? projectId;
+  void _emitIfOpen(PhotoDetailState next) {
+    if (!isClosed) emit(next);
+  }
+
   bool _loadInFlight = false;
   Future<void> load(String id) async {
-    if (_loadInFlight) return;
+    if (isClosed || _loadInFlight || state.saving) return;
     _loadInFlight = true;
-    emit(PhotoDetailState(loading: true, undoEntry: state.undoEntry));
+    _emitIfOpen(PhotoDetailState(loading: true, undoEntry: state.undoEntry));
     try {
-      emit(PhotoDetailState(detail: await _repository.detail(id), undoEntry: state.undoEntry));
+      _emitIfOpen(PhotoDetailState(detail: await _repository.detail(id), undoEntry: state.undoEntry));
     } catch (error) {
-      emit(PhotoDetailState(error: error, undoEntry: state.undoEntry));
+      _emitIfOpen(PhotoDetailState(error: error, undoEntry: state.undoEntry));
     } finally {
       _loadInFlight = false;
     }
@@ -81,8 +85,9 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
     UserDecision decision, {
     String successMessage = '修改已保存',
   }) async {
+    if (isClosed || state.saving) return;
     if (state.conflict) {
-      emit(
+      _emitIfOpen(
         state.copyWith(
           message: '请先载入盒子最新版本，或保留当前本机草稿。',
           messageIsError: true,
@@ -98,7 +103,7 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
           updatedAt: DateTime.now(),
           version: state.detail?.photo.summary.version,
         );
-    emit(state.copyWith(saving: true));
+    _emitIfOpen(state.copyWith(saving: true));
     try {
       final receipt = await _saveWithReceipt(
         decision,
@@ -106,7 +111,7 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
       );
       if (receipt.conflict) {
         final current = state.detail;
-        emit(
+        _emitIfOpen(
           state.copyWith(
             detail: current == null ? null : _withDecision(current, decision),
             saving: false,
@@ -119,7 +124,7 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
       final accepted = receipt.authoritativeDecision ?? decision;
       final undo = ReviewUndoEntry(before: previous, after: accepted);
       final updated = await _detailAfterSave(receipt, accepted);
-      emit(
+      _emitIfOpen(
         state.copyWith(
           detail: updated,
           saving: false,
@@ -129,7 +134,7 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
         ),
       );
     } catch (error) {
-      emit(
+      _emitIfOpen(
         state.copyWith(
           saving: false,
           message: error is ProtocolCompatibilityException ? '照片缺少有效版本，请刷新后重试' : '保存失败，请稍后重试',
@@ -142,33 +147,38 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
 
   Future<void> undo() async {
     final entry = state.undoEntry;
-    if (entry == null) return;
+    if (isClosed || state.saving || state.conflict || entry == null) return;
     final currentVersion = state.detail?.decision?.version ?? state.detail?.photo.summary.version ?? entry.after.version;
     final desired = _decisionWithVersion(entry.before, currentVersion);
-    emit(state.copyWith(saving: true));
-    final receipt = await _saveWithReceipt(
-      desired,
-      projectId: projectId,
-    );
-    if (receipt.conflict) {
-      final current = state.detail;
-      emit(
-        state.copyWith(
-          detail: current == null ? null : _withDecision(current, desired),
-          saving: false,
-          conflict: true,
-          pendingConflictDecision: desired,
-        ),
+    _emitIfOpen(state.copyWith(saving: true));
+    try {
+      final receipt = await _saveWithReceipt(
+        desired,
+        projectId: projectId,
       );
-      return;
+      if (receipt.conflict) {
+        final current = state.detail;
+        _emitIfOpen(
+          state.copyWith(
+            detail: current == null ? null : _withDecision(current, desired),
+            saving: false,
+            conflict: true,
+            pendingConflictDecision: desired,
+          ),
+        );
+        return;
+      }
+      final accepted = receipt.authoritativeDecision ?? desired;
+      final updated = await _detailAfterSave(receipt, accepted);
+      _emitIfOpen(state.copyWith(detail: updated, saving: false, message: '已撤销最近一次修改', messageIsError: false, clearUndo: true));
+    } catch (error) {
+      _emitIfOpen(state.copyWith(saving: false, message: '撤销失败，请稍后重试', messageIsError: true, error: error));
     }
-    final accepted = receipt.authoritativeDecision ?? desired;
-    final updated = await _detailAfterSave(receipt, accepted);
-    emit(state.copyWith(detail: updated, saving: false, message: '已撤销最近一次修改', messageIsError: false, clearUndo: true));
   }
 
   Future<void> useRemote(String fileId) async {
-    emit(state.copyWith(saving: true));
+    if (isClosed || state.saving) return;
+    _emitIfOpen(state.copyWith(saving: true));
     try {
       final repository = _repository;
       if (repository is RemoteReviewConflictResolver) {
@@ -178,7 +188,7 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
         );
       }
       final remote = await _repository.detail(fileId);
-      emit(
+      _emitIfOpen(
         state.copyWith(
           detail: remote,
           saving: false,
@@ -193,7 +203,7 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
         reason: 'photo_review_remote_accepted',
       );
     } catch (error) {
-      emit(
+      _emitIfOpen(
         state.copyWith(
           saving: false,
           message: '无法获取盒子中的最新内容，请稍后重试',
@@ -205,7 +215,7 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
   }
 
   Future<void> keepLocal() async {
-    emit(
+    _emitIfOpen(
       state.copyWith(
         message: '本机草稿已保留，但尚未写入盒子。载入盒子最新版本前不会再次提交。',
         messageIsError: false,

@@ -64,6 +64,9 @@ class SmartFollowMetadataPreview {
     this.writeMode,
     this.requiresPartialConfirmation = false,
     this.blockedReasons = const [],
+    this.knownCounts = const {},
+    this.partialConfirmationKnown = false,
+    this.ready = true,
     this.raw = const {},
   });
 
@@ -84,17 +87,35 @@ class SmartFollowMetadataPreview {
   final int estimatedBytes;
 
   /// 预计写入方式（RC3 口径：安全支持时内嵌，否则配套 XMP，另生成汇总 CSV）。
-  /// 后端未冻结枚举，App 按已知值给文案、未知值原样显示。
+  /// 后端未冻结枚举，未知值不可默认为某种安全写入策略。
   final String? writeMode;
 
   /// 存在不可更新/受阻项，用户必须显式确认"部分更新"。
   final bool requiresPartialConfirmation;
   final List<String> blockedReasons;
+  static const countKeys = {'child_job_count', 'updatable_asset_count', 'updatable_file_count', 'unchanged_count', 'blocked_count', 'conflict_count', 'estimated_bytes'};
+  final Set<String> knownCounts;
+  final bool partialConfirmationKnown;
+  final bool ready;
+  int? count(String key) => knownCounts.contains(key)
+      ? switch (key) {
+          'child_job_count' => childJobCount,
+          'updatable_asset_count' => updatableAssetCount,
+          'updatable_file_count' => updatableFileCount,
+          'unchanged_count' => unchangedCount,
+          'blocked_count' => blockedCount,
+          'conflict_count' => conflictCount,
+          'estimated_bytes' => estimatedBytes,
+          _ => null,
+        }
+      : null;
+  bool get needsPartialConsent => requiresPartialConfirmation || blockedCount > 0 || conflictCount > 0;
+  bool get hasKnownWriteMode => const {'embed', 'embedded', 'embed_only', 'embed_then_xmp_csv', 'safe_embed_first', 'xmp_csv', 'sidecar'}.contains(writeMode);
   final Map<String, dynamic> raw;
 
   bool get isExpired {
     final deadline = expiresAt;
-    return deadline != null && DateTime.now().isAfter(deadline);
+    return deadline != null && !DateTime.now().isBefore(deadline);
   }
 
   /// 没有可更新项时不允许创建任务。
@@ -104,8 +125,8 @@ class SmartFollowMetadataPreview {
     'embed' || 'embedded' || 'embed_only' => '内嵌到支持的副本',
     'embed_then_xmp_csv' || 'safe_embed_first' => '安全支持时内嵌，否则写配套 XMP，并生成汇总 CSV',
     'xmp_csv' || 'sidecar' => '写配套 XMP 与汇总 CSV',
-    null || '' => '按 RC3 安全写入方式',
-    _ => writeMode!,
+    null || '' => '未提供',
+    _ => '暂无法确认写入方式',
   };
 
   factory SmartFollowMetadataPreview.fromJson(Map<String, dynamic> json) {
@@ -116,16 +137,29 @@ class SmartFollowMetadataPreview {
       expiresAt: ProtocolValidation.optionalDateTime(json, 'expires_at'),
       targetMediaId: _str(json, const ['target_media_id']),
       targetDisplayName: _str(json, const ['target_display_name', 'target_name']),
-      childJobCount: _int(json, const ['child_job_count', 'copy_job_count']),
-      updatableAssetCount: _int(json, const ['updatable_asset_count', 'updateable_asset_count']),
-      updatableFileCount: _int(json, const ['updatable_file_count', 'updateable_file_count']),
-      unchangedCount: _int(json, const ['unchanged_count']),
-      blockedCount: _int(json, const ['blocked_count', 'not_updatable_count']),
-      conflictCount: _int(json, const ['conflict_count']),
-      estimatedBytes: _int(json, const ['estimated_bytes', 'total_bytes']),
+      childJobCount: _count(json, const ['child_job_count', 'copy_job_count']),
+      updatableAssetCount: _count(json, const ['updatable_asset_count', 'updateable_asset_count']),
+      updatableFileCount: _count(json, const ['updatable_file_count', 'updateable_file_count']),
+      unchangedCount: _count(json, const ['unchanged_count']),
+      blockedCount: _count(json, const ['blocked_count', 'not_updatable_count']),
+      conflictCount: _count(json, const ['conflict_count']),
+      estimatedBytes: _count(json, const ['estimated_bytes', 'total_bytes']),
       writeMode: _str(json, const ['write_mode', 'write_method']),
       requiresPartialConfirmation: json['requires_partial_confirmation'] == true || (json['partial'] == true),
       blockedReasons: reasons is List ? List.unmodifiable(reasons.map((item) => item.toString()).where((item) => item.isNotEmpty)) : const [],
+      knownCounts: Set.unmodifiable(
+        {
+          'child_job_count': const ['child_job_count', 'copy_job_count'],
+          'updatable_asset_count': const ['updatable_asset_count', 'updateable_asset_count'],
+          'updatable_file_count': const ['updatable_file_count', 'updateable_file_count'],
+          'unchanged_count': const ['unchanged_count'],
+          'blocked_count': const ['blocked_count', 'not_updatable_count'],
+          'conflict_count': const ['conflict_count'],
+          'estimated_bytes': const ['estimated_bytes', 'total_bytes'],
+        }.entries.where((entry) => entry.value.any((key) => json[key] is int && (json[key] as int) >= 0)).map((entry) => entry.key),
+      ),
+      partialConfirmationKnown: json['requires_partial_confirmation'] is bool || json['partial'] is bool,
+      ready: json['state'] == null || json['state'] == 'ready',
       raw: Map.unmodifiable(json),
     );
   }
@@ -149,6 +183,8 @@ class SmartFollowMetadataUpdate {
     this.createdAt,
     this.updatedAt,
     this.finishedAt,
+    this.knownCounts = const {},
+    this.childrenProvided = false,
     this.raw = const {},
   });
 
@@ -173,28 +209,62 @@ class SmartFollowMetadataUpdate {
   final DateTime? updatedAt;
   final DateTime? finishedAt;
   final Map<String, dynamic> raw;
+  static const countAliases = {
+    'child_job_count': ['child_job_count', 'child_count'],
+    'updated_asset_count': ['updated_asset_count', 'updated_assets'],
+    'updated_file_count': ['updated_file_count', 'updated_files'],
+    'failed_count': ['failed_count', 'failed_file_count'],
+    'unchanged_count': ['unchanged_count'],
+    'blocked_count': ['blocked_count'],
+  };
+  final Set<String> knownCounts;
+  final bool childrenProvided;
+  bool get stateVersionKnown => raw['state_version'] is int && (raw['state_version'] as int) >= 0;
+  int? count(String key) => !knownCounts.contains(key)
+      ? null
+      : switch (key) {
+          'child_job_count' => childJobCount,
+          'updated_asset_count' => updatedAssetCount,
+          'updated_file_count' => updatedFileCount,
+          'failed_count' => failedCount,
+          'unchanged_count' => unchangedCount,
+          'blocked_count' => blockedCount,
+          _ => null,
+        };
 
   /// 后端确认前只按"明确表示结束"的值收敛；未知值当作未结束，
   /// 页面继续按运行中展示并允许刷新，不会误报完成。
   bool get isTerminal => const {'completed', 'completed_partial', 'failed', 'cancelled'}.contains(state.trim());
 
+  /// A missing/truncated list cannot prove that all child writes have stopped.
+  bool get childrenSettled =>
+      childrenProvided && count('child_job_count') == childUpdates.length && childUpdates.map((child) => child.metadataUpdateId).toSet().length == childUpdates.length && childUpdates.every((child) => child.isTerminal);
+
   bool get isPartial => state.trim() == 'completed_partial' || blockedCount > 0;
 
   factory SmartFollowMetadataUpdate.fromJson(Map<String, dynamic> json) {
     final children = json['child_jobs'] ?? json['child_updates'] ?? json['metadata_update_jobs'];
+    if (children != null && children is! List) throw const ProtocolCompatibilityException('child_jobs', '必须是列表');
+    final parsed = <SmartFollowMetadataChildUpdate>[];
+    if (children is List) {
+      for (final child in children) {
+        if (child is! Map) throw const ProtocolCompatibilityException('child_jobs', '每个子任务必须是对象');
+        parsed.add(SmartFollowMetadataChildUpdate.fromJson(Map<String, dynamic>.from(child)));
+      }
+    }
     return SmartFollowMetadataUpdate(
       updateId: ProtocolValidation.requiredId(json, 'update_id'),
       state: _str(json, const ['state', 'status']) ?? 'unknown',
       stateVersion: ProtocolValidation.nonNegativeInt(json, 'state_version'),
-      childJobCount: _int(json, const ['child_job_count', 'child_count']),
-      updatedAssetCount: _int(json, const ['updated_asset_count', 'updated_assets']),
-      updatedFileCount: _int(json, const ['updated_file_count', 'updated_files']),
-      failedCount: _int(json, const ['failed_count', 'failed_file_count']),
-      unchangedCount: _int(json, const ['unchanged_count']),
-      blockedCount: _int(json, const ['blocked_count']),
-      childUpdates: children is List
-          ? List.unmodifiable(children.whereType<Map>().map((item) => SmartFollowMetadataChildUpdate.fromJson(Map<String, dynamic>.from(item))))
-          : const [],
+      childJobCount: _count(json, countAliases['child_job_count']!),
+      updatedAssetCount: _count(json, countAliases['updated_asset_count']!),
+      updatedFileCount: _count(json, countAliases['updated_file_count']!),
+      failedCount: _count(json, countAliases['failed_count']!),
+      unchangedCount: _count(json, countAliases['unchanged_count']!),
+      blockedCount: _count(json, countAliases['blocked_count']!),
+      knownCounts: _knownCounts(json, countAliases),
+      childrenProvided: children is List,
+      childUpdates: List.unmodifiable(parsed),
       errorCode: _str(json, const ['error_code']),
       errorMessage: _str(json, const ['error_message', 'message']),
       createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
@@ -214,6 +284,8 @@ class SmartFollowMetadataChildUpdate {
     this.updatedFileCount = 0,
     this.failedFileCount = 0,
     this.errorCode,
+    this.errorMessage,
+    this.knownCounts = const {},
   });
 
   final String metadataUpdateId;
@@ -224,6 +296,19 @@ class SmartFollowMetadataChildUpdate {
   final int updatedFileCount;
   final int failedFileCount;
   final String? errorCode;
+  final String? errorMessage;
+  final Set<String> knownCounts;
+  static const countAliases = {
+    'updated_file_count': ['updated_file_count', 'updated_files'],
+    'failed_file_count': ['failed_file_count', 'failed_files'],
+  };
+  int? count(String key) => !knownCounts.contains(key)
+      ? null
+      : switch (key) {
+          'updated_file_count' => updatedFileCount,
+          'failed_file_count' => failedFileCount,
+          _ => null,
+        };
 
   bool get isTerminal => const {'completed', 'completed_partial', 'failed', 'cancelled'}.contains(state.trim());
 
@@ -231,9 +316,11 @@ class SmartFollowMetadataChildUpdate {
     metadataUpdateId: ProtocolValidation.requiredId(json, 'metadata_update_id'),
     copyJobId: _str(json, const ['copy_job_id', 'source_copy_job_id']),
     state: _str(json, const ['state', 'status']) ?? 'unknown',
-    updatedFileCount: _int(json, const ['updated_file_count', 'updated_files']),
-    failedFileCount: _int(json, const ['failed_file_count', 'failed_files']),
+    updatedFileCount: _count(json, countAliases['updated_file_count']!),
+    failedFileCount: _count(json, countAliases['failed_file_count']!),
+    knownCounts: _knownCounts(json, countAliases),
     errorCode: _str(json, const ['error_code']),
+    errorMessage: _str(json, const ['error_message']),
   );
 }
 
@@ -246,6 +333,16 @@ String? _str(Map<String, dynamic> json, List<String> keys) {
   }
   return null;
 }
+
+int _count(Map<String, dynamic> json, List<String> keys) {
+  for (final key in keys) {
+    final value = json[key];
+    if (value is int && value >= 0) return value;
+  }
+  return 0;
+}
+
+Set<String> _knownCounts(Map<String, dynamic> json, Map<String, List<String>> aliases) => Set.unmodifiable(aliases.entries.where((entry) => entry.value.any((key) => json[key] is int && (json[key] as int) >= 0)).map((entry) => entry.key));
 
 int _int(Map<String, dynamic> json, List<String> keys) {
   for (final key in keys) {

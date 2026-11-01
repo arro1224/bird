@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'package:aves/bird_companion/features/recognition/recognition_widgets.dart';
 import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_task_tile.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_entry_section.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_configuration_controller.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_creation_service.dart';
 import 'package:aves/bird_companion/features/copy/presentation/widgets/active_copy_jobs_banner.dart';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
@@ -62,10 +65,25 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       pendingOperationStore: dependencies.pendingOperationStore,
       dataChangeBus: dependencies.dataChangeBus,
       recognitionRepository: dependencies.recognitionRepository,
+      smartFollowCreation: dependencies.smartFollowCreation,
+      smartFollowConfiguration: (batch) => smartFollowConfigurationReader(dependencies, batch),
     );
     _controller = controller;
     _analysisSubscription = controller.analysisCompletedProjects.listen(
-      (projectId) {
+      (projectId) async {
+        final device = dependencies.smartFollowCreation.contextKey();
+        if (dependencies.smartFollowCreation.hasStaged(projectId) || dependencies.smartFollowCreation.hasPending(projectId)) return;
+        try {
+          final capabilities = await dependencies.smartFollowRepository.capabilities();
+          if (capabilities.canShowEntry) {
+            for (final job in controller.jobs.where((job) => job.sourceProjectId == projectId && job.type.name == 'analysis')) {
+              if (job.smartFollowSessionId != null || await dependencies.smartFollowRepository.refreshForJob(job.id) != null) return;
+            }
+          }
+        } catch (_) {
+          return; // Do not present recognition completion as follow completion.
+        }
+        if (!mounted || dependencies.smartFollowCreation.contextKey() != device) return;
         final onAnalysisCompleted = widget.onAnalysisCompleted;
         if (onAnalysisCompleted != null) {
           onAnalysisCompleted(projectId);
@@ -138,8 +156,27 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
           _openSdCard();
           return;
         case TaskType.aiAnalysis:
-          final choice = await chooseRecognitionMode(context, BirdCompanionScope.of(context).recognitionRepository);
+          final dependencies = BirdCompanionScope.of(context);
+          final batchId = controller.activeBatchId;
+          if (batchId == null || batchId.trim().isEmpty) throw StateError('当前没有可用批次');
+          final choice = await chooseRecognitionMode(
+            context,
+            dependencies.recognitionRepository,
+            entryReader: smartFollowEntryReader(dependencies, batchId),
+            configurationReader: smartFollowConfigurationReader(dependencies, batchId),
+            creationService: dependencies.smartFollowCreation,
+          );
           if (choice == null) return;
+          if (choice.existingSessionId != null) {
+            if (mounted) await Navigator.of(context).pushNamed<void>(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(choice.existingSessionId!));
+            return;
+          }
+          if (choice.existingRecognitionJobId != null) {
+            if (mounted) await _openTask(choice.existingRecognitionJobId!);
+            return;
+          }
+          await dependencies.smartFollowCreation.discardStaged(batchId);
+          await dependencies.recognitionRepository.rememberAnalysisOption(batchId, null);
           final jobId = await controller.startAnalysisForActiveProject(smartFollow: choice.config);
           if (mounted) await _openTask(jobId);
           return;
@@ -151,7 +188,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
           if (mounted) {
             await Navigator.of(context).pushNamed<void>(
               BirdRoutes.copyConfirmation,
-              arguments: CopyConfirmationArgs(batchId),
+              arguments: CopyConfirmationArgs(batchId, enableSmartFollow: true),
             );
             await controller.refreshFromBox();
           }
@@ -210,47 +247,67 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
   void _openSdCard() {
     final controller = _controller!;
     Map<String, dynamic>? selected;
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (sdContext) => SdCardFlowPage(
-          controller: controller,
-          onRescan: controller.rescan,
-          onContinue: () => Navigator.of(sdContext).push<void>(
-            MaterialPageRoute<void>(
-              builder: (batchContext) => BatchSetupPage(
-                controller: controller,
-                analysisOptions: RecognitionOptions(repository: BirdCompanionScope.of(context).recognitionRepository, onChanged: (value) => selected = value),
-                onStartImport: (batchName) async {
-                  try {
-                    await controller.startImportBatch(batchName, smartFollow: selected);
-                    if (!batchContext.mounted) return;
-                    final jobId = controller.currentJobId;
-                    if (jobId == null) return;
-                    unawaited(
-                      Navigator.of(batchContext).pushReplacement<void, void>(
-                        MaterialPageRoute<void>(
-                          builder: (_) => TaskDetailPage(
-                            controller: controller,
-                            taskId: jobId,
-                            allowDemoCompletion: false,
-                            onControl: _control,
-                            onExportLog: _exportTaskLog,
+    SmartFollowConfiguredIntent? selectedIntent;
+    final configurationReady = ValueNotifier(true);
+    Navigator.of(context)
+        .push<void>(
+          MaterialPageRoute<void>(
+            builder: (sdContext) => SdCardFlowPage(
+              controller: controller,
+              onRescan: controller.rescan,
+              onContinue: () {
+                selected = null;
+                selectedIntent = null;
+                configurationReady.value = true;
+                unawaited(
+                  Navigator.of(sdContext).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (batchContext) => ValueListenableBuilder<bool>(
+                        valueListenable: configurationReady,
+                        builder: (_, ready, _) => BatchSetupPage(
+                          controller: controller,
+                          canStartImport: ready,
+                          analysisOptions: RecognitionOptions(
+                            repository: BirdCompanionScope.of(context).recognitionRepository,
+                            onChanged: (value) => selected = value,
+                            onConfigured: (value) => selectedIntent = value,
+                            onReadyChanged: (value) => configurationReady.value = value,
                           ),
+                          onStartImport: (batchName) async {
+                            try {
+                              await controller.startImportBatch(batchName, smartFollow: selected, smartFollowIntent: selectedIntent);
+                              if (!batchContext.mounted) return;
+                              final jobId = controller.currentJobId;
+                              if (jobId == null) return;
+                              unawaited(
+                                Navigator.of(batchContext).pushReplacement<void, void>(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => TaskDetailPage(
+                                      controller: controller,
+                                      taskId: jobId,
+                                      allowDemoCompletion: false,
+                                      onControl: _control,
+                                      onExportLog: _exportTaskLog,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            } catch (error) {
+                              if (batchContext.mounted) {
+                                _showError(batchContext, error);
+                              }
+                            }
+                          },
                         ),
                       ),
-                    );
-                  } catch (error) {
-                    if (batchContext.mounted) {
-                      _showError(batchContext, error);
-                    }
-                  }
-                },
-              ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
-        ),
-      ),
-    );
+        )
+        .whenComplete(configurationReady.dispose);
   }
 
   Future<void> _openTask(String taskId) async {
@@ -267,6 +324,17 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
     final recognition = BirdCompanionScope.of(context).recognitionRepository;
     if (refreshedTask.type == TaskType.aiAnalysis) {
       try {
+        final dependencies = BirdCompanionScope.of(context);
+        final device = dependencies.smartFollowCreation.contextKey();
+        final capabilities = await dependencies.smartFollowRepository.capabilities();
+        if (capabilities.canShowEntry) {
+          final session = await dependencies.smartFollowRepository.refreshForJob(taskId);
+          if (!mounted || dependencies.smartFollowCreation.contextKey() != device) return;
+          if (session != null) {
+            await Navigator.of(context).pushNamed<void>(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(session.sessionId, recognitionJobId: taskId));
+            return;
+          }
+        }
         await recognition.sync(taskId);
       } on ApiException catch (error) {
         if (error.statusCode != 404) {
@@ -299,22 +367,34 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
             controller: controller,
             taskId: taskId,
             incrementalPanel: refreshedTask.type == TaskType.aiAnalysis
-                ? SmartFollowTaskTile(
-                    repository: BirdCompanionScope.of(context).smartFollowRepository,
-                    recognitionJobId: taskId,
-                    recognitionProcessed: refreshedTask.processed,
-                    recognitionTotal: refreshedTask.total,
-                    onOpenRun: (sessionId) => unawaited(
-                      Navigator.of(context).pushNamed<void>(
-                        BirdRoutes.smartFollowRun,
-                        arguments: SmartFollowRunArgs(
-                          sessionId,
-                          recognitionJobId: taskId,
-                          recognitionProcessed: refreshedTask.processed,
-                          recognitionTotal: refreshedTask.total,
+                ? Column(
+                    children: [
+                      SmartFollowTaskTile(
+                        repository: BirdCompanionScope.of(context).smartFollowRepository,
+                        recognitionJobId: taskId,
+                        recognitionProcessed: refreshedTask.processed,
+                        recognitionTotal: refreshedTask.total,
+                        onOpenRun: (sessionId) => unawaited(
+                          Navigator.of(context).pushNamed<void>(
+                            BirdRoutes.smartFollowRun,
+                            arguments: SmartFollowRunArgs(
+                              sessionId,
+                              recognitionJobId: taskId,
+                              recognitionProcessed: refreshedTask.processed,
+                              recognitionTotal: refreshedTask.total,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      if (sourceProjectId != null)
+                        SmartFollowEntrySection(
+                          batchId: sourceProjectId,
+                          recognitionJobId: taskId,
+                          onModeChanged: (_) {},
+                          onSnapshot: () => unawaited(Navigator.of(context).pushNamed<void>(BirdRoutes.copyConfirmation, arguments: CopyConfirmationArgs(sourceProjectId, scope: 'recognized_assets'))),
+                          onOpenRecognition: () => controller.refreshJobDetail(taskId),
+                        ),
+                    ],
                   )
                 : null,
             allowDemoCompletion: false,
@@ -419,6 +499,11 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
   }
 
   void _showError(BuildContext context, Object error) {
+    if (error is SmartFollowCreationPending || error is SmartFollowConfirmationRequired) {
+      final text = error is SmartFollowConfirmationRequired ? error.message : error.toString();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+      return;
+    }
     final message = UserMessageMapper.fromError(error);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${message.title}：${message.message}')),

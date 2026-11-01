@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
@@ -11,6 +12,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('undo network failure clears saving and retains retryable undo entry', () async {
+    final repository = _AuditReviewRepository(_originalDetail());
+    final cubit = PhotoDetailCubit(repository);
+    addTearDown(cubit.close);
+    await cubit.load('photo-1');
+    await cubit.save(const UserDecision(fileId: 'photo-1', keepState: KeepState.keep));
+    repository.fail = true;
+    await cubit.undo();
+    expect(cubit.state.saving, isFalse);
+    expect(cubit.state.canUndo, isTrue);
+    expect(cubit.state.messageIsError, isTrue);
+    repository.fail = false;
+    await cubit.undo();
+    expect(cubit.state.undoEntry, isNull);
+  });
+  test('detail response after page closure does not emit into a closed cubit', () async {
+    final repository = _AuditReviewRepository(_originalDetail());
+    repository.gate = Completer<ReviewDetail>();
+    final cubit = PhotoDetailCubit(repository);
+    final request = cubit.load('photo-1');
+    await cubit.close();
+    repository.gate!.complete(_originalDetail());
+    await request;
+  });
+
   group('照片详情修改同步', () {
     test('保存后即使设备暂时返回旧详情也保留刚修改的决定', () async {
       final repository = _StaleReviewRepository(_originalDetail());
@@ -376,5 +402,18 @@ class _ConflictReviewRepository implements ReviewRepository, RemoteReviewConflic
   }) async {
     remoteAcceptedFileId = fileId;
     remoteAcceptedProjectId = projectId;
+  }
+}
+
+class _AuditReviewRepository extends _StaleReviewRepository {
+  _AuditReviewRepository(super.staleDetail);
+  bool fail = false;
+  Completer<ReviewDetail>? gate;
+  @override
+  Future<ReviewDetail> detail(String fileId) => gate?.future ?? super.detail(fileId);
+  @override
+  Future<ReviewSaveResult> save(UserDecision value, {String? projectId}) async {
+    if (fail) throw StateError('network unavailable');
+    return super.save(value, projectId: projectId);
   }
 }

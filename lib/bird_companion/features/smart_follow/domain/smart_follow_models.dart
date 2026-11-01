@@ -381,11 +381,14 @@ class SmartFollowChildJob {
 
 /// 子任务分页（服务端固定排序 + cursor 快照）。
 class SmartFollowChildJobPage {
-  const SmartFollowChildJobPage({required this.items, required this.hasMore, this.nextCursor});
+  const SmartFollowChildJobPage({required this.items, required this.hasMore, this.nextCursor, this.paginationValid = true});
 
   final List<SmartFollowChildJob> items;
   final bool hasMore;
   final String? nextCursor;
+
+  /// Missing continuation metadata must not establish a complete report.
+  final bool paginationValid;
 
   factory SmartFollowChildJobPage.fromJson(Map<String, dynamic> json) {
     final raw = json['items'] ?? json['copy_jobs'];
@@ -403,8 +406,11 @@ class SmartFollowChildJobPage {
     final cursor = _stringAlias(json, const ['next_cursor']);
     return SmartFollowChildJobPage(
       items: List.unmodifiable(items),
+      // Existing history views can only request another page with a cursor.
+      // C1 separately checks paginationValid before trusting the list as final.
       hasMore: json['has_more'] == true && cursor != null,
       nextCursor: cursor,
+      paginationValid: json['has_more'] is bool && (json['has_more'] != true || cursor != null),
     );
   }
 

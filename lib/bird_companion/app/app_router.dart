@@ -12,6 +12,13 @@ import 'package:aves/bird_companion/features/copy/presentation/pages/copy_job_de
 import 'package:aves/bird_companion/features/copy/presentation/copy_job_list_page.dart';
 import 'package:aves/bird_companion/features/smart_follow/presentation/run/smart_follow_child_jobs_view.dart';
 import 'package:aves/bird_companion/features/smart_follow/presentation/run/smart_follow_run_page.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/finish/smart_follow_completion_controller.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/finish/smart_follow_completion_page.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/finish/smart_follow_metadata_controller.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/finish/smart_follow_metadata_section.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/finish/smart_follow_metadata_preview_page.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/finish/smart_follow_metadata_update_controller.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/finish/smart_follow_metadata_update_page.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_page.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/scene_list_page.dart';
@@ -51,6 +58,9 @@ abstract final class BirdRoutes {
   static const copyJobDetail = '/copy-job-detail';
   // SmartFollow 运行页（联合任务书 §9：入口随识别状态变化，运行页独立路由）。
   static const smartFollowRun = '/smart-follow-run';
+  static const smartFollowCompletion = '/smart-follow-completion';
+  static const smartFollowMetadataPreview = '/smart-follow-metadata-preview';
+  static const smartFollowMetadataUpdate = '/smart-follow-metadata-update';
   static const jobDetail = '/job-detail';
   static const jobCenter = '/job-center';
   static const batches = '/batches';
@@ -184,6 +194,15 @@ abstract final class BirdAppRouter {
             ? SmartFollowRunArgs(args.trim())
             : null;
         page = runArgs == null ? _invalid('边识别边复制', '缺少跟随任务编号') : _SmartFollowRunRoute(args: runArgs);
+      case BirdRoutes.smartFollowCompletion:
+        final args = settings.arguments;
+        page = args is SmartFollowCompletionArgs && args.sessionId.trim().isNotEmpty ? _SmartFollowCompletionRoute(args: args) : _invalid('边识别边复制结果', '缺少跟随任务编号');
+      case BirdRoutes.smartFollowMetadataPreview:
+        final args = settings.arguments;
+        page = args is SmartFollowMetadataPreviewArgs && args.sessionId.trim().isNotEmpty ? _SmartFollowMetadataPreviewRoute(args: args) : _invalid('预览识别信息更新', '缺少跟随任务编号');
+      case BirdRoutes.smartFollowMetadataUpdate:
+        final args = settings.arguments;
+        page = args is SmartFollowMetadataUpdateArgs && args.sessionId.trim().isNotEmpty && (args.updateId == null || args.updateId!.trim().isNotEmpty) ? _SmartFollowMetadataUpdateRoute(args: args) : _invalid('识别信息更新任务', '缺少原任务关联');
       case BirdRoutes.copyJobDetail:
         final args = settings.arguments;
         final id = _clean(
@@ -346,25 +365,294 @@ class _SettingsControllerRouteState extends State<_SettingsControllerRoute> {
 
 /// 运行页路由壳：仓储从依赖容器取（页面本身仍接受显式 repository，便于测试），
 /// 并把"复制批次"接到 RC3 child CopyJob 详情。
-class _SmartFollowRunRoute extends StatelessWidget {
+class _SmartFollowRunRoute extends StatefulWidget {
   const _SmartFollowRunRoute({required this.args});
 
   final SmartFollowRunArgs args;
 
   @override
+  State<_SmartFollowRunRoute> createState() => _SmartFollowRunRouteState();
+}
+
+class _SmartFollowRunRouteState extends State<_SmartFollowRunRoute> {
+  String? _contextKey;
+  int? _deviceGeneration;
+  Stream<void>? _signals;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final dependencies = BirdCompanionScope.of(context);
+    _deviceGeneration ??= dependencies.smartFollowRepository.deviceGeneration;
+    _contextKey ??= '${dependencies.deviceSessionCubit.state.device?.id}|${dependencies.apiClient.baseUri}';
+    _signals ??= Stream<void>.multi((signals) {
+      final subscriptions = [
+        dependencies.deviceSessionCubit.stream.listen((_) => signals.add(null)),
+        dependencies.refreshCoordinator.changes.listen((_) => signals.add(null)),
+      ];
+      signals.onCancel = () async {
+        for (final subscription in subscriptions) {
+          await subscription.cancel();
+        }
+      };
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final repository = BirdCompanionScope.of(context).smartFollowRepository;
+    final dependencies = BirdCompanionScope.of(context);
+    final repository = dependencies.smartFollowRepository;
+    final args = widget.args;
+    bool current() => _deviceGeneration == repository.deviceGeneration && dependencies.deviceSessionCubit.state.isConnected && _contextKey == '${dependencies.deviceSessionCubit.state.device?.id}|${dependencies.apiClient.baseUri}';
     return SmartFollowRunPage(
       repository: repository,
       sessionId: args.sessionId,
       recognitionProcessed: args.recognitionProcessed,
       recognitionTotal: args.recognitionTotal,
+      pollInterval: const Duration(seconds: 4),
+      readRecognition: dependencies.jobRepository.detail,
+      refreshSignals: _signals,
+      isCurrent: current,
+      metadataSection: _metadataSection(context, dependencies, args.sessionId, current, _signals),
+      onOpenCompletion: () {
+        if (!current()) return;
+        Navigator.of(context).pushNamed(
+          BirdRoutes.smartFollowCompletion,
+          arguments: SmartFollowCompletionArgs(args.sessionId, deviceId: dependencies.deviceSessionCubit.state.device?.id, deviceGeneration: _deviceGeneration, baseUri: dependencies.apiClient.baseUri.toString()),
+        );
+      },
       onOpenChildJobs: () => showSmartFollowChildJobsSheet(
         context,
         repository: repository,
         sessionId: args.sessionId,
-        onOpenCopyJob: (copyJobId) => Navigator.of(context).pushNamed(BirdRoutes.copyJobDetail, arguments: CopyJobDetailArgs(copyJobId)),
+        onOpenCopyJob: (copyJobId) {
+          if (current()) Navigator.of(context).pushNamed(BirdRoutes.copyJobDetail, arguments: CopyJobDetailArgs(copyJobId, deviceId: dependencies.deviceSessionCubit.state.device?.id));
+        },
       ),
+    );
+  }
+}
+
+class _SmartFollowCompletionRoute extends StatefulWidget {
+  const _SmartFollowCompletionRoute({required this.args});
+  final SmartFollowCompletionArgs args;
+  @override
+  State<_SmartFollowCompletionRoute> createState() => _SmartFollowCompletionRouteState();
+}
+
+class _SmartFollowCompletionRouteState extends State<_SmartFollowCompletionRoute> {
+  SmartFollowCompletionController? _controller;
+  Stream<void>? _signals;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_controller != null) return;
+    final dependencies = BirdCompanionScope.of(context);
+    final args = widget.args;
+    final generation = args.deviceGeneration ?? dependencies.smartFollowRepository.deviceGeneration;
+    final deviceId = args.deviceId ?? dependencies.deviceSessionCubit.state.device?.id;
+    final baseUri = args.baseUri ?? dependencies.apiClient.baseUri.toString();
+    _controller = SmartFollowCompletionController(
+      repository: dependencies.smartFollowRepository,
+      sessionId: args.sessionId,
+      readChild: dependencies.copyJobRepository.getJob,
+      readCopyReport: dependencies.copyJobRepository.jobReport,
+      readRecognition: dependencies.jobRepository.detail,
+      readRecognitionReport: dependencies.jobRepository.report,
+      isCurrent: () =>
+          generation == dependencies.smartFollowRepository.deviceGeneration &&
+          dependencies.deviceSessionCubit.state.isConnected &&
+          deviceId == dependencies.deviceSessionCubit.state.device?.id &&
+          baseUri == dependencies.apiClient.baseUri.toString(),
+    );
+    _signals = Stream<void>.multi((signals) {
+      final subscriptions = [dependencies.deviceSessionCubit.stream.listen((_) => signals.add(null)), dependencies.refreshCoordinator.changes.listen((_) => signals.add(null))];
+      signals.onCancel = () async {
+        for (final subscription in subscriptions) {
+          await subscription.cancel();
+        }
+      };
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SmartFollowCompletionPage(
+    controller: _controller!,
+    refreshSignals: _signals,
+    metadataSection: _metadataSection(context, BirdCompanionScope.of(context), widget.args.sessionId, () => _controller!.isCurrent?.call() ?? true, _signals),
+    onOpenRun: () {
+      if (!(_controller!.isCurrent?.call() ?? true)) return;
+      Navigator.of(context).pushReplacementNamed(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(widget.args.sessionId));
+    },
+    onOpenChild: (id) {
+      if (!(_controller!.isCurrent?.call() ?? true)) return;
+      Navigator.of(context).pushNamed(BirdRoutes.copyJobDetail, arguments: CopyJobDetailArgs(id, deviceId: BirdCompanionScope.of(context).deviceSessionCubit.state.device?.id));
+    },
+  );
+}
+
+Widget _metadataSection(BuildContext context, BirdCompanionDependencies dependencies, String sessionId, bool Function() current, Stream<void>? signals) => SmartFollowMetadataSection(
+  repository: dependencies.smartFollowRepository,
+  sessionId: sessionId,
+  readRecognition: dependencies.jobRepository.detail,
+  isCurrent: current,
+  refreshSignals: signals,
+  onOpenPreview: () {
+    if (!current()) return;
+    Navigator.of(context).pushNamed(
+      BirdRoutes.smartFollowMetadataPreview,
+      arguments: SmartFollowMetadataPreviewArgs(
+        sessionId,
+        deviceId: dependencies.deviceSessionCubit.state.device?.id,
+        deviceGeneration: dependencies.smartFollowRepository.deviceGeneration,
+        baseUri: dependencies.apiClient.baseUri.toString(),
+      ),
+    );
+  },
+  onOpenUpdate: (id) => _openMetadataUpdate(context, dependencies, sessionId, id, current),
+);
+
+class _SmartFollowMetadataPreviewRoute extends StatefulWidget {
+  const _SmartFollowMetadataPreviewRoute({required this.args});
+  final SmartFollowMetadataPreviewArgs args;
+  @override
+  State<_SmartFollowMetadataPreviewRoute> createState() => _SmartFollowMetadataPreviewRouteState();
+}
+
+class _SmartFollowMetadataPreviewRouteState extends State<_SmartFollowMetadataPreviewRoute> {
+  SmartFollowMetadataController? _controller;
+  Stream<void>? _signals;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_controller != null) return;
+    final dependencies = BirdCompanionScope.of(context);
+    final args = widget.args;
+    final generation = args.deviceGeneration ?? dependencies.smartFollowRepository.deviceGeneration;
+    final deviceId = args.deviceId ?? dependencies.deviceSessionCubit.state.device?.id;
+    final baseUri = args.baseUri ?? dependencies.apiClient.baseUri.toString();
+    _controller = SmartFollowMetadataController(
+      repository: dependencies.smartFollowRepository,
+      sessionId: args.sessionId,
+      readRecognition: dependencies.jobRepository.detail,
+      isCurrent: () =>
+          generation == dependencies.smartFollowRepository.deviceGeneration &&
+          dependencies.deviceSessionCubit.state.isConnected &&
+          deviceId == dependencies.deviceSessionCubit.state.device?.id &&
+          baseUri == dependencies.apiClient.baseUri.toString(),
+    );
+    _signals = Stream<void>.multi((signals) {
+      final subscriptions = [dependencies.deviceSessionCubit.stream.listen((_) => signals.add(null)), dependencies.refreshCoordinator.changes.listen((_) => signals.add(null))];
+      signals.onCancel = () async {
+        for (final subscription in subscriptions) {
+          await subscription.cancel();
+        }
+      };
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SmartFollowMetadataPreviewPage(
+    controller: _controller!,
+    refreshSignals: _signals,
+    onOpenUpdate: (id) => _openMetadataUpdate(context, BirdCompanionScope.of(context), widget.args.sessionId, id, () => _controller!.current),
+  );
+}
+
+void _openMetadataUpdate(BuildContext context, BirdCompanionDependencies dependencies, String sessionId, String id, bool Function() current) {
+  if (!current()) return;
+  Navigator.of(context).pushNamed(
+    BirdRoutes.smartFollowMetadataUpdate,
+    arguments: SmartFollowMetadataUpdateArgs(
+      sessionId,
+      updateId: id,
+      deviceId: dependencies.deviceSessionCubit.state.device?.id,
+      deviceGeneration: dependencies.smartFollowRepository.deviceGeneration,
+      baseUri: dependencies.apiClient.baseUri.toString(),
+    ),
+  );
+}
+
+class _SmartFollowMetadataUpdateRoute extends StatefulWidget {
+  const _SmartFollowMetadataUpdateRoute({required this.args});
+  final SmartFollowMetadataUpdateArgs args;
+  @override
+  State<_SmartFollowMetadataUpdateRoute> createState() => _SmartFollowMetadataUpdateRouteState();
+}
+
+class _SmartFollowMetadataUpdateRouteState extends State<_SmartFollowMetadataUpdateRoute> {
+  SmartFollowMetadataUpdateController? _controller;
+  Stream<void>? _signals;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_controller != null) return;
+    final dependencies = BirdCompanionScope.of(context);
+    final args = widget.args;
+    final generation = args.deviceGeneration ?? dependencies.smartFollowRepository.deviceGeneration;
+    final deviceId = args.deviceId ?? dependencies.deviceSessionCubit.state.device?.id;
+    final baseUri = args.baseUri ?? dependencies.apiClient.baseUri.toString();
+    _controller = SmartFollowMetadataUpdateController(
+      repository: dependencies.smartFollowRepository,
+      sessionId: args.sessionId,
+      updateId: args.updateId,
+      isCurrent: () =>
+          generation == dependencies.smartFollowRepository.deviceGeneration &&
+          dependencies.deviceSessionCubit.state.isConnected &&
+          deviceId == dependencies.deviceSessionCubit.state.device?.id &&
+          baseUri == dependencies.apiClient.baseUri.toString(),
+    );
+    _signals = Stream<void>.multi((signals) {
+      final subscriptions = [dependencies.deviceSessionCubit.stream.listen((_) => signals.add(null)), dependencies.refreshCoordinator.changes.listen((_) => signals.add(null))];
+      signals.onCancel = () async {
+        for (final subscription in subscriptions) {
+          await subscription.cancel();
+        }
+      };
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dependencies = BirdCompanionScope.of(context);
+    final state = _controller!;
+    return SmartFollowMetadataUpdatePage(
+      controller: state,
+      refreshSignals: _signals,
+      onOpenCopy: (id) {
+        if (state.current) Navigator.of(context).pushNamed(BirdRoutes.copyJobDetail, arguments: CopyJobDetailArgs(id, deviceId: dependencies.deviceSessionCubit.state.device?.id));
+      },
+      onOpenUpdate: (id) => _openMetadataUpdate(context, dependencies, widget.args.sessionId, id, () => state.current),
+      onOpenPreview: () {
+        if (!state.canPreview) return;
+        Navigator.of(context).pushNamed(
+          BirdRoutes.smartFollowMetadataPreview,
+          arguments: SmartFollowMetadataPreviewArgs(
+            widget.args.sessionId,
+            deviceId: dependencies.deviceSessionCubit.state.device?.id,
+            deviceGeneration: dependencies.smartFollowRepository.deviceGeneration,
+            baseUri: dependencies.apiClient.baseUri.toString(),
+          ),
+        );
+      },
     );
   }
 }
