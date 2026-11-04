@@ -37,6 +37,7 @@ dev_dependencies:
 
   file: any
 flutter:
+  default-flavor: bird
   assets:
     - assets/bird_companion/connection/
     - assets/bird_companion/ui_extracted/connection/batch-01/

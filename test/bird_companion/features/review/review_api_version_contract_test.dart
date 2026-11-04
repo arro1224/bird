@@ -5,6 +5,19 @@ import 'package:aves/bird_companion/features/review/data/review_api.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  for (final tags in <List<String>?>[
+    ['湿地', '水鸟'],
+    [],
+    null,
+  ]) {
+    test('detail uses current photo tags over stale same-version decision: $tags', () async {
+      final detail = await ReviewApi(_BatchTagDetailClient(tags)).detail('photo-1199');
+      expect(detail.decision!.userTags, tags ?? ['湿地']);
+      expect(detail.decision!.version, 1);
+      expect(detail.decision!.userSpecies, '泽鹬');
+    });
+  }
+
   test('detail falls back to the photo version when its decision omits one', () async {
     final detail = await ReviewApi(_DetailApiClient()).detail('photo-7');
 
@@ -62,6 +75,24 @@ void main() {
     expect(photo.keepState, 'keep');
     expect(photo.version, 4);
   });
+}
+
+class _BatchTagDetailClient extends ApiClient {
+  _BatchTagDetailClient(this.tags);
+  final List<String>? tags;
+  @override
+  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? queryParameters, Map<String, String>? headers}) async {
+    if (path.endsWith('/history')) return {'items': <Object>[]};
+    return {
+      'file': {'file_id': 'photo-1199', 'version': 1, if (tags != null) 'user_tags': tags},
+      'decision': {
+        'file_id': 'photo-1199',
+        'version': 1,
+        'user_tags': ['湿地'],
+        'user_species': '泽鹬',
+      },
+    };
+  }
 }
 
 class _DetailApiClient extends ApiClient {

@@ -541,23 +541,39 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
 
   String _optimisticKey(String fileId) => '${_cacheNamespace()}:$fileId';
 
+  UserDecision? _optimisticDecisionFor(PhotoSummary photo) {
+    final key = _optimisticKey(photo.id);
+    final decision = _optimisticDecisions[key];
+    if (decision == null) return null;
+    final remoteVersion = photo.version;
+    final localVersion = decision.version;
+    if (remoteVersion != null && localVersion != null && remoteVersion >= localVersion) {
+      // A later batch edit (or another client) supersedes an acknowledged save.
+      // Keep unsynced local drafts so their conflict can still be resolved.
+      final hasPending = _pending.readAll().any((operation) => operation.type == PendingOperationType.updateReview && operation.deviceId == _activeDeviceId && (operation.fileId ?? operation.payload['file_id']?.toString()) == photo.id);
+      if (!hasPending) {
+        _optimisticDecisions.remove(key);
+        return null;
+      }
+    }
+    return decision;
+  }
+
   BirdGroup _withOptimisticGroup(BirdGroup group) => group.copyWith(
     members: group.members
-        .map(
-          (photo) => _optimisticDecisions[_optimisticKey(photo.id)] == null
+        .map((photo) {
+          final decision = _optimisticDecisionFor(photo);
+          return decision == null
               ? photo
               : PhotoSummary.fromJson(
-                  mergeReviewDecisionIntoPhotoJson(
-                    photo.toJson(),
-                    _optimisticDecisions[_optimisticKey(photo.id)]!,
-                  ),
-                ),
-        )
+                  mergeReviewDecisionIntoPhotoJson(photo.toJson(), decision),
+                );
+        })
         .toList(growable: false),
   );
 
   ReviewDetail _withOptimisticDetail(ReviewDetail detail) {
-    final decision = _optimisticDecisions[_optimisticKey(detail.photo.summary.id)];
+    final decision = _optimisticDecisionFor(detail.photo.summary);
     if (decision == null) return detail;
     final photo = detail.photo;
     return ReviewDetail(

@@ -108,7 +108,7 @@ class _ViewState extends State<_View> {
   final _species = TextEditingController();
   final _score = TextEditingController();
   final _tags = TextEditingController();
-  String? _appliedRevision;
+  ReviewDetail? _appliedDetail;
   late bool _showSubjects;
   late int _currentIndex;
   late List<String> _loadedSequence;
@@ -143,16 +143,15 @@ class _ViewState extends State<_View> {
   }
 
   void _applyExisting(ReviewDetail detail) {
-    final revision = '${detail.decision?.version ?? 0}-${detail.history.length}-${detail.decision?.updatedAt?.millisecondsSinceEpoch ?? 0}';
-    if (_appliedRevision == revision) return;
+    if (identical(_appliedDetail, detail)) return;
     final decision = detail.decision;
     final candidates = detail.photo.summary.recognition?.candidates ?? const [];
     _keep = decision?.keepState ?? KeepState.pending;
     _speciesId = decision?.userSpeciesId;
     _species.text = decision?.userSpecies ?? (candidates.isEmpty ? '' : candidates.first.name);
     _score.text = decision?.userScore?.toString() ?? detail.photo.summary.rating?.totalScore.toString() ?? '';
-    _tags.text = decision?.userTags.join(', ') ?? detail.photo.tags.map((tag) => tag.name).join(', ');
-    _appliedRevision = revision;
+    _tags.text = (decision?.userTags ?? detail.photo.summary.userTags).join(', ');
+    _appliedDetail = detail;
   }
 
   @override
@@ -395,7 +394,7 @@ class _ViewState extends State<_View> {
     if (index < 0 || index == _currentIndex) return;
     setState(() {
       _currentIndex = index;
-      _appliedRevision = null;
+      _appliedDetail = null;
       _showSubjects = widget.initialShowSubjects;
     });
     _saveCheckpoint(context);

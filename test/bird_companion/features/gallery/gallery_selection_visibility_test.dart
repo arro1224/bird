@@ -17,12 +17,63 @@ import 'package:aves/bird_companion/features/gallery/presentation/selection_cubi
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/photo_tile.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/selection_action_bar.dart';
 import 'package:aves/bird_companion/features/review/data/review_checkpoint_store.dart';
+import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/features/settings/data/settings_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('批量删除从详情列出标签，仅处理含该标签的照片并精确撤销', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(360, 800);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final dependencies = _Dependencies(2);
+    addTearDown(dependencies.deviceSessionCubit.close);
+    addTearDown(dependencies.refreshCoordinator.dispose);
+    addTearDown(dependencies.dataChangeBus.dispose);
+    addTearDown(dependencies.pendingOperationStore.dispose);
+    await tester.pumpWidget(
+      BirdCompanionScope(
+        dependencies: dependencies,
+        child: const MaterialApp(
+          home: GalleryPage(batchId: 'project-1', batchName: '测试拍摄', totalCount: 2),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.longPress(find.byKey(const ValueKey('photo-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('photo-1')));
+    await tester.pump();
+    expect(tester.widget<SelectionActionBar>(find.byType(SelectionActionBar)).count, 2);
+    tester.widget<SelectionActionBar>(find.byType(SelectionActionBar)).onRemoveTags();
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(InputChip, '水鸟'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, '湿地'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    await tester.tap(find.byTooltip('删除标签：水鸟'));
+    await tester.pump();
+    await tester.tap(find.text('确认删除'));
+    await tester.pumpAndSettle();
+    final photos = dependencies.photoRepository as _Photos;
+    expect(photos.operations, [
+      {
+        'operation': 'remove_tags',
+        'ids': ['photo-0'],
+        'tags': ['水鸟'],
+        'version': 3,
+      },
+    ]);
+    await tester.tap(find.text('撤销'));
+    await tester.pumpAndSettle();
+    expect(photos.operations.last['operation'], 'add_tags');
+    expect(photos.operations.last['ids'], ['photo-0']);
+    expect(photos.operations.last['tags'], ['水鸟']);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final rootMode in [true, false]) {
     for (final count in [5, 49]) {
       for (final scale in [1.0, 1.5]) {
@@ -113,6 +164,8 @@ class _Dependencies implements BirdCompanionDependencies {
   @override
   final PhotoRepository photoRepository;
   @override
+  final ReviewRepository reviewRepository = _TagReviews();
+  @override
   final LocalCache cache = _MemoryCache();
   @override
   late final SettingsStore settingsStore = BirdSettingsStore(cache);
@@ -190,11 +243,38 @@ class _Photos implements PhotoRepository {
       );
 
   final List<PhotoSummary> photos;
+  final operations = <Map<String, Object?>>[];
+
+  @override
+  Future<BatchOperationOutcome> batchOperation(String batchId, List<String> ids, String operation, {required int version, Object? value}) async {
+    operations.add({'operation': operation, 'ids': ids, 'tags': value, 'version': version});
+    return BatchOperationOutcome(succeededIds: ids);
+  }
 
   @override
   Future<PhotoPage> page(String batchId, PhotoQuery query) async => PhotoPage(
     items: photos,
     hasMore: false,
+  );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _TagReviews implements ReviewRepository {
+  @override
+  Future<ReviewDetail> detail(String id) async => ReviewDetail(
+    photo: PhotoDetail(
+      summary: PhotoSummary(
+        id: id,
+        filename: '$id.jpg',
+        format: 'JPEG',
+        preview: const PreviewRef(),
+        analysisState: AnalysisState.completed,
+        version: 3,
+        userTags: ['湿地', if (id == 'photo-0') '水鸟'],
+      ),
+    ),
   );
 
   @override

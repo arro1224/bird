@@ -23,7 +23,8 @@ class ReviewApi {
       _client.get(ApiEndpoints.photoHistory.replaceFirst('{fileId}', id)).catchError((_) => <String, dynamic>{'items': const []}),
     ]);
     final data = requests[0] as Map<String, dynamic>;
-    final photo = PhotoSummary.fromJson(data['file'] is Map ? Map<String, dynamic>.from(data['file'] as Map) : data);
+    final photoData = data['file'] is Map ? Map<String, dynamic>.from(data['file'] as Map) : data;
+    final photo = PhotoSummary.fromJson(photoData);
     final subjects = (data['subjects'] as List? ?? const []).whereType<Map>().map((x) => SubjectBox.fromJson(Map<String, dynamic>.from(x))).toList();
     final historyData = requests[1] as Map<String, dynamic>;
     final history = (historyData['items'] as List? ?? const []).whereType<Map>().map((item) {
@@ -36,7 +37,16 @@ class ReviewApi {
       );
     }).toList();
     final decisionMap = data['decision'] is Map ? Map<String, dynamic>.from(data['decision'] as Map) : null;
-    final decision = decisionMap == null ? _decisionFromPhoto(photo) : _decisionFromMap(id, photo, decisionMap);
+    // PhotoResponse.user_tags is the current photo state. Some box versions
+    // retain a historical decision after a batch edit without advancing its
+    // version. Do not let that auxiliary record hide additions or removals.
+    // Missing user_tags in a legacy photo is distinct from an explicit [].
+    final decision = decisionMap == null
+        ? _decisionFromPhoto(photo)
+        : _decisionFromMap(id, photo, {
+            ...decisionMap,
+            if (photoData.containsKey('user_tags')) 'user_tags': photo.userTags,
+          });
     return ReviewDetail(
       photo: PhotoDetail(
         summary: photo,

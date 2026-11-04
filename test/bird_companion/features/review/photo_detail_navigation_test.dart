@@ -12,6 +12,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('照片人工标签传入识别编辑页，清空后不回填系统标签', (tester) async {
+    final repository = _ReviewRepository()..userTags = ['湿地', '水鸟'];
+    await tester.pumpWidget(_app(repository, const PhotoDetailPage(fileId: 'p1')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byIcon(Icons.edit_outlined));
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(InputChip, '水鸟'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, '湿地'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    repository.userTags = [];
+    await tester.pumpWidget(_app(repository, const PhotoDetailPage(fileId: 'p1')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byIcon(Icons.edit_outlined));
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+    expect(find.byType(InputChip), findsNothing);
+  });
+
   testWidgets('详情箭头复用原地翻页逻辑并遵守首尾边界', (tester) async {
     final repository = _ReviewRepository();
     await tester.pumpWidget(
@@ -232,6 +252,7 @@ class _MemorySettingsStore implements SettingsStore {
 class _ReviewRepository implements ReviewRepository {
   final List<String> loadedIds = [];
   final List<UserDecision> savedDecisions = [];
+  List<String> userTags = [];
 
   @override
   Future<ReviewDetail> detail(String fileId) async {
@@ -244,7 +265,9 @@ class _ReviewRepository implements ReviewRepository {
           format: 'JPEG',
           preview: const PreviewRef(),
           analysisState: AnalysisState.completed,
+          userTags: userTags,
         ),
+        tags: const [BirdTag(id: 'system-wetland', name: '系统湿地', source: 'system', editable: false)],
         subjects: const [
           SubjectBox(x: .35, y: .25, width: .30, height: .50),
         ],

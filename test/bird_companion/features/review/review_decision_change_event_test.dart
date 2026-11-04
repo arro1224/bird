@@ -7,9 +7,22 @@ import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/features/review/data/review_api.dart';
 import 'package:aves/bird_companion/features/review/data/review_repository_impl.dart';
+import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('same-version remote tags replace an acknowledged save but preserve an offline draft', () async {
+    final pending = PendingOperationStore.memory();
+    addTearDown(pending.dispose);
+    final connectivity = _ConnectivityMonitor();
+    final repository = ReviewRepositoryImpl(_SameVersionApi(), connectivity, pending, _MemoryCache(), () => 'box-1', () => 'box-1');
+    await repository.saveAuthoritative(const UserDecision(fileId: 'photo-1', keepState: KeepState.keep, version: 1));
+    expect((await repository.detail('photo-1')).decision!.userTags, ['湿地', '水鸟']);
+    connectivity.online = false;
+    await repository.saveAuthoritative(const UserDecision(fileId: 'photo-1', keepState: KeepState.keep, userTags: ['本机草稿'], version: 2));
+    expect((await repository.detail('photo-1')).decision!.userTags, ['本机草稿']);
+  });
+
   test('online confirmation and offline queue publish complete review deltas', () async {
     final bus = AppDataChangeBus();
     final connectivity = _ConnectivityMonitor();
@@ -132,6 +145,16 @@ class _ReviewApi extends ReviewApi {
     analysisState: AnalysisState.completed,
     keepState: value.keepState.value?.wireValue ?? 'pending',
     version: 2,
+  );
+}
+
+class _SameVersionApi extends _ReviewApi {
+  @override
+  Future<ReviewDetail> detail(String id) async => ReviewDetail(
+    photo: PhotoDetail(
+      summary: PhotoSummary(id: id, filename: '$id.jpg', format: 'jpg', preview: const PreviewRef(), analysisState: AnalysisState.completed, version: 2, userTags: const ['湿地', '水鸟']),
+    ),
+    decision: UserDecision(fileId: id, keepState: KeepState.keep, version: 2, userTags: const ['湿地', '水鸟']),
   );
 }
 

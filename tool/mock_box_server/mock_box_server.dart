@@ -2090,7 +2090,14 @@ class MockBoxServer {
       await _notFound(request, 'Unknown file: $fileId');
       return;
     }
-    final decision = _decisions.putIfAbsent(fileId, () => _initialDecision(photo));
+    // Batch actions update the photo snapshot. Keep previously opened review
+    // decisions in sync too, including state restored from older server builds.
+    final decision = _decisions[fileId] = {
+      ...(_decisions[fileId] ?? _initialDecision(photo)),
+      'keep_state': photo['keep_state'],
+      'user_tags': photo['user_tags'],
+      'version': photo['version'] ?? 1,
+    };
     await _json(request, HttpStatus.ok, {
       'file': _withFreshSignedReferences(photo),
       'subjects': [
@@ -2219,6 +2226,22 @@ class MockBoxServer {
         failed.add({'file_id': id, 'reason': '不支持的操作：$operation'});
         continue;
       }
+      final version = ((photo['version'] as num?)?.toInt() ?? 1) + 1;
+      final updatedAt = DateTime.now().toUtc().toIso8601String();
+      photo['version'] = version;
+      _decisions[id] = {
+        ...(_decisions[id] ?? _initialDecision(photo)),
+        'keep_state': photo['keep_state'],
+        'user_tags': photo['user_tags'],
+        'version': version,
+        'updated_at': updatedAt,
+      };
+      _history.putIfAbsent(id, () => []).add({
+        'version': version,
+        'source': 'app',
+        'updated_at': updatedAt,
+        'summary': '用户批量更新照片审阅结果',
+      });
       succeeded.add(id);
     }
     await _json(request, HttpStatus.ok, {
@@ -2851,7 +2874,7 @@ class MockBoxServer {
       'user_species': candidate?['name'],
       'user_tags': photo['user_tags'],
       'updated_at': '2026-07-16T08:00:00Z',
-      'version': 1,
+      'version': photo['version'] ?? 1,
     };
   }
 
