@@ -56,7 +56,9 @@ final class ActivePlatform extends PreflightBlePlatform {
 
   @override
   Future<void> disconnectOwned(String? requestId, BlePairingReady? ready, int? connectionGeneration) async {
-    expect(requestId, nativeRequest);
+    // This callback also runs while WidgetTester's fake clock is pumping.
+    // Keep the exact ownership check without invoking a nested guarded expect.
+    if (requestId != nativeRequest) throw StateError('release request does not own the in-flight operation');
     rawRequested = true;
     connected = false;
     retiring = true;
@@ -111,23 +113,30 @@ void main() {
     expect(ble.nativeReleaseBlocked, isFalse);
   });
 
-  test('release query cannot substitute a foreign trace or same-generation instance', () async {
+  testWidgets('release query cannot substitute a foreign trace or same-generation instance', (tester) async {
     final platform = ActivePlatform();
     final ble = source(platform);
     await prepared(ble);
     final command = expectLater(ble.writeCommand(open), throwsA(isA<ProvisioningException>()));
-    await until(() => platform.nativeRequest != null);
+    await tester.pump();
+    expect(platform.nativeRequest, isNotNull);
     var done = false;
     final release = ble.disconnect().then((_) => done = true);
-    await until(() => platform.rawRequested);
+    await tester.pump();
+    expect(platform.rawRequested, isTrue);
     platform.lastRelease = record(trace: 'foreign');
-    await Future<void>.delayed(const Duration(milliseconds: 22));
+    // Use the test clock: the two observation windows plus polling must stay
+    // inside the SAME 80ms deadline even when the machine is under test load.
+    // Neither production timing nor the ownership assertions are relaxed.
+    await tester.pump(const Duration(milliseconds: 22));
     expect(done, isFalse);
     platform.lastRelease = record(trace: platform.trace, instance: 2);
-    await Future<void>.delayed(const Duration(milliseconds: 22));
+    await tester.pump(const Duration(milliseconds: 22));
     expect(done, isFalse);
     platform.lastRelease = record(trace: platform.trace);
     platform.retiring = false;
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(done, isTrue);
     await release;
     await command;
   });

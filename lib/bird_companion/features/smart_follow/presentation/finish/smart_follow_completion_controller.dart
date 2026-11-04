@@ -57,11 +57,12 @@ class SmartFollowCompletionResult {
       notApplicableFiles != null &&
       copiedBytes != null;
 
-  bool get metadataFailure => children.any((c) => c.report?.csvStatus == 'failed' || (c.report?.embedDegradedCount ?? 0) > 0 || (c.report?.exportFailedCount ?? 0) > 0);
+  bool get metadataFailure => children.any((c) => c.report?.csvStatus == 'failed' || (c.report?.exportFailedCount ?? 0) > 0);
   String get informationStatus {
     if (!reportsComplete) return '报告待补齐';
     if (children.isEmpty) return '无复制批次';
     if (metadataFailure) return '部分批次信息保存异常，请查看批次详情';
+    if (children.any((c) => (c.report?.embedDegradedCount ?? 0) > 0)) return '部分文件使用配套 XMP 保存信息；不代表照片复制失败，请保留配套文件';
     if (children.every((c) => c.detail?.reviewExportEnabled == false)) return '所有批次均未开启识别信息保存';
     return '请查看各批次保存结果；未提供的字段无法确认';
   }
@@ -224,6 +225,8 @@ class SmartFollowCompletionController extends ChangeNotifier {
         'copied_asset_count',
         'copied_file_count',
         'failed_asset_count',
+        'recognition_pending_confirmation_count',
+        'overwritten_file_count',
         'child_job_count',
         'metadata_update_available',
         'active_metadata_update_id',

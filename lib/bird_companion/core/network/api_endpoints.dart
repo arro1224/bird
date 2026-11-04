@@ -14,6 +14,10 @@ abstract final class ApiEndpoints {
   static String smartFollowSession(String sessionId) => '$apiV1Prefix/smart-follow-sessions/$sessionId';
   static String smartFollowCopyJobs(String sessionId) => '${smartFollowSession(sessionId)}/copy-jobs';
   static String smartFollowActions(String sessionId) => '${smartFollowSession(sessionId)}/actions';
+  static String smartFollowEvents(String sessionId) => '${smartFollowSession(sessionId)}/events';
+  static String copyMetadataRoot(String copyJobId) => '$apiV1Prefix/copy-jobs/${Uri.encodeComponent(copyJobId)}';
+  static String metadataUpdate(String id) => '$apiV1Prefix/smart-follow-metadata-updates/${Uri.encodeComponent(id)}';
+  static String metadataPreview(String id) => '$apiV1Prefix/metadata-update-previews/${Uri.encodeComponent(id)}';
   // SmartFollow 信息统一更新（联合开发任务书 §6.8）。与上面四项同在
   // /api/v1 下，同样不进上方冻结的 birdbox-v1@1.0.0 清单。
   static String smartFollowMetadataAvailability(String sessionId) => '${smartFollowSession(sessionId)}/metadata-update-availability';

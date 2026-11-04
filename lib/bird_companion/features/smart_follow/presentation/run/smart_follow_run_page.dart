@@ -399,6 +399,8 @@ class _CountsCard extends StatelessWidget {
           _row('待复制', '${session.pendingCount} 张', const Key('smart-follow-pending')),
           _row('已复制照片', '${session.copiedAssetCount} 张', const Key('smart-follow-copied-assets')),
           _row('已复制文件', '${session.copiedFileCount} 个', const Key('smart-follow-copied-files')),
+          if (session.notCopiedStoppedCount != null) _row('停止后未复制', '${session.notCopiedStoppedCount} 张', const Key('smart-follow-stopped-count')),
+          if (session.notApplicableAssetCount != null) _row('不适用', '${session.notApplicableAssetCount} 张', const Key('smart-follow-not-applicable-count')),
           if (session.failedAssetCount > 0) _row('复制失败', '${session.failedAssetCount} 张', const Key('smart-follow-failed'), danger: true),
         ],
       ),

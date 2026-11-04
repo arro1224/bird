@@ -14,10 +14,14 @@ import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_mo
 /// 定义新的 `X-BirdBox-Protocol` 值，因此**不发明**头部，只复用
 /// `ApiClient` 已有的 `X-Api-Version`/`Authorization`。是否需要一个
 /// `smart-follow-v1` 协议头，列入分工任务书问询单第 10 条。
-class SmartFollowApi implements SmartFollowGateway {
+class SmartFollowApi implements SmartFollowGateway, SmartFollowEventGateway {
   SmartFollowApi(this._client);
 
   final ApiClient _client;
+
+  @override
+  Future<Map<String, dynamic>> sessionEvents(String sessionId, {required int afterEventSeq}) =>
+      _client.get(ApiEndpoints.smartFollowEvents(Uri.encodeComponent(_requiredId(sessionId, 'sessionId'))), queryParameters: {'after_event_seq': afterEventSeq, 'page_size': 200});
 
   /// `/recognition-capabilities`：三项能力一起读，避免多次往返。
   @override

@@ -276,6 +276,8 @@ class SmartFollowSession {
   final Map<String, dynamic> raw;
 
   bool get isFinished => state.isFinished;
+  int? get notCopiedStoppedCount => raw['not_copied_stopped_count'] is int ? raw['not_copied_stopped_count'] as int : null;
+  int? get notApplicableAssetCount => raw['not_applicable_asset_count'] is int ? raw['not_applicable_asset_count'] as int : null;
   bool get canShowCompletion => state.isFinished;
   bool get isWaiting => state.isWaiting;
 

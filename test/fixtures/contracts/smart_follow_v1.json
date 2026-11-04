@@ -1,0 +1,166 @@
+{
+  "contract_version": "smart-follow-v1",
+  "start": {
+    "target_media_id": "media_usb_test",
+    "eligibility_mode": "recognized_only_v1",
+    "pair_policy": "both",
+    "conflict_strategy": "skip",
+    "review_export": {
+      "enabled": false,
+      "prefer_embedded": true
+    }
+  },
+  "capabilities": {
+    "incremental_recognition_results": {
+      "available": true,
+      "schema_version": "birdbox.pipeline_result.v1"
+    },
+    "smart_follow_copy": {
+      "available": false,
+      "contract_version": "smart-follow-v1",
+      "eligibility_mode": "recognized_only_v1",
+      "default_batch_size": 8,
+      "default_collect_window_ms": 2000,
+      "batch_size_range": [
+        1,
+        32
+      ],
+      "collect_window_ms_range": [
+        250,
+        10000
+      ]
+    },
+    "smart_follow_metadata_update": {
+      "available": false,
+      "contract_version": "smart-follow-metadata-v1"
+    }
+  },
+  "session": {
+    "session_id": "sf_contract_test",
+    "recognition_job_id": "rec_contract_test",
+    "source_session_id": "card_test",
+    "manifest_revision": "manifest_test",
+    "target_media_id": "media_usb_test",
+    "state": "following",
+    "state_version": 7,
+    "eligibility_mode": "recognized_only_v1",
+    "config": {
+      "target_media_id": "media_usb_test",
+      "eligibility_mode": "recognized_only_v1",
+      "pair_policy": "both",
+      "conflict_strategy": "skip",
+      "review_export": {
+        "enabled": false,
+        "prefer_embedded": true
+      }
+    },
+    "batch_size": 8,
+    "collect_window_ms": 2000,
+    "last_consumed_event_seq": 12,
+    "cutoff_event_seq": null,
+    "recognized_count": 12,
+    "eligible_count": 9,
+    "pending_count": 1,
+    "assigned_count": 8,
+    "copied_asset_count": 3,
+    "copied_file_count": 6,
+    "failed_asset_count": 0,
+    "child_job_count": 1,
+    "metadata_update_available": false,
+    "active_metadata_update_id": null,
+    "allowed_actions": [
+      "pause",
+      "finish_current_results",
+      "stop_following"
+    ],
+    "created_at": "2026-11-04T01:00:00Z",
+    "updated_at": "2026-11-04T01:00:02Z",
+    "finished_at": null
+  },
+  "child_page": {
+    "items": [
+      {
+        "copy_job_id": "copy_test",
+        "index": 1,
+        "state": "running",
+        "asset_count": 8,
+        "file_count": 16,
+        "total_bytes": 102400,
+        "copied_file_count": 6,
+        "skipped_file_count": 0,
+        "failed_file_count": 0,
+        "created_at": "2026-11-04T01:00:01Z",
+        "finished_at": null
+      }
+    ],
+    "total_count": 1,
+    "has_more": false,
+    "next_cursor": null
+  },
+  "availability": {
+    "available": true,
+    "active_update_id": null,
+    "updatable_asset_count": 3,
+    "blocked_asset_count": 1,
+    "reason": "一个副本被外部修改，预览将排除它"
+  },
+  "metadata_preview": {
+    "preview_id": "sfp_test",
+    "preview_token": "sfp_token_test",
+    "state": "ready",
+    "expires_at": "2099-11-04T01:05:00Z",
+    "target_media_id": "media_usb_test",
+    "target_display_name": "测试目标盘",
+    "child_job_count": 1,
+    "updatable_asset_count": 3,
+    "updatable_file_count": 6,
+    "unchanged_count": 0,
+    "blocked_count": 1,
+    "conflict_count": 1,
+    "estimated_bytes": 1024,
+    "write_mode": "safe_embed_first",
+    "requires_partial_confirmation": true,
+    "blocked_reasons": [
+      "副本已被外部修改"
+    ]
+  },
+  "metadata_create": {
+    "preview_token": "sfp_token_test",
+    "target_media_id": "media_usb_test",
+    "confirm_partial": true
+  },
+  "metadata_update": {
+    "update_id": "sfm_test",
+    "state": "completed_partial",
+    "state_version": 2,
+    "child_job_count": 1,
+    "updated_asset_count": 3,
+    "updated_file_count": 6,
+    "failed_count": 0,
+    "unchanged_count": 0,
+    "blocked_count": 1,
+    "child_jobs": [
+      {
+        "metadata_update_id": "md_test",
+        "copy_job_id": "copy_test",
+        "state": "completed",
+        "updated_file_count": 6,
+        "failed_file_count": 0
+      }
+    ]
+  },
+  "ordinary_copy_context": {
+    "context_type": "copy_job",
+    "copy_job_id": "copy_all_test",
+    "target_media_id": "media_usb_test",
+    "metadata_update_available": true,
+    "active_metadata_update_id": null
+  },
+  "notification": {
+    "event_type": "SmartFollowCountsChanged",
+    "object_id": "sf_contract_test",
+    "event_seq": 7,
+    "state_version": 7,
+    "updated_at": "2026-11-04T01:00:02Z"
+  }
+}

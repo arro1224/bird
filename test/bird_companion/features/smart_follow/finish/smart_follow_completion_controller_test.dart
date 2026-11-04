@@ -222,11 +222,11 @@ void main() {
     expect(env.controller.result!.summaryComplete, isFalse);
   });
 
-  test('metadata degradation cannot be labelled all saved', () async {
+  test('safe XMP fallback is explicit but is not a failed copy', () async {
     env.report['embed_degraded_count'] = 1;
     await env.controller.refresh();
-    expect(env.controller.result!.title, '跟随复制部分完成');
-    expect(env.controller.result!.informationStatus, contains('保存异常'));
+    expect(env.controller.result!.title, '跟随复制已完成');
+    expect(env.controller.result!.informationStatus, contains('配套 XMP'));
     expect(env.backend.createMetadataCalls, 0);
     expect(env.backend.actCalls, 0);
   });

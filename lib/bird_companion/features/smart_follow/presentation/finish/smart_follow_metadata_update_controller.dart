@@ -6,6 +6,7 @@ import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_mo
 String metadataUpdateStateLabel(String state) => switch (state.trim()) {
   'queued' => '等待更新',
   'running' => '正在更新',
+  'waiting_for_target' => '等待原目标盘或处理写入问题',
   'completed' => '已完成',
   'completed_partial' => '部分完成',
   'failed' => '更新失败',

@@ -163,9 +163,42 @@ class SmartFollowRepository extends ChangeNotifier {
 
   Future<SmartFollowSession> _refresh(String sessionId) async {
     final generation = _deviceGeneration;
-    final incoming = await _gateway.session(sessionId);
+    var incoming = await _gateway.session(sessionId);
     _checkDevice(generation);
     if (incoming.sessionId != sessionId) throw StateError('返回的跟随会话不属于当前请求。');
+    final events = _gateway;
+    if (events is SmartFollowEventGateway && incoming.raw['event_seq'] is int) {
+      final slot = 'smart-follow-event-cursor:${metadataDeviceId?.call() ?? 'local'}:$sessionId';
+      var cursor = metadataStorage?.read<int>(slot) ?? 0;
+      var changed = false;
+      for (var page = 0; page < 8; page++) {
+        Map<String, dynamic> response;
+        try {
+          response = await (events as SmartFollowEventGateway).sessionEvents(sessionId, afterEventSeq: cursor);
+        } on ApiException catch (e) {
+          if (e.statusCode == 404) break;
+          rethrow;
+        }
+        _checkDevice(generation);
+        if (response['session_id'] != sessionId || response['items'] is! List || response['has_more'] is! bool) throw StateError('跟随事件归属或分页不完整');
+        final items = response['items'] as List;
+        for (final item in items) {
+          if (item is! Map || item['session_id'] != sessionId || item['event_seq'] != cursor + 1) throw StateError('跟随事件不连续，请重新核对原任务');
+          cursor++;
+          changed = true;
+        }
+        if (response['next_event_seq'] != cursor || (response['has_more'] == true && items.isEmpty)) throw StateError('跟随事件游标无效');
+        await metadataStorage?.write(slot, cursor);
+        _checkDevice(generation);
+        if (response['has_more'] != true) break;
+      }
+      // Persisted event cursors never replace authoritative counts. Read a fresh
+      // snapshot after catch-up so an event cannot advance past an older screen.
+      if (changed) {
+        incoming = await _gateway.session(sessionId);
+        _checkDevice(generation);
+      }
+    }
     return _merge(incoming);
   }
 

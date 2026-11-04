@@ -115,6 +115,7 @@ class _SmartFollowMetadataUpdatePageState extends State<SmartFollowMetadataUpdat
                       style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                     ),
                     Text('父任务状态：${metadataUpdateStateLabel(update!.state)}'),
+                    if (update.raw['error_message'] is String) Text(update.raw['error_message'] as String),
                     Text('原复制会话：${state.session?.state.label ?? '暂未取得'}（信息更新不改变复制结果）'),
                     if (!update.isTerminal) const Text('由盒子执行信息更新，离开页面不会重新创建或停止任务。'),
                     if (update.isTerminal && !report.complete) const Text('报告待补齐或核对；未提供的数字不会计为零。'),

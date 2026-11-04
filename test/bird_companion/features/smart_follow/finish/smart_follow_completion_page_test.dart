@@ -49,6 +49,15 @@ void main() {
     expect(env.backend.createMetadataCalls, 0);
   });
 
+  testWidgets('authoritative classification and overwrite counts are displayed', (tester) async {
+    env.backend.data.addAll({'recognition_pending_confirmation_count': 3, 'overwritten_file_count': 1});
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(find.byKey(const Key('sf-completion-recognition-review'))).data, '3 张');
+    await tester.scrollUntilVisible(find.byKey(const Key('sf-completion-overwritten-files')), 250);
+    expect(tester.widget<Text>(find.byKey(const Key('sf-completion-overwritten-files'))).data, '1 个');
+  });
+
   testWidgets('nonterminal deep link returns to original run callback', (tester) async {
     env.backend.data['state'] = 'following';
     await tester.pumpWidget(host());

@@ -12,6 +12,7 @@ import 'package:aves/bird_companion/features/copy/domain/copy_timeline.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_presentation.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_job_detail_cubit.dart';
+import 'package:aves/bird_companion/features/copy/presentation/copy_metadata_page.dart';
 import 'package:aves/bird_companion/features/copy/presentation/widgets/copy_job_timeline.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_design_components.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_nature_background.dart';
@@ -202,6 +203,19 @@ class _DetailView extends StatelessWidget {
         children: [
           _WaitingBanner(state: detail.state),
           _StateHeader(detail: detail, state: state),
+          if (detail.state.isTerminal && deviceAvailable && BirdCompanionScope.maybeOf(context) != null)
+            Builder(
+              builder: (context) {
+                final deps = BirdCompanionScope.of(context);
+                String? contextKey() => deps.deviceSessionCubit.state.isConnected ? '${deps.deviceSessionCubit.state.device?.id}|${deps.apiClient.baseUri}|${deps.smartFollowRepository.deviceGeneration}' : null;
+                final key = contextKey();
+                if (key == null) return const SizedBox.shrink();
+                return CopyMetadataEntry(
+                  key: ValueKey(('copy-metadata', detail.copyJobId, key)),
+                  createController: () => CopyMetadataController(client: deps.apiClient, storage: deps.cache, copyJobId: detail.copyJobId, deviceKey: key, currentKey: contextKey),
+                );
+              },
+            ),
           if (state.error != null)
             ErrorNotice(
               title: state.jobMissing

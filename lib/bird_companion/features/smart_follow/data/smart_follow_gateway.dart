@@ -1,6 +1,11 @@
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_metadata.dart';
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_models.dart';
 
+/// Additive durable notification replay. Legacy gateways may omit this capability.
+abstract interface class SmartFollowEventGateway {
+  Future<Map<String, dynamic>> sessionEvents(String sessionId, {required int afterEventSeq});
+}
+
 /// SmartFollow 的数据来源抽象。
 ///
 /// 真实实现是 [SmartFollowApi]（HTTP）；测试与离线演示用内存假后端实现同一
