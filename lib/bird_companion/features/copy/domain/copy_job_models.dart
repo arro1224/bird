@@ -480,7 +480,10 @@ class CopyJobItem {
     return switch (code) {
       'COPY_HASH_MISMATCH' => '副本校验不一致，可重试失败项。',
       'COPY_IO_ERROR' => '读写文件失败，请检查设备后重试失败项。',
-      'COPY_DEVICE_REMOVED' => '复制期间设备被拔出，请重新插入后重试失败项。',
+      'COPY_DEVICE_REMOVED' => '复制期间设备被拔出，请插回原设备后恢复任务。',
+      'COPY_TARGET_NOT_PRESENT' => '目标 U 盘已断开，请插回原目标盘。',
+      'COPY_SOURCE_NOT_PRESENT' => '源相机卡已断开，请插回原相机卡。',
+      'COPY_STORAGE_UNAVAILABLE' => '正在恢复存储设备，原任务已保留。',
       'COPY_INSUFFICIENT_SPACE' => '目标设备空间不足，请更换目标盘后重试失败项。',
       'COPY_SOURCE_CHANGED' => '源文件在复制期间变化，请重新预检后重试。',
       'COPY_METADATA_WRITE_FAILED' => '审阅信息写入失败，原片副本不受影响，可重试失败项。',
