@@ -319,7 +319,11 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       return;
     }
     if (!mounted) return;
-    final refreshedTask = controller.taskById(taskId);
+    final refreshedTask = controller.taskByIdOrNull(taskId);
+    if (refreshedTask == null) {
+      _showError(context, StateError('任务已不在当前列表，请刷新后重试'));
+      return;
+    }
     final sourceProjectId = refreshedTask.sourceBatchId?.trim();
     final recognition = BirdCompanionScope.of(context).recognitionRepository;
     if (refreshedTask.type == TaskType.aiAnalysis) {

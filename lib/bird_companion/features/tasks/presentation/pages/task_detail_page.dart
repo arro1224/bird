@@ -35,7 +35,19 @@ class TaskDetailPage extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller,
     builder: (_, _) {
-      final task = taskId == null ? controller.currentTask : controller.taskById(taskId!);
+      final task = taskId == null ? controller.currentTaskOrNull : controller.taskByIdOrNull(taskId!);
+      if (task == null) {
+        return TaskPageFrame(
+          title: '任务详情',
+          child: TaskSurface(
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              taskId == null ? '当前没有可显示的任务。' : '该任务已不在当前任务列表（可能已被删除或属于其他盒子）。请返回任务列表刷新。',
+              style: const TextStyle(color: AppColors.mutedInk, height: 1.5),
+            ),
+          ),
+        );
+      }
       return TaskPageFrame(
         title: '任务详情',
         actions: [
@@ -492,10 +504,16 @@ class TaskDetailPage extends StatelessWidget {
     TaskRunState.queued => '等待中',
     TaskRunState.running => '进行中',
     TaskRunState.paused => '已暂停',
-    TaskRunState.failed => '失败 ${task.failedCount ?? 0} 项',
+    TaskRunState.failed => _failureLabel(task),
     TaskRunState.completed => '已完成',
     TaskRunState.cancelled => '已取消',
   };
+
+  /// 任务级失败可能没有任何逐文件失败项；不要显示误导性的“失败 0 项”。
+  String _failureLabel(TaskSummary task) {
+    final failed = task.failedCount ?? 0;
+    return failed > 0 ? '失败 $failed 项' : '失败';
+  }
 
   IconData _stateIcon(TaskRunState state) => switch (state) {
     TaskRunState.queued => Icons.schedule_outlined,

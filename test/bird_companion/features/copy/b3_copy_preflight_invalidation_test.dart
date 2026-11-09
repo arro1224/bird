@@ -440,7 +440,7 @@ void main() {
     final cubit = await ready(repository);
     final oldToken = cubit.state.preview!.previewToken;
     repository.previewLifetime = const Duration(minutes: 1);
-    await until(() => cubit.state.preview?.previewToken != oldToken);
+    await until(() => cubit.state.preview?.previewToken != oldToken && cubit.state.preflightStatus == CopyPreflightStatus.valid);
     expect(cubit.state.preflightStatus, CopyPreflightStatus.valid);
     expect(cubit.state.preview, isNotNull);
     expect(await cubit.submit(), true);

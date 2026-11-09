@@ -357,12 +357,10 @@ void main() {
       (candidate) => candidate.type == BirdJobType.import,
     );
 
-    final authoritative = await jobs.control(
-      stale.id,
-      'pause',
-      version: stale.version!,
-    );
-    expect(authoritative.state, BirdJobState.paused);
+    // 绕开事件流直接在盒子上推进版本，制造“本地快照过期”的确定性窗口。
+    // 若走 jobs.control，WS 事件可能先于 controlJob 到达并更新本地快照，
+    // 测试会退化成“本地已不可暂停”的 StateError（历史 flaky 根因）。
+    await server.completeJob(stale.id, emitEvent: false);
 
     await expectLater(
       controller.controlJob(stale.id, TaskAction.pause),
@@ -378,8 +376,8 @@ void main() {
     final refreshed = controller.jobs.singleWhere(
       (candidate) => candidate.id == stale.id,
     );
-    expect(refreshed.state, BirdJobState.paused);
-    expect(refreshed.version, authoritative.version);
+    expect(refreshed.state, BirdJobState.completed);
+    expect(refreshed.version, stale.version! + 1);
   });
 
   test('disconnect blocks task controls before a box write is sent', () async {

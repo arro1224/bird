@@ -42,16 +42,25 @@ class JobCenterCubit extends Cubit<JobCenterState> {
   bool _loadInFlight = false;
 
   void _mergeEvent(Map<String, dynamic> payload) {
-    final updated = BirdJobStatus.fromJson(payload);
-    if (updated.id.isEmpty) return;
-    final jobs = [...state.jobs];
-    final index = jobs.indexWhere((job) => job.id == updated.id);
-    if (index < 0) {
-      jobs.insert(0, updated);
-    } else {
-      jobs[index] = updated;
+    try {
+      final raw = payload['job'];
+      final data = raw is Map ? Map<String, dynamic>.from(raw) : payload;
+      final updated = BirdJobStatus.fromJson(data);
+      if (updated.id.isEmpty) return;
+      final jobs = [...state.jobs];
+      final index = jobs.indexWhere((job) => job.id == updated.id);
+      if (index < 0) {
+        jobs.insert(0, updated);
+      } else {
+        final current = jobs[index];
+        // 事件可能乱序/重放；旧版本不得覆盖列表里较新的快照。
+        if (current.version != null && updated.version != null && updated.version! < current.version!) return;
+        jobs[index] = updated;
+      }
+      emit(state.copyWith(jobs: jobs, clearError: true));
+    } catch (_) {
+      // 部分/破损 payload 交给下一次全量刷新，不让单条事件打断订阅。
     }
-    emit(state.copyWith(jobs: jobs, clearError: true));
   }
 
   Future<void> load() async {
@@ -82,11 +91,17 @@ class JobCenterCubit extends Cubit<JobCenterState> {
     emit(state.copyWith(loadingMore: true, clearError: true));
     try {
       final page = await _repository.page(cursor: cursor);
-      final known = state.jobs.map((job) => job.id).toSet();
+      // 与“加载更多”期间到达的事件合并：用响应时的全集按 id 去重，
+      // 不用请求前的旧快照判断，避免重复行。
+      final jobs = [...state.jobs];
+      final known = jobs.map((job) => job.id).toSet();
+      for (final job in page.items) {
+        if (known.add(job.id)) jobs.add(job);
+      }
       emit(
         state.copyWith(
           loadingMore: false,
-          jobs: [...state.jobs, ...page.items.where((job) => known.add(job.id))],
+          jobs: jobs,
           hasMore: page.hasMore && page.nextCursor != null && page.nextCursor != cursor,
           nextCursor: page.nextCursor,
           clearCursor: page.nextCursor == null,

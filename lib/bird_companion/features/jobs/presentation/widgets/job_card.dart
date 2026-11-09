@@ -75,7 +75,7 @@ class JobCard extends StatelessWidget {
                     if (job.canPause) OutlinedButton(onPressed: () => onControl?.call('pause'), child: const Text('暂停')),
                     if (job.canResume) FilledButton(onPressed: () => onControl?.call('resume'), child: const Text('继续')),
                     if (job.canRetry) FilledButton(onPressed: () => onControl?.call('retry'), child: const Text('重试')),
-                    if (job.canRestore) OutlinedButton(onPressed: () => onControl?.call('restore'), child: const Text('继续处理')),
+                    if (job.canRestore) OutlinedButton(onPressed: () => onControl?.call('resume'), child: const Text('继续处理')),
                     if (job.canCancel) TextButton(onPressed: () => onControl?.call('cancel'), child: const Text('取消')),
                     if (job.canDelete) TextButton.icon(onPressed: onDelete, icon: const Icon(Icons.delete_outline, size: 18), label: const Text('删除')),
                   ],

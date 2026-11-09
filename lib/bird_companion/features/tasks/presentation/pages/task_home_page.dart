@@ -438,7 +438,7 @@ class TaskHomePage extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          task.state == TaskRunState.failed ? '失败 ${task.failedCount ?? 0} 项' : '${task.progressPercent}%',
+          task.state == TaskRunState.failed ? _failureLabel(task) : '${task.progressPercent}%',
           style: TextStyle(
             color: task.state == TaskRunState.failed ? AppColors.danger : AppColors.forestDeep,
             fontSize: task.state == TaskRunState.failed ? 14 : 18,
@@ -537,10 +537,16 @@ class TaskHomePage extends StatelessWidget {
     TaskRunState.queued => '等待中',
     TaskRunState.running => '进行中',
     TaskRunState.paused => '已暂停',
-    TaskRunState.failed => '失败 ${task.failedCount ?? 0} 项',
+    TaskRunState.failed => _failureLabel(task),
     TaskRunState.completed => '已完成',
     TaskRunState.cancelled => '已取消',
   };
+
+  /// 任务级失败可能没有任何逐文件失败项；不要显示误导性的“失败 0 项”。
+  String _failureLabel(TaskSummary task) {
+    final failed = task.failedCount ?? 0;
+    return failed > 0 ? '失败 $failed 项' : '失败';
+  }
 
   Widget _taskSubtitle(TaskSummary task) {
     final source = task.sourceBatch?.trim();

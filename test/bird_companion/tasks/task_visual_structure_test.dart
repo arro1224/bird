@@ -1,6 +1,7 @@
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/features/tasks/demo/demo_task_experience_data_source.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
+import 'package:aves/bird_companion/features/tasks/presentation/pages/task_detail_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/task_home_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/task_experience_controller.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_design_components.dart';
@@ -103,5 +104,52 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('当前可执行操作'), findsOneWidget);
     expect(find.text('新建任务'), findsNothing);
+  });
+
+  testWidgets('任务级失败且没有失败项时不显示“失败 0 项”', (tester) async {
+    final controller = TaskExperienceController(
+      const DemoTaskExperienceDataSource(),
+    );
+    addTearDown(controller.dispose);
+    controller.replaceRepositoryTasks([
+      const TaskSummary(
+        id: 'job-failed-without-items',
+        type: TaskType.copy,
+        title: '复制照片',
+        processed: 0,
+        total: 10,
+        progressPercent: 0,
+        remainingMinutes: 0,
+        state: TaskRunState.failed,
+        failedCount: 0,
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: TaskDetailPage(controller: controller, taskId: 'job-failed-without-items'),
+      ),
+    );
+
+    expect(find.text('失败 0 项'), findsNothing);
+    expect(find.text('失败'), findsWidgets);
+  });
+
+  testWidgets('已不存在的任务显示占位而不是抛 firstWhere 异常', (tester) async {
+    final controller = TaskExperienceController(
+      const DemoTaskExperienceDataSource(),
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: TaskDetailPage(controller: controller, taskId: 'job-missing'),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('已不在当前任务列表'), findsOneWidget);
   });
 }

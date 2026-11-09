@@ -267,12 +267,21 @@ class JobDetailCubit extends Cubit<JobDetailState> {
   }
 
   void _onEvent(DeviceEvent event) {
-    final update = BirdJobStatus.fromJson(event.payload);
-    if (update.id.isEmpty || update.id != jobId) return;
-    emit(state.copyWith(job: update, clearError: true));
-    _configurePolling(update);
-    if (_isTerminal(update)) {
-      unawaited(_refreshOutcome(update));
+    try {
+      final raw = event.payload['job'];
+      final payload = raw is Map ? Map<String, dynamic>.from(raw) : event.payload;
+      final update = BirdJobStatus.fromJson(payload);
+      if (update.id.isEmpty || update.id != jobId) return;
+      final current = state.job;
+      // 事件可能乱序/重放；旧版本不得覆盖已经读到的新快照。
+      if (current?.version != null && update.version != null && update.version! < current!.version!) return;
+      emit(state.copyWith(job: update, clearError: true));
+      _configurePolling(update);
+      if (_isTerminal(update)) {
+        unawaited(_refreshOutcome(update));
+      }
+    } catch (_) {
+      // 部分/破损 payload 交给下一次 REST 全量刷新，绝不让单条事件打断订阅。
     }
   }
 
@@ -312,7 +321,8 @@ class JobDetailCubit extends Cubit<JobDetailState> {
 
   void _configurePolling(BirdJobStatus job) {
     _pollTimer?.cancel();
-    if (job.state == BirdJobState.running && _events.currentState != EventConnectionState.connected) {
+    // 排队任务也会离开 queued；WS 不可用时必须继续轮询，不能只盯 running。
+    if ((job.state == BirdJobState.running || job.state == BirdJobState.queued) && _events.currentState != EventConnectionState.connected) {
       _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => load());
     }
   }

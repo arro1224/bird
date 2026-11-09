@@ -101,9 +101,13 @@ class TaskExperienceController extends ChangeNotifier {
     _tasks.where((task) => task.group == group),
   );
 
-  TaskSummary taskById(String taskId) => _tasks.firstWhere(
-    (task) => task.id == taskId,
-  );
+  TaskSummary? taskByIdOrNull(String taskId) => _tasks.where((task) => task.id == taskId).firstOrNull;
+
+  TaskSummary taskById(String taskId) {
+    final task = taskByIdOrNull(taskId);
+    if (task == null) throw StateError('Task $taskId is not available');
+    return task;
+  }
 
   TaskSummary _taskByType(TaskType type, [Iterable<TaskSummary>? tasks]) {
     final matches = (tasks ?? _tasks).where((task) => task.type == type).toList();

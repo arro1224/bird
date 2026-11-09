@@ -114,6 +114,9 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   final AppDataChangeBus? _dataChangeBus;
   final Duration _pollInterval;
   final Map<String, BirdJobStatus> _jobs = {};
+  /// loadMore 拉到的页；刷新第一页时不能把它们一起清掉。
+  final Map<String, BirdJobStatus> _pagedJobs = {};
+  String? _jobsDeviceId;
   final Set<String> _analysisRequestedProjects = {};
   final Map<String, Future<String>> _analysisRequests = {};
   final StreamController<String> _analysisCompleted = StreamController<String>.broadcast();
@@ -186,6 +189,12 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     }
     final requestedDeviceId = _deviceSessionCubit.state.device?.id.trim();
     if (requestedDeviceId == null || requestedDeviceId.isEmpty) return;
+    if (_jobsDeviceId != null && _jobsDeviceId != requestedDeviceId) {
+      // 换盒子后旧任务和旧分页都不属于当前设备。
+      _pagedJobs.clear();
+      _jobs.clear();
+    }
+    _jobsDeviceId = requestedDeviceId;
     _refreshing = true;
     setBusyState(loading: true, clearError: true);
     try {
@@ -208,6 +217,13 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       };
       final currentJob = deviceStatus.currentJob;
       if (currentJob != null) authoritativeJobs[currentJob.id] = currentJob;
+      // “加载更多”拉到的旧任务不在第一页里；刷新时保留它们，不能每 4 秒
+      // 把用户已加载的历史页清空。若事件已带来更新版本，以更新版本为准。
+      for (final paged in _pagedJobs.values) {
+        if (authoritativeJobs.containsKey(paged.id)) continue;
+        final current = _jobs[paged.id];
+        authoritativeJobs[paged.id] = current != null && (current.version ?? -1) > (paged.version ?? -1) ? current : paged;
+      }
       _replaceJobs(authoritativeJobs.values);
       _hasMoreJobs = jobPage.hasMore && jobPage.nextCursor != null;
       _nextJobsCursor = jobPage.nextCursor;
@@ -263,7 +279,8 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       final page = await _jobRepository.page(cursor: cursor);
       for (final job in page.items) {
         _guardProductionId(job.id, 'job_id');
-        _jobs.putIfAbsent(job.id, () => job);
+        final retained = _jobs.putIfAbsent(job.id, () => job);
+        _pagedJobs[job.id] = retained;
       }
       _hasMoreJobs = page.hasMore && page.nextCursor != null && page.nextCursor != cursor;
       _nextJobsCursor = page.nextCursor;
@@ -640,7 +657,9 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     try {
       final caps = await repo.capabilities();
       if ((caps['incremental_recognition_results'] as Map?)?['available'] != true) return;
-      final ids = jobId == null ? _jobs.values.where((j) => j.type == BirdJobType.analysis).map((j) => j.id) : [jobId];
+      final ids = jobId == null
+          ? _jobs.values.where((j) => j.type == BirdJobType.analysis).map((j) => j.id).toList(growable: false)
+          : <String>[jobId];
       for (final id in ids) {
         try {
           await repo.sync(id);
@@ -689,6 +708,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
         ..[job.id] = job
         ..addAll(previous);
     }
+    if (_pagedJobs.containsKey(job.id)) _pagedJobs[job.id] = job;
     _currentJobId = job.id;
     _syncTaskSnapshots();
     _recomputeExecutableTaskTypes();
