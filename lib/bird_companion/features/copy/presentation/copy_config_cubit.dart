@@ -64,7 +64,6 @@ class CopyConfigState {
     this.refreshingDevices = false,
     this.sessionAvailable = true,
     this.pageActive = true,
-    this.savingPreferences = false,
     this.sourceBindingExpiresAt,
     this.sourceVerifiedReadOnly = true,
     this.preflightPhase,
@@ -106,7 +105,7 @@ class CopyConfigState {
   final CopyJobSummary? createdJob;
   final Object? error;
   final String? persistenceNotice;
-  final bool devicesFresh, refreshingDevices, sessionAvailable, pageActive, savingPreferences;
+  final bool devicesFresh, refreshingDevices, sessionAvailable, pageActive;
   final DateTime? sourceBindingExpiresAt;
   final bool sourceVerifiedReadOnly;
   final CopyPreflightStatus? preflightPhase;
@@ -149,7 +148,6 @@ class CopyConfigState {
 
   bool get canFetchPreview =>
       environmentBlockReason == null &&
-      !savingPreferences &&
       !loadingDevices &&
       devices.isNotEmpty &&
       copyReady &&
@@ -186,7 +184,6 @@ class CopyConfigState {
     if (conflictStrategy == null) return '请选择同名文件处理策略';
     final environment = environmentBlockReason;
     if (environment != null) return environment;
-    if (savingPreferences) return '正在保存 RAW/JPEG 策略，请稍候。';
     final previewValue = preview;
     if (previewValue == null) return preflightNotice ?? '请先获取预检';
     if (previewValue.isExpired) return '预检已过期，请重新获取';
@@ -267,7 +264,6 @@ class CopyConfigState {
     bool? refreshingDevices,
     bool? sessionAvailable,
     bool? pageActive,
-    bool? savingPreferences,
     DateTime? sourceBindingExpiresAt,
     bool? sourceVerifiedReadOnly,
     CopyPreflightStatus? preflightStatus,
@@ -311,7 +307,6 @@ class CopyConfigState {
     refreshingDevices: refreshingDevices ?? this.refreshingDevices,
     sessionAvailable: sessionAvailable ?? this.sessionAvailable,
     pageActive: pageActive ?? this.pageActive,
-    savingPreferences: savingPreferences ?? this.savingPreferences,
     sourceBindingExpiresAt: sourceBindingExpiresAt ?? this.sourceBindingExpiresAt,
     sourceVerifiedReadOnly: sourceVerifiedReadOnly ?? this.sourceVerifiedReadOnly,
     preflightPhase: preflightStatus ?? preflightPhase,
@@ -408,8 +403,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   Future<void>? _initializing;
   int _environment = 0, _configuration = 0, _contextVersion = 0, _operation = 0;
   bool _initialized = false, _creating = false, _created = false;
-  Future<void> _preferenceWrites = Future<void>.value();
-  int _preferenceRequests = 0;
+  PairPolicy? _persistedPairPolicy;
 
   bool get _usable => !isClosed && (canUseDevice?.call() ?? true);
   bool _current(int environment, int configuration, int operation) {
@@ -524,6 +518,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
       final preferences = scope == CopyScope.mediaFullBackup ? null : results[2] as CopyPreferences;
       final target = devices.where((d) => d.mediaId == preferredTargetMediaId && CopyDevicePolicy.canSelectTarget(d, binding.sourceMediaId)).firstOrNull;
       _initialized = true;
+      _persistedPairPolicy = preferences?.pairPolicy;
       emit(
         state.copyWith(
           devices: devices,
@@ -594,7 +589,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     emit(state.copyWith(refreshingDevices: true));
     try {
       final configuration = _configuration;
-      final readPreferences = !state.fullBackup && !state.savingPreferences;
+      final readPreferences = !state.fullBackup;
       final results = await Future.wait<Object>([_repository.devices(), _repository.source(batchId: state.batchId), if (readPreferences) _repository.preferences()], eagerError: true);
       if (!_sameEnvironment(environment)) return false;
       final binding = results[1] as SourceBinding;
@@ -609,8 +604,11 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
           binding.verifiedReadOnly &&
           state.sourceBindingExpiresAt != null &&
           DateTime.now().isBefore(state.sourceBindingExpiresAt!);
-      final preferences = readPreferences && configuration == _configuration && !state.savingPreferences ? results[2] as CopyPreferences : null;
-      final changedPreferences = preferences != null && preferences.version >= (state.preferencesVersion ?? 0) && (preferences.version != state.preferencesVersion || preferences.pairPolicy != state.pairPolicy);
+      final preferences = readPreferences && configuration == _configuration ? results[2] as CopyPreferences : null;
+      // v10 问题 7：用户在本页的草稿选择优先于服务端旧偏好——刷新不得把
+      // 尚未持久化的草稿值覆盖回服务端值；只吸收版本号更高的服务端变化。
+      final hasDraftChoice = _persistedPairPolicy != null && state.pairPolicy != _persistedPairPolicy;
+      final changedPreferences = preferences != null && preferences.version >= (state.preferencesVersion ?? 0) && (preferences.version != state.preferencesVersion || (!hasDraftChoice && preferences.pairPolicy != state.pairPolicy));
       final next = state.copyWith(
         devices: (results[0] as CopyDeviceList).devices,
         sourceMediaId: binding.sourceMediaId,
@@ -623,7 +621,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
         refreshingDevices: false,
         clearDevicesError: true,
         preferencesVersion: changedPreferences ? preferences.version : null,
-        pairPolicy: changedPreferences ? preferences.pairPolicy : null,
+        pairPolicy: changedPreferences && !hasDraftChoice ? preferences.pairPolicy : null,
       );
       final reason =
           _snapshotProblem(next) ??
@@ -703,27 +701,11 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     if (!state.scopeFixed && value != state.scope) _change(state.copyWith(scope: value, clearScopeUnavailable: true));
   }
 
-  Future<void> setPairPolicy(PairPolicy value) async {
-    if (isClosed || _creating || state.submitted || value == state.pairPolicy || state.fullBackup || state.preferencesVersion == null || !_usable) return;
-    final previous = state.pairPolicy, environment = _environment;
-    _change(state.copyWith(pairPolicy: value, savingPreferences: true));
-    ++_preferenceRequests;
-    final write = _preferenceWrites.catchError((Object _) {}).then((_) async {
-      if (isClosed || environment != _environment || !_usable) return;
-      try {
-        final saved = await _repository.savePreferences(value, expectedVersion: state.preferencesVersion!);
-        if (isClosed || environment != _environment || !_usable) return;
-        emit(state.copyWith(preferencesVersion: saved.version, clearError: true));
-      } catch (error) {
-        if (!isClosed && environment == _environment) emit(state.copyWith(pairPolicy: state.pairPolicy == value ? previous : null, error: error));
-      }
-    });
-    _preferenceWrites = write;
-    try {
-      await write;
-    } finally {
-      if (--_preferenceRequests == 0 && !isClosed) emit(state.copyWith(savingPreferences: false));
-    }
+  void setPairPolicy(PairPolicy value) {
+    // v10 返修问题 7：页面选择只属于当前草稿，不在此处写持久偏好；
+    // 服务端偏好仅在任务创建成功后原子保存（见 _persistPairPolicyAfterCreate）。
+    if (isClosed || _creating || state.submitted || value == state.pairPolicy || state.fullBackup || !_usable) return;
+    _change(state.copyWith(pairPolicy: value));
   }
 
   void setConflictStrategy(ConflictStrategy value) {
@@ -755,7 +737,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   }
 
   Future<bool> fetchPreview() async {
-    if (isClosed || state.loadingPreview || state.submitting || state.submitted || state.savingPreferences || !_usable || !state.pageActive) return false;
+    if (isClosed || state.loadingPreview || state.submitting || state.submitted || !_usable || !state.pageActive) return false;
     final environment = _environment, configuration = _configuration, operation = ++_operation;
     _expiry?.cancel();
     emit(state.copyWith(loadingPreview: true, clearPreview: true, preflightStatus: CopyPreflightStatus.loading, clearError: true, clearScopeUnavailable: true));
@@ -798,6 +780,24 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
       _reasonFor(error) ?? CopyPreflightInvalidation.verificationFailed,
       next: state.copyWith(error: error, scopeUnavailable: error is ApiException && error.code == 'COPY_SCOPE_UNSUPPORTED' ? true : null),
     );
+  }
+
+  /// v10 返修问题 7：偏好只在任务创建成功后原子保存。保存失败不改变已成功的
+  /// 创建结果——偏好是便利设置，不是任务契约的一部分；页面上的草稿选择保留。
+  Future<void> _persistPairPolicyAfterCreate() async {
+    if (isClosed || state.fullBackup) return;
+    final value = state.pairPolicy;
+    if (value == _persistedPairPolicy) return;
+    final expectedVersion = state.preferencesVersion;
+    if (expectedVersion == null) return;
+    try {
+      final saved = await _repository.savePreferences(value, expectedVersion: expectedVersion);
+      if (isClosed) return;
+      _persistedPairPolicy = saved.pairPolicy;
+      emit(state.copyWith(preferencesVersion: saved.version));
+    } catch (_) {
+      // 偏好保存失败不影响任务创建；下次创建成功后仍会尝试保存最新选择。
+    }
   }
 
   /// Bind one immutable draft to fresh devices and the second preflight. Every
@@ -855,6 +855,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
           /* A convenience preference cannot invalidate POST success. */
         }
       }
+      await _persistPairPolicyAfterCreate();
       dataChanges?.publish({AppDataResource.jobs, AppDataResource.device, AppDataResource.batches}, reason: 'copy_job_created');
       _poll?.cancel();
       _expiry?.cancel();

@@ -192,24 +192,50 @@ void main() {
     expect(repository.createCalls, 1);
   });
 
-  test('preference saves serialize versions and block preview while acknowledgement is pending', () async {
+  test('draft pair policy choice never hits the server; only a created job persists it (v10 问题 7)', () async {
     final repository = FakeCopyEnvironment();
     final cubit = await ready(repository);
-    final firstAck = Completer<CopyPreferences>();
-    repository.savePolicy = (value, version) async => version == 1 ? await firstAck.future : CopyPreferences(pairPolicy: value, version: version + 1, origin: 'user_saved');
-    final first = cubit.setPairPolicy(PairPolicy.jpegOnly);
-    await until(() => repository.savedVersions.isNotEmpty);
-    final second = cubit.setPairPolicy(PairPolicy.both);
-    expect(cubit.state.savingPreferences, true);
-    expect(cubit.state.canFetchPreview, false);
-    expect(await cubit.fetchPreview(), false);
-    firstAck.complete(const CopyPreferences(pairPolicy: PairPolicy.jpegOnly, version: 2, origin: 'user_saved'));
-    await Future.wait([first, second]);
-    expect(repository.savedVersions, [1, 2]);
-    expect(cubit.state.preferencesVersion, 3);
-    expect(cubit.state.pairPolicy, PairPolicy.both);
-    expect(cubit.state.savingPreferences, false);
-    expect(cubit.state.preview, isNull);
+    // 草稿期选择：立即生效于本地状态，不触发任何写盘。
+    cubit.setPairPolicy(PairPolicy.jpegOnly);
+    expect(cubit.state.pairPolicy, PairPolicy.jpegOnly);
+    expect(repository.savedVersions, isEmpty, reason: '退出/预检/取消预检都不得保存持久偏好');
+    expect(cubit.state.canFetchPreview, true, reason: '草稿选择不阻塞重新预检');
+    expect(cubit.state.preview, isNull, reason: '配置变化使旧预检失效');
+
+    // 重新预检后创建成功 → 以草稿最新选择原子保存一次。
+    expect(await cubit.fetchPreview(), true);
+    expect(await cubit.submit(), true);
+    expect(repository.createCalls, 1);
+    expect(repository.savedVersions, [1], reason: '只在创建成功后保存一次');
+    expect(repository.createdDraft?.pairPolicy, PairPolicy.jpegOnly);
+    expect(cubit.state.preferencesVersion, 2);
+    expect(cubit.state.pairPolicy, PairPolicy.jpegOnly);
+  });
+
+  test('创建失败时不保存持久偏好', () async {
+    final repository = FakeCopyEnvironment();
+    final cubit = await ready(repository);
+    repository.makePreview = (_) async => throw const ApiException(message: 'COPY_PREVIEW_EXPIRED', code: 'COPY_PREVIEW_EXPIRED', statusCode: 409);
+    cubit.setPairPolicy(PairPolicy.both);
+    expect(await cubit.fetchPreview(), false, reason: '预检失败即无法创建');
+    expect(await cubit.submit(), false);
+    expect(repository.createCalls, 0);
+    expect(repository.savedVersions, isEmpty, reason: '创建未成功不得保存偏好');
+    expect(cubit.state.pairPolicy, PairPolicy.both, reason: '草稿选择保留在本地状态');
+  });
+
+  test('创建后偏好保存失败不影响任务创建结果，草稿选择保留', () async {
+    final repository = FakeCopyEnvironment();
+    final cubit = await ready(repository);
+    cubit.setPairPolicy(PairPolicy.both);
+    repository.savePolicy = (value, version) async => throw const ApiException(message: '网络连接失败', code: 'NETWORK_UNREACHABLE', statusCode: 0);
+    expect(await cubit.fetchPreview(), true);
+    expect(await cubit.submit(), true);
+    expect(repository.createCalls, 1);
+    expect(cubit.state.submitted, true);
+    expect(cubit.state.createdJob, isNotNull);
+    expect(cubit.state.pairPolicy, PairPolicy.both, reason: '草稿选择不因保存失败被回滚');
+    expect(cubit.state.error, isNull, reason: '偏好是便利设置，失败不当作任务错误');
   });
 
   test('re-preflight cancels the expiry of the discarded preview', () async {
@@ -325,7 +351,7 @@ void main() {
         case 'embed':
           cubit.setEmbedReviewMetadata(false);
         case 'pair':
-          await cubit.setPairPolicy(PairPolicy.both);
+          cubit.setPairPolicy(PairPolicy.both);
       }
       gate.complete(response);
       expect(await loading, false);
