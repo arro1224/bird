@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/job_models.dart';
+import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/features/device/domain/device_repository.dart';
+import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -84,6 +87,11 @@ class DeviceStatusCubit extends Cubit<DeviceStatusState> {
   /// handled centrally by [SessionCoordinator].
   void _recordStatusFailure(Object error, [StackTrace? stackTrace]) {
     if (isClosed) return;
+    // v10 返修问题 8：子页面请求失败回写全局连接状态——连接类错误触发
+    // 轻量健康检查，避免首页/设备页长时间显示"已连接"而请求全部失败。
+    if (error is ApiException || error is DioException || error is SocketException || error is TimeoutException) {
+      _sessionCubit.reportUnreachable(error);
+    }
     emit(state.copyWith(phase: DeviceStatusPhase.failure, error: error));
   }
 

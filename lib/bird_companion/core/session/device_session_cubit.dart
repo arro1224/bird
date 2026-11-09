@@ -29,7 +29,20 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     Stream<void>? transportChanges,
   }) : super(const DeviceSessionState()) {
     _networkSubscription = _connectivityMonitor.onNetworkChanged.listen((available) {
-      if (!isClosed && !provisioningHandoffActive && available && state.phase == DeviceSessionPhase.disconnected && state.device != null) unawaited(reconnect());
+      if (isClosed || provisioningHandoffActive) return;
+      // v10 返修问题 8：Wi-Fi 断开不能让首页/设备页继续显示"已连接"。
+      // 断网即刻进入重连态（保留设备身份），子页面据此显示断开/重连中；
+      // 网络恢复后由既有 verify 流程转回 connected。
+      if (!available) {
+        if (state.phase == DeviceSessionPhase.connected && state.device != null) {
+          _invalidateConnection();
+          emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '手机网络已断开，等待网络恢复后自动重连。'));
+        }
+        return;
+      }
+      if (state.phase == DeviceSessionPhase.disconnected && state.device != null) unawaited(reconnect());
+      // 短暂断网期间 phase 已是 reconnecting：网络恢复直接验证 saved session。
+      if (state.phase == DeviceSessionPhase.reconnecting && state.device != null) unawaited(verifySavedSession(intent: 'network_recovered'));
     });
     _transportSubscription = transportChanges?.listen((_) {
       if (!isClosed && !provisioningHandoffActive && state.device != null && state.phase != DeviceSessionPhase.connecting) unawaited(verifySavedSession(intent: 'transport_changed'));
@@ -332,6 +345,16 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   Future<void> reconnect() async {
     if (isClosed || provisioningHandoffActive || state.device == null) return;
     await verifySavedSession();
+  }
+
+  /// v10 返修问题 8：子页面请求失败时回写全局连接状态。子页面捕获到
+  /// 连接类错误（网络不可达/超时）调用本方法；全局状态降级为重连中并
+  /// 触发一次轻量健康检查，避免"首页已连接、子页面请求全失败"的分叉。
+  void reportUnreachable([Object? error]) {
+    if (isClosed || provisioningHandoffActive || state.device == null) return;
+    if (state.phase != DeviceSessionPhase.connected) return;
+    emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '盒子连接暂时不可用，正在恢复…'));
+    unawaited(verifySavedSession(intent: 'page_reported_unreachable'));
   }
 
   void disconnected([String? message, bool clearDevice = false]) {
