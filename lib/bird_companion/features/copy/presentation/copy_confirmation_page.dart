@@ -553,7 +553,7 @@ class CopyContentStep extends StatelessWidget {
       if (state.loadingDevices)
         const _LoadingPlaceholder()
       else if (state.sourceMediaId == null)
-        const _EmptyDeviceHint('没有可用于复制的源设备')
+        _EmptyDeviceHint('没有可用于复制的源设备', occupiedHint: state.occupiedByRunningJob)
       else
         _SectionCard(
           title: '后端自动识别（只读）',
@@ -564,7 +564,7 @@ class CopyContentStep extends StatelessWidget {
       if (state.loadingDevices)
         const _LoadingPlaceholder()
       else if (_targetCandidates(state).isEmpty)
-        const _EmptyDeviceHint('没有可用的目标设备，请检查盒子外接存储')
+        _EmptyDeviceHint('没有可用的目标设备，请检查盒子外接存储', occupiedHint: state.occupiedByRunningJob)
       else
         for (final device in _targetCandidates(state))
           StorageDeviceCard(
@@ -574,6 +574,7 @@ class CopyContentStep extends StatelessWidget {
             lastUsedForBatch: _isLastUsedForBatch(device.mediaId, context, state.batchId),
             onTap: () => onTargetSelected(device.mediaId),
           ),
+      if (state.occupiedByRunningJob) const _OccupiedJobHint(),
       if (state.targetMediaId == null && state.preferredTargetMediaId != null) ...[
         const SizedBox(height: 4),
         const Text(
@@ -1254,10 +1255,31 @@ class _LoadingPlaceholder extends StatelessWidget {
   );
 }
 
+/// v10 返修问题 6：占用态提供"查看当前任务"入口，不再诱导反复检测设备。
+class _OccupiedJobHint extends StatelessWidget {
+  const _OccupiedJobHint();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+    padding: EdgeInsets.only(top: 8),
+    child: Row(
+      children: [
+        Icon(Icons.schedule_rounded, size: 16, color: AppColors.pending),
+        SizedBox(width: 6),
+        Expanded(child: Text('设备正被进行中的复制任务占用，任务结束后自动恢复。', style: TextStyle(color: AppColors.pending, fontSize: 12.5))),
+        _ViewCurrentJobButton(),
+      ],
+    ),
+  );
+}
+
 class _EmptyDeviceHint extends StatelessWidget {
-  const _EmptyDeviceHint(this.text);
+  const _EmptyDeviceHint(this.text, {this.occupiedHint = false});
 
   final String text;
+
+  /// v10 问题 6：占用不是断线，图标与语义与"设备拔出"区分。
+  final bool occupiedHint;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -1265,14 +1287,27 @@ class _EmptyDeviceHint extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          const Icon(Icons.usb_off_rounded, color: AppColors.inkMuted),
+          Icon(occupiedHint ? Icons.schedule_rounded : Icons.usb_off_rounded, color: occupiedHint ? AppColors.pending : AppColors.inkMuted),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(text, style: const TextStyle(color: AppColors.inkMuted, fontSize: 13)),
+            child: Text(occupiedHint ? '设备正被进行中的复制任务占用，任务结束后自动恢复。' : text, style: const TextStyle(color: AppColors.inkMuted, fontSize: 13)),
           ),
+          if (occupiedHint) const _ViewCurrentJobButton(),
         ],
       ),
     ),
+  );
+}
+
+/// v10 返修问题 6：占用态提供"查看当前任务"入口，不再诱导反复检测设备。
+class _ViewCurrentJobButton extends StatelessWidget {
+  const _ViewCurrentJobButton();
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    key: const Key('copy-view-current-job'),
+    onPressed: () => Navigator.of(context).pushNamed(BirdRoutes.copyJobs),
+    child: const Text('查看当前任务'),
   );
 }
 

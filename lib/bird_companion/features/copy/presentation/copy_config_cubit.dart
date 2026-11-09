@@ -12,7 +12,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 enum CopyPreflightStatus { notRequested, loading, valid, invalidated, needsRecheck }
 
-enum CopyPreflightInvalidation { sourceOffline, targetOffline, bindingChanged, configurationChanged, expired, planInconsistent, deviceDataStale, sessionUnavailable, targetUnavailable, insufficientSpace, verificationFailed }
+enum CopyPreflightInvalidation { sourceOffline, targetOffline, bindingChanged, configurationChanged, expired, planInconsistent, deviceDataStale, sessionUnavailable, targetUnavailable, targetOccupied, insufficientSpace, verificationFailed }
 
 String copyPreflightMessage(CopyPreflightInvalidation reason) => switch (reason) {
   CopyPreflightInvalidation.sourceOffline => '相机卡已断开，请重新插入后重新预检。',
@@ -24,6 +24,7 @@ String copyPreflightMessage(CopyPreflightInvalidation reason) => switch (reason)
   CopyPreflightInvalidation.deviceDataStale => '设备状态暂时无法确认，请检查盒子连接后重新检测；当前显示上次记录。',
   CopyPreflightInvalidation.sessionUnavailable => '盒子连接已变化，请恢复本次复制使用的盒子后重新检测。',
   CopyPreflightInvalidation.targetUnavailable => '目标设备当前不可写入或不可用，请检查或选择其他目标设备。',
+  CopyPreflightInvalidation.targetOccupied => '设备正被进行中的复制任务占用，可查看当前任务；任务结束后设备自动恢复。',
   CopyPreflightInvalidation.insufficientSpace => '目标设备空间不足，请更换目标设备或减少复制范围。',
   CopyPreflightInvalidation.verificationFailed => '预检未通过，请重新检测后再开始复制。',
 };
@@ -168,15 +169,29 @@ class CopyConfigState {
     final source = sourceDevice;
     if (source == null && sourceMediaId == null) return '请选择源设备';
     if (source == null || !source.online) return copyPreflightMessage(CopyPreflightInvalidation.sourceOffline);
+    if (sourceOccupiedByJob) return copyPreflightMessage(CopyPreflightInvalidation.targetOccupied);
     if (!source.canBeSource || !sourceVerifiedReadOnly || sourceBindingToken == null || sourceBindingToken!.trim().isEmpty) return copyPreflightMessage(CopyPreflightInvalidation.bindingChanged);
     if (sourceBindingExpiresAt != null && !DateTime.now().isBefore(sourceBindingExpiresAt!)) return copyPreflightMessage(CopyPreflightInvalidation.expired);
     if (targetMediaId == null) return '请选择目标设备';
     if (targetMediaId == sourceMediaId) return '源设备与目标设备不能相同';
     final target = targetDevice;
     if (target == null || !target.online) return copyPreflightMessage(CopyPreflightInvalidation.targetOffline);
+    if (targetOccupiedByJob) return copyPreflightMessage(CopyPreflightInvalidation.targetOccupied);
     if (!CopyDevicePolicy.canSelectTarget(target, sourceMediaId)) return CopyDevicePolicy.targetDisabledReason(target, sourceMediaId: sourceMediaId);
     return null;
   }
+
+  /// v10 返修问题 6：源/目标设备被进行中的复制任务占用。占用不是断线，
+  /// 不得显示"请检查与盒子的连接"或诱导用户反复检测设备；页面据此
+  /// 显示占用文案与"查看当前任务"入口。
+  ///
+  /// `当前任务源设备` 是源卡的角色说明（rc3 源卡不能当目标），不是阻塞；
+  /// 真正的占用信号是后端 targetBlockReasons 里的 `COPY_TARGET_BUSY`。
+  bool get sourceOccupiedByJob => sourceDevice?.online == true && sourceDevice!.targetBlockReasons.contains('COPY_TARGET_BUSY');
+
+  bool get targetOccupiedByJob => targetDevice?.online == true && targetDevice!.targetBlockReasons.contains('COPY_TARGET_BUSY');
+
+  bool get occupiedByRunningJob => !loadingDevices && devicesFresh && (sourceOccupiedByJob || targetOccupiedByJob);
 
   String? get submissionBlockReason {
     if (scopeUnavailable) return '当前盒子不支持全量备份，本次不会创建任务';
@@ -679,10 +694,12 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   CopyPreflightInvalidation? _snapshotProblem(CopyConfigState value) {
     final source = value.sourceDevice, target = value.targetDevice;
     if (source == null || !source.online) return CopyPreflightInvalidation.sourceOffline;
+    if (value.sourceOccupiedByJob) return CopyPreflightInvalidation.targetOccupied;
     if (!source.canBeSource || !value.sourceVerifiedReadOnly) return CopyPreflightInvalidation.bindingChanged;
     if (value.sourceBindingExpiresAt != null && !DateTime.now().isBefore(value.sourceBindingExpiresAt!)) return CopyPreflightInvalidation.expired;
     if (value.targetMediaId == null) return null;
     if (target == null || !target.online) return CopyPreflightInvalidation.targetOffline;
+    if (value.targetOccupiedByJob) return CopyPreflightInvalidation.targetOccupied;
     if (!CopyDevicePolicy.canSelectTarget(target, value.sourceMediaId)) return CopyPreflightInvalidation.targetUnavailable;
     final preview = value.preview;
     if (preview != null && target.freeBytes < preview.totalBytes + preview.safetyReserveBytes) return CopyPreflightInvalidation.insufficientSpace;
