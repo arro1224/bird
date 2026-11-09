@@ -19,7 +19,7 @@ String copyPreflightMessage(CopyPreflightInvalidation reason) => switch (reason)
   CopyPreflightInvalidation.targetOffline => '目标 U 盘已断开，请重新插入或选择其他目标设备。',
   CopyPreflightInvalidation.bindingChanged => '源设备绑定已变化，请确认相机卡后重新预检。',
   CopyPreflightInvalidation.configurationChanged => '复制配置已修改，请重新预检。',
-  CopyPreflightInvalidation.expired => '预检或源绑定已过期，请重新获取预检。',
+  CopyPreflightInvalidation.expired => '预检已过期，正在重新检查，请稍候。',
   CopyPreflightInvalidation.planInconsistent => '预检中的设备与当前选择不一致，请重新检测。',
   CopyPreflightInvalidation.deviceDataStale => '设备状态暂时无法确认，请检查盒子连接后重新检测；当前显示上次记录。',
   CopyPreflightInvalidation.sessionUnavailable => '盒子连接已变化，请恢复本次复制使用的盒子后重新检测。',
@@ -755,7 +755,17 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     final binding = state.sourceBindingExpiresAt;
     if (binding != null && binding.isBefore(expires)) expires = binding;
     final delay = expires.difference(DateTime.now());
-    _expiry = Timer(delay.isNegative ? Duration.zero : delay, () => _invalidate(CopyPreflightInvalidation.expired));
+    _expiry = Timer(delay.isNegative ? Duration.zero : delay, _onPreviewExpired);
+  }
+
+  /// v10 返修问题 10：预检过期不再要求用户手动重检。过期即失效令牌，
+  /// 页面显示"预检已过期，正在重新检查"；若页面仍活跃且环境未变，自动
+  /// 重新预检并展示最新摘要。重大变化（计划/冲突/空间/身份）的重确认
+  /// 由 submit 的签名比对与 previewProblem 保证，自动重检不静默创建。
+  void _onPreviewExpired() {
+    if (isClosed || state.submitted || state.submitting) return;
+    _invalidate(CopyPreflightInvalidation.expired);
+    if (state.pageActive && _usable) unawaited(fetchPreview());
   }
 
   CopyPreflightInvalidation? _previewProblem(CopyPreview preview, CopyRequestDraft draft) {
