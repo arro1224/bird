@@ -144,6 +144,21 @@ void main() {
     expect(await cubit.submit(), false);
   });
 
+  test('刷新采纳服务端偏好后创建不再重复保存一次(v10 问题 7)', () async {
+    final repository = FakeCopyEnvironment();
+    final cubit = await ready(repository);
+    repository.preferenceVersion = 2;
+    repository.preferencePolicy = PairPolicy.jpegOnly;
+    await cubit.refreshDevices();
+    expect(cubit.state.pairPolicy, PairPolicy.jpegOnly);
+    expect(cubit.state.preferencesVersion, 2);
+    expect(cubit.state.preview, isNull, reason: '偏好变化应使旧预检失效');
+
+    expect(await cubit.fetchPreview(), true);
+    expect(await cubit.submit(), true);
+    expect(repository.savedVersions, isEmpty, reason: '采纳的是服务端已知值，创建时不得重复写偏好');
+  });
+
   test('diagnostic failure cannot bypass invalidation and does not receive raw exception text', () async {
     final repository = FakeCopyEnvironment();
     final entries = <Map<String, dynamic>>[];
@@ -420,13 +435,16 @@ void main() {
     expect(cubit.state.preflightStatus, CopyPreflightStatus.needsRecheck);
   });
 
-  test('preview expiry fires without another tap', () async {
+  test('preview expiry fires without another tap and auto rechecks', () async {
     final repository = FakeCopyEnvironment()..previewLifetime = const Duration(milliseconds: 70);
     final cubit = await ready(repository);
-    await until(() => cubit.state.preview == null);
-    expect(cubit.state.invalidationReason, CopyPreflightInvalidation.expired);
-    expect(await cubit.submit(), false);
-    expect(repository.createCalls, 0);
+    final oldToken = cubit.state.preview!.previewToken;
+    repository.previewLifetime = const Duration(minutes: 1);
+    await until(() => cubit.state.preview?.previewToken != oldToken);
+    expect(cubit.state.preflightStatus, CopyPreflightStatus.valid);
+    expect(cubit.state.preview, isNotNull);
+    expect(await cubit.submit(), true);
+    expect(repository.createCalls, 1);
   });
 
   test('visible polling stops in background and requires a new preview after returning', () async {

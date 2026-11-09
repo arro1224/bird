@@ -10,4 +10,7 @@ class ConnectivityMonitor {
   Stream<void> get onTransportChanged => _connectivity.onConnectivityChanged.map((_) {});
 
   Future<bool> get hasNetwork async => !(await _connectivity.checkConnectivity()).contains(ConnectivityResult.none);
+
+  /// 盒子只能经 Wi-Fi 访问；移动数据可用不代表盒子可达（v10 问题 8）。
+  Future<bool> get hasWifi async => (await _connectivity.checkConnectivity()).contains(ConnectivityResult.wifi);
 }

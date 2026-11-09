@@ -87,12 +87,25 @@ class DeviceStatusCubit extends Cubit<DeviceStatusState> {
   /// handled centrally by [SessionCoordinator].
   void _recordStatusFailure(Object error, [StackTrace? stackTrace]) {
     if (isClosed) return;
-    // v10 返修问题 8：子页面请求失败回写全局连接状态——连接类错误触发
-    // 轻量健康检查，避免首页/设备页长时间显示"已连接"而请求全部失败。
-    if (error is ApiException || error is DioException || error is SocketException || error is TimeoutException) {
+    // v10 返修问题 8：子页面请求失败回写全局连接状态——只对连接类错误触发
+    // 轻量健康检查；404/409 等业务错误不能把全局状态误降为“重连中”。
+    if (_isConnectionFailure(error)) {
       _sessionCubit.reportUnreachable(error);
     }
     emit(state.copyWith(phase: DeviceStatusPhase.failure, error: error));
+  }
+
+  static bool _isConnectionFailure(Object error) {
+    if (error is SocketException || error is TimeoutException) return true;
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      return error.type != DioExceptionType.badResponse || status == null || status >= 500;
+    }
+    if (error is ApiException) {
+      final status = error.statusCode;
+      return error.retryable || status == null || status == 0 || status == 408 || status == 429 || status >= 500;
+    }
+    return false;
   }
 
   Future<void> controlCurrentJob(String action) async {

@@ -53,6 +53,28 @@ void main() {
     await _settle(() => repository.previewCalls > callsBefore || cubit.state.preflightStatus != CopyPreflightStatus.invalidated);
     expect(cubit.state.pageActive, true);
   });
+
+  test('过期重检出现重大计划变化 → 先阻断一次，核对后再创建', () async {
+    final repository = _ChangingPlanEnvironment()..previewLifetime = const Duration(milliseconds: 80);
+    final cubit = await ready(repository, poll: Duration.zero);
+    addTearDown(cubit.close);
+    expect(cubit.state.preview!.totalBytes, 100);
+    // 首次预检仍按 80ms 过期；自动重检出的新预检保持有效，避免二次过期。
+    repository.previewLifetime = const Duration(minutes: 1);
+
+    // 预检有效期内计划发生变化（1 个文件/100B → 2 个/200B）。
+    repository.files = 2;
+    repository.bytes = 200;
+    await Future<void>.delayed(const Duration(milliseconds: 160));
+    await _settle(() => cubit.state.preflightStatus == CopyPreflightStatus.valid && cubit.state.preview?.totalBytes == 200);
+    await _settle(() => cubit.state.planNotice != null);
+
+    expect(cubit.state.planNotice, contains('变化'));
+    expect(await cubit.submit(), false, reason: '旧计划→新计划的重大变化必须先阻断一次');
+    expect(repository.createCalls, 0);
+    expect(await cubit.submit(), true, reason: '用户核对后第二次点击才创建');
+    expect(repository.createCalls, 1);
+  });
 }
 
 Future<CopyConfigCubit> ready(FakeCopyEnvironment repository, {Duration poll = Duration.zero}) async {
@@ -71,4 +93,34 @@ Future<void> _settle(bool Function() predicate) async {
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
   fail('State did not settle');
+}
+
+/// 可在两次预检之间改变计划规模的环境，用于验证“过期重检发现重大变化”。
+class _ChangingPlanEnvironment extends FakeCopyEnvironment {
+  int files = 1, bytes = 100;
+
+  @override
+  int get syntheticFileCount => files;
+
+  @override
+  int get syntheticBytes => bytes;
+
+  @override
+  CopyPreview previewFor(CopyRequestDraft draft) => CopyPreview(
+    previewToken: 'preview-$previewCalls',
+    expiresAt: DateTime.now().add(previewLifetime),
+    source: storage.where((d) => d.mediaId == draft.sourceMediaId).first,
+    target: storage.where((d) => d.mediaId == draft.targetMediaId).first,
+    logicalPhotoCount: files,
+    actualFileCount: files,
+    totalBytes: bytes,
+    rawCount: files,
+    jpegCount: 0,
+    videoCount: 0,
+    companionCount: 0,
+    estimatedDateDirectories: 1,
+    conflictCount: 0,
+    targetFreeBytes: 1000000,
+    safetyReserveBytes: 100,
+  );
 }

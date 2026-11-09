@@ -44,8 +44,22 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       // 短暂断网期间 phase 已是 reconnecting：网络恢复直接验证 saved session。
       if (state.phase == DeviceSessionPhase.reconnecting && state.device != null) unawaited(verifySavedSession(intent: 'network_recovered'));
     });
-    _transportSubscription = transportChanges?.listen((_) {
-      if (!isClosed && !provisioningHandoffActive && state.device != null && state.phase != DeviceSessionPhase.connecting) unawaited(verifySavedSession(intent: 'transport_changed'));
+    _transportSubscription = transportChanges?.listen((_) async {
+      if (isClosed || provisioningHandoffActive || state.device == null || state.phase == DeviceSessionPhase.connecting) return;
+      // v10 问题 8：移动数据仍开时关 Wi-Fi，onNetworkChanged 仍是 true；
+      // 必须按“Wi-Fi 是否还在”判断，盒子只可能经 Wi-Fi 访问。
+      var wifiAvailable = true;
+      try {
+        wifiAvailable = await _connectivityMonitor.hasWifi;
+      } catch (_) {
+        /* 无法判定时退回既有验证流程，不误报断线。 */
+      }
+      if (isClosed || provisioningHandoffActive || state.device == null || state.phase == DeviceSessionPhase.connecting) return;
+      if (!wifiAvailable && state.phase == DeviceSessionPhase.connected) {
+        reportUnreachable();
+        return;
+      }
+      unawaited(verifySavedSession(intent: 'transport_changed'));
     });
     _eventSubscription = _eventClient.connectionStates.listen((eventState) {
       if (isClosed || !state.isConnected) return;

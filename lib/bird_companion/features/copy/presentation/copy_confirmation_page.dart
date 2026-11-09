@@ -235,7 +235,6 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> with WidgetsBindingObse
   var _step = _CopyFlowStep.content;
   bool _following = false;
   CopyConfigCubit? _cubit;
-  bool _resumed = true;
   bool _inspectingPreview = false;
 
   @override
@@ -251,7 +250,10 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> with WidgetsBindingObse
     _syncVisibility();
   }
 
-  void _syncVisibility() => _cubit?.setPageActive(!_following && _resumed && (_inspectingPreview || (ModalRoute.of(context)?.isCurrent ?? true)));
+  /// 只反映“页面是否被其他路由遮挡/是否处于跟随模式”。App 前后台由
+  /// [CopyConfigCubit.setAppLifecycleActive] 单独处理，不能在这里把
+  /// inactive/paused 当成路由压栈而失效预检（v10 问题 3）。
+  void _syncVisibility() => _cubit?.setPageActive(!_following && (_inspectingPreview || (ModalRoute.of(context)?.isCurrent ?? true)));
 
   void _selectMode(bool follow) {
     if (_following == follow) return;
@@ -263,9 +265,8 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> with WidgetsBindingObse
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // v10 问题 3：inactive/paused（截图、通知栏、锁屏、短暂切后台）不再销毁
     // 有效预检；回前台后 cubit 静默刷新设备，未变化即恢复原确认页。
-    _resumed = state == AppLifecycleState.resumed;
-    _cubit?.setAppLifecycleActive(_resumed);
-    _syncVisibility();
+    // 只把前后台交给 cubit，_syncVisibility 继续只负责路由遮挡/跟随模式。
+    _cubit?.setAppLifecycleActive(state == AppLifecycleState.resumed);
   }
 
   @override

@@ -1,5 +1,9 @@
+import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_config_cubit.dart';
+import 'package:aves/bird_companion/features/copy/presentation/copy_confirmation_page.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fakes/fake_copy_environment.dart';
@@ -86,10 +90,51 @@ void main() {
     expect(cubit.state.submitted, true);
     expect(cubit.state.createdJob, isNotNull);
   });
+
+  test('回前台连续读取失败才失效，并保留断开原因', () async {
+    final repository = FakeCopyEnvironment();
+    final cubit = await ready(repository, poll: Duration.zero);
+    repository.readDevices = () async => throw const ApiException(message: 'target missing', code: 'COPY_TARGET_NOT_PRESENT', statusCode: 409);
+    cubit.setAppLifecycleActive(false);
+    cubit.setAppLifecycleActive(true);
+
+    await until(() => cubit.state.preview == null, timeout: const Duration(seconds: 2));
+    expect(cubit.state.invalidationReason, CopyPreflightInvalidation.targetOffline, reason: '宽限期后应保留真实断开原因');
+  });
+
+  testWidgets('真实确认页切后台（inactive）不销毁预检，回前台恢复原令牌', (tester) async {
+    final repository = FakeCopyEnvironment();
+    final cubit = await ready(repository, poll: Duration.zero);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BlocProvider.value(value: cubit, child: const CopyConfigFlow(batchId: 'batch')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('copy-content-next')));
+    await tester.pumpAndSettle();
+    final token = cubit.state.preview!.previewToken;
+    expect(cubit.state.pageActive, true);
+
+    // 截图/下拉通知栏/锁屏/短切后台都会走到 inactive→paused。
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    expect(cubit.state.preview?.previewToken, token, reason: '页面生命周期暂停不得销毁有效预检');
+    expect(cubit.state.pageActive, true, reason: '页面仍在导航栈顶，遮挡语义不应被复用');
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(cubit.state.preview?.previewToken, token, reason: '设备未变化时恢复原预检令牌');
+    expect(cubit.state.preflightStatus, CopyPreflightStatus.valid);
+    expect(cubit.state.invalidationReason, isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }
 
-Future<void> until(bool Function() predicate) async {
-  for (var i = 0; i < 100; i++) {
+Future<void> until(bool Function() predicate, {Duration timeout = const Duration(milliseconds: 600)}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
     if (predicate()) return;
     await Future<void>.delayed(const Duration(milliseconds: 5));
   }

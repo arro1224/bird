@@ -147,8 +147,6 @@ Future<CopyConfigCubit> _initialized(_FakeCopyRepository repository) async {
   expect(cubit.state.preferencesVersion, 1);
   cubit.selectTarget('media_target_1');
   cubit.setConflictStrategy(ConflictStrategy.skip);
-  cubit.selectTarget('media_target_1');
-  cubit.setConflictStrategy(ConflictStrategy.skip);
   expect(await cubit.fetchPreview(), true);
   return cubit;
 }

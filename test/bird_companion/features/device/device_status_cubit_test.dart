@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/core/models/device_models.dart';
+import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
 import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
@@ -41,6 +42,57 @@ void main() {
     expect(session.state.device, status.connection);
     expect(cubit.state.phase, DeviceStatusPhase.failure);
   });
+
+  test('业务 409 的设备状态失败不会把全局连接误降为重连中', () async {
+    final status = _status();
+    final events = EventClient();
+    final refresh = SessionRefreshCoordinator();
+    final connection = _ConnectionRepository(status);
+    final session = DeviceSessionCubit(connection, _OnlineConnectivityMonitor(), events, refresh);
+    final cubit = DeviceStatusCubit(
+      _FailingDeviceRepository(const ApiException(message: 'busy', code: 'COPY_TARGET_BUSY', statusCode: 409)),
+      session,
+    );
+    addTearDown(() async {
+      await cubit.close();
+      await session.close();
+      await events.dispose();
+      await refresh.dispose();
+    });
+
+    await session.connected(DeviceSessionState(phase: DeviceSessionPhase.connected, device: status.connection));
+    await cubit.load();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(session.state.isConnected, isTrue);
+    expect(connection.reconnectCalls, 0);
+  });
+
+  test('连接类状态失败会回写全局状态并触发重新验证', () async {
+    final status = _status();
+    final events = EventClient();
+    final refresh = SessionRefreshCoordinator();
+    final connection = _ConnectionRepository(status);
+    final session = DeviceSessionCubit(connection, _OnlineConnectivityMonitor(), events, refresh);
+    final cubit = DeviceStatusCubit(
+      _FailingDeviceRepository(const ApiException(message: 'offline', code: 'NETWORK_UNREACHABLE', retryable: true)),
+      session,
+    );
+    addTearDown(() async {
+      await cubit.close();
+      await session.close();
+      await events.dispose();
+      await refresh.dispose();
+    });
+
+    await session.connected(DeviceSessionState(phase: DeviceSessionPhase.connected, device: status.connection));
+    await cubit.load();
+    for (var i = 0; i < 50 && connection.reconnectCalls == 0; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+
+    expect(connection.reconnectCalls, greaterThan(0));
+  });
 }
 
 class _OnlineConnectivityMonitor extends ConnectivityMonitor {
@@ -52,9 +104,10 @@ class _OnlineConnectivityMonitor extends ConnectivityMonitor {
 }
 
 class _ConnectionRepository implements ConnectionRepository {
-  const _ConnectionRepository(this.status);
+  _ConnectionRepository(this.status);
 
   final DeviceStatus status;
+  int reconnectCalls = 0;
 
   @override
   Future<DeviceStatus> connect(
@@ -76,7 +129,10 @@ class _ConnectionRepository implements ConnectionRepository {
   Future<List<DeviceConnection>> recentDevices() async => const [];
 
   @override
-  Future<DeviceStatus> reconnect({CancelToken? cancelToken}) async => status;
+  Future<DeviceStatus> reconnect({CancelToken? cancelToken}) async {
+    reconnectCalls++;
+    return status;
+  }
 
   @override
   Future<DeviceConnection?> savedDevice() async => status.connection;
@@ -91,6 +147,10 @@ class _ConnectionRepository implements ConnectionRepository {
 }
 
 class _FailingDeviceRepository implements DeviceRepository {
+  _FailingDeviceRepository([Object? error]) : error = error ?? StateError('temporary status timeout');
+
+  final Object error;
+
   @override
   Future<void> controlJob({
     required String jobId,
@@ -99,9 +159,7 @@ class _FailingDeviceRepository implements DeviceRepository {
   }) async {}
 
   @override
-  Future<DeviceStatus> fetchStatus() => Future<DeviceStatus>.error(
-    StateError('temporary status timeout'),
-  );
+  Future<DeviceStatus> fetchStatus() => Future<DeviceStatus>.error(error);
 
   @override
   Stream<DeviceStatus> watchStatus() => const Stream.empty();

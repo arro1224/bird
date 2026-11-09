@@ -39,6 +39,7 @@ class FakeCopyEnvironment with SyntheticCopyPlan implements CopyRepository {
   Future<CopyPreferences> Function(PairPolicy, int)? savePolicy;
   Completer<CopyJobSummary>? pendingCreate;
   int deviceCalls = 0, sourceCalls = 0, previewCalls = 0, createCalls = 0, preferenceVersion = 1;
+  PairPolicy preferencePolicy = PairPolicy.rawOnly;
   final drafts = <CopyRequestDraft>[], savedVersions = <int>[];
   final createdTokens = <String>[];
   CopyRequestDraft? createdDraft;
@@ -77,7 +78,7 @@ class FakeCopyEnvironment with SyntheticCopyPlan implements CopyRepository {
   }
 
   @override
-  Future<CopyPreferences> preferences() async => CopyPreferences(pairPolicy: PairPolicy.rawOnly, version: preferenceVersion, origin: 'factory_default');
+  Future<CopyPreferences> preferences() async => CopyPreferences(pairPolicy: preferencePolicy, version: preferenceVersion, origin: 'factory_default');
   @override
   Future<CopyPreferences> savePreferences(PairPolicy policy, {required int expectedVersion}) async {
     savedVersions.add(expectedVersion);

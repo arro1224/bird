@@ -30,6 +30,32 @@ void main() {
     expect(session.state.isConnected, false);
   });
 
+  test('Wi-Fi 断开但移动数据仍在：transport 变化立即进入 reconnecting', () async {
+    final monitor = _ManualConnectivityMonitor();
+    final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status());
+    final pending = Completer<DeviceStatus>();
+    repository.pendingReconnect = pending;
+    final transport = StreamController<void>.broadcast();
+    final session = _session(monitor, repository, transportChanges: transport.stream);
+    addTearDown(() async {
+      if (!pending.isCompleted) pending.complete(_status());
+      await transport.close();
+      await session.close();
+    });
+    await session.setConnectedFromStatus(_status());
+    expect(session.state.phase, DeviceSessionPhase.connected);
+
+    // 关 Wi-Fi、保留移动数据：onNetworkChanged 仍是 true，不能只靠它判断。
+    monitor.wifiAvailable = false;
+    monitor.add(true);
+    transport.add(null);
+    for (var i = 0; i < 50 && session.state.phase != DeviceSessionPhase.reconnecting; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(session.state.phase, DeviceSessionPhase.reconnecting, reason: '不能等 20s deadline 才从已连接降级');
+    expect(session.state.device?.id, _savedDevice.id);
+  });
+
   test('Wi-Fi 恢复：reconnecting 状态自动验证并回到 connected', () async {
     final monitor = _ManualConnectivityMonitor();
     final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status());
@@ -90,10 +116,10 @@ void main() {
   });
 }
 
-DeviceSessionCubit _session(_ManualConnectivityMonitor monitor, _RecoveryRepository repository) {
+DeviceSessionCubit _session(_ManualConnectivityMonitor monitor, _RecoveryRepository repository, {Stream<void>? transportChanges}) {
   final events = EventClient();
   final refresh = SessionRefreshCoordinator();
-  final session = DeviceSessionCubit(repository, monitor, events, refresh);
+  final session = DeviceSessionCubit(repository, monitor, events, refresh, transportChanges: transportChanges);
   return session;
 }
 
@@ -109,17 +135,21 @@ DeviceStatus _status() => DeviceStatus(connection: _savedDevice, card: const Car
 
 final class _ManualConnectivityMonitor extends ConnectivityMonitor {
   final _controller = StreamController<bool>.broadcast();
+  bool wifiAvailable = true;
   @override
   Stream<bool> get onNetworkChanged => _controller.stream;
   void add(bool available) => _controller.add(available);
   @override
   Future<bool> get hasNetwork async => true;
+  @override
+  Future<bool> get hasWifi async => wifiAvailable;
 }
 
 final class _RecoveryRepository implements ConnectionRepository {
   _RecoveryRepository({required this.saved, this.reconnectStatus});
   final DeviceConnection? saved;
   final DeviceStatus? reconnectStatus;
+  Completer<DeviceStatus>? pendingReconnect;
   int reconnectCalls = 0;
 
   @override
@@ -127,6 +157,8 @@ final class _RecoveryRepository implements ConnectionRepository {
   @override
   Future<DeviceStatus> reconnect({CancelToken? cancelToken}) async {
     reconnectCalls++;
+    final pending = pendingReconnect;
+    if (pending != null) return pending.future;
     return reconnectStatus ?? (throw StateError('offline'));
   }
   @override
