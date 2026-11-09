@@ -261,7 +261,10 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> with WidgetsBindingObse
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // v10 问题 3：inactive/paused（截图、通知栏、锁屏、短暂切后台）不再销毁
+    // 有效预检；回前台后 cubit 静默刷新设备，未变化即恢复原确认页。
     _resumed = state == AppLifecycleState.resumed;
+    _cubit?.setAppLifecycleActive(_resumed);
     _syncVisibility();
   }
 

@@ -471,6 +471,30 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     }
   }
 
+  /// v10 返修问题 3：App 生命周期离开（截图/通知栏/锁屏/短暂切后台）不再
+  /// 立即销毁有效预检。暂停只停轮询；回前台静默刷新设备，源/目标身份、
+  /// 参数与预检令牌未变化时恢复原确认页，只有设备或清单真实变化才失效。
+  ///
+  /// 不透明路由压栈（预览明细 sheet、其他页面）仍走 [setPageActive]：
+  /// 遮挡期间预检必须失效，那是另一条已冻结语义。
+  void setAppLifecycleActive(bool active) {
+    if (isClosed || state.submitted) return;
+    if (!active) {
+      _poll?.cancel();
+      ++_operation;
+      _refreshing = null;
+      if (state.pageActive) {
+        emit(state.copyWith(devicesFresh: false, refreshingDevices: false, loadingDevices: false));
+      }
+      return;
+    }
+    emit(state.copyWith(clearError: true));
+    if (state.pageActive && _usable) {
+      _startPolling();
+      unawaited(refreshDevices());
+    }
+  }
+
   void _startPolling() {
     _poll?.cancel();
     if (!isClosed && _initialized && state.pageActive && !state.submitted && pollInterval > Duration.zero) {
@@ -639,7 +663,9 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
           state.preview == null) {
         emit(next.copyWith(clearPreview: true, clearError: true, preflightStatus: CopyPreflightStatus.needsRecheck));
       } else {
-        emit(next);
+        // v10 问题 3：刷新成功且无问题时恢复原确认页——清除陈旧标记，
+        // 让确认页在生命周期往返后仍持有原预检（令牌 120s 内仍有效）。
+        emit(next.copyWith(clearError: true, clearInvalidation: true));
       }
       return true;
     } catch (error) {
