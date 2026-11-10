@@ -69,6 +69,9 @@ class ApiClient {
   final Dio _publicDio;
   final Dio _assetDio;
   final _authenticationFailures = StreamController<int>.broadcast();
+  // Handle the failure in its current session, rather than queueing a signal
+  // that could arrive after the user has switched to another box.
+  final _connectionFailures = StreamController<void>.broadcast(sync: true);
   int _requestSequence = 0;
 
   Uri? get baseUri => _baseUri;
@@ -84,6 +87,7 @@ class ApiClient {
   }
 
   Stream<int> get authenticationFailures => _authenticationFailures.stream;
+  Stream<void> get connectionFailures => _connectionFailures.stream;
 
   /// Public device status proves reachability, not authorization. A read-only,
   /// bounded protected request verifies the restored token before handoff.
@@ -203,6 +207,7 @@ class ApiClient {
     bool reportAuthenticationFailure = true,
   }) async {
     final sessionGeneration = _sessionGeneration;
+    final requestBase = _baseUri;
     try {
       final response = await request();
       final payload = unwrapResponse(response.data);
@@ -214,6 +219,10 @@ class ApiClient {
       );
     } on DioException catch (error) {
       final exception = ApiException.fromDio(error);
+      final transportFailure = error.response == null && const {DioExceptionType.connectionError, DioExceptionType.connectionTimeout, DioExceptionType.receiveTimeout, DioExceptionType.sendTimeout}.contains(error.type);
+      if (reportAuthenticationFailure && requestBase != null && requestBase == _baseUri && sessionGeneration == _sessionGeneration && transportFailure && !_connectionFailures.isClosed) {
+        _connectionFailures.add(null);
+      }
       if (reportAuthenticationFailure && sessionGeneration == _sessionGeneration && (exception.statusCode == 401 || exception.statusCode == 403)) {
         _authenticationFailures.add(exception.statusCode!);
       }
@@ -302,6 +311,7 @@ class ApiClient {
   String _newRequestId() => 'app-${DateTime.now().microsecondsSinceEpoch}-${_requestSequence++}';
 
   Future<void> dispose() async {
+    await _connectionFailures.close();
     await _authenticationFailures.close();
     _dio.close(force: true);
     _publicDio.close(force: true);

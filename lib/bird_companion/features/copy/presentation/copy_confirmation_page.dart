@@ -168,12 +168,15 @@ class _CopyConfirmationPageState extends State<CopyConfirmationPage> {
 
 /// 成功提交后的反馈：主按钮「查看任务进度」跳 RC3 任务详情（阶段 D）。
 class _CopySubmitResult extends StatelessWidget {
-  const _CopySubmitResult({required this.batchId, required this.jobId, required this.fullBackup, this.persistenceNotice});
+  const _CopySubmitResult({required this.batchId, required this.jobId, required this.fullBackup, this.persistenceNotice, this.preferenceNotice, this.onRetryPreference, this.savingPreferences = false});
 
   final String? batchId;
   final String jobId;
   final bool fullBackup;
   final String? persistenceNotice;
+  final String? preferenceNotice;
+  final VoidCallback? onRetryPreference;
+  final bool savingPreferences;
 
   @override
   Widget build(BuildContext context) => AlertDialog(
@@ -186,6 +189,11 @@ class _CopySubmitResult extends StatelessWidget {
         if (persistenceNotice != null) ...[
           const SizedBox(height: 8),
           Text(persistenceNotice!),
+        ],
+        if (preferenceNotice != null) ...[
+          const SizedBox(height: 8),
+          Text(preferenceNotice!),
+          if (onRetryPreference != null) TextButton(onPressed: savingPreferences ? null : onRetryPreference, child: Text(savingPreferences ? '正在保存格式偏好…' : '重试保存格式偏好')),
         ],
         const SizedBox(height: 10),
         Text(
@@ -290,11 +298,17 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> with WidgetsBindingObse
       showDialog<bool>(
         context: context,
         barrierDismissible: false,
-        builder: (_) => _CopySubmitResult(
-          batchId: widget.batchId,
-          jobId: state.createdJob!.copyJobId,
-          fullBackup: state.fullBackup,
-          persistenceNotice: state.persistenceNotice,
+        builder: (_) => BlocBuilder<CopyConfigCubit, CopyConfigState>(
+          bloc: context.read<CopyConfigCubit>(),
+          builder: (_, latest) => _CopySubmitResult(
+            batchId: widget.batchId,
+            jobId: state.createdJob!.copyJobId,
+            fullBackup: state.fullBackup,
+            persistenceNotice: state.persistenceNotice,
+            preferenceNotice: latest.preferenceSaveNotice,
+            savingPreferences: latest.savingPreferences,
+            onRetryPreference: latest.preferenceSavePending ? () => context.read<CopyConfigCubit>().retryPreferenceSave() : null,
+          ),
         ),
       ).then((openProgress) async {
         if (!mounted) return;
@@ -1267,7 +1281,9 @@ class _OccupiedJobHint extends StatelessWidget {
       children: [
         Icon(Icons.schedule_rounded, size: 16, color: AppColors.pending),
         SizedBox(width: 6),
-        Expanded(child: Text('设备正被进行中的复制任务占用，任务结束后自动恢复。', style: TextStyle(color: AppColors.pending, fontSize: 12.5))),
+        Expanded(
+          child: Text('设备正被进行中的复制任务占用，任务结束后自动恢复。', style: TextStyle(color: AppColors.pending, fontSize: 12.5)),
+        ),
         _ViewCurrentJobButton(),
       ],
     ),

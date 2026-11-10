@@ -5,14 +5,15 @@ import 'copy_job_models.dart';
 
 enum CopyTimelineStageId { waitingDevice, acquiringTarget, copyingFiles, verifyingFiles, writingReview, safeSync, done }
 
-enum CopyStageStatus { pending, active, done, failed, skipped, unknown, partial }
+enum CopyStageStatus { pending, active, done, failed, skipped, unknown, partial, observed }
 
 class CopyTimelineStage {
-  const CopyTimelineStage({required this.id, required this.label, required this.status, this.note});
+  const CopyTimelineStage({required this.id, required this.label, required this.status, this.note, this.recordedAt});
   final CopyTimelineStageId id;
   final String label;
   final CopyStageStatus status;
   final String? note;
+  final DateTime? recordedAt;
 }
 
 class CopyTimeline {
@@ -20,9 +21,10 @@ class CopyTimeline {
   final List<CopyTimelineStage> stages;
   static const _labels = ['等待设备', '获取目标盘', '复制文件', '校验文件', '写入审阅信息', '安全同步', '任务结束'];
 
-  static CopyTimeline compute({required CopyJobState state, CopyJobStats? stats, CopyReport? report, bool? reviewExportEnabled}) {
+  static CopyTimeline compute({required CopyJobState state, CopyJobStats? stats, CopyReport? report, bool? reviewExportEnabled, List<CopyJobEvent> events = const []}) {
     final statuses = List.filled(CopyTimelineStageId.values.length, CopyStageStatus.unknown);
     final notes = <CopyTimelineStageId, String>{};
+    final recorded = <CopyTimelineStageId, DateTime?>{};
     void set(CopyTimelineStageId id, CopyStageStatus status, [String? note]) {
       statuses[id.index] = status;
       if (note != null) notes[id] = note;
@@ -72,8 +74,33 @@ class CopyTimeline {
         _ => '未提供独立状态',
       };
     }
+    // A state event proves that a stage was reached, not that it completed.
+    // Keep the resource's current state authoritative (especially pause/wait).
+    final ordered = events.where((event) => event.seq != null && event.seq! > 0).toList()..sort((a, b) => a.seq!.compareTo(b.seq!));
+    for (final event in ordered) {
+      if (event.type != 'state_changed') continue;
+      // Legacy mock/older boxes sent only these exact messages. Never infer
+      // stages from arbitrary text, item completion, or file verification.
+      final legacy = switch (event.message) {
+        '正在获取目标盘' => 'acquiring_target',
+        '开始复制文件' || '任务已继续' => 'running',
+        _ => null,
+      };
+      final wire = event.payload.containsKey('state') ? event.payload['state'] : legacy;
+      final id = switch (wire) {
+        'queued' || 'waiting_for_source' => CopyTimelineStageId.waitingDevice,
+        'acquiring_target' || 'waiting_for_target' => CopyTimelineStageId.acquiringTarget,
+        'running' => CopyTimelineStageId.copyingFiles,
+        _ => null,
+      };
+      if (id == null || recorded.containsKey(id)) continue;
+      recorded[id] = event.createdAt;
+      if (statuses[id.index] == CopyStageStatus.unknown) {
+        set(id, CopyStageStatus.observed, state == CopyJobState.paused && id == CopyTimelineStageId.copyingFiles ? '任务已暂停；已记录开始，未提供独立结束状态' : '已记录进入此阶段；未提供独立结束状态');
+      }
+    }
     return CopyTimeline(
-      stages: List.unmodifiable(CopyTimelineStageId.values.map((id) => CopyTimelineStage(id: id, label: _labels[id.index], status: statuses[id.index], note: notes[id]))),
+      stages: List.unmodifiable(CopyTimelineStageId.values.map((id) => CopyTimelineStage(id: id, label: _labels[id.index], status: statuses[id.index], note: notes[id], recordedAt: recorded[id]))),
     );
   }
 }

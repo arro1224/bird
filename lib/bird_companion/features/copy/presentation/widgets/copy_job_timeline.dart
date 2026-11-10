@@ -43,6 +43,7 @@ class _StageRow extends StatelessWidget {
       CopyStageStatus.skipped => (Icons.remove_circle_outline, AppColors.inkMuted),
       CopyStageStatus.unknown => (Icons.help_outline, AppColors.inkMuted),
       CopyStageStatus.partial => (Icons.warning_amber, AppColors.warning),
+      CopyStageStatus.observed => (Icons.history, AppColors.inkMuted),
     };
     return IntrinsicHeight(
       child: Row(
@@ -69,11 +70,11 @@ class _StageRow extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      stage.note == null ? stage.label : '${stage.label}\n${stage.note}',
+                      [stage.label, if (stage.note != null) stage.note!, if (stage.recordedAt != null) '记录时间：${_time(stage.recordedAt!)}'].join('\n'),
                       style: TextStyle(
                         fontWeight: stage.status == CopyStageStatus.active ? FontWeight.w800 : FontWeight.w500,
                         color: switch (stage.status) {
-                          CopyStageStatus.pending || CopyStageStatus.unknown || CopyStageStatus.skipped => AppColors.inkMuted,
+                          CopyStageStatus.pending || CopyStageStatus.unknown || CopyStageStatus.skipped || CopyStageStatus.observed => AppColors.inkMuted,
                           CopyStageStatus.failed => AppColors.danger,
                           CopyStageStatus.partial => AppColors.warning,
                           _ => AppColors.forestDeep,
@@ -91,6 +92,8 @@ class _StageRow extends StatelessWidget {
                     const Text('不适用', style: TextStyle(fontSize: 12, color: AppColors.inkMuted))
                   else if (stage.status == CopyStageStatus.unknown)
                     const Text('未知', style: TextStyle(fontSize: 12, color: AppColors.inkMuted))
+                  else if (stage.status == CopyStageStatus.observed)
+                    const Text('已有记录', style: TextStyle(fontSize: 12, color: AppColors.inkMuted))
                   else if (stage.status == CopyStageStatus.pending)
                     const Text('尚未开始', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
                 ],
@@ -100,5 +103,11 @@ class _StageRow extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _time(DateTime value) {
+    final local = value.toLocal();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
   }
 }

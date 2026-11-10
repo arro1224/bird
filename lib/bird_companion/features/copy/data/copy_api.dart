@@ -170,6 +170,7 @@ class CopyApi {
   }
 
   Future<CopyPreview> preview(CopyRequestDraft draft) async {
+    final requestedAt = DateTime.now();
     var raw = await _c.post(
       ApiEndpoints.copyJobPreview,
       data: draft.toJson(),
@@ -224,7 +225,7 @@ class CopyApi {
       'unsupported_count': raw['unsupported_count'] ?? 0,
       'missing_count': raw['missing_count'] ?? 0,
       'permission_error_count': raw['permission_error_count'] ?? 0,
-    });
+    }).boundedForRequest(requestedAt);
   }
 
   Future<CopyJobSummary> createJob(
@@ -315,6 +316,7 @@ class CopyApi {
     String actionWire, {
     required int expectedStateVersion,
   }) async {
+    if (expectedStateVersion < 0) throw ArgumentError.value(expectedStateVersion, 'expectedStateVersion', 'must be non-negative');
     final raw = await _c.post(
       ApiEndpoints.copyJobAction.replaceFirst('{copyJobId}', copyJobId).replaceFirst('{action}', actionWire),
       data: {
@@ -326,7 +328,7 @@ class CopyApi {
     // The backend returns the job directly inside `data`; older mock/server
     // builds may wrap it as {copy_job: ...}. Accept both during RC3 rollout.
     final rawJob = raw['copy_job'] ?? raw;
-    if (rawJob is Map) {
+    if (rawJob is Map && rawJob['copy_job_id'] is String && (rawJob['copy_job_id'] as String).trim().isNotEmpty) {
       return CopyJobDetail.fromJson(Map<String, dynamic>.from(rawJob));
     }
     return null;

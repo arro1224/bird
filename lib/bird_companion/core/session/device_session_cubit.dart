@@ -27,39 +27,53 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     this.diagnostic,
     this.retryDelay = const Duration(seconds: 1),
     Stream<void>? transportChanges,
+    Stream<void>? connectionFailures,
   }) : super(const DeviceSessionState()) {
+    _requestFailureSubscription = connectionFailures?.listen((_) => reportUnreachable());
     _networkSubscription = _connectivityMonitor.onNetworkChanged.listen((available) {
       if (isClosed || provisioningHandoffActive) return;
       // v10 返修问题 8：Wi-Fi 断开不能让首页/设备页继续显示"已连接"。
       // 断网即刻进入重连态（保留设备身份），子页面据此显示断开/重连中；
       // 网络恢复后由既有 verify 流程转回 connected。
       if (!available) {
-        if (state.phase == DeviceSessionPhase.connected && state.device != null) {
+        ++_transportGeneration;
+        if (state.device != null && (state.isConnected || state.isVerifying)) {
+          _recordTransport('network_changed', false);
           _invalidateConnection();
           emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '手机网络已断开，等待网络恢复后自动重连。'));
         }
         return;
       }
-      if (state.phase == DeviceSessionPhase.disconnected && state.device != null) unawaited(reconnect());
-      // 短暂断网期间 phase 已是 reconnecting：网络恢复直接验证 saved session。
-      if (state.phase == DeviceSessionPhase.reconnecting && state.device != null) unawaited(verifySavedSession(intent: 'network_recovered'));
+      if (!state.isConnected && state.device != null) unawaited(verifySavedSession(intent: 'network_recovered'));
     });
     _transportSubscription = transportChanges?.listen((_) async {
       if (isClosed || provisioningHandoffActive || state.device == null || state.phase == DeviceSessionPhase.connecting) return;
       // v10 问题 8：移动数据仍开时关 Wi-Fi，onNetworkChanged 仍是 true；
       // 必须按“Wi-Fi 是否还在”判断，盒子只可能经 Wi-Fi 访问。
-      var wifiAvailable = true;
+      final generation = ++_transportGeneration;
+      bool? wifiAvailable;
       try {
         wifiAvailable = await _connectivityMonitor.hasWifi;
       } catch (_) {
         /* 无法判定时退回既有验证流程，不误报断线。 */
       }
-      if (isClosed || provisioningHandoffActive || state.device == null || state.phase == DeviceSessionPhase.connecting) return;
-      if (!wifiAvailable && state.phase == DeviceSessionPhase.connected) {
-        reportUnreachable();
+      if (isClosed || generation != _transportGeneration || provisioningHandoffActive || state.device == null || state.phase == DeviceSessionPhase.connecting) return;
+      if (wifiAvailable == null) {
+        _activeAttempt?.record('transport_check_unavailable');
+        unawaited(verifySavedSession(intent: 'transport_unknown'));
         return;
       }
-      unawaited(verifySavedSession(intent: 'transport_changed'));
+      final changed = _wifiAvailable != wifiAvailable;
+      _wifiAvailable = wifiAvailable;
+      _recordTransport('transport_changed', wifiAvailable);
+      if (!wifiAvailable) {
+        _invalidateConnection();
+        emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '手机 Wi-Fi 已断开，等待恢复后自动重连。'));
+        return;
+      }
+      // Do not coalesce a newly usable network with a socket/discovery read
+      // that was started on the old transport and may wait until its deadline.
+      unawaited(verifySavedSession(intent: 'transport_changed', restart: changed));
     });
     _eventSubscription = _eventClient.connectionStates.listen((eventState) {
       if (isClosed || !state.isConnected) return;
@@ -105,6 +119,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   late final StreamSubscription<bool> _networkSubscription;
   late final StreamSubscription<EventConnectionState> _eventSubscription;
   StreamSubscription<void>? _transportSubscription;
+  StreamSubscription<void>? _requestFailureSubscription;
   StreamSubscription<SessionAuthenticationFailure>? _authenticationSubscription;
   StreamSubscription<SessionAddressChange>? _addressSubscription;
   bool _legacyHandoffActive = false;
@@ -114,6 +129,20 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   int _connectionGeneration = 0;
   ConnectionAttempt? _activeAttempt;
   Future<bool>? _restoring;
+  int _transportGeneration = 0;
+  bool? _wifiAvailable;
+
+  void _recordTransport(String event, bool available) {
+    final fields = {'event': event, 'wifi_available': available, 'transport_generation': _transportGeneration, 'generation': _connectionGeneration, 'device_id': state.device?.id};
+    try {
+      if (_activeAttempt != null) {
+        _activeAttempt!.record(event, fields);
+      } else {
+        diagnostic?.call(fields);
+      }
+    } catch (_) {}
+  }
+
   String? get activeAttemptId => _activeAttempt?.id ?? _intentId;
   bool get provisioningHandoffActive => _legacyHandoffActive || _handoffOwners.isNotEmpty || _networkIntentPending;
   set provisioningHandoffActive(bool value) {
@@ -239,13 +268,18 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     if (!isClosed && state.device == null) emit(DeviceSessionState(phase: DeviceSessionPhase.reconnecting, device: device, message: '正在恢复盒子连接，当前相册为手机缓存。'));
   }
 
-  Future<bool> verifySavedSession({Duration timeout = const Duration(seconds: 20), String? expectedDeviceId, String intent = 'explicit_reconnect'}) =>
-      _verifySavedSession(timeout: timeout, force: true, expectedDeviceId: expectedDeviceId, intent: intent);
+  Future<bool> verifySavedSession({Duration timeout = const Duration(seconds: 20), String? expectedDeviceId, String intent = 'explicit_reconnect', bool restart = false}) {
+    if (restart && !isClosed && !provisioningHandoffActive) _invalidateConnection();
+    return _verifySavedSession(timeout: timeout, force: true, expectedDeviceId: expectedDeviceId, intent: intent);
+  }
 
   Future<bool> _verifySavedSession({required Duration timeout, required bool force, required String intent, String? expectedDeviceId}) {
     if (isClosed || provisioningHandoffActive) return Future<bool>.value(false);
     if (!force && state.isConnected) return Future<bool>.value(true);
-    if (_restoring != null && (expectedDeviceId == null || _activeAttempt?.deviceId == expectedDeviceId)) return _restoring!;
+    if (_restoring != null && (expectedDeviceId == null || _activeAttempt?.deviceId == expectedDeviceId)) {
+      _activeAttempt?.record('connection_request_coalesced', {'intent': intent});
+      return _restoring!;
+    }
     final attempt = _beginAttempt(intent, deviceId: expectedDeviceId);
     final future = _restoreSavedSession(attempt, timeout: timeout, expectedDeviceId: expectedDeviceId);
     _restoring = future;
@@ -310,6 +344,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
         return false;
       }
     }
+    var retries = 0;
     while (true) {
       attempt.check();
       try {
@@ -335,8 +370,10 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
           attempt.stage = 'events';
           emit(state.copyWith(message: '盒子已联网，正在验证实时连接。', verificationStage: 'events'));
         }
-        attempt.record('connection_retry_wait', ConnectionAttempt.errorFields(error));
-        await Future<void>.delayed(retryDelay);
+        final delay = retryDelay * (1 << (retries < 3 ? retries : 3));
+        retries++;
+        attempt.record('connection_retry_wait', {'attempt': retries, 'retry_delay_ms': delay.inMilliseconds, ...ConnectionAttempt.errorFields(error)});
+        await Future.any([Future<void>.delayed(delay), attempt.token.whenCancel]);
       }
     }
   }
@@ -381,6 +418,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     _invalidateConnection();
     await _networkSubscription.cancel();
     await _transportSubscription?.cancel();
+    await _requestFailureSubscription?.cancel();
     await _eventSubscription.cancel();
     await _authenticationSubscription?.cancel();
     await _addressSubscription?.cancel();

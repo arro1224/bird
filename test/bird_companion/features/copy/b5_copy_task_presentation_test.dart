@@ -211,12 +211,12 @@ void main() {
     expect(CopyTaskTiming.fromReport(const CopyReport(elapsedSeconds: 0, bytesPerSecond: 0)).elapsedLabel, '0 秒');
     expect(CopyTaskTiming.fromReport(const CopyReport(elapsedSeconds: 0, bytesPerSecond: 0)).speedLabel, '0 B/s');
   });
-  test('terminal timing is atomic by source: missing report metric does not borrow runtime value', () {
+  test('terminal timing falls back per field to the current terminal snapshot', () {
     final task = detail(state: CopyJobState.completed, progress: stats(elapsed: 12, speed: 4096));
     final timing = CopyTaskTiming.forTask(task, const CopyReport(elapsedSeconds: 47.74));
     expect(timing.elapsedLabel, '47.74 秒');
-    expect(timing.speedLabel, '暂不可用');
-    expect(timing.source, '终态报告');
+    expect(timing.speedLabel, '4.0 KB/s');
+    expect(timing.source, '终态报告＋任务详情');
     expect(CopyTaskTiming.forTask(task, null).source, '任务详情');
   });
   test('paused/resumed timing uses only each received box sample', () {
@@ -306,7 +306,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
-  testWidgets('terminal report and header retain export failure, missing report speed and report outcomes', (tester) async {
+  testWidgets('terminal report retains export failure and does not borrow metrics from conflicting detail counts', (tester) async {
     final repository = TaskRepository()
       ..current = detail(state: CopyJobState.completed, progress: stats(copied: 1, skipped: 0, elapsed: 10, speed: 4096), export: true)
       ..report = const CopyReport(copyJobId: 'job', copiedFiles: 4, failedFiles: 0, skippedFiles: 1, notApplicableFiles: 0, actualFileCount: 5, elapsedSeconds: 47.74, csvStatus: 'failed');

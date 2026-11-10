@@ -422,6 +422,35 @@ class CopyPreview {
 
   bool get isExpired => !DateTime.now().isBefore(expiresAt);
 
+  /// RC3 local safety ceiling. Starting the clock before the request is
+  /// conservative even when an older deployment signs a 300-second token.
+  /// The server must independently enforce its own created_at + 120 seconds.
+  CopyPreview boundedForRequest(DateTime requestedAt) {
+    final deadline = requestedAt.add(const Duration(seconds: 120));
+    if (!expiresAt.isAfter(deadline)) return this;
+    return CopyPreview(
+      previewToken: previewToken,
+      previewId: previewId,
+      expiresAt: deadline,
+      source: source,
+      target: target,
+      logicalPhotoCount: logicalPhotoCount,
+      actualFileCount: plannedFileCount,
+      totalBytes: totalBytes,
+      rawCount: rawCount,
+      jpegCount: jpegCount,
+      videoCount: videoCount,
+      companionCount: companionCount,
+      estimatedDateDirectories: estimatedDateDirectories,
+      conflictCount: conflictCount,
+      targetFreeBytes: targetFreeBytes,
+      safetyReserveBytes: safetyReserveBytes,
+      unsupportedCount: unsupportedCount,
+      missingCount: missingCount,
+      permissionErrorCount: permissionErrorCount,
+    );
+  }
+
   factory CopyPreview.fromJson(Map<String, dynamic> json) {
     final rawSource = json['source'];
     final rawTarget = json['target'];

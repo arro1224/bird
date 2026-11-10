@@ -104,6 +104,90 @@ void main() {
     await Future<void>.delayed(Duration.zero);
   });
 
+  test('a restored Wi-Fi transport cancels an old socket and ignores its late result', () async {
+    final monitor = _ManualConnectivityMonitor();
+    final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status());
+    final oldSocket = Completer<DeviceStatus>();
+    repository.pendingReconnect = oldSocket;
+    final transport = StreamController<void>.broadcast();
+    final events = EventClient(), refresh = SessionRefreshCoordinator();
+    final diagnostics = <Map<String, dynamic>>[];
+    final session = DeviceSessionCubit(repository, monitor, events, refresh, transportChanges: transport.stream, diagnostic: diagnostics.add);
+    addTearDown(() async {
+      if (!oldSocket.isCompleted) oldSocket.complete(_status());
+      await session.close();
+      await transport.close();
+      await events.dispose();
+      await refresh.dispose();
+    });
+    await session.setConnectedFromStatus(_status());
+    final old = session.verifySavedSession();
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.reconnectCalls, 1);
+    monitor.wifiAvailable = false;
+    transport.add(null);
+    await Future<void>.delayed(Duration.zero);
+    expect(session.state.isConnected, false);
+    expect(await old, false);
+    repository.pendingReconnect = null;
+    monitor.wifiAvailable = true;
+    transport.add(null);
+    for (var i = 0; i < 30 && !session.state.isConnected; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    expect(session.state.isConnected, true);
+    expect(repository.reconnectCalls, 2);
+    oldSocket.completeError(StateError('old transport failed late'));
+    await Future<void>.delayed(Duration.zero);
+    expect(session.state.isConnected, true);
+    expect(diagnostics.where((event) => event['event'] == 'transport_changed').map((event) => event['wifi_available']), [false, true]);
+  });
+
+  test('manual restart replaces a pending automatic attempt while ordinary requests coalesce', () async {
+    final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status());
+    final pending = Completer<DeviceStatus>();
+    repository.pendingReconnect = pending;
+    final session = _session(_ManualConnectivityMonitor(), repository);
+    addTearDown(() async {
+      if (!pending.isCompleted) pending.complete(_status());
+      await session.close();
+    });
+    final old = session.verifySavedSession();
+    final duplicate = session.verifySavedSession();
+    expect(identical(old, duplicate), true);
+    await Future<void>.delayed(Duration.zero);
+    repository.pendingReconnect = null;
+    expect(await session.verifySavedSession(restart: true), true);
+    expect(await old, false);
+    expect(repository.reconnectCalls, 2);
+  });
+
+  test('an out-of-order Wi-Fi query cannot undo a newer recovered network', () async {
+    final monitor = _ManualConnectivityMonitor();
+    final staleQuery = Completer<bool>();
+    monitor.wifiRead = () => staleQuery.future;
+    final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status());
+    final transport = StreamController<void>.broadcast();
+    final session = _session(monitor, repository, transportChanges: transport.stream);
+    addTearDown(() async {
+      if (!staleQuery.isCompleted) staleQuery.complete(false);
+      await session.close();
+      await transport.close();
+    });
+    await session.setConnectedFromStatus(_status());
+    transport.add(null);
+    await Future<void>.delayed(Duration.zero);
+    monitor.wifiRead = () async => true;
+    transport.add(null);
+    for (var i = 0; i < 30 && repository.reconnectCalls == 0; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    await Future<void>.delayed(Duration.zero);
+    staleQuery.complete(false);
+    await Future<void>.delayed(Duration.zero);
+    expect(session.state.isConnected, true);
+  });
+
   test('配网交接期间 reportUnreachable 不打断交接', () async {
     final monitor = _ManualConnectivityMonitor();
     final session = _session(monitor, _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status()));
@@ -136,13 +220,14 @@ DeviceStatus _status() => DeviceStatus(connection: _savedDevice, card: const Car
 final class _ManualConnectivityMonitor extends ConnectivityMonitor {
   final _controller = StreamController<bool>.broadcast();
   bool wifiAvailable = true;
+  Future<bool> Function()? wifiRead;
   @override
   Stream<bool> get onNetworkChanged => _controller.stream;
   void add(bool available) => _controller.add(available);
   @override
   Future<bool> get hasNetwork async => true;
   @override
-  Future<bool> get hasWifi async => wifiAvailable;
+  Future<bool> get hasWifi async => wifiRead == null ? wifiAvailable : await wifiRead!();
 }
 
 final class _RecoveryRepository implements ConnectionRepository {
@@ -161,6 +246,7 @@ final class _RecoveryRepository implements ConnectionRepository {
     if (pending != null) return pending.future;
     return reconnectStatus ?? (throw StateError('offline'));
   }
+
   @override
   Future<List<DeviceConnection>> discover() async => const [];
   @override

@@ -30,6 +30,7 @@ class CopyJobDetailState {
     this.jobMissing = false,
     this.notice,
     this.devices = const [],
+    this.devicesFresh = false,
     this.sourceNameSnapshot,
     this.targetNameSnapshot,
   });
@@ -57,6 +58,7 @@ class CopyJobDetailState {
   /// 操作结果提示（SnackBar 文案），页面消费后置空。
   final String? notice;
   final List<StorageDeviceSummary> devices;
+  final bool devicesFresh;
   final CopyJobDeviceSnapshot? sourceNameSnapshot, targetNameSnapshot;
 
   bool get isTerminal => detail?.state.isTerminal ?? false;
@@ -84,6 +86,7 @@ class CopyJobDetailState {
     String? notice,
     bool clearNotice = false,
     List<StorageDeviceSummary>? devices,
+    bool? devicesFresh,
   }) => CopyJobDetailState(
     detail: detail ?? this.detail,
     events: events ?? this.events,
@@ -101,6 +104,7 @@ class CopyJobDetailState {
     jobMissing: jobMissing ?? this.jobMissing,
     notice: clearNotice ? null : notice ?? this.notice,
     devices: devices ?? this.devices,
+    devicesFresh: devicesFresh ?? this.devicesFresh,
     sourceNameSnapshot: _retainSnapshot(sourceNameSnapshot, detail?.sourceDevice),
     targetNameSnapshot: _retainSnapshot(targetNameSnapshot, detail?.targetDevice),
   );
@@ -113,7 +117,22 @@ CopyJobDeviceSnapshot? _retainSnapshot(CopyJobDeviceSnapshot? previous, CopyJobD
 
 /// 复制任务详情状态机：详情 + 增量事件 + 失败项分页 + 报告 + 动作。
 class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
-  CopyJobDetailCubit(this._repository, {required this.copyJobId, this.deviceId, this.activeJobs, this.canRead, this.diagnostics, this.detailReader, this.deviceReader, this.dataChanges, this.deviceNamesInterval = const Duration(seconds: 10), Stream<void>? sessionRefreshes, this.sessionRecovering, this.sessionWrongDevice, this.onReconnect}) : super(const CopyJobDetailState()) {
+  CopyJobDetailCubit(
+    this._repository, {
+    required this.copyJobId,
+    this.deviceId,
+    this.activeJobs,
+    this.canRead,
+    this.diagnostics,
+    this.detailReader,
+    this.deviceReader,
+    this.dataChanges,
+    this.deviceNamesInterval = const Duration(seconds: 10),
+    Stream<void>? sessionRefreshes,
+    this.sessionRecovering,
+    this.sessionWrongDevice,
+    this.onReconnect,
+  }) : super(const CopyJobDetailState()) {
     _sessionSubscription = sessionRefreshes?.listen((_) => sessionChanged());
   }
 
@@ -139,6 +158,7 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
   final bool Function()? sessionWrongDevice;
   final Future<bool> Function()? onReconnect;
   Future<void>? _deviceNamesRead;
+  Future<void>? _connectionRetry;
   int? _deviceNamesGeneration;
   Completer<CopyDeviceList>? _deviceNamesCancellation;
   StreamSubscription<void>? _sessionSubscription;
@@ -212,6 +232,8 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
           loading: false,
           acting: false,
           devices: const [],
+          devicesFresh: false,
+          clearError: recovering,
           error: recovering ? null : StateError(wrongDevice ? '当前连接的不是创建此任务的盒子。' : '请连接创建此任务的盒子后继续读取。'),
         ),
       );
@@ -223,19 +245,30 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
 
   /// v10 问题 4：重试按钮必须真的触发恢复，并给出加载/成功/失败反馈。
   /// 会话仍不可读时先重连原盒子；恢复后自动重新读取任务。
-  Future<void> retryConnection() async {
+  Future<void> retryConnection() {
+    if (_connectionRetry != null) return _connectionRetry!;
+    final future = _retryConnection();
+    _connectionRetry = future;
+    unawaited(
+      future.whenComplete(() {
+        if (identical(_connectionRetry, future)) _connectionRetry = null;
+      }),
+    );
+    return future;
+  }
+
+  Future<void> _retryConnection() async {
     if (isClosed || state.acting) return;
     if (_readable) return load();
     emit(state.copyWith(loading: true, acting: false, clearError: true));
-    var connected = false;
     Object? failure;
     try {
-      connected = await onReconnect?.call() ?? false;
+      await onReconnect?.call().timeout(const Duration(seconds: 25));
     } catch (error) {
       failure = error;
     }
     if (isClosed) return;
-    if (connected && _readable) {
+    if (_readable && !wrongDevice) {
       emit(state.copyWith(loading: false, clearError: true));
       _trigger = 'retry_connection';
       await load();
@@ -399,9 +432,10 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
     try {
       final result = await Future.any([deviceReader!(), cancellation.future]).timeout(const Duration(seconds: 15));
       if (!_current(generation)) return;
-      emit(state.copyWith(devices: List.unmodifiable(result.devices)));
+      emit(state.copyWith(devices: List.unmodifiable(result.devices), devicesFresh: true));
     } catch (_) {
       // Keep frozen task snapshots and task controls available.
+      if (_current(generation)) emit(state.copyWith(devicesFresh: false));
     } finally {
       if (_deviceNamesGeneration == generation) {
         _deviceNamesRead = null;
@@ -535,6 +569,11 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
   Future<void> act(CopyAllowedAction action) async {
     final detail = state.detail;
     if (detail == null || state.acting || isClosed || !_readable || state.jobMissing) return;
+    if (!detail.stateVersionKnown) {
+      emit(state.copyWith(notice: '任务版本暂不可用，已尝试刷新，请核对后再操作。'));
+      await load();
+      return;
+    }
     if (!detail.allowedActions.contains(action)) return;
     // An action supersedes every read started before it, including event pages.
     final generation = ++_loadGeneration;

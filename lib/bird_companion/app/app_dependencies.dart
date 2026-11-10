@@ -266,6 +266,7 @@ class BirdCompanionDependencies {
       sessionCoordinator: sessionCoordinator,
       diagnostic: connectionAttempts.record,
       transportChanges: connectivityMonitor.onTransportChanged,
+      connectionFailures: apiClient.connectionFailures,
       onConnectionRecovered: () async {
         await birdSyncService.synchronize();
       },

@@ -73,6 +73,9 @@ final class ConnectionAttemptRecorder {
         'saved_device_present',
         'endpoint_source',
         'has_network',
+        'wifi_available',
+        'transport_generation',
+        'retry_delay_ms',
       }.contains(entry.key)) {
         safe[entry.key] = entry.value;
       }

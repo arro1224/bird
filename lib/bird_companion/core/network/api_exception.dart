@@ -24,7 +24,7 @@ class ApiException implements Exception {
     final statusCode = error.response?.statusCode;
     final detailsValue = data['details'] ?? nested['details'];
     final details = detailsValue is Map ? Map<String, dynamic>.from(detailsValue) : const <String, dynamic>{};
-    final retryableValue = data['retryable'] ?? nested['retryable'];
+    final retryableValue = data['retryable'] ?? nested['retryable'] ?? details['retryable'];
     return ApiException(
       message: data['error_message']?.toString() ?? nested['message']?.toString() ?? data['message']?.toString() ?? error.message ?? '无法连接盒子服务。',
       code: data['error_code']?.toString() ?? nested['code']?.toString() ?? data['code']?.toString(),

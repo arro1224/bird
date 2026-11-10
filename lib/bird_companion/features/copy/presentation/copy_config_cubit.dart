@@ -61,6 +61,9 @@ class CopyConfigState {
     this.createdJob,
     this.error,
     this.persistenceNotice,
+    this.preferenceSaveNotice,
+    this.preferenceSavePending = false,
+    this.savingPreferences = false,
     this.devicesFresh = true,
     this.refreshingDevices = false,
     this.sessionAvailable = true,
@@ -106,6 +109,8 @@ class CopyConfigState {
   final CopyJobSummary? createdJob;
   final Object? error;
   final String? persistenceNotice;
+  final String? preferenceSaveNotice;
+  final bool preferenceSavePending, savingPreferences;
   final bool devicesFresh, refreshingDevices, sessionAvailable, pageActive;
   final DateTime? sourceBindingExpiresAt;
   final bool sourceVerifiedReadOnly;
@@ -275,6 +280,10 @@ class CopyConfigState {
     Object? error,
     bool clearError = false,
     String? persistenceNotice,
+    String? preferenceSaveNotice,
+    bool clearPreferenceSaveNotice = false,
+    bool? preferenceSavePending,
+    bool? savingPreferences,
     bool? devicesFresh,
     bool? refreshingDevices,
     bool? sessionAvailable,
@@ -318,6 +327,9 @@ class CopyConfigState {
     createdJob: createdJob ?? this.createdJob,
     error: clearError ? null : error ?? this.error,
     persistenceNotice: persistenceNotice ?? this.persistenceNotice,
+    preferenceSaveNotice: clearPreferenceSaveNotice ? null : preferenceSaveNotice ?? this.preferenceSaveNotice,
+    preferenceSavePending: preferenceSavePending ?? this.preferenceSavePending,
+    savingPreferences: savingPreferences ?? this.savingPreferences,
     devicesFresh: devicesFresh ?? this.devicesFresh,
     refreshingDevices: refreshingDevices ?? this.refreshingDevices,
     sessionAvailable: sessionAvailable ?? this.sessionAvailable,
@@ -354,7 +366,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     this.diagnostic,
     this.planRepository,
     this.planVerifier = const CopyPlanVerifier(),
-    this.pollInterval = const Duration(seconds: 5),
+    this.pollInterval = const Duration(seconds: 4),
     this.initialPairPolicy = PairPolicy.rawOnly,
     this.initialReviewExportEnabled = false,
     this.initialEmbedReviewMetadata = true,
@@ -420,8 +432,18 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   Future<void>? _initializing;
   int _environment = 0, _configuration = 0, _contextVersion = 0, _operation = 0;
   bool _initialized = false, _creating = false, _created = false;
+  bool _appActive = true;
+  int _lifecycleGeneration = 0, _deviceReadGeneration = 0, _refreshFailures = 0;
+  PairPolicy? _pendingPreferencePolicy;
+  int? _pendingPreferenceVersion, _pendingPreferenceEnvironment;
   PairPolicy? _persistedPairPolicy;
   bool _planReconfirmationRequired = false;
+  String? _expiredPlanSignature;
+
+  Future<CopyPreview> _requestPreview(CopyRequestDraft draft) async {
+    final requestedAt = DateTime.now();
+    return (await _repository.preview(draft)).boundedForRequest(requestedAt);
+  }
 
   bool get _usable => !isClosed && (canUseDevice?.call() ?? true);
   bool _current(int environment, int configuration, int operation) {
@@ -477,6 +499,12 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   void setPageActive(bool active) {
     if (isClosed || state.pageActive == active) return;
     _poll?.cancel();
+    if (state.submitted) {
+      // The success dialog obscures the page, but its preference-only retry
+      // still belongs to this already-created job on the original device.
+      emit(state.copyWith(pageActive: active));
+      return;
+    }
     if (!active) {
       ++_environment;
       ++_operation;
@@ -498,10 +526,15 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   /// 遮挡期间预检必须失效，那是另一条已冻结语义。
   void setAppLifecycleActive(bool active) {
     if (isClosed || state.submitted) return;
+    _appActive = active;
+    final lifecycle = ++_lifecycleGeneration;
     if (!active) {
       _poll?.cancel();
       ++_operation;
       _refreshing = null;
+      ++_deviceReadGeneration;
+      _resumeRefresh = null;
+      _initializing = null;
       if (state.pageActive) {
         emit(state.copyWith(devicesFresh: false, refreshingDevices: false, loadingDevices: false));
       }
@@ -513,7 +546,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
       // v10 问题 3：回前台先静默重试设备读取并留短宽限期——单次 transient
       // 失败不得立刻销毁有效预检；连续失败才按设备数据不可用失效。
       if (_resumeRefresh == null) {
-        final future = _refreshAfterResume();
+        final future = _refreshAfterResume(lifecycle);
         _resumeRefresh = future;
         unawaited(
           future.whenComplete(() {
@@ -524,27 +557,36 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     }
   }
 
-  Future<void> _refreshAfterResume() async {
+  Future<void> _refreshAfterResume(int lifecycle) async {
     for (var attempt = 0; attempt < 3; attempt++) {
-      if (isClosed || !state.pageActive || !_usable) return;
-      if (await refreshDevices(invalidateOnFailure: false)) return;
+      if (isClosed || !_appActive || lifecycle != _lifecycleGeneration || !state.pageActive || !_usable) return;
+      if (await refreshDevices(invalidateOnFailure: false)) {
+        if (_appActive && lifecycle == _lifecycleGeneration && state.invalidationReason == CopyPreflightInvalidation.expired && state.preview == null) {
+          await _recheckAfterExpiry(_expiredPlanSignature);
+        }
+        return;
+      }
       if (isClosed || !state.pageActive) return;
       if (attempt < 2) await Future<void>.delayed(const Duration(milliseconds: 400));
     }
-    if (!isClosed && state.pageActive && state.preview != null) {
+    if (!isClosed && _appActive && lifecycle == _lifecycleGeneration && state.pageActive && state.preview != null) {
       _invalidate(state.invalidationReason ?? CopyPreflightInvalidation.deviceDataStale);
     }
   }
 
   void _startPolling() {
     _poll?.cancel();
-    if (!isClosed && _initialized && state.pageActive && !state.submitted && pollInterval > Duration.zero) {
-      _poll = Timer.periodic(pollInterval, (_) => _requestRefresh());
+    if (!isClosed && _appActive && state.pageActive && !state.submitted && pollInterval > Duration.zero) {
+      final delay = pollInterval * (1 << (_refreshFailures < 3 ? _refreshFailures : 3));
+      _poll = Timer(delay, () async {
+        if (_usable) await refreshDevices();
+        _startPolling();
+      });
     }
   }
 
   void _requestRefresh() {
-    if (_initialized && !isClosed && state.pageActive && !state.submitted && _usable) unawaited(refreshDevices());
+    if (!isClosed && _appActive && state.pageActive && !state.submitted && _usable) unawaited(refreshDevices());
   }
 
   Future<void> initialize() {
@@ -560,8 +602,9 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   }
 
   Future<void> _initialize() async {
-    if (isClosed || state.submitting) return;
+    if (isClosed || !_appActive || state.submitting) return;
     final environment = _environment;
+    final lifecycle = _lifecycleGeneration;
     if (!_usable) {
       _invalidate(CopyPreflightInvalidation.sessionUnavailable, next: state.copyWith(sessionAvailable: false, loadingDevices: false, devicesFresh: false));
       return;
@@ -569,7 +612,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     emit(state.copyWith(loadingDevices: true, clearDevicesError: true));
     try {
       final capabilities = await _repository.capabilities();
-      if (!_sameEnvironment(environment)) return;
+      if (!_sameEnvironment(environment) || !_appActive || lifecycle != _lifecycleGeneration) return;
       if (!capabilities.copyReady || capabilities.revision != '1.0-rc3') throw StateError('盒子复制能力尚未就绪。');
       final results = await Future.wait<Object>([
         _repository.devices(),
@@ -577,12 +620,13 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
         if (scope != CopyScope.mediaFullBackup) _repository.preferences(),
         _repository.scopeOptions(batchId: batchId, selectionId: selectionId, filter: filter),
       ], eagerError: true);
-      if (!_sameEnvironment(environment)) return;
+      if (!_sameEnvironment(environment) || !_appActive || lifecycle != _lifecycleGeneration) return;
       final devices = (results[0] as CopyDeviceList).devices;
       final binding = results[1] as SourceBinding;
       final preferences = scope == CopyScope.mediaFullBackup ? null : results[2] as CopyPreferences;
       final target = devices.where((d) => d.mediaId == preferredTargetMediaId && CopyDevicePolicy.canSelectTarget(d, binding.sourceMediaId)).firstOrNull;
       _initialized = true;
+      _refreshFailures = 0;
       _persistedPairPolicy = preferences?.pairPolicy;
       emit(
         state.copyWith(
@@ -612,17 +656,19 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
       );
       _startPolling();
     } catch (error) {
-      if (isClosed || environment != _environment) return;
+      if (isClosed || !_appActive || lifecycle != _lifecycleGeneration || environment != _environment) return;
       _trace('copy_initialization_failed', error: error);
       emit(state.copyWith(loadingDevices: false, devicesFresh: false, devicesError: error));
+      _refreshFailures++;
       _invalidate(_reasonFor(error) ?? CopyPreflightInvalidation.deviceDataStale);
+      _startPolling();
     }
   }
 
   /// Devices and source are one authoritative snapshot. Failed reads retain
   /// the last list as stale data, never invent a physical unplug event.
   Future<bool> refreshDevices({bool renewSourceBinding = false, bool invalidateOnFailure = true}) {
-    if (isClosed || state.submitted || !state.pageActive) return Future.value(false);
+    if (isClosed || !_appActive || state.submitted || !state.pageActive) return Future.value(false);
     if (!_usable) {
       sessionChanged();
       return Future.value(false);
@@ -634,7 +680,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     }
     final environment = _environment;
     _refreshingRenewsBinding = renewSourceBinding;
-    final future = _readDevices(environment, renewSourceBinding: renewSourceBinding, invalidateOnFailure: invalidateOnFailure);
+    final future = _readDevices(environment, ++_deviceReadGeneration, renewSourceBinding: renewSourceBinding, invalidateOnFailure: invalidateOnFailure);
     _refreshing = future;
     unawaited(
       future.whenComplete(() {
@@ -650,13 +696,14 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     return refreshDevices(renewSourceBinding: true);
   }
 
-  Future<bool> _readDevices(int environment, {required bool renewSourceBinding, bool invalidateOnFailure = true}) async {
+  Future<bool> _readDevices(int environment, int readGeneration, {required bool renewSourceBinding, bool invalidateOnFailure = true}) async {
     emit(state.copyWith(refreshingDevices: true));
     try {
       final configuration = _configuration;
       final readPreferences = !state.fullBackup;
       final results = await Future.wait<Object>([_repository.devices(), _repository.source(batchId: state.batchId), if (readPreferences) _repository.preferences()], eagerError: true);
-      if (!_sameEnvironment(environment)) return false;
+      if (!_sameEnvironment(environment) || !_appActive || readGeneration != _deviceReadGeneration) return false;
+      _refreshFailures = 0;
       final binding = results[1] as SourceBinding;
       // GET may issue a new opaque token. Keep the unexpired token paired with
       // the confirmed preview when identity/read-only proof still match.
@@ -714,7 +761,8 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
       }
       return true;
     } catch (error) {
-      if (isClosed || environment != _environment) return false;
+      if (isClosed || !_appActive || environment != _environment || readGeneration != _deviceReadGeneration) return false;
+      _refreshFailures++;
       _trace('copy_device_refresh_failed', error: error);
       final failure = state.copyWith(refreshingDevices: false, devicesFresh: false, devicesError: error);
       if (invalidateOnFailure) {
@@ -820,15 +868,20 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   void _onPreviewExpired() {
     if (isClosed || state.submitted || state.submitting) return;
     final previousSignature = state.planIntegrity?.signature;
+    _expiredPlanSignature = previousSignature;
     _invalidate(CopyPreflightInvalidation.expired);
-    if (state.pageActive && _usable) unawaited(_recheckAfterExpiry(previousSignature));
+    if (_appActive && state.pageActive && _usable) unawaited(_recheckAfterExpiry(previousSignature));
   }
 
   /// 过期自动重检后，若计划、冲突、空间或源/目标身份等签名发生变化，
   /// 不能把新计划当成用户已确认的计划直接创建：先阻断一次并提示核对。
   Future<void> _recheckAfterExpiry(String? previousSignature) async {
+    if (!_appActive || !state.pageActive || !_usable) return;
+    emit(state.copyWith(planNotice: '预检已过期，正在重新检查。'));
     final ok = await fetchPreview();
-    if (!ok || isClosed || state.submitted || previousSignature == null) return;
+    if (!ok || isClosed || state.submitted) return;
+    emit(state.copyWith(planNotice: '预检已过期，已重新检查。请核对最新摘要后开始复制。'));
+    if (previousSignature == null) return;
     final currentSignature = state.planIntegrity?.signature;
     if (currentSignature == null || currentSignature == previousSignature) return;
     _planReconfirmationRequired = true;
@@ -840,7 +893,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   }
 
   Future<bool> fetchPreview() async {
-    if (isClosed || state.loadingPreview || state.submitting || state.submitted || !_usable || !state.pageActive) return false;
+    if (isClosed || !_appActive || state.loadingPreview || state.submitting || state.submitted || !_usable || !state.pageActive) return false;
     final environment = _environment, configuration = _configuration, operation = ++_operation;
     _expiry?.cancel();
     emit(state.copyWith(loadingPreview: true, clearPreview: true, preflightStatus: CopyPreflightStatus.loading, clearError: true, clearScopeUnavailable: true));
@@ -848,7 +901,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
       if (!await refreshDevices(renewSourceBinding: true) || !_current(environment, configuration, operation) || !state.canFetchPreview) return false;
       final version = _contextVersion, draft = state.draft;
       emit(state.copyWith(loadingPreview: true, preflightStatus: CopyPreflightStatus.loading));
-      final preview = await _repository.preview(draft);
+      final preview = await _requestPreview(draft);
       if (!_current(environment, configuration, operation) || version != _contextVersion) return false;
       final problem = _previewProblem(preview, draft);
       if (problem != null) {
@@ -886,21 +939,62 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     );
   }
 
-  /// v10 返修问题 7：偏好只在任务创建成功后原子保存。保存失败不改变已成功的
-  /// 创建结果——偏好是便利设置，不是任务契约的一部分；页面上的草稿选择保留。
-  Future<void> _persistPairPolicyAfterCreate() async {
+  /// Preference saving is a separate versioned request, not an atomic part of
+  /// job creation. A failure must remain visible without recreating the job.
+  Future<void> _persistPairPolicyAfterCreate(PairPolicy value, int environment) async {
     if (isClosed || state.fullBackup) return;
-    final value = state.pairPolicy;
     if (value == _persistedPairPolicy) return;
-    final expectedVersion = state.preferencesVersion;
-    if (expectedVersion == null) return;
+    _pendingPreferencePolicy = value;
+    _pendingPreferenceVersion = state.preferencesVersion;
+    _pendingPreferenceEnvironment = environment;
+    emit(state.copyWith(preferenceSavePending: true));
+    await _saveCreatedPreference(checkLatest: false);
+  }
+
+  Future<void> retryPreferenceSave() => _saveCreatedPreference(checkLatest: true);
+
+  Future<void> _saveCreatedPreference({required bool checkLatest}) async {
+    final value = _pendingPreferencePolicy, version = _pendingPreferenceVersion;
+    if (isClosed || !_created || value == null || state.savingPreferences) return;
+    if (version == null) {
+      emit(state.copyWith(preferenceSavePending: false, preferenceSaveNotice: '任务已创建，但缺少偏好版本，未保存新格式。请在复制设置中确认。'));
+      return;
+    }
+    // Production canUseDevice is bound to the original box identity. A manual
+    // retry after reconnection may start a new read generation for that box.
+    if (checkLatest && _usable) _pendingPreferenceEnvironment = _environment;
+    bool current() => !isClosed && _pendingPreferenceEnvironment == _environment && _usable;
+    if (!current()) {
+      if (!isClosed) emit(state.copyWith(preferenceSaveNotice: '任务已创建，格式偏好尚未保存。连接原盒子后可重试；退出后可在复制设置中调整。'));
+      return;
+    }
+    emit(state.copyWith(savingPreferences: true));
     try {
-      final saved = await _repository.savePreferences(value, expectedVersion: expectedVersion);
-      if (isClosed) return;
+      if (checkLatest) {
+        final latest = await _repository.preferences().timeout(const Duration(seconds: 5));
+        if (!current()) return;
+        if (latest.pairPolicy == value) {
+          _persistedPairPolicy = value;
+          _pendingPreferencePolicy = null;
+          emit(state.copyWith(preferenceSavePending: false, preferencesVersion: latest.version, preferenceSaveNotice: '格式偏好已保存。'));
+          return;
+        }
+        if (latest.version != version) {
+          _pendingPreferencePolicy = null;
+          emit(state.copyWith(preferenceSavePending: false, preferenceSaveNotice: '任务已创建，但格式偏好已被其他操作更新。请在复制设置中确认，不会覆盖新偏好。'));
+          return;
+        }
+      }
+      final saved = await _repository.savePreferences(value, expectedVersion: version).timeout(const Duration(seconds: 5));
+      if (!current()) return;
+      if (saved.pairPolicy != value) throw StateError('Preference response mismatch');
       _persistedPairPolicy = saved.pairPolicy;
-      emit(state.copyWith(preferencesVersion: saved.version));
+      _pendingPreferencePolicy = null;
+      emit(state.copyWith(preferencesVersion: saved.version, preferenceSavePending: false, preferenceSaveNotice: checkLatest ? '格式偏好已保存。' : null));
     } catch (_) {
-      // 偏好保存失败不影响任务创建；下次创建成功后仍会尝试保存最新选择。
+      if (!isClosed) emit(state.copyWith(preferenceSavePending: true, preferenceSaveNotice: '任务已创建，但格式偏好保存未确认。可重试保存，或稍后在复制设置中确认。'));
+    } finally {
+      if (!isClosed) emit(state.copyWith(savingPreferences: false));
     }
   }
 
@@ -920,7 +1014,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     try {
       if (!await refreshDevices() || !_current(environment, configuration, operation) || version != _contextVersion || state.submissionBlockReason != null) return false;
       final draft = state.draft;
-      final refreshed = await _repository.preview(draft);
+      final refreshed = await _requestPreview(draft);
       if (!_current(environment, configuration, operation) || version != _contextVersion) return false;
       final problem = _previewProblem(refreshed, draft);
       if (problem != null) {
@@ -964,13 +1058,20 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
           /* A convenience preference cannot invalidate POST success. */
         }
       }
-      await _persistPairPolicyAfterCreate();
+      await _persistPairPolicyAfterCreate(draft.pairPolicy, environment);
       dataChanges?.publish({AppDataResource.jobs, AppDataResource.device, AppDataResource.batches}, reason: 'copy_job_created');
       _poll?.cancel();
       _expiry?.cancel();
       emit(state.copyWith(submitting: false, submitted: true, createdJob: job, preview: refreshed, preflightStatus: CopyPreflightStatus.valid, clearError: true, clearInvalidation: true, persistenceNotice: persistenceNotice));
       return true;
     } catch (error) {
+      if (!isClosed && environment == _environment && !_created && error is ApiException && error.code == 'COPY_PREVIEW_EXPIRED') {
+        _creating = false;
+        _expiredPlanSignature = confirmed.signature;
+        _invalidate(CopyPreflightInvalidation.expired, next: state.copyWith(submitting: false, checkingPlan: false, clearError: true));
+        await _recheckAfterExpiry(confirmed.signature);
+        return false;
+      }
       if (!isClosed && environment == _environment) _fail(error);
       return false;
     } finally {

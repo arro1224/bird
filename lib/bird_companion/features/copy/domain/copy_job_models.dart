@@ -304,6 +304,7 @@ class CopyJobDetail {
     required this.copyJobId,
     required this.state,
     required this.stateVersion,
+    this.stateVersionKnown = true,
     required this.eventSeq,
     required this.allowedActions,
     this.stats,
@@ -326,6 +327,7 @@ class CopyJobDetail {
 
   /// 依次尝试 state_version / expected_state_version / version，缺省 0。
   final int stateVersion;
+  final bool stateVersionKnown;
   final int eventSeq;
   final CopyJobStats? stats;
   final CopyJobDeviceSnapshot? sourceDevice;
@@ -356,13 +358,22 @@ class CopyJobDetail {
       throw const ProtocolCompatibilityException('state', '不能为空');
     }
     final rawStats = json['stats'] ?? json['progress'];
+    final metrics = rawStats is Map ? Map<String, dynamic>.from(rawStats) : <String, dynamic>{};
+    final timing = json['timing'];
+    if (timing is Map) {
+      for (final key in ['elapsed_seconds', 'bytes_per_second']) {
+        if (_nonNegativeNumber(metrics[key]) == null && _nonNegativeNumber(timing[key]) != null) metrics[key] = timing[key];
+      }
+    }
     final rawActions = json['allowed_actions'];
+    final version = _nonNegativeCount(json['state_version']) ?? _nonNegativeCount(json['expected_state_version']) ?? _nonNegativeCount(json['version']);
     return CopyJobDetail(
       copyJobId: ProtocolValidation.requiredId(json, 'copy_job_id'),
       state: CopyJobState.fromWire(rawState?.toString()),
-      stateVersion: _int(json, 'state_version') ?? _int(json, 'expected_state_version') ?? _int(json, 'version') ?? 0,
+      stateVersion: version ?? 0,
+      stateVersionKnown: version != null,
       eventSeq: _int(json, 'event_seq') ?? 0,
-      stats: rawStats is Map ? CopyJobStats.fromJson(Map<String, dynamic>.from(rawStats)) : null,
+      stats: rawStats is Map || timing is Map ? CopyJobStats.fromJson(metrics) : null,
       sourceDevice: _jobDeviceSnapshot(json, 'source'),
       targetDevice: _jobDeviceSnapshot(json, 'target'),
       allowedActions: (rawActions is List ? rawActions : const []).map((action) => CopyAllowedAction.fromWire(action?.toString())).whereType<CopyAllowedAction>().toList(growable: false),
@@ -486,14 +497,7 @@ class CopyJobItem {
   /// 纯英文/ASCII 诊断一律降级为本文件的错误码映射。
   String get failureText {
     final raw = errorMessage?.trim();
-    final usable =
-        raw != null &&
-        raw.isNotEmpty &&
-        RegExp(r'[\u4e00-\u9fff]').hasMatch(raw) &&
-        !raw.contains(RegExp(r'[/\\]')) &&
-        !raw.contains('Exception') &&
-        !raw.contains('http://') &&
-        !raw.contains('https://');
+    final usable = raw != null && raw.isNotEmpty && RegExp(r'[\u4e00-\u9fff]').hasMatch(raw) && !raw.contains(RegExp(r'[/\\]')) && !raw.contains('Exception') && !raw.contains('http://') && !raw.contains('https://');
     if (usable) return raw;
     final code = errorCode;
     if (code == null || code.isEmpty) return '复制失败，可重试失败项。';
@@ -634,18 +638,21 @@ class CopyJobEvent {
     this.type,
     this.message,
     this.createdAt,
+    this.payload = const {},
   });
 
   final int? seq;
   final String? type;
   final String? message;
   final DateTime? createdAt;
+  final Map<String, dynamic> payload;
 
   factory CopyJobEvent.fromJson(Map<String, dynamic> json) => CopyJobEvent(
     seq: _int(json, 'seq') ?? _int(json, 'event_seq'),
     type: _string(json, 'type') ?? _string(json, 'event_type'),
     message: _string(json, 'message') ?? _string(json, 'event_type'),
     createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
+    payload: json['payload'] is Map ? Map<String, dynamic>.unmodifiable(Map<String, dynamic>.from(json['payload'] as Map)) : const {},
   );
 }
 
@@ -752,8 +759,8 @@ class CopyReport {
       videoCount: _nonNegativeCount(json['video_count']),
       companionCount: _nonNegativeCount(json['companion_count']),
       totalBytes: _nonNegativeCount(json['total_bytes']),
-      elapsedSeconds: _nonNegativeNumber(json['elapsed_seconds']),
-      bytesPerSecond: _nonNegativeNumber(json['bytes_per_second']),
+      elapsedSeconds: _timingNumber(json, 'elapsed_seconds'),
+      bytesPerSecond: _timingNumber(json, 'bytes_per_second'),
       xmpCount: _nonNegativeCount(json['xmp_count']),
       csvStatus: _string(json, 'csv_status'),
       embedSuccessCount: _nonNegativeCount(json['embed_success_count']),
@@ -850,6 +857,11 @@ num? _nonNegativeNumber(Object? raw) {
       ? num.tryParse(raw.trim())
       : null;
   return value != null && value.isFinite && value >= 0 ? value : null;
+}
+
+num? _timingNumber(Map<String, dynamic> json, String key) {
+  final timing = json['timing'];
+  return _nonNegativeNumber(json[key]) ?? (timing is Map ? _nonNegativeNumber(timing[key]) : null);
 }
 
 bool _usableDeviceName(String? value, String? mediaId) => value != null && value.isNotEmpty && value != mediaId && !RegExp(r'^(media_|/dev/|/mnt/|/media/|[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,})').hasMatch(value);

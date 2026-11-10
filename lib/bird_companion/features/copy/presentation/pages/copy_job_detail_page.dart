@@ -68,15 +68,23 @@ class _CopyJobDetailPageState extends State<CopyJobDetailPage> {
         detailReader: dependencies == null ? null : (trigger) => dependencies.copyJobRecovery.readJob(deviceId ?? '', jobId, trigger: trigger),
         canRead: widget.canRead ?? (dependencies == null ? null : () => deviceId != null && dependencies.copyJobRecovery.canRead(deviceId)),
         sessionRefreshes: dependencies?.copyJobRecovery.sessionRefreshes,
-        sessionRecovering: widget.sessionRecovering ?? (dependencies == null ? null : () {
-          final session = dependencies.deviceSessionCubit.state;
-          return session.isVerifying && (deviceId == null || session.device?.id == deviceId);
-        }),
-        sessionWrongDevice: widget.sessionWrongDevice ?? (dependencies == null ? null : () {
-          final session = dependencies.deviceSessionCubit.state;
-          return session.isConnected && deviceId != null && session.device?.id != deviceId;
-        }),
-        onReconnect: widget.onReconnect ?? dependencies?.deviceSessionCubit.verifySavedSession,
+        sessionRecovering:
+            widget.sessionRecovering ??
+            (dependencies == null
+                ? null
+                : () {
+                    final session = dependencies.deviceSessionCubit.state;
+                    return session.isVerifying && (deviceId == null || session.device?.id == deviceId);
+                  }),
+        sessionWrongDevice:
+            widget.sessionWrongDevice ??
+            (dependencies == null
+                ? null
+                : () {
+                    final session = dependencies.deviceSessionCubit.state;
+                    return session.isConnected && deviceId != null && session.device?.id != deviceId;
+                  }),
+        onReconnect: widget.onReconnect ?? (dependencies == null ? null : () => dependencies.deviceSessionCubit.verifySavedSession(expectedDeviceId: deviceId, restart: true, intent: 'copy_retry')),
       ),
       child: _CopyJobDetailView(createdJob: widget.createdJob),
     );
@@ -173,8 +181,8 @@ class _CopyJobDetailViewState extends State<_CopyJobDetailView> with WidgetsBind
                 onRetrySupplemental: cubit.retrySupplemental,
                 onAction: cubit.act,
                 onLoadMoreFailed: cubit.loadMoreFailedItems,
-                sourceMissing: _knownOffline(state.detail!.sourceDevice, state.sourceNameSnapshot, state.devices),
-                targetMissing: _knownOffline(state.detail!.targetDevice, state.targetNameSnapshot, state.devices),
+                sourceMissing: state.detail!.errorCode == 'COPY_SOURCE_NOT_PRESENT' || _knownOffline(state.detail!.sourceDevice, state.sourceNameSnapshot, state.devices, state.devicesFresh),
+                targetMissing: state.detail!.errorCode == 'COPY_TARGET_NOT_PRESENT' || _knownOffline(state.detail!.targetDevice, state.targetNameSnapshot, state.devices, state.devicesFresh),
               );
             },
           ),
@@ -184,12 +192,12 @@ class _CopyJobDetailViewState extends State<_CopyJobDetailView> with WidgetsBind
   }
 }
 
-/// 只有设备列表本次确实读到、且快照身份不在线时，才判定原设备缺失。
-/// 列表为空表示读取失败/尚未返回，不能据此误报"已拔出"。
-bool _knownOffline(CopyJobDeviceSnapshot? snapshot, CopyJobDeviceSnapshot? retained, List<StorageDeviceSummary> devices) {
+/// Only explicit offline rows certify removal; a storage provider may filter
+/// busy devices from an otherwise fresh list.
+bool _knownOffline(CopyJobDeviceSnapshot? snapshot, CopyJobDeviceSnapshot? retained, List<StorageDeviceSummary> devices, bool fresh) {
   final id = retained?.mediaId ?? snapshot?.mediaId;
-  if (id == null || devices.isEmpty) return false;
-  return devices.where((device) => device.mediaId == id).firstOrNull?.online != true;
+  if (id == null || !fresh) return false;
+  return devices.where((device) => device.mediaId == id).firstOrNull?.online == false;
 }
 
 /// v10 问题 4：回前台/会话恢复时先显示恢复中，不闪红条。
@@ -222,7 +230,10 @@ class _RecoveringNotice extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('正在恢复连接/同步任务状态', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.ink)),
+              const Text(
+                '正在恢复连接/同步任务状态',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.ink),
+              ),
               const SizedBox(height: 2),
               const Text('复制可能仍在盒子端继续，恢复后会自动同步最新进度。', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
               if (onRetry != null)
@@ -332,10 +343,10 @@ class _DetailView extends StatelessWidget {
           _ProgressCard(detail: detail, report: state.report),
           const SizedBox(height: 12),
           CopyJobTimeline(
-            timeline: CopyTimeline.compute(state: detail.state, stats: detail.stats, report: state.report, reviewExportEnabled: detail.reviewExportEnabled),
+            timeline: CopyTimeline.compute(state: detail.state, stats: detail.stats, report: state.report, reviewExportEnabled: detail.reviewExportEnabled, events: state.events),
           ),
           const SizedBox(height: 12),
-          _DeviceSnapshotCard(detail: detail, report: state.report, devices: state.devices, sourceSnapshot: state.sourceNameSnapshot, targetSnapshot: state.targetNameSnapshot),
+          _DeviceSnapshotCard(detail: detail, report: state.report, devices: state.devices, devicesFresh: state.devicesFresh, sourceSnapshot: state.sourceNameSnapshot, targetSnapshot: state.targetNameSnapshot),
           const SizedBox(height: 12),
           _ActionsSection(
             detail: detail,
@@ -356,7 +367,7 @@ class _DetailView extends StatelessWidget {
           ],
           if (state.report != null) ...[
             const SizedBox(height: 12),
-            _ReportCard(report: state.report!, taskState: detail.state),
+            _ReportCard(report: state.report!, taskState: detail.state, timing: CopyTaskTiming.forTask(detail, state.report)),
           ],
           const SizedBox(height: 12),
           _EventsSection(state: state),
@@ -538,16 +549,14 @@ class _ProgressCard extends StatelessWidget {
             if (progress.total != null) Text('盒子文件总数：${progress.total}', style: const TextStyle(fontSize: 12, color: AppColors.inkMuted)),
             if (terminal && progress.unprocessed != null && progress.unprocessed != 0)
               Text(
-                progress.unprocessed! > 0
-                    ? '统计未守恒：${progress.unprocessed} 项未归类（已处理 ${progress.processed} / 总数 ${progress.total}）'
-                    : '统计异常：已处理数超过盒子文件总数',
+                progress.unprocessed! > 0 ? '统计未守恒：${progress.unprocessed} 项未归类（已处理 ${progress.processed} / 总数 ${progress.total}）' : '统计异常：已处理数超过盒子文件总数',
                 key: const Key('copy-job-unclassified'),
                 style: const TextStyle(fontSize: 12, color: AppColors.danger),
               ),
             if (!terminal && progress.copiedBytes != null) Text('已复制字节：${formatBytes(progress.copiedBytes!)}'),
             const SizedBox(height: 6),
-            Text('耗时（盒子统计）：${timing.elapsedLabel}', key: const Key('copy-job-elapsed')),
-            Text('速度（盒子统计）：${timing.speedLabel}', key: const Key('copy-job-speed')),
+            Text('${timing.elapsedTitle}：${timing.elapsedLabel}', key: const Key('copy-job-elapsed')),
+            Text('${timing.speedTitle}：${timing.speedLabel}', key: const Key('copy-job-speed')),
             Text('统计来源：${timing.source}', style: const TextStyle(fontSize: 11, color: AppColors.inkMuted)),
             if (!detail.state.isTerminal && detail.stats?.currentFile?.trim().isNotEmpty == true) ...[
               const SizedBox(height: 4),
@@ -566,11 +575,12 @@ class _ProgressCard extends StatelessWidget {
 }
 
 class _DeviceSnapshotCard extends StatelessWidget {
-  const _DeviceSnapshotCard({required this.detail, this.report, this.devices = const [], this.sourceSnapshot, this.targetSnapshot});
+  const _DeviceSnapshotCard({required this.detail, this.report, this.devices = const [], this.devicesFresh = false, this.sourceSnapshot, this.targetSnapshot});
 
   final CopyJobDetail detail;
   final CopyReport? report;
   final List<StorageDeviceSummary> devices;
+  final bool devicesFresh;
   final CopyJobDeviceSnapshot? sourceSnapshot, targetSnapshot;
 
   @override
@@ -579,9 +589,9 @@ class _DeviceSnapshotCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const TaskSectionTitle('存储设备'),
-        _deviceRow('源设备', copyTaskDeviceName(source: true, snapshot: sourceSnapshot ?? detail.sourceDevice, reportSnapshot: report?.sourceDevice, devices: devices)),
+        _deviceRow('源设备', copyTaskDeviceName(source: true, snapshot: sourceSnapshot ?? detail.sourceDevice, reportSnapshot: report?.sourceDevice, devices: devices, devicesFresh: devicesFresh)),
         const Divider(height: 20),
-        _deviceRow('目标设备', copyTaskDeviceName(source: false, snapshot: targetSnapshot ?? detail.targetDevice, reportSnapshot: report?.targetDevice, devices: devices)),
+        _deviceRow('目标设备', copyTaskDeviceName(source: false, snapshot: targetSnapshot ?? detail.targetDevice, reportSnapshot: report?.targetDevice, devices: devices, devicesFresh: devicesFresh)),
       ],
     ),
   );
@@ -621,7 +631,7 @@ class _ActionsSection extends StatelessWidget {
 
   /// v10 问题 12：原盘缺失时不得诱导用户"继续"或改用其他盘。
   bool _enabled(CopyAllowedAction action) {
-    if (acting) return false;
+    if (acting || !detail.stateVersionKnown) return false;
     if (action == CopyAllowedAction.resume && (sourceMissing || targetMissing)) return false;
     return true;
   }
@@ -640,6 +650,7 @@ class _ActionsSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const TaskSectionTitle('任务操作'),
+          if (!detail.stateVersionKnown) const Text('任务版本暂不可用，请刷新后再操作。'),
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -838,10 +849,11 @@ class _FailedItemsSection extends StatelessWidget {
 /// 终态报告卡：部分成功不得显示成成功（迁移对照 §3.6）。
 /// 审阅导出结果（XMP/CSV/嵌入）有数据时必须展示，CSV 失败计为部分完成。
 class _ReportCard extends StatelessWidget {
-  const _ReportCard({required this.report, required this.taskState});
+  const _ReportCard({required this.report, required this.taskState, required this.timing});
 
   final CopyReport report;
   final CopyJobState taskState;
+  final CopyTaskTiming timing;
 
   @override
   Widget build(BuildContext context) {
@@ -883,8 +895,9 @@ class _ReportCard extends StatelessWidget {
           _metric('同名跳过', '${report.skippedFiles ?? '—'}'),
           _metric('不适用', '${report.notApplicableFiles ?? '—'}'),
           if (report.totalBytes != null) _metric('总字节数', _bytes(report.totalBytes!)),
-          _metric('耗时（盒子统计）', CopyTaskTiming.fromReport(report).elapsedLabel),
-          _metric('速度（盒子统计）', CopyTaskTiming.fromReport(report).speedLabel),
+          _metric(timing.elapsedTitle, timing.elapsedLabel),
+          _metric(timing.speedTitle, timing.speedLabel),
+          Text('统计来源：${timing.source}', style: const TextStyle(fontSize: 11, color: AppColors.inkMuted)),
           if (_hasReviewExportMetrics) ...[
             const Divider(height: 20),
             _metric('审阅 XMP', '${report.xmpCount ?? '—'}'),

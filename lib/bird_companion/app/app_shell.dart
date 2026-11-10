@@ -83,50 +83,59 @@ class _BirdAppShellState extends State<BirdAppShell> with WidgetsBindingObserver
         selectTab: _selectTab,
         openTabRoute: _openTabRoute,
         setBottomNavigationVisible: _setBottomNavigationVisible,
-        child: Column(
-          children: [
-            if (_selectedIndex == 1)
-              BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
-                bloc: BirdCompanionScope.of(context).deviceSessionCubit,
-                builder: (context, state) => DisconnectedBanner(
-                  isVerifying: state.isVerifying,
-                  message: state.message,
-                  isConnected: state.isConnected,
-                  lastUpdatedAt: state.lastUpdatedAt,
-                  onReconnect: () => openReconnectConnection(context),
+        // The task tab's connection banner sits above its nested Scaffold.
+        // Consume the top inset here so both the banner and page stay below
+        // the status bar without applying the inset twice inside the page.
+        child: SafeArea(
+          top: _selectedIndex == 1,
+          bottom: false,
+          left: false,
+          right: false,
+          child: Column(
+            children: [
+              if (_selectedIndex == 1)
+                BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
+                  bloc: BirdCompanionScope.of(context).deviceSessionCubit,
+                  builder: (context, state) => DisconnectedBanner(
+                    isVerifying: state.isVerifying,
+                    message: state.message,
+                    isConnected: state.isConnected,
+                    lastUpdatedAt: state.lastUpdatedAt,
+                    onReconnect: () => openReconnectConnection(context),
+                  ),
                 ),
-              ),
-            Expanded(
-              child: LazyIndexedStack(
-                index: _selectedIndex,
-                itemCount: _destinations.length,
-                itemBuilder: (_, index) => _TabNavigator(
-                  index: index,
-                  selectedTab: _selectedTab,
-                  navigatorKey: _navigatorKeys[index],
-                  onGenerateRoute: widget.onGenerateRoute,
-                  onChildRouteChanged: _setBottomNavigationVisible,
-                  root: switch (index) {
-                    0 => AlbumHomePage(
-                      focusRequest: _albumFocusRequest,
-                    ),
-                    1 => TaskExperienceRoot(
-                      onOpenGallery: (args) => _openTabRoute(
-                        0,
-                        BirdRoutes.gallery,
-                        args,
+              Expanded(
+                child: LazyIndexedStack(
+                  index: _selectedIndex,
+                  itemCount: _destinations.length,
+                  itemBuilder: (_, index) => _TabNavigator(
+                    index: index,
+                    selectedTab: _selectedTab,
+                    navigatorKey: _navigatorKeys[index],
+                    onGenerateRoute: widget.onGenerateRoute,
+                    onChildRouteChanged: _setBottomNavigationVisible,
+                    root: switch (index) {
+                      0 => AlbumHomePage(
+                        focusRequest: _albumFocusRequest,
                       ),
-                      onAnalysisCompleted: _openAlbumRoot,
-                    ),
-                    _ => SettingsExperienceRoot(
-                      onOpenAlbum: () => _selectTab(0),
-                      onOpenTasks: () => _selectTab(1),
-                    ),
-                  },
+                      1 => TaskExperienceRoot(
+                        onOpenGallery: (args) => _openTabRoute(
+                          0,
+                          BirdRoutes.gallery,
+                          args,
+                        ),
+                        onAnalysisCompleted: _openAlbumRoot,
+                      ),
+                      _ => SettingsExperienceRoot(
+                        onOpenAlbum: () => _selectTab(0),
+                        onOpenTasks: () => _selectTab(1),
+                      ),
+                    },
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: _bottomNavigationVisible
