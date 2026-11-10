@@ -33,18 +33,27 @@ class SmartFollowTaskTile extends StatefulWidget {
 
 class _SmartFollowTaskTileState extends State<SmartFollowTaskTile> {
   bool _resolved = false;
+  Timer? _poll;
+  bool _reading = false;
 
   @override
   void initState() {
     super.initState();
     widget.repository.addListener(_changed);
     unawaited(_resolve());
+    _poll = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (mounted && (ModalRoute.isCurrentOf(context) ?? true)) unawaited(_resolve(force: true));
+    });
   }
 
   @override
   void didUpdateWidget(covariant SmartFollowTaskTile oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (identical(oldWidget.repository, widget.repository) && oldWidget.recognitionJobId == widget.recognitionJobId) return;
+    if (!identical(oldWidget.repository, widget.repository)) {
+      oldWidget.repository.removeListener(_changed);
+      widget.repository.addListener(_changed);
+    }
     _resolved = false;
     unawaited(_resolve());
   }
@@ -53,15 +62,25 @@ class _SmartFollowTaskTileState extends State<SmartFollowTaskTile> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _resolve() async {
+  Future<void> _resolve({bool force = false}) async {
+    if (_reading) return;
+    _reading = true;
+    final job = widget.recognitionJobId;
+    final generation = widget.repository.deviceGeneration;
     try {
-      if (widget.repository.snapshotForJob(widget.recognitionJobId) == null) {
-        await widget.repository.refreshForJob(widget.recognitionJobId);
+      if (force || widget.repository.snapshotForJob(job) == null) {
+        final existing = widget.repository.snapshotForJob(job);
+        if (existing == null) {
+          await widget.repository.refreshForJob(job);
+        } else {
+          await widget.repository.refresh(existing.sessionId);
+        }
       }
     } catch (_) {
       // 读不到就当作"这个任务没有跟随"：任务详情的其它信息照常可看。
     }
-    if (mounted) setState(() => _resolved = true);
+    _reading = false;
+    if (mounted && job == widget.recognitionJobId && generation == widget.repository.deviceGeneration) setState(() => _resolved = true);
   }
 
   @override
@@ -105,6 +124,7 @@ class _SmartFollowTaskTileState extends State<SmartFollowTaskTile> {
 
   @override
   void dispose() {
+    _poll?.cancel();
     widget.repository.removeListener(_changed);
     super.dispose();
   }

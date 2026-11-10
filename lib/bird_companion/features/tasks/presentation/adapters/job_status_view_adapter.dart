@@ -41,7 +41,7 @@ abstract final class JobStatusViewAdapter {
     return TaskSummary(
       id: job.id,
       type: type,
-      title: type.label,
+      title: type == TaskType.sync ? '同步（含缩略图与预览，不是 U 盘复制）' : type.label,
       processed: job.finishedCount,
       total: job.totalCount,
       progressPercent: progressPercent,

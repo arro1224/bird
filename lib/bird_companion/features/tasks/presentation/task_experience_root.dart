@@ -10,7 +10,6 @@ import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
-import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_destination_resolver.dart';
@@ -134,7 +133,16 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       onOpenTask: _openTask,
       onStartTask: _startTask,
       onOpenCopyJobs: _openCopyJobs,
-      copyRecoveryBanner: ActiveCopyJobsBanner(recovery: BirdCompanionScope.of(context).copyJobRecovery),
+      copyRecoveryBanner: Column(children: [
+        for (final task in controller.tasks.where((task) => task.type == TaskType.aiAnalysis))
+          SmartFollowTaskTile(
+            key: ValueKey('home-follow-${task.id}'),
+            repository: BirdCompanionScope.of(context).smartFollowRepository,
+            recognitionJobId: task.id,
+            onOpenRun: (id) => Navigator.of(context).pushNamed<void>(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(id, recognitionJobId: task.id)),
+          ),
+        ActiveCopyJobsBanner(recovery: BirdCompanionScope.of(context).copyJobRecovery),
+      ]),
     );
   }
 
@@ -285,6 +293,19 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
                                     builder: (_) => TaskDetailPage(
                                       controller: controller,
                                       taskId: jobId,
+                                      incrementalPanel: ListenableBuilder(
+                                        listenable: controller,
+                                        builder: (_, _) => Column(children: [
+                                          const Text('导入与索引 → 生成缩略图与预览 → AI 分析；符合条件的结果会自动分批复制。'),
+                                          for (final task in controller.tasks.where((task) => task.type == TaskType.aiAnalysis && task.sourceBatchId == controller.taskByIdOrNull(jobId)?.sourceBatchId))
+                                            SmartFollowTaskTile(
+                                              key: ValueKey('import-follow-${task.id}'),
+                                              repository: BirdCompanionScope.of(context).smartFollowRepository,
+                                              recognitionJobId: task.id,
+                                              onOpenRun: (id) => Navigator.of(context).pushNamed<void>(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(id, recognitionJobId: task.id)),
+                                            ),
+                                        ]),
+                                      ),
                                       allowDemoCompletion: false,
                                       onControl: _control,
                                       onExportLog: _exportTaskLog,
@@ -330,8 +351,9 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       try {
         final dependencies = BirdCompanionScope.of(context);
         final device = dependencies.smartFollowCreation.contextKey();
-        final capabilities = await dependencies.smartFollowRepository.capabilities();
-        if (capabilities.canShowEntry) {
+        // Existing sessions remain readable even when admission capability is
+        // disabled. A capability check must not block viewing a finished job.
+        {
           final session = await dependencies.smartFollowRepository.refreshForJob(taskId);
           if (!mounted || dependencies.smartFollowCreation.contextKey() != device) return;
           if (session != null) {
@@ -339,19 +361,20 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
             return;
           }
         }
-        await recognition.sync(taskId);
-      } on ApiException catch (error) {
-        if (error.statusCode != 404) {
-          if (mounted) _showError(context, error);
-          return;
+        // Incremental results are auxiliary to task navigation. A completed
+        // task remains viewable even if the event endpoint is unavailable.
+        try {
+          await recognition.sync(taskId);
+        } catch (_) {
+          // Task detail was already refreshed from the authoritative endpoint.
         }
-      } catch (error) {
-        if (mounted) _showError(context, error);
-        return;
+      } catch (_) {
+        // Optional follow/event reads must not turn a valid AI detail into a
+        // connection-error toast. The detail itself remains authoritative.
       }
       if (!mounted) return;
     }
-    final destination = TaskDestinationResolver.resolve(refreshedTask, incrementalRecognition: recognition.snapshot(taskId) != null);
+    final destination = refreshedTask.type == TaskType.aiAnalysis ? const TaskDestination.detail() : TaskDestinationResolver.resolve(refreshedTask, incrementalRecognition: recognition.snapshot(taskId) != null);
     switch (destination.kind) {
       case TaskDestinationKind.album:
         widget.onOpenGallery(

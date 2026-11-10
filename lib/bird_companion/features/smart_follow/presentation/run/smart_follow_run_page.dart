@@ -60,6 +60,7 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
   bool _loaded = false;
   Object? _loadError;
   BirdJobStatus? _recognition;
+  SmartFollowChildJobPage? _children;
   Timer? _timer;
   StreamSubscription<void>? _signals;
   Future<void>? _refreshing;
@@ -112,6 +113,7 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
       ++_generation;
       _refreshing = null;
       _recognition = null;
+      _children = null;
       _loaded = false;
       _loadError = null;
       unawaited(_refresh(initial: true));
@@ -152,6 +154,13 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
     try {
       final session = await widget.repository.refresh(widget.sessionId);
       if (!mounted || generation != _generation || !_current) return;
+      try {
+        final page = await widget.repository.childJobs(widget.sessionId);
+        if (!mounted || generation != _generation || !_current) return;
+        _children = page;
+      } catch (_) {
+        _children = null;
+      }
       final read = widget.readRecognition;
       if (read != null) {
         final job = await read(session.recognitionJobId);
@@ -269,7 +278,19 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
             ],
             _CountsCard(session: session),
             const SizedBox(height: 12),
-            _ChildJobsCard(session: session, onOpen: widget.onOpenChildJobs),
+            if (_children == null)
+              _ChildJobsCard(session: session, onOpen: widget.onOpenChildJobs)
+            else
+              Card(child: ExpansionTile(title: TextButton(key: const Key('smart-follow-child-jobs'), onPressed: widget.onOpenChildJobs, child: Text('已创建 ${session.childJobCount} 批 · 查看复制详情')), children: [
+                for (final child in _children!.items)
+                  ListTile(
+                    title: Text('复制批次 ${child.copyJobId}'),
+                    subtitle: Text('${child.state.label} · 已复制 ${child.copiedFileCount} · 同名跳过 ${child.skippedFileCount} · 失败 ${child.failedFileCount} 个文件'),
+                    onTap: widget.onOpenChildJobs,
+                  ),
+                if (_children!.hasMore) TextButton(onPressed: widget.onOpenChildJobs, child: const Text('查看全部复制批次')),
+                TextButton(onPressed: widget.onOpenChildJobs, child: const Text('查看复制批次详情')),
+              ])),
             if (widget.metadataSection != null)
               widget.metadataSection!
             else if (session.metadataUpdateAvailable) ...[
@@ -399,6 +420,7 @@ class _CountsCard extends StatelessWidget {
           _row('待复制', '${session.pendingCount} 张', const Key('smart-follow-pending')),
           _row('已复制照片', '${session.copiedAssetCount} 张', const Key('smart-follow-copied-assets')),
           _row('已复制文件', '${session.copiedFileCount} 个', const Key('smart-follow-copied-files')),
+          if (session.raw['skipped_file_count'] is int) _row('同名跳过', '${session.raw['skipped_file_count']} 个', const Key('smart-follow-skipped-files')),
           if (session.notCopiedStoppedCount != null) _row('停止后未复制', '${session.notCopiedStoppedCount} 张', const Key('smart-follow-stopped-count')),
           if (session.notApplicableAssetCount != null) _row('不适用', '${session.notApplicableAssetCount} 张', const Key('smart-follow-not-applicable-count')),
           if (session.failedAssetCount > 0) _row('复制失败', '${session.failedAssetCount} 张', const Key('smart-follow-failed'), danger: true),

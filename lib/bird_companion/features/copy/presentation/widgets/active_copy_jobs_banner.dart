@@ -16,7 +16,8 @@ class ActiveCopyJobsBanner extends StatelessWidget {
       if (device == null) return const SizedBox.shrink();
       final active = recovery.store.activeForDevice(device);
       final recent = recovery.store.forDevice(device);
-      final jobs = active.isNotEmpty ? active : recent.take(1);
+      final latestId = recovery.latestHistoryId(device);
+      final jobs = active.isNotEmpty ? active : latestId == null ? recent.take(1) : recent.where((job) => job.jobId == latestId).take(1);
       if (jobs.isEmpty) return const SizedBox.shrink();
       return Card(
         key: const Key('active-copy-jobs-banner'),
@@ -26,7 +27,7 @@ class ActiveCopyJobsBanner extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.content_copy_outlined),
                 title: Text(job.state.isTerminal ? '查看最近复制结果' : '继续查看复制任务'),
-                subtitle: Text('上次读取：${job.state.label}${recovery.canRead(device) ? '' : ' · 等待盒子连接'}'),
+                subtitle: Text('任务 ${job.jobId}\n上次读取：${job.state.label}${recovery.canRead(device) ? '' : ' · 等待盒子连接'}'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).pushNamed(BirdRoutes.copyJobDetail, arguments: CopyJobDetailArgs(job.jobId, deviceId: device)),
               ),

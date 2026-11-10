@@ -98,10 +98,10 @@ abstract final class TaskHomeCapabilityResolver {
         );
     final analysisReason = !hasProject
         ? '当前没有可用批次'
-        : !hasPhotos
-        ? '当前批次没有可处理照片'
         : projectPipelineBusy
         ? '当前批次已有任务正在执行'
+        : !hasPhotos
+        ? '正在同步批次照片状态，请稍候刷新'
         : null;
 
     final cardPresent = deviceStatus.card.inserted;

@@ -37,6 +37,18 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('parent summary discovers and refreshes a later-created session', (tester) async {
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('smart-follow-task-tile')), findsNothing);
+    await repository.startOnRecognitionJob('rec_fake', startRequest);
+    backend.commitPhoto();
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('smart-follow-task-tile')), findsOneWidget);
+    expect(find.textContaining('已识别 1 张'), findsOneWidget);
+  });
+
   testWidgets('有会话时显示阶段与三项计数，点击带着会话 ID 进运行页', (tester) async {
     await repository.startOnRecognitionJob('rec_fake', startRequest);
     backend.commitPhoto();

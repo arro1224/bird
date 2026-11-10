@@ -13,6 +13,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('latest summary is discovered from server history rather than stale saved cancellation', () async {
+    final fixture = await _RecoveryFixture.create();
+    addTearDown(fixture.close);
+    fixture.repository.history = const CopyJobPage(items: [CopyJobListItem(copyJobId: 'new-follow-child', state: CopyJobState.completed)], hasMore: false);
+    await fixture.recovery.recover();
+    expect(fixture.repository.reads, contains('new-follow-child'));
+    expect(fixture.recovery.latestHistoryId('box-a'), 'new-follow-child');
+    expect(fixture.store.forDevice('box-a').any((job) => job.jobId == 'new-follow-child'), isTrue);
+  });
   test('存储重建保留设备隔离和多活动任务，终态仅作为最近结果', () async {
     final disk = _Disk();
     final store = ActiveCopyJobStore(disk);
@@ -183,6 +192,9 @@ class _Disk implements DiagnosticStorage {
 }
 
 class _RecoveryRepository implements CopyJobRepository {
+  CopyJobPage? history;
+  @override
+  Future<CopyJobPage> listJobs({String? cursor}) async => history ?? const CopyJobPage(items: [], hasMore: false);
   final reads = <String>[];
   Object? error;
   Completer<CopyJobDetail>? pending;

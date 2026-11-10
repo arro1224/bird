@@ -65,6 +65,8 @@ class _BatchSetupPageState extends State<BatchSetupPage> {
           TextField(
             key: const Key('batch-name-field'),
             controller: _nameController,
+            autofocus: false,
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             maxLength: 40,
             decoration: const InputDecoration(
               labelText: '批次名称',
@@ -82,7 +84,7 @@ class _BatchSetupPageState extends State<BatchSetupPage> {
                 _InfoRow(icon: Icons.sd_card_outlined, label: '照片来源', value: card.name),
                 _InfoRow(icon: Icons.image_outlined, label: '照片数量', value: '${card.photoCount} 张'),
                 _InfoRow(icon: Icons.photo_size_select_actual_outlined, label: '文件类型', value: 'RAW ${card.rawCount} · JPEG ${card.jpegCount}'),
-                _InfoRow(icon: Icons.storage_outlined, label: '预计空间', value: '${card.requiredSpaceGb} GB', showDivider: false),
+                _InfoRow(icon: Icons.storage_outlined, label: '预计空间', value: '${card.requiredSpaceGb.toStringAsFixed(2)} GB', showDivider: false),
               ],
             ),
           ),
@@ -110,6 +112,7 @@ class _BatchSetupPageState extends State<BatchSetupPage> {
           ),
           const SizedBox(height: 20),
           if (widget.analysisOptions != null) widget.analysisOptions!,
+          if (widget.analysisOptions != null) const Text('2. 开始导入后会自动识别；如已开启边识别边复制，符合条件的照片会自动复制到已确认目标盘。'),
           const SizedBox(height: 12),
           TaskActionButton(
             _submitting ? '正在创建任务…' : '开始导入并建立索引',

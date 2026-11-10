@@ -30,6 +30,8 @@ class CopyJobRecovery extends ChangeNotifier {
   String? _recoveringDevice;
   bool _retryRequested = false;
   final _reads = <(String, String, int), Future<CopyJobDetail>>{};
+  final _latestHistoryIds = <String, String>{};
+  String? latestHistoryId(String device) => _latestHistoryIds[device];
 
   bool canRead(String deviceId) => !_disposed && isConnected() && currentDeviceId() == deviceId;
 
@@ -86,6 +88,22 @@ class CopyJobRecovery extends ChangeNotifier {
   }
 
   Future<void> _recover(String device) async {
+    final listGeneration = _generation;
+    try {
+      final page = await repository.listJobs();
+      if (!canRead(device) || listGeneration != _generation) return;
+      // Use server order (same endpoint as history), not the last opened item.
+      // Only the newest server item updates the recent summary.
+      if (page.items.isNotEmpty) {
+        final latest = page.items.first;
+        final detail = await readJob(device, latest.copyJobId);
+        if (!canRead(device) || listGeneration != _generation) return;
+        _latestHistoryIds[device] = detail.copyJobId;
+        await store.remember(device, detail.copyJobId, detail.state, stateVersion: detail.stateVersion);
+      }
+    } catch (_) {
+      // Retain known IDs when the history endpoint is temporarily unavailable.
+    }
     // A session refresh while reading the same device is coalesced; switching
     // devices invalidates the response even if the first device later returns.
     for (final saved in store.activeForDevice(device)) {

@@ -105,6 +105,7 @@ class _SmartFollowConfigurationFormState extends State<SmartFollowConfigurationF
             onChanged: locked
                 ? null
                 : (value) {
+                    FocusManager.instance.primaryFocus?.unfocus();
                     if (value != null) state.selectPairPolicy(value);
                   },
           ),
@@ -119,6 +120,7 @@ class _SmartFollowConfigurationFormState extends State<SmartFollowConfigurationF
             onChanged: locked
                 ? null
                 : (value) {
+                    FocusManager.instance.primaryFocus?.unfocus();
                     if (value != null) state.selectConflict(value);
                   },
           ),
@@ -138,11 +140,11 @@ class _SmartFollowConfigurationFormState extends State<SmartFollowConfigurationF
         FilledButton(
           key: const Key('smart-follow-confirm-configuration'),
           onPressed: locked || state.blockReason != null ? null : state.confirm,
-          child: Text(state.confirming ? '正在核对配置…' : '确认设备与复制策略'),
+          child: Text(state.confirming ? '正在核对配置…' : '1. 确认设备与复制策略'),
         ),
         if (state.confirmed case final intent?) ...[
           const SizedBox(height: 8),
-          Text('配置已确认：${intent.targetName}；${state.pairPolicy.label}；${state.conflictStrategy!.label}；${intent.request.reviewExportEnabled ? '保存识别与审阅信息' : '仅复制照片'}。确认配置不会开始复制。', key: const Key('smart-follow-configuration-confirmed')),
+          Text('配置已确认：${intent.targetName}；${state.pairPolicy.label}；${state.conflictStrategy!.label}；${intent.request.reviewExportEnabled ? '保存识别与审阅信息' : '仅复制照片'}。下一步开始导入后将自动识别，并自动复制符合条件的照片；现在尚未开始。', key: const Key('smart-follow-configuration-confirmed')),
           OutlinedButton(key: const Key('smart-follow-cancel-configuration'), onPressed: state.invalidate, child: const Text('撤销本次确认')),
         ],
       ],
