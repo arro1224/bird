@@ -376,7 +376,8 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     _refreshSubscription = refreshSignals?.listen((_) => _requestRefresh());
     _dataSubscription = dataChanges?.changes.listen((change) {
       if (change.affects(AppDataResource.copyPreferences)) _change(state);
-      if (change.affects(AppDataResource.device)) _requestRefresh();
+      // v10 问题 5：任务终态会释放设备占用，配置页必须重新拉设备可用性。
+      if (change.affects(AppDataResource.device) || change.affects(AppDataResource.jobs)) _requestRefresh();
     });
   }
 

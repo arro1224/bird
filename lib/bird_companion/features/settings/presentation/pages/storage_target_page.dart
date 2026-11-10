@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
+import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/settings/presentation/bird_settings_controller.dart';
@@ -21,19 +24,50 @@ class StorageTargetPage extends StatefulWidget {
   State<StorageTargetPage> createState() => _StorageTargetPageState();
 }
 
-class _StorageTargetPageState extends State<StorageTargetPage> {
+class _StorageTargetPageState extends State<StorageTargetPage> with WidgetsBindingObserver {
   List<StorageDeviceSummary>? _devices;
 
   /// 顶层推荐目标（§4.4 容错字段，审计 P1-3）；仅作展示预选，非默认盘。
   String? _recommendedTargetMediaId;
   Object? _error;
+  bool _refreshing = false, _listening = false;
+  StreamSubscription<AppDataChange>? _dataSubscription;
+  StreamSubscription<void>? _sessionSubscription;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // maybeOf 走 dependOnInheritedWidget（listen），不能在 initState 同步段执行，
     // 推迟到首帧后（与 copy_job_list_page 同一写法）。
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_listening) return;
+    final dependencies = BirdCompanionScope.maybeOf(context);
+    if (dependencies == null) return;
+    _listening = true;
+    // v10 问题 5：设备拓扑/任务终态/会话恢复都触发自动刷新，不再靠手动检测。
+    _dataSubscription = dependencies.dataChangeBus.changes
+        .where((change) => change.affects(AppDataResource.device) || change.affects(AppDataResource.jobs))
+        .listen((_) => _load());
+    _sessionSubscription = dependencies.copyJobRecovery.sessionRefreshes.listen((_) => _load());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_dataSubscription?.cancel());
+    unawaited(_sessionSubscription?.cancel());
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -43,20 +77,29 @@ class _StorageTargetPageState extends State<StorageTargetPage> {
       if (mounted) setState(() => _devices = const []);
       return;
     }
-    setState(() {
-      _devices = null;
-      _error = null;
-    });
+    // 刷新失败保留上一次成功的设备列表：热插拔瞬间不能把仍在场的源卡一起清空。
+    if (mounted) {
+      setState(() {
+        _refreshing = true;
+        _error = null;
+      });
+    }
     try {
       final result = await dependencies.copyRepository.devices();
       if (mounted) {
         setState(() {
           _devices = result.devices;
           _recommendedTargetMediaId = result.recommendedTargetMediaId;
+          _refreshing = false;
         });
       }
     } catch (error) {
-      if (mounted) setState(() => _error = error);
+      if (mounted) {
+        setState(() {
+          _error = error;
+          _refreshing = false;
+        });
+      }
     }
   }
 
@@ -87,12 +130,24 @@ class _StorageTargetPageState extends State<StorageTargetPage> {
               _ErrorCard(error: _error!),
               const SizedBox(height: AppSpacing.md),
             ],
+            if (_refreshing && _devices != null)
+              const Padding(
+                key: Key('storage-devices-refreshing'),
+                padding: EdgeInsets.only(bottom: AppSpacing.sm),
+                child: Row(
+                  children: [
+                    SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                    SizedBox(width: 8),
+                    Text('正在恢复设备…', style: TextStyle(color: AppColors.mutedInk, fontSize: 12)),
+                  ],
+                ),
+              ),
             if (_devices == null && _error == null)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 40),
                 child: Center(child: CircularProgressIndicator()),
               )
-            else if (_devices!.isEmpty)
+            else if (_devices?.isEmpty ?? false)
               const BirdSettingsCard(
                 child: Padding(
                   padding: EdgeInsets.all(AppSpacing.lg),
@@ -103,7 +158,7 @@ class _StorageTargetPageState extends State<StorageTargetPage> {
                 ),
               )
             else
-              for (final device in _devices!) ...[
+              for (final device in _devices ?? const <StorageDeviceSummary>[]) ...[
                 _DeviceRow(
                   key: Key('storage-device-${device.mediaId}'),
                   device: device,
@@ -254,7 +309,8 @@ class _DeviceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final used = device.capacityBytes <= 0 ? 0.0 : ((device.capacityBytes - device.freeBytes) / device.capacityBytes).clamp(0.0, 1.0);
+    final capacityKnown = device.capacityBytes > 0 && device.freeBytes <= device.capacityBytes;
+    final used = !capacityKnown ? 0.0 : ((device.capacityBytes - device.freeBytes) / device.capacityBytes).clamp(0.0, 1.0);
     final online = device.online;
     return BirdSettingsCard(
       borderColor: online ? null : AppColors.outline,
@@ -318,7 +374,7 @@ class _DeviceRow extends StatelessWidget {
               Row(
                 children: [
                   Text(
-                    '${_formatBytes(device.freeBytes)} 可用 / ${_formatBytes(device.capacityBytes)}',
+                    capacityKnown ? '${_formatBytes(device.freeBytes)} 可用 / ${_formatBytes(device.capacityBytes)}' : '正在读取设备容量…',
                     style: const TextStyle(fontSize: 12.5, color: AppColors.mutedInk),
                   ),
                   const SizedBox(width: AppSpacing.xs),

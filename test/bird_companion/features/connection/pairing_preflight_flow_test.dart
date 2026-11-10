@@ -394,6 +394,21 @@ void main() {
     expect(platform.bondsInitiated, 0);
   });
 
+  test('v10-9 bond disappears before preflight is bond-lost, not user rejection', () async {
+    final platform = PreflightBlePlatform()..bond = NativeBondState.bonding;
+    final timer = Timer(const Duration(milliseconds: 5), () => platform.bond = NativeBondState.notBonded);
+    addTearDown(timer.cancel);
+    final sink = _Sink();
+    await expectLater(
+      source(platform, diagnostics: sink).prepareConnection(advertisement, clientId: client),
+      errorCode(ProvisioningErrorCode.bleBondLost),
+    );
+    expect(platform.requests, isEmpty);
+    expect(platform.bondsInitiated, 0);
+    expect(sink.events.map((event) => event.eventType), contains('pairing_preflight_bond_disappeared'));
+    expect(sink.events.map((event) => event.resultCode), contains('bond_disappeared_before_preflight_without_rejection_evidence'));
+  });
+
   test('cancelling while waiting for fresh advertisement releases the scan', () async {
     final platform = PreflightBlePlatform()
       ..boardOld = true

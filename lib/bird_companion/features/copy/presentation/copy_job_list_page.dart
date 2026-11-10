@@ -299,6 +299,14 @@ class _JobListTile extends StatelessWidget {
                           style: const TextStyle(fontSize: 12.5, color: AppColors.inkMuted),
                         ),
                       ],
+                      if (job.state == CopyJobState.waitingForTarget || job.state == CopyJobState.waitingForSource) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          job.state == CopyJobState.waitingForTarget ? '目标 U 盘已断开，请插回原目标盘。' : '相机卡已断开，请插回原相机卡。',
+                          key: const Key('copy-job-list-waiting-hint'),
+                          style: const TextStyle(fontSize: 12, color: AppColors.pending),
+                        ),
+                      ],
                     ],
                   ),
                 ),

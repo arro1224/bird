@@ -316,6 +316,8 @@ class CopyJobDetail {
     this.startedAt,
     this.finishedAt,
     this.reviewExportEnabled,
+    this.errorCode,
+    this.errorMessage,
   });
 
   /// 唯一必填字段：没有任务 id 时该响应不可用，直接抛协议异常。
@@ -340,6 +342,11 @@ class CopyJobDetail {
 
   /// Frozen task configuration, never the phone's current preference.
   final bool? reviewExportEnabled;
+
+  /// 任务级失败原因（v10 问题 2：不可恢复时必须给出明确错误码）。
+  /// 后端字段未冻结，容错读取；缺失时不显示。
+  final String? errorCode;
+  final String? errorMessage;
 
   bool get isFullBackup => scopeWire == 'media_full_backup';
 
@@ -366,6 +373,8 @@ class CopyJobDetail {
       startedAt: ProtocolValidation.optionalDateTime(json, 'started_at'),
       finishedAt: ProtocolValidation.optionalDateTime(json, 'finished_at'),
       reviewExportEnabled: json['review_export'] is Map && (json['review_export'] as Map)['enabled'] is bool ? (json['review_export'] as Map)['enabled'] as bool : null,
+      errorCode: _string(json, 'error_code') ?? _string(json, 'failure_reason'),
+      errorMessage: _string(json, 'error_message') ?? _string(json, 'failure_message'),
     );
   }
 }
@@ -471,9 +480,20 @@ class CopyJobItem {
 
   /// UI 失败文案：优先后端可用 message，否则按错误码映射，
   /// 都没有时回退通用文案（不硬编码任何一种失败语义）。
+  ///
+  /// v10 问题 1：后端内部英文异常（如 `expected exactly one present
+  /// device...`）不得直接透出。只有含中文的人类可读文案才视为可用，
+  /// 纯英文/ASCII 诊断一律降级为本文件的错误码映射。
   String get failureText {
     final raw = errorMessage?.trim();
-    final usable = raw != null && raw.isNotEmpty && !raw.contains(RegExp(r'[/\\]')) && !raw.contains('Exception') && !raw.contains('http://') && !raw.contains('https://');
+    final usable =
+        raw != null &&
+        raw.isNotEmpty &&
+        RegExp(r'[\u4e00-\u9fff]').hasMatch(raw) &&
+        !raw.contains(RegExp(r'[/\\]')) &&
+        !raw.contains('Exception') &&
+        !raw.contains('http://') &&
+        !raw.contains('https://');
     if (usable) return raw;
     final code = errorCode;
     if (code == null || code.isEmpty) return '复制失败，可重试失败项。';

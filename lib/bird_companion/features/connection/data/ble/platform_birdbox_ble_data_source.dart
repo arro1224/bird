@@ -12,6 +12,7 @@ import 'package:aves/bird_companion/features/connection/data/ble/pairing_preflig
 import 'package:aves/bird_companion/features/connection/domain/pairing_preflight_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/request_id_factory.dart';
 import 'package:aves/bird_companion/features/connection/domain/ble_connection_diagnostics.dart';
+import 'package:aves/bird_companion/features/connection/domain/ble_pairing_evidence.dart';
 import 'package:aves/bird_companion/features/connection/domain/ble_scan_diagnostics.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
@@ -1516,7 +1517,26 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
       await run.wait(Future<void>.delayed(const Duration(milliseconds: 250)));
       _checkPublicRun(run);
       bond = await run.wait(_readNativeBond());
-      if (bond.state == NativeBondState.notBonded) throw const ProvisioningException(code: ProvisioningErrorCode.blePairingRejected, retryable: true);
+      if (bond.state == NativeBondState.notBonded) {
+        // v10 问题 9：系统可能在预检之前自行发起配对。没有本轮预检请求/结果、
+        // 也没有原生 createBond 证据时，bond 消失不等于用户拒绝。
+        final evidence = BlePairingEvidence(
+          preflightRequested: run.preflightRequested,
+          preflightResultReceived: run.preflightResultReceived,
+          createBondInvoked: run.createBondInvoked,
+        );
+        await _recordConnectionDiagnostic(
+          eventType: 'pairing_preflight_bond_disappeared',
+          operationName: 'pairing_preflight',
+          requestId: run.id,
+          resultCode: evidence.bondDisappearedDiagnostic,
+        );
+        throw ProvisioningException(
+          code: evidence.bondDisappearedCode,
+          retryable: true,
+          diagnosticMessage: evidence.bondDisappearedDiagnostic,
+        );
+      }
     }
     return bond;
   }
@@ -1564,6 +1584,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
     List<Uint8List> packets = const [];
     Timer? timer;
     _publicRequest = pending;
+    run.preflightRequested = true;
     _publicRequestIds.add(request.requestId);
     if (_publicRequestIds.length > 32) _publicRequestIds.remove(_publicRequestIds.first);
     try {
@@ -1580,6 +1601,7 @@ final class PlatformBirdBoxBleDataSource implements BirdBoxBleDataSource, BleSca
         if (!pending.response.isCompleted) pending.response.completeError(const ProvisioningException(code: ProvisioningErrorCode.bleCommandResponseTimeout, retryable: true));
       });
       final result = await run.wait(pending.response.future);
+      run.preflightResultReceived = true;
       await _recordConnectionDiagnostic(
         eventType: 'pairing_preflight_result',
         operationName: 'pairing_preflight',
@@ -2422,6 +2444,12 @@ final class _PublicPreparation {
   final String id;
   BlePairingStage stage = BlePairingStage.preparing;
   Object? error;
+
+  /// v10 问题 9 的证据位：本轮是否真的发出过预检请求/收到结果，以及原生
+  /// 是否主动调用过 createBond。仅用于错误归因，不改变配对时序。
+  bool preflightRequested = false;
+  bool preflightResultReceived = false;
+  bool createBondInvoked = false;
   final _cancelled = Completer<Object>();
   void cancel(Object cause) {
     error ??= cause;

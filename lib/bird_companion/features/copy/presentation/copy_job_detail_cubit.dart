@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
@@ -112,7 +113,7 @@ CopyJobDeviceSnapshot? _retainSnapshot(CopyJobDeviceSnapshot? previous, CopyJobD
 
 /// 复制任务详情状态机：详情 + 增量事件 + 失败项分页 + 报告 + 动作。
 class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
-  CopyJobDetailCubit(this._repository, {required this.copyJobId, this.deviceId, this.activeJobs, this.canRead, this.diagnostics, this.detailReader, this.deviceReader, Stream<void>? sessionRefreshes}) : super(const CopyJobDetailState()) {
+  CopyJobDetailCubit(this._repository, {required this.copyJobId, this.deviceId, this.activeJobs, this.canRead, this.diagnostics, this.detailReader, this.deviceReader, this.dataChanges, this.deviceNamesInterval = const Duration(seconds: 10), Stream<void>? sessionRefreshes, this.sessionRecovering, this.sessionWrongDevice, this.onReconnect}) : super(const CopyJobDetailState()) {
     _sessionSubscription = sessionRefreshes?.listen((_) => sessionChanged());
   }
 
@@ -124,9 +125,21 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
   final CopyRequestDiagnostics? diagnostics;
   final Future<CopyJobDetail> Function(String trigger)? detailReader;
   final Future<CopyDeviceList> Function()? deviceReader;
+
+  /// v10 问题 5：任务终态后通知设备/配置页刷新占用与可用性。
+  final AppDataChangeBus? dataChanges;
+
+  /// 设备名/在线状态按节流刷新，避免每个 2 秒轮询都打存储接口。
+  final Duration deviceNamesInterval;
+  DateTime? _lastDeviceNamesAt;
+
+  /// v10 问题 4：会话正在重连（同一台盒子）时先显示"正在恢复"，
+  /// 不立刻报"请连接原盒子"。
+  final bool Function()? sessionRecovering;
+  final bool Function()? sessionWrongDevice;
+  final Future<bool> Function()? onReconnect;
   Future<void>? _deviceNamesRead;
   int? _deviceNamesGeneration;
-  bool _deviceNamesLoaded = false;
   Completer<CopyDeviceList>? _deviceNamesCancellation;
   StreamSubscription<void>? _sessionSubscription;
   Timer? _timer;
@@ -154,6 +167,10 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
 
   bool get _readable => canRead?.call() ?? true;
   bool get deviceAvailable => _readable;
+
+  /// 当前不可读但会话仍在验证同一台盒子：属于暂时的恢复中，不是错误。
+  bool get recovering => !_readable && (sessionRecovering?.call() ?? false);
+  bool get wrongDevice => sessionWrongDevice?.call() ?? false;
   bool _current(int generation) => !isClosed && generation == _loadGeneration && _readable;
 
   bool get needsTerminalRefresh =>
@@ -184,15 +201,52 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
     if (isClosed) return;
     if (!_readable) {
       ++_loadGeneration;
-      _deviceNamesLoaded = false;
+      _lastDeviceNamesAt = null;
       _deviceNamesCancellation?.complete(const CopyDeviceList(devices: []));
       _deviceNamesCancellation = null;
       _timer?.cancel();
-      emit(state.copyWith(loading: false, acting: false, devices: const [], error: StateError('请连接创建此任务的盒子后继续读取。')));
+      // v10 问题 4：重连中不把"请连接原盒子"当错误弹出，保留已加载详情与
+      // 任务快照设备名，由 UI 显示"正在恢复连接/同步任务状态"。
+      emit(
+        state.copyWith(
+          loading: false,
+          acting: false,
+          devices: const [],
+          error: recovering ? null : StateError(wrongDevice ? '当前连接的不是创建此任务的盒子。' : '请连接创建此任务的盒子后继续读取。'),
+        ),
+      );
     } else if (_foreground && _automatic) {
       _trigger = 'session_recovery';
       unawaited(load());
     }
+  }
+
+  /// v10 问题 4：重试按钮必须真的触发恢复，并给出加载/成功/失败反馈。
+  /// 会话仍不可读时先重连原盒子；恢复后自动重新读取任务。
+  Future<void> retryConnection() async {
+    if (isClosed || state.acting) return;
+    if (_readable) return load();
+    emit(state.copyWith(loading: true, acting: false, clearError: true));
+    var connected = false;
+    Object? failure;
+    try {
+      connected = await onReconnect?.call() ?? false;
+    } catch (error) {
+      failure = error;
+    }
+    if (isClosed) return;
+    if (connected && _readable) {
+      emit(state.copyWith(loading: false, clearError: true));
+      _trigger = 'retry_connection';
+      await load();
+      return;
+    }
+    emit(
+      state.copyWith(
+        loading: false,
+        error: failure ?? StateError('仍无法连接创建此任务的盒子，请确认手机与盒子在同一网络后重试。'),
+      ),
+    );
   }
 
   Duration _backoff(int failures) => Duration(
@@ -263,9 +317,14 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
       });
       final detail = detailReader == null ? await request() : await detailReader!(_trigger);
       if (!_current(generation)) return;
+      final wasTerminal = state.detail?.state.isTerminal ?? false;
       _detailFailures = 0;
       emit(state.copyWith(detail: detail, loading: false, clearError: true, jobMissing: false, clearReport: !detail.state.isTerminal));
-      if (full || !_deviceNamesLoaded) unawaited(refreshDeviceNames());
+      if (!wasTerminal && detail.state.isTerminal) {
+        // v10 问题 5：任务完成/失败/取消后释放设备占用并让配置/设备页刷新。
+        dataChanges?.publish({AppDataResource.jobs, AppDataResource.device}, reason: 'copy_job_terminal');
+      }
+      unawaited(refreshDeviceNames());
       unawaited(_remember(detail));
     } catch (error) {
       if (!_current(generation)) return;
@@ -314,7 +373,7 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
     _reportAttempts = 0;
     _failureAttempts = 0;
     _terminalEventAttempts = 0;
-    unawaited(refreshDeviceNames());
+    unawaited(refreshDeviceNames(force: true));
     await Future.wait([
       _readEvents(_loadGeneration, full: false),
       if (state.isTerminal) _loadReportAndFailures(_loadGeneration),
@@ -323,10 +382,13 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
 
   /// Optional names are independent of detail/events/report/actions. A slow or
   /// failed storage endpoint must never block the task loop.
-  Future<void> refreshDeviceNames() {
+  Future<void> refreshDeviceNames({bool force = false}) {
     if (deviceReader == null || isClosed || !_readable) return Future.value();
+    final now = DateTime.now();
+    if (!force && _lastDeviceNamesAt != null && now.difference(_lastDeviceNamesAt!) < deviceNamesInterval) return Future.value();
     final generation = _loadGeneration;
     if (_deviceNamesRead != null && _deviceNamesGeneration == generation) return _deviceNamesRead!;
+    _lastDeviceNamesAt = now;
     _deviceNamesGeneration = generation;
     final cancellation = Completer<CopyDeviceList>();
     _deviceNamesCancellation = cancellation;
@@ -342,7 +404,6 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
       // Keep frozen task snapshots and task controls available.
     } finally {
       if (_deviceNamesGeneration == generation) {
-        _deviceNamesLoaded = true;
         _deviceNamesRead = null;
         _deviceNamesGeneration = null;
         _deviceNamesCancellation = null;
@@ -519,18 +580,34 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
       await load();
     } on Object catch (error) {
       if (!_current(generation)) return;
-      final message = UserMessageMapper.fromError(error);
       final conflict = error is ApiException && error.code == 'COPY_STATE_VERSION_CONFLICT';
+      // v10 问题 12：任务恢复必须绑定原介质，提示里不得出现"选择其他目标设备"。
+      final message = _actionFailureText(error);
       emit(
         state.copyWith(
           acting: false,
-          notice: conflict ? '任务状态已更新，已刷新' : '${message.title}：${message.message}',
+          notice: conflict ? '任务状态已更新，已刷新' : message,
         ),
       );
       if (conflict) await load();
     } finally {
       if (_current(generation)) _schedule();
     }
+  }
+
+  String _actionFailureText(Object error) {
+    final code = error is ApiException ? error.code : null;
+    final text = switch (code) {
+      'COPY_TARGET_NOT_PRESENT' => '等待原目标盘：请插回同一目标设备后再继续，不会改用其他盘。',
+      'COPY_SOURCE_NOT_PRESENT' => '等待原相机卡：请插回原相机卡后再继续，不会改用其他源设备。',
+      'COPY_STORAGE_UNAVAILABLE' => '正在恢复存储设备，原任务已保留；请稍后重试。',
+      'COPY_TARGET_BUSY' || 'COPY_TARGET_OCCUPIED' => '原目标盘正被其他任务占用，任务结束后可继续。',
+      _ => null,
+    };
+    if (text != null) return text;
+    final message = UserMessageMapper.fromError(error);
+    final suffix = code == null || message.message.contains(code) ? '' : '（$code）';
+    return '${message.title}：${message.message}$suffix';
   }
 
   /// 合并一页事件：按 seq 去重升序。缺口检测由调用方 [pollTick] 处理

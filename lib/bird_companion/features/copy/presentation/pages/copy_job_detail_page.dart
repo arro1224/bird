@@ -20,13 +20,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class CopyJobDetailPage extends StatefulWidget {
-  const CopyJobDetailPage({super.key, required this.copyJobId, this.deviceId, this.createdJob, this.repository, this.deviceReader});
+  const CopyJobDetailPage({super.key, required this.copyJobId, this.deviceId, this.createdJob, this.repository, this.deviceReader, this.canRead, this.sessionRecovering, this.sessionWrongDevice, this.onReconnect});
 
   final String copyJobId;
   final String? deviceId;
   final CopyJobSummary? createdJob;
   final CopyJobRepository? repository;
   final Future<CopyDeviceList> Function()? deviceReader;
+
+  /// 测试/嵌入方可注入；生产从 DeviceSessionCubit 推导。
+  final bool Function()? canRead;
+  final bool Function()? sessionRecovering;
+  final bool Function()? sessionWrongDevice;
+  final Future<bool> Function()? onReconnect;
 
   @override
   State<CopyJobDetailPage> createState() => _CopyJobDetailPageState();
@@ -56,11 +62,21 @@ class _CopyJobDetailPageState extends State<CopyJobDetailPage> {
         copyJobId: jobId,
         deviceId: deviceId,
         deviceReader: widget.deviceReader ?? dependencies?.copyRepository.devices,
+        dataChanges: dependencies?.dataChangeBus,
         activeJobs: dependencies?.activeCopyJobs,
         diagnostics: dependencies?.copyDiagnostics,
         detailReader: dependencies == null ? null : (trigger) => dependencies.copyJobRecovery.readJob(deviceId ?? '', jobId, trigger: trigger),
-        canRead: dependencies == null ? null : () => deviceId != null && dependencies.copyJobRecovery.canRead(deviceId),
+        canRead: widget.canRead ?? (dependencies == null ? null : () => deviceId != null && dependencies.copyJobRecovery.canRead(deviceId)),
         sessionRefreshes: dependencies?.copyJobRecovery.sessionRefreshes,
+        sessionRecovering: widget.sessionRecovering ?? (dependencies == null ? null : () {
+          final session = dependencies.deviceSessionCubit.state;
+          return session.isVerifying && (deviceId == null || session.device?.id == deviceId);
+        }),
+        sessionWrongDevice: widget.sessionWrongDevice ?? (dependencies == null ? null : () {
+          final session = dependencies.deviceSessionCubit.state;
+          return session.isConnected && deviceId != null && session.device?.id != deviceId;
+        }),
+        onReconnect: widget.onReconnect ?? dependencies?.deviceSessionCubit.verifySavedSession,
       ),
       child: _CopyJobDetailView(createdJob: widget.createdJob),
     );
@@ -115,35 +131,50 @@ class _CopyJobDetailViewState extends State<_CopyJobDetailView> with WidgetsBind
               }
             },
             builder: (context, state) {
+              final recovering = cubit.recovering;
               if (state.detail == null) {
                 if (state.loading && state.error == null) return const Center(child: CircularProgressIndicator());
                 final error = state.error;
+                final wrongDevice = cubit.wrongDevice;
                 return _FirstLoadErrorView(
                   jobId: cubit.copyJobId,
-                  title: !cubit.deviceAvailable
-                      ? '请连接原盒子'
+                  recovering: recovering,
+                  title: recovering
+                      ? '正在恢复连接/同步任务状态'
+                      : !cubit.deviceAvailable
+                      ? wrongDevice
+                            ? '当前连接的是另一个盒子'
+                            : '请连接原盒子'
                       : state.jobMissing
                       ? '任务已不存在或已被清理'
                       : error == null
                       ? '正在读取任务'
                       : UserMessageMapper.fromError(error).title,
-                  message: !cubit.deviceAvailable
-                      ? '连接创建此任务的盒子后，将自动继续读取进度。'
+                  message: recovering
+                      ? '复制可能仍在盒子端继续，正在重新连接并同步最新进度。'
+                      : !cubit.deviceAvailable
+                      ? wrongDevice
+                            ? '检测到当前连接的不是创建此任务的盒子，请切回原盒子后重试。'
+                            : '连接创建此任务的盒子后，将自动继续读取进度。'
                       : error == null
                       ? '正在读取盒子上的任务状态。'
                       : UserMessageMapper.fromError(error).message,
-                  automatic: !state.jobMissing && cubit.deviceAvailable,
-                  onRetry: cubit.load,
+                  automatic: recovering || (!state.jobMissing && cubit.deviceAvailable),
+                  onRetry: cubit.retryConnection,
                   createdJob: widget.createdJob,
                 );
               }
               return _DetailView(
                 state: state,
                 deviceAvailable: cubit.deviceAvailable,
+                recovering: recovering,
                 onRefresh: cubit.load,
+                onRetryConnection: cubit.retryConnection,
                 onRetrySupplemental: cubit.retrySupplemental,
                 onAction: cubit.act,
                 onLoadMoreFailed: cubit.loadMoreFailedItems,
+                sourceMissing: _knownOffline(state.detail!.sourceDevice, state.sourceNameSnapshot, state.devices),
+                targetMissing: _knownOffline(state.detail!.targetDevice, state.targetNameSnapshot, state.devices),
               );
             },
           ),
@@ -153,18 +184,76 @@ class _CopyJobDetailViewState extends State<_CopyJobDetailView> with WidgetsBind
   }
 }
 
+/// 只有设备列表本次确实读到、且快照身份不在线时，才判定原设备缺失。
+/// 列表为空表示读取失败/尚未返回，不能据此误报"已拔出"。
+bool _knownOffline(CopyJobDeviceSnapshot? snapshot, CopyJobDeviceSnapshot? retained, List<StorageDeviceSummary> devices) {
+  final id = retained?.mediaId ?? snapshot?.mediaId;
+  if (id == null || devices.isEmpty) return false;
+  return devices.where((device) => device.mediaId == id).firstOrNull?.online != true;
+}
+
+/// v10 问题 4：回前台/会话恢复时先显示恢复中，不闪红条。
+class _RecoveringNotice extends StatelessWidget {
+  const _RecoveringNotice({this.onRetry});
+
+  final Future<void> Function()? onRetry;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('copy-job-recovering'),
+    width: double.infinity,
+    margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: AppColors.amberLight,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: AppColors.warning.withValues(alpha: .4)),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.warning),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('正在恢复连接/同步任务状态', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.ink)),
+              const SizedBox(height: 2),
+              const Text('复制可能仍在盒子端继续，恢复后会自动同步最新进度。', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+              if (onRetry != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    key: const Key('copy-job-recovering-retry'),
+                    onPressed: onRetry,
+                    child: const Text('重试连接'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Scheduling belongs to the Cubit, so loading/error rebuilds cannot reset it.
 class _FirstLoadErrorView extends StatelessWidget {
-  const _FirstLoadErrorView({required this.jobId, required this.title, required this.message, required this.automatic, required this.onRetry, this.createdJob});
+  const _FirstLoadErrorView({required this.jobId, required this.title, required this.message, required this.automatic, required this.onRetry, this.createdJob, this.recovering = false});
   final String jobId, title, message;
-  final bool automatic;
+  final bool automatic, recovering;
   final Future<void> Function() onRetry;
   final CopyJobSummary? createdJob;
 
   @override
   Widget build(BuildContext context) => ListView(
     children: [
-      ErrorNotice(title: title, message: message, onRetry: onRetry),
+      if (recovering) _RecoveringNotice(onRetry: onRetry) else ErrorNotice(title: title, message: message, onRetry: onRetry),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
         child: Text('任务编号 $jobId', style: const TextStyle(color: AppColors.inkMuted, fontSize: 12.5)),
@@ -185,10 +274,21 @@ class _FirstLoadErrorView extends StatelessWidget {
 }
 
 class _DetailView extends StatelessWidget {
-  const _DetailView({required this.state, required this.deviceAvailable, required this.onRefresh, required this.onRetrySupplemental, required this.onAction, required this.onLoadMoreFailed});
+  const _DetailView({
+    required this.state,
+    required this.deviceAvailable,
+    required this.recovering,
+    required this.onRefresh,
+    required this.onRetryConnection,
+    required this.onRetrySupplemental,
+    required this.onAction,
+    required this.onLoadMoreFailed,
+    this.sourceMissing = false,
+    this.targetMissing = false,
+  });
   final CopyJobDetailState state;
-  final bool deviceAvailable;
-  final Future<void> Function() onRefresh, onRetrySupplemental;
+  final bool deviceAvailable, recovering, sourceMissing, targetMissing;
+  final Future<void> Function() onRefresh, onRetryConnection, onRetrySupplemental;
   final ValueChanged<CopyAllowedAction> onAction;
   final VoidCallback onLoadMoreFailed;
 
@@ -202,6 +302,7 @@ class _DetailView extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
           _WaitingBanner(state: detail.state),
+          _JobFailureNotice(detail: detail),
           _StateHeader(detail: detail, state: state),
           if (detail.state.isTerminal && deviceAvailable && BirdCompanionScope.maybeOf(context) != null)
             Builder(
@@ -216,7 +317,9 @@ class _DetailView extends StatelessWidget {
                 );
               },
             ),
-          if (state.error != null)
+          if (recovering)
+            _RecoveringNotice(onRetry: onRetryConnection)
+          else if (state.error != null)
             ErrorNotice(
               title: state.jobMissing
                   ? '任务已不存在或已被清理'
@@ -224,7 +327,7 @@ class _DetailView extends StatelessWidget {
                   ? '暂时无法读取最新进度'
                   : '请连接原盒子',
               message: '以上为最后一次读取的状态。连接创建此任务的盒子后可继续读取。',
-              onRetry: onRefresh,
+              onRetry: deviceAvailable ? onRefresh : onRetryConnection,
             ),
           _ProgressCard(detail: detail, report: state.report),
           const SizedBox(height: 12),
@@ -234,7 +337,13 @@ class _DetailView extends StatelessWidget {
           const SizedBox(height: 12),
           _DeviceSnapshotCard(detail: detail, report: state.report, devices: state.devices, sourceSnapshot: state.sourceNameSnapshot, targetSnapshot: state.targetNameSnapshot),
           const SizedBox(height: 12),
-          _ActionsSection(detail: detail, acting: state.acting || !deviceAvailable || state.jobMissing, onAction: onAction),
+          _ActionsSection(
+            detail: detail,
+            acting: state.acting || !deviceAvailable || state.jobMissing,
+            onAction: onAction,
+            sourceMissing: sourceMissing,
+            targetMissing: targetMissing,
+          ),
           if (state.eventsError != null || state.reportError != null || state.failedItemsError != null)
             ErrorNotice(
               title: '部分任务信息暂不可用',
@@ -304,6 +413,45 @@ class _WaitingBanner extends StatelessWidget {
   }
 }
 
+/// v10 问题 2：不可恢复任务必须给出明确错误码，不把原因吞掉。
+class _JobFailureNotice extends StatelessWidget {
+  const _JobFailureNotice({required this.detail});
+
+  final CopyJobDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final code = detail.errorCode?.trim();
+    final raw = detail.errorMessage?.trim();
+    final message = raw != null && RegExp(r'[\u4e00-\u9fff]').hasMatch(raw) ? raw : null;
+    if ((code == null || code.isEmpty) && message == null) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.dangerSoft,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.danger.withValues(alpha: .35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            code == null || code.isEmpty ? '任务失败原因' : '任务失败原因（$code）',
+            key: const Key('copy-job-failure-reason'),
+            style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+          if (message != null) ...[
+            const SizedBox(height: 4),
+            Text(message, style: const TextStyle(fontSize: 12.5, color: AppColors.ink)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _StateHeader extends StatelessWidget {
   const _StateHeader({required this.detail, required this.state});
 
@@ -365,9 +513,10 @@ class _ProgressCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final frozen = detail.state.isTerminal ? report : null;
-    final progress = frozen == null ? CopyTaskProgress.fromStats(detail.stats, detail.state) : CopyTaskProgress.fromReport(frozen);
-    final timing = CopyTaskTiming.forTask(detail, frozen);
+    final terminal = detail.state.isTerminal;
+    final reportHasCounts = report != null && [report!.actualFileCount, report!.copiedFiles, report!.failedFiles, report!.skippedFiles, report!.notApplicableFiles].any((value) => value != null);
+    final progress = terminal && reportHasCounts ? CopyTaskProgress.fromReport(report!) : CopyTaskProgress.fromStats(detail.stats, detail.state);
+    final timing = CopyTaskTiming.forTask(detail, terminal ? report : null);
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: TaskSurface(
@@ -387,7 +536,15 @@ class _ProgressCard extends StatelessWidget {
               style: const TextStyle(fontSize: 12.5, color: AppColors.inkMuted),
             ),
             if (progress.total != null) Text('盒子文件总数：${progress.total}', style: const TextStyle(fontSize: 12, color: AppColors.inkMuted)),
-            if (frozen == null && progress.copiedBytes != null) Text('已复制字节：${formatBytes(progress.copiedBytes!)}'),
+            if (terminal && progress.unprocessed != null && progress.unprocessed != 0)
+              Text(
+                progress.unprocessed! > 0
+                    ? '统计未守恒：${progress.unprocessed} 项未归类（已处理 ${progress.processed} / 总数 ${progress.total}）'
+                    : '统计异常：已处理数超过盒子文件总数',
+                key: const Key('copy-job-unclassified'),
+                style: const TextStyle(fontSize: 12, color: AppColors.danger),
+              ),
+            if (!terminal && progress.copiedBytes != null) Text('已复制字节：${formatBytes(progress.copiedBytes!)}'),
             const SizedBox(height: 6),
             Text('耗时（盒子统计）：${timing.elapsedLabel}', key: const Key('copy-job-elapsed')),
             Text('速度（盒子统计）：${timing.speedLabel}', key: const Key('copy-job-speed')),
@@ -453,11 +610,27 @@ class _ActionsSection extends StatelessWidget {
     required this.detail,
     required this.acting,
     required this.onAction,
+    this.sourceMissing = false,
+    this.targetMissing = false,
   });
 
   final CopyJobDetail detail;
   final bool acting;
+  final bool sourceMissing, targetMissing;
   final ValueChanged<CopyAllowedAction> onAction;
+
+  /// v10 问题 12：原盘缺失时不得诱导用户"继续"或改用其他盘。
+  bool _enabled(CopyAllowedAction action) {
+    if (acting) return false;
+    if (action == CopyAllowedAction.resume && (sourceMissing || targetMissing)) return false;
+    return true;
+  }
+
+  String? get _missingHint {
+    if (sourceMissing) return '等待原相机卡：请插回原相机卡后再继续，当前任务不会改用其他源设备。';
+    if (targetMissing) return '等待原目标盘：请插回同一目标设备后再继续，不会自动更换其他目标盘。';
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -474,7 +647,7 @@ class _ActionsSection extends StatelessWidget {
               for (final action in detail.allowedActions)
                 _ActionButton(
                   action: action,
-                  enabled: !acting,
+                  enabled: _enabled(action),
                   onAction: onAction,
                 ),
             ],
@@ -482,6 +655,23 @@ class _ActionsSection extends StatelessWidget {
           if (acting) ...[
             const SizedBox(height: 10),
             const Text('正在发送指令…', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+          ],
+          if (_missingHint != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              key: const Key('copy-job-missing-device-hint'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.usb_off_outlined, size: 16, color: AppColors.warning),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _missingHint!,
+                    style: const TextStyle(fontSize: 12.5, color: AppColors.pending, height: 1.35),
+                  ),
+                ),
+              ],
+            ),
           ],
         ],
       ),

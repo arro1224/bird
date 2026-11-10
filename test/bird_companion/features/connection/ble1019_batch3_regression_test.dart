@@ -100,17 +100,19 @@ void main() {
     expect(platform.publicReleaseOwners, isEmpty);
   });
 
-  test('write-time external bonding rejected by system never starts a fallback bond', () async {
+  test('write-time external bonding rejected by system never starts a fallback bond or blames the user', () async {
     final platform = PreflightBlePlatform();
     platform.beforePublicWrite = () {
       platform.beforePublicWrite = null;
       platform.bond = NativeBondState.bonding;
     };
     final ble = source(platform);
-    final rejected = expectLater(prepare(ble), code(ProvisioningErrorCode.blePairingRejected));
+    // v10 问题 9：预检写入前系统已自行开始配对，bond 消失没有预检结果/主动
+    // createBond 证据，按绑定丢失（可重试）处理，不归类为用户拒绝。
+    final failed = expectLater(prepare(ble), code(ProvisioningErrorCode.bleBondLost));
     await until(() => platform.publicWriteOwners.isNotEmpty);
     platform.bond = NativeBondState.notBonded;
-    await rejected;
+    await failed;
     expect(platform.bondsInitiated, 0);
     expect(platform.protectedWrites, 0);
     expect(platform.requests, isEmpty);

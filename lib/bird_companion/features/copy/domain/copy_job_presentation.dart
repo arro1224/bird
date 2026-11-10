@@ -12,24 +12,47 @@ class CopyTaskProgress {
   factory CopyTaskProgress.fromStats(CopyJobStats? stats, CopyJobState state) {
     if (stats == null) return const CopyTaskProgress();
     int? count(String key, int value) => stats.knownFileCounts.contains(key) ? _count(value) : null;
+    final total = count('total_files', stats.totalFiles);
+    final copied = count('copied_files', stats.copiedFiles);
+    final failed = count('failed_files', stats.failedFiles);
+    final skipped = count('skipped_files', stats.skippedFiles);
+    final notApplicable = count('not_applicable_files', stats.notApplicableFiles);
+    final processed = [copied, failed, skipped, notApplicable].any((value) => value == null) ? null : copied! + failed! + skipped! + notApplicable!;
     var percent = stats.effectiveProgressPercent;
-    // Do not display a stale copied-only 80% alongside an ended task.
-    if (state.isTerminal && percent != 1) percent = null;
+    if (state.isTerminal) {
+      // v10 问题 11：终态已处理数达到盒子文件总数时显示 100%；
+      // 否则隐藏过期分数，避免"已完成却显示 80%"。计数来自后端，不做本地累加。
+      if (percent != 1) percent = null;
+      if (percent == null && total != null && processed != null && processed >= total && total > 0) percent = 1;
+    }
     return CopyTaskProgress(
-      total: count('total_files', stats.totalFiles),
-      copied: count('copied_files', stats.copiedFiles),
-      failed: count('failed_files', stats.failedFiles),
-      skipped: count('skipped_files', stats.skippedFiles),
-      notApplicable: count('not_applicable_files', stats.notApplicableFiles),
+      total: total,
+      copied: copied,
+      failed: failed,
+      skipped: skipped,
+      notApplicable: notApplicable,
       copiedBytes: stats.copiedBytesKnown ? _count(stats.copiedBytes) : null,
       percent: percent,
     );
   }
 
-  factory CopyTaskProgress.fromReport(CopyReport report) =>
-      CopyTaskProgress(total: _count(report.actualFileCount), copied: _count(report.copiedFiles), failed: _count(report.failedFiles), skipped: _count(report.skippedFiles), notApplicable: _count(report.notApplicableFiles));
+  factory CopyTaskProgress.fromReport(CopyReport report) {
+    final total = _count(report.actualFileCount);
+    final copied = _count(report.copiedFiles);
+    final failed = _count(report.failedFiles);
+    final skipped = _count(report.skippedFiles);
+    final notApplicable = _count(report.notApplicableFiles);
+    final processed = [copied, failed, skipped, notApplicable].any((value) => value == null) ? null : copied! + failed! + skipped! + notApplicable!;
+    // 终态报告：处理总数达到实际文件数即 100%（含失败/跳过/不适用）。
+    final percent = total != null && processed != null && total > 0 && processed >= total ? 1.0 : null;
+    return CopyTaskProgress(total: total, copied: copied, failed: failed, skipped: skipped, notApplicable: notApplicable, percent: percent);
+  }
 
   int? get processed => [copied, failed, skipped, notApplicable].any((count) => count == null) ? null : copied! + failed! + skipped! + notApplicable!;
+
+  /// 未归类项 = 盒子文件总数 − 已处理数（v10 问题 2 统计守恒检查）。
+  int? get unprocessed => total == null || processed == null ? null : total! - processed!;
+
   String summary(CopyJobState state) {
     final verb = switch (state.wire) {
       'completed' || 'completed_with_errors' => '处理完成',
@@ -71,12 +94,16 @@ String formatBytes(num bytes) {
 String copyTaskDeviceName({required bool source, CopyJobDeviceSnapshot? snapshot, CopyJobDeviceSnapshot? reportSnapshot, List<StorageDeviceSummary> devices = const []}) {
   if (snapshot?.mediaId != null && reportSnapshot?.mediaId != null && snapshot!.mediaId != reportSnapshot!.mediaId) reportSnapshot = null;
   final frozen = snapshot?.presentationLabel ?? reportSnapshot?.presentationLabel;
-  if (frozen != null) return frozen;
   final id = snapshot?.mediaId ?? reportSnapshot?.mediaId;
-  final online = devices.where((device) => id != null && device.mediaId == id && device.online).firstOrNull;
+  final current = id == null ? null : devices.where((device) => device.mediaId == id).firstOrNull;
+  // v10 问题 12：目标盘拔出后仍要显示任务快照名，并标注（已拔出）。
+  // 设备列表为空表示本次没读到（不是"设备不存在"），不得据此误报拔出。
+  final offline = id != null && devices.isNotEmpty && current?.online != true;
+  if (frozen != null) return offline ? '$frozen（已拔出）' : frozen;
+  final online = current?.online == true ? current : null;
   if (online != null) {
     final label = CopyJobDeviceSnapshot(mediaId: online.mediaId, displayName: online.presentationName).presentationLabel;
-    if (label != null) return label;
+    if (label != null) return offline ? '$label（已拔出）' : label;
   }
   return '${source ? '源' : '目标'}存储设备（名称暂不可用）';
 }

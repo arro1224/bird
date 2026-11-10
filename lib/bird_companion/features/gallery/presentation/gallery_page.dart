@@ -34,6 +34,7 @@ import 'package:aves/bird_companion/features/gallery/presentation/widgets/batch_
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/album_history_entry.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/filter_sheet.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/album_add_device_button.dart';
+import 'package:aves/bird_companion/features/gallery/presentation/widgets/gallery_candidate_notice.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/gallery_search_dialog.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/photo_masonry_grid.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/photo_tile.dart';
@@ -723,12 +724,14 @@ class _GalleryHeader extends StatelessWidget {
             ],
             if (rootMode) ...[
               if (state.fromCache) ...[
-                _OfflineSnapshotNotice(
+                GalleryCandidateNotice(
                   cachedAt: state.cachedAt,
                   loadedCount: state.items.length,
                   totalCount: totalCount,
                   resultComplete: state.resultComplete,
                   offline: !session.isConnected,
+                  onReconnect: () => openReconnectConnection(context),
+                  onRefresh: () => context.read<GalleryCubit>().refresh(query: state.query),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -751,12 +754,14 @@ class _GalleryHeader extends StatelessWidget {
               const SizedBox(height: 8),
             ] else ...[
               if (state.fromCache) ...[
-                _OfflineSnapshotNotice(
+                GalleryCandidateNotice(
                   cachedAt: state.cachedAt,
                   loadedCount: state.items.length,
                   totalCount: totalCount,
                   resultComplete: state.resultComplete,
                   offline: !session.isConnected,
+                  onReconnect: () => openReconnectConnection(context),
+                  onRefresh: () => context.read<GalleryCubit>().refresh(query: state.query),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -1058,74 +1063,6 @@ class _AlbumBatchHeading extends StatelessWidget {
     if (date == null || date.year < 2000 || name.contains('${date.year}')) return name;
     String two(int value) => value.toString().padLeft(2, '0');
     return '${date.year}.${two(date.month)}.${two(date.day)} $name';
-  }
-}
-
-class _OfflineSnapshotNotice extends StatelessWidget {
-  const _OfflineSnapshotNotice({
-    this.cachedAt,
-    required this.loadedCount,
-    this.totalCount,
-    required this.resultComplete,
-    required this.offline,
-  });
-
-  final DateTime? cachedAt;
-  final int loadedCount;
-  final int? totalCount;
-  final bool resultComplete;
-  final bool offline;
-
-  @override
-  Widget build(BuildContext context) {
-    final savedAt = cachedAt == null ? '' : ' · 保存于 ${_time(cachedAt!)}';
-    final completeness = resultComplete
-        ? '已使用完整候选缓存筛选'
-        : totalCount == null
-        ? '仅在已缓存照片中查找，结果可能不完整'
-        : '仅在已缓存的 $loadedCount / $totalCount 张照片中查找，结果可能不完整';
-    final color = offline || !resultComplete ? AppColors.danger : AppColors.brand;
-    final background = offline || !resultComplete ? AppColors.dangerSoft : AppColors.brandSoft;
-    final message = offline ? '设备暂时无法连接；$completeness$savedAt' : '使用本地缓存加速筛选；$completeness$savedAt';
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: background,
-        border: Border.all(color: color.withValues(alpha: .25)),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Icon(offline ? Icons.link_off_rounded : Icons.offline_bolt_rounded, color: color),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(message, style: TextStyle(color: color)),
-              ),
-            ],
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () => openReconnectConnection(context),
-              child: const Text('重新连接'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _time(DateTime value) {
-    final local = value.toLocal();
-    return '${local.month}月${local.day}日 ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 }
 

@@ -162,10 +162,10 @@ void main() {
     });
   }
 
-  test('four outcomes counted consistently; no copied-only 80% fallback', () {
+  test('four outcomes counted consistently; terminal reaches processed total as 100%', () {
     final data = CopyTaskProgress.fromStats(stats(), CopyJobState.completed);
     expect(data.processed, 5);
-    expect(data.percent, isNull);
+    expect(data.percent, 1);
     expect(data.summary(CopyJobState.completed), '处理完成 5 项（复制 4，跳过 1，失败 0，不适用 0）');
     final mixed = CopyTaskProgress.fromStats(stats(copied: 2, failed: 1, skipped: 1, notApplicable: 1), CopyJobState.running);
     expect(mixed.processed, 5);
@@ -182,14 +182,15 @@ void main() {
     expect(invalid.total, isNull);
     expect(invalid.copied, isNull);
   });
-  test('server progress takes precedence; zero placeholders, NaN, >100 and stale terminal fraction hidden', () {
+  test('server progress takes precedence; zero placeholders, NaN, >100 hidden; terminal derives 100% from box counts', () {
     expect(CopyTaskProgress.fromStats(stats(percent: .4), CopyJobState.running).percent, .4);
     for (final value in [0, -1, 101, double.nan, double.infinity]) {
       expect(CopyJobStats.fromJson({'progress_percent': value}).effectiveProgressPercent, isNull);
     }
     expect(CopyJobStats.fromJson({'progress_percent': 45}).effectiveProgressPercent, .45);
-    expect(CopyTaskProgress.fromStats(stats(percent: .8), CopyJobState.completed).percent, isNull);
+    expect(CopyTaskProgress.fromStats(stats(percent: .8), CopyJobState.completed).percent, 1);
     expect(CopyTaskProgress.fromStats(stats(percent: 1), CopyJobState.completed).percent, 1);
+    expect(CopyTaskProgress.fromStats(CopyJobStats.fromJson({'total_files': 5, 'copied_files': 2}), CopyJobState.completed).percent, isNull);
   });
   test('report and detail share outcome accounting, including all skips/not applicable', () {
     const report = CopyReport(actualFileCount: 5, copiedFiles: 0, failedFiles: 0, skippedFiles: 4, notApplicableFiles: 1);

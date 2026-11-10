@@ -27,9 +27,12 @@ class StorageDeviceCard extends StatelessWidget {
 
   bool get _canFillRole => device.online && (role == '源设备' ? device.canBeSource : CopyDevicePolicy.canSelectTarget(device, null));
 
+  /// v10 问题 5：热插拔恢复瞬间容量字段可能尚未就绪，不能显示 "0 MB"。
+  bool get _capacityKnown => device.capacityBytes > 0 && device.freeBytes <= device.capacityBytes;
+
   @override
   Widget build(BuildContext context) {
-    final used = device.capacityBytes <= 0 ? 0.0 : ((device.capacityBytes - device.freeBytes) / device.capacityBytes).clamp(0.0, 1.0);
+    final used = !_capacityKnown ? 0.0 : ((device.capacityBytes - device.freeBytes) / device.capacityBytes).clamp(0.0, 1.0);
     final blockReason = _blockReason();
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -129,7 +132,8 @@ class StorageDeviceCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      '${_formatBytes(device.freeBytes)} 可用 / ${_formatBytes(device.capacityBytes)} · $role',
+                      _capacityKnown ? '${_formatBytes(device.freeBytes)} 可用 / ${_formatBytes(device.capacityBytes)} · $role' : '正在读取设备容量… · $role',
+                      key: const Key('storage-device-capacity'),
                       style: TextStyle(
                         fontSize: 12.5,
                         color: _canFillRole ? AppColors.forestDeep : AppColors.inkMuted,
@@ -161,12 +165,9 @@ class StorageDeviceCard extends StatelessWidget {
               const SizedBox(height: 8),
               ClipRRect(
                 borderRadius: BorderRadius.circular(99),
-                child: LinearProgressIndicator(
-                  value: used,
-                  minHeight: 7,
-                  color: AppColors.brand,
-                  backgroundColor: AppColors.mist,
-                ),
+                child: _capacityKnown
+                    ? LinearProgressIndicator(value: used, minHeight: 7, color: AppColors.brand, backgroundColor: AppColors.mist)
+                    : Container(height: 7, color: AppColors.mist),
               ),
               if (blockReason != null) ...[
                 const SizedBox(height: 8),
