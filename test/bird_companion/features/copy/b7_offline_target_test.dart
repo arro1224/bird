@@ -30,12 +30,14 @@ class _Repository implements CopyJobRepository {
 
   CopyJobDetail current;
   Object? actionError;
+  int actions = 0;
 
   @override
   Future<CopyJobDetail> getJob(String id) async => current;
 
   @override
   Future<CopyJobDetail?> jobAction(String id, String action, {required int expectedStateVersion}) async {
+    actions++;
     if (actionError != null) throw actionError!;
     return current;
   }
@@ -66,7 +68,7 @@ void main() {
     expect(copyTaskDeviceName(source: true, snapshot: const CopyJobDeviceSnapshot(mediaId: 'card', displayName: '相机卡'), devices: [b3Device('card', source: true, target: false, online: false)]), '相机卡（已拔出）');
   });
 
-  testWidgets('v10-12 暂停任务的离线目标显示快照名，继续按钮禁用并提示等待原目标盘', (tester) async {
+  testWidgets('v10-12/P1-7 暂停任务的离线目标显示快照名，继续仍可用且提示等待原目标盘', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(800, 1600);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -90,10 +92,14 @@ void main() {
 
     expect(find.text('U 盘 Ee（已拔出）'), findsOneWidget);
     final resume = tester.widget<OutlinedButton>(find.byKey(const Key('copy-job-action-resume')));
-    expect(resume.onPressed, isNull, reason: '原目标盘缺失时不得发起继续');
+    // 后端仍把 resume 放进 allowed_actions；盘未回时它只是立即重试，不能本地禁用。
+    expect(resume.onPressed, isNotNull);
     expect(find.byKey(const Key('copy-job-missing-device-hint')), findsOneWidget);
     expect(find.textContaining('等待原目标盘'), findsOneWidget);
     expect(find.textContaining('选择其他'), findsNothing);
+    await tester.tap(find.byKey(const Key('copy-job-action-resume')));
+    await tester.pump();
+    expect(repository.actions, 1);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();

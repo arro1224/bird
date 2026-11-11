@@ -127,7 +127,7 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
     this.detailReader,
     this.deviceReader,
     this.dataChanges,
-    this.deviceNamesInterval = const Duration(seconds: 10),
+    this.deviceNamesInterval = const Duration(seconds: 4),
     Stream<void>? sessionRefreshes,
     this.sessionRecovering,
     this.sessionWrongDevice,
@@ -518,7 +518,9 @@ class CopyJobDetailCubit extends Cubit<CopyJobDetailState> {
       if (!_current(generation)) break;
       events.addAll(page.events);
       if (!page.hasMore) break;
-      final next = page.events.lastOrNull?.seq;
+      // P1-6 回执：有 has_more/next_cursor 时按服务端游标补取；老版本仅给
+      // seq 时退回最后一条事件的 seq。游标不前进必须报错防死循环。
+      final next = int.tryParse(page.nextCursor?.trim() ?? '') ?? page.events.lastOrNull?.seq;
       if (next == null || next <= (cursor ?? 0)) {
         throw StateError('事件分页未推进，请手动刷新');
       }

@@ -312,7 +312,7 @@ class _DetailView extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
-          _WaitingBanner(state: detail.state),
+          _WaitingBanner(state: detail.state, errorMessage: detail.errorMessage),
           _JobFailureNotice(detail: detail),
           _StateHeader(detail: detail, state: state),
           if (detail.state.isTerminal && deviceAvailable && BirdCompanionScope.maybeOf(context) != null)
@@ -378,26 +378,29 @@ class _DetailView extends StatelessWidget {
 }
 
 class _WaitingBanner extends StatelessWidget {
-  const _WaitingBanner({required this.state});
+  const _WaitingBanner({required this.state, this.errorMessage});
 
   final CopyJobState state;
+  final String? errorMessage;
+
+  /// 等待态是资源可恢复状态，不是任务失败。后端中文消息可用时优先展示。
+  String? get _serverMessage {
+    final raw = errorMessage?.trim();
+    return raw != null && RegExp(r'[\u4e00-\u9fff]').hasMatch(raw) ? raw : null;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final (text, show) = switch (state.wire) {
-      'waiting_for_source' => (
-        '等待相机卡：请将源相机卡插回盒子，任务将自动继续。',
-        true,
-      ),
-      'waiting_for_target' => (
-        '等待原目标 U 盘：请重新插入同一目标设备，不会自动更换其他设备。',
-        true,
-      ),
-      'pause_requested' => ('当前文件完成后暂停。', true),
-      'cancel_requested' => ('正在取消：已完成的副本不会删除。', true),
-      _ => ('', false),
+    final fallback = switch (state.wire) {
+      'waiting_for_source' => '等待相机卡：请将源相机卡插回盒子，任务将自动继续。',
+      'waiting_for_target' => '等待原目标 U 盘：请重新插入同一目标设备，不会自动更换其他设备。',
+      'pause_requested' => '当前文件完成后暂停。',
+      'cancel_requested' => '正在取消：已完成的副本不会删除。',
+      _ => null,
     };
-    if (!show) return const SizedBox.shrink();
+    if (fallback == null) return const SizedBox.shrink();
+    // 只有等待介质态使用资源级中文消息；失败态由失败原因卡单独展示。
+    final text = state.isWaitingDevice ? _serverMessage ?? fallback : fallback;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
@@ -432,6 +435,9 @@ class _JobFailureNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // P0-1 回执：waiting/paused 的 error_code 是资源状态字段，不是任务失败。
+    // 只有 failed 终态才允许出现"任务失败原因"，避免等待盘时闪红。
+    if (detail.state != CopyJobState.failed) return const SizedBox.shrink();
     final code = detail.errorCode?.trim();
     final raw = detail.errorMessage?.trim();
     final message = raw != null && RegExp(r'[\u4e00-\u9fff]').hasMatch(raw) ? raw : null;
@@ -629,16 +635,13 @@ class _ActionsSection extends StatelessWidget {
   final bool sourceMissing, targetMissing;
   final ValueChanged<CopyAllowedAction> onAction;
 
-  /// v10 问题 12：原盘缺失时不得诱导用户"继续"或改用其他盘。
-  bool _enabled(CopyAllowedAction action) {
-    if (acting || !detail.stateVersionKnown) return false;
-    if (action == CopyAllowedAction.resume && (sourceMissing || targetMissing)) return false;
-    return true;
-  }
+  /// P1-7 回执：严格按 allowed_actions 提供动作，不因本地猜测禁用后端允许的
+  /// resume；盘未回时 resume 只是立即重试，不会改绑其他盘。
+  bool get _actionsEnabled => !acting && detail.stateVersionKnown;
 
   String? get _missingHint {
-    if (sourceMissing) return '等待原相机卡：请插回原相机卡后再继续，当前任务不会改用其他源设备。';
-    if (targetMissing) return '等待原目标盘：请插回同一目标设备后再继续，不会自动更换其他目标盘。';
+    if (sourceMissing) return '等待原相机卡：插回后可点“继续”立即重试，当前任务不会改用其他源设备。';
+    if (targetMissing) return '等待原目标盘：插回后可点“继续”立即重试，不会自动更换其他目标盘。';
     return null;
   }
 
@@ -658,7 +661,7 @@ class _ActionsSection extends StatelessWidget {
               for (final action in detail.allowedActions)
                 _ActionButton(
                   action: action,
-                  enabled: _enabled(action),
+                  enabled: _actionsEnabled,
                   onAction: onAction,
                 ),
             ],
