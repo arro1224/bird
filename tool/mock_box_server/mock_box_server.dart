@@ -17,6 +17,7 @@ class MockBoxServer {
     this.signedUrlLifetime = const Duration(minutes: 2),
     this.progressiveMedia = false,
     this.emitAssetReadyEvents = true,
+    this.workflowAutoAdvance = false,
     this.stateFile,
     void Function(String message)? requestLogSink,
     DateTime Function()? clock,
@@ -65,6 +66,11 @@ class MockBoxServer {
   final Duration signedUrlLifetime;
   final bool progressiveMedia;
   final bool emitAssetReadyEvents;
+
+  /// 时间驱动的 workflow 任务推进器开关。测试钩子（completeJob/failJob/固定
+  /// clock）路径默认关闭，保证既有测试行为零变化；演示启动脚本（server.dart）
+  /// 默认开启。
+  final bool workflowAutoAdvance;
   final File? stateFile;
   final void Function(String message) requestLogSink;
   late final DateTime Function() _clock;
@@ -78,6 +84,12 @@ class MockBoxServer {
   final Map<String, List<Map<String, dynamic>>> _history = {};
   final Map<String, Map<String, dynamic>> _createdProjects = {};
   final Map<String, Map<String, dynamic>> _jobs = {};
+  // workflow 任务推进器（import/analysis/sync）：按 job id 记 wall-clock
+  // 计时态。挂在平行 map 而不是 job 对象里——`_json` 直接序列化 job map
+  // 本身，内部字段漏进 wire 会污染 birdbox-v1 契约。
+  final Map<String, int> _workflowElapsedMs = {};
+  final Map<String, DateTime> _workflowLastTickAt = {};
+  Timer? _workflowTicker;
   // SmartFollow 边识别边复制内存态（联合开发任务书 §6.3–§6.7）。
   // 只模拟状态机与接口，不做真识别/真复制；推进靠 POST /mock/control/smart-follow。
   String? _smartFollowSessionId;
@@ -231,6 +243,15 @@ class MockBoxServer {
     if (_server != null) throw StateError('Mock box server is already running.');
     final server = await HttpServer.bind(address ?? InternetAddress.loopbackIPv4, port);
     _server = server;
+    if (workflowAutoAdvance) {
+      // 真实盒子会主动推送 job_updated（完整 Job、version 递增，回执 P2-9）；
+      // 纯读时惰性推进在 WS 在线时永远不会被 App 看到（App 连着 WS 就不再
+      // 轮询 REST）。1s 一推：进度肉眼可见，版本抖动又足够低，用户点暂停/
+      // 取消多数时候仍能命中当前版本。
+      _workflowTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+        unawaited(_tickWorkflowJobs());
+      });
+    }
     unawaited(
       server.forEach((request) async {
         try {
@@ -261,6 +282,8 @@ class MockBoxServer {
   }
 
   Future<void> close() async {
+    _workflowTicker?.cancel();
+    _workflowTicker = null;
     for (final socket in List<WebSocket>.of(_eventSockets)) {
       await socket.close();
     }
@@ -1506,6 +1529,70 @@ class MockBoxServer {
     }
   }
 
+  /// workflow 任务推进器（import/analysis/sync）：时间驱动、按 tick 间真实
+  /// 流逝时间累积，与 `_advanceCopyJob` 同一风格。设计约束：
+  ///
+  /// - 只在 `workflowAutoAdvance` 开启时激活（演示启动脚本默认开，测试钩子
+  ///   路径默认关，既有测试行为零变化）。
+  ///
+  /// - 计时态挂在 `_workflowElapsedMs`（按 job id），绝不写进 job map——
+  ///   `_json` 直接序列化 job 本身，内部字段漏进 wire 会污染契约。
+  ///
+  /// - 每次推进 version +1 并广播完整 Job（回执 P2-9：事件必须携带完整
+  ///   Job 且版本递增，App 按 job_id/version 去重，不递增会被当旧版本丢弃）。
+  ///
+  /// - 暂停期间不累积（state != running 时跳过累积但继续刷新 lastTick，
+  ///   resume 后从原进度继续，不会把暂停时长算进进度）。
+  ///
+  /// - SmartFollow 关联的分析任务（带 smart_follow_session_id）跳过：其
+  ///   推进由 /mock/control/smart-follow 驱动，自动推进会撕裂会话快照与
+  ///   任务进度。
+  Future<void> _tickWorkflowJobs() async {
+    final now = _clock();
+    for (final id in List<String>.of(_workflowElapsedMs.keys)) {
+      final job = _jobs[id];
+      if (job == null) {
+        _workflowElapsedMs.remove(id);
+        _workflowLastTickAt.remove(id);
+        continue;
+      }
+      final state = job['job_state'] as String?;
+      if (const {'completed', 'failed', 'cancelled'}.contains(state)) {
+        _workflowElapsedMs.remove(id);
+        _workflowLastTickAt.remove(id);
+        continue;
+      }
+      if (job['smart_follow_session_id'] != null) continue;
+      final lastTick = _workflowLastTickAt[id];
+      _workflowLastTickAt[id] = now;
+      if (state != 'running') continue;
+      final deltaMs = lastTick == null ? 0 : now.difference(lastTick).inMilliseconds;
+      if (deltaMs <= 0) continue;
+      final total = (job['total_count'] as num?)?.toInt() ?? 0;
+      if (total <= 0) continue;
+      final elapsed = (_workflowElapsedMs[id] ?? 0) + min<int>(deltaMs, 15000);
+      _workflowElapsedMs[id] = elapsed;
+      // 全程约 12s——演示秒级完成比仿真真实时长更重要。
+      const totalMs = 12000;
+      if (elapsed >= totalMs) {
+        job['estimated_remaining_seconds'] = 0;
+        await completeJob(id);
+        _workflowElapsedMs.remove(id);
+        _workflowLastTickAt.remove(id);
+        continue;
+      }
+      final finished = min(total, total * elapsed ~/ totalMs);
+      if (finished <= (job['finished_count'] as int)) continue;
+      job
+        ..['finished_count'] = finished
+        ..['progress'] = finished / total
+        ..['estimated_remaining_seconds'] = ((totalMs - elapsed) / 1000).ceil()
+        ..['version'] = (job['version'] as int) + 1
+        ..['updated_at'] = now.toUtc().toIso8601String();
+      await _emitJob(job);
+    }
+  }
+
   /// 时间驱动的转移：phaseStart 回溯到「本应发生的时刻」。
   void _copyJobTransitionTimed(
     Map<String, dynamic> job,
@@ -1713,6 +1800,12 @@ class MockBoxServer {
       'version': 0,
     };
     _jobs[id] = job;
+    // 推进器接管所有进 _jobs 表的任务（import/analysis/sync 与 legacy
+    // birdbox-v1 copy）；RC3 copy 走 _copyJobsV1 独立推进，不经过这里。
+    if (workflowAutoAdvance) {
+      _workflowElapsedMs[id] = 0;
+      _workflowLastTickAt[id] = _clock();
+    }
     return job;
   }
 

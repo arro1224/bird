@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:aves/bird_companion/core/models/review_models.dart';
+import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/files/log_download_service.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
@@ -15,6 +17,7 @@ import 'package:aves/bird_companion/features/gallery/data/photo_api.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/review/data/review_api.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_api.dart';
+import 'package:aves/bird_companion/features/jobs/domain/job_create_requests.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../tool/mock_box_server/mock_box_server.dart';
@@ -427,6 +430,71 @@ void main() {
     );
   });
 
+  test('workflow 推进器：导入任务自动推进并广播完整 Job 事件，12 秒终态', () async {
+    // 推进器是 Timer 驱动（真实墙钟），无法用注入 clock 测试；等待真实时间。
+    await server.close();
+    await client.dispose();
+    server = MockBoxServer(
+      photoCount: 60,
+      assetDirectory: Directory('tool/mock_box_server/assets'),
+      logRequests: false,
+      workflowAutoAdvance: true,
+    );
+    baseUri = await server.start();
+    client = ApiClient()..configure(baseUri);
+
+    final events = <Map<String, dynamic>>[];
+    final socket = await WebSocket.connect(
+      baseUri.replace(scheme: 'ws', path: '/api/v1/events').toString(),
+    );
+    addTearDown(socket.close);
+    socket.listen(
+      (data) => events.add(jsonDecode(data as String) as Map<String, dynamic>),
+      onError: (_) {},
+    );
+    // 等 WS 建连首帧（device.status）。
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    final api = JobApi(client);
+    final response = await client.post(
+      '/api/v1/projects/mock-batch-current/imports',
+      data: const ImportJobRequest().toJson(),
+    );
+
+    // 进度事件：完整 Job 形状（含 version 递增）。
+    await Future<void>.delayed(const Duration(seconds: 3));
+    final progressEvents = events
+        .where((event) => event['event_type'] == 'job_updated')
+        .where((event) => (event['payload'] as Map)['job_id'] == response['job_id'])
+        .toList();
+    expect(progressEvents, isNotEmpty);
+    final versions = progressEvents.map((event) => (event['payload'] as Map)['version']).toList();
+    expect(versions, everyElement(isA<num>()));
+
+    // 终态：12s 推进窗口 + tick 间隔余量。
+    final done = await pollUntil(
+      () => api.detail(response['job_id'] as String),
+      (job) => job.state == BirdJobState.completed,
+      timeout: const Duration(seconds: 20),
+    );
+    expect(done.state, BirdJobState.completed);
+    expect(done.progress, 1.0);
+    expect(done.finishedCount, done.totalCount);
+  });
+
+  test('workflow 推进器关闭时任务保持创建态（既有测试钩子路径不受影响）', () async {
+    final api = JobApi(client);
+    final response = await client.post(
+      '/api/v1/projects/mock-batch-current/imports',
+      data: const ImportJobRequest().toJson(),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    final job = await api.detail(response['job_id'] as String);
+    expect(job.state, BirdJobState.running);
+    expect(job.progress, 0.0);
+    expect(job.finishedCount, 0);
+  });
+
   test('日志导出会下载非空文件并保留本地路径', () async {
     final directory = await Directory.systemTemp.createTemp('bird-b6-logs-');
     addTearDown(() async {
@@ -525,4 +593,17 @@ void main() {
       );
     },
   );
+}
+
+Future<BirdJobStatus> pollUntil(
+  Future<BirdJobStatus> Function() fetch,
+  bool Function(BirdJobStatus job) done,
+  {required Duration timeout}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    final job = await fetch();
+    if (done(job)) return job;
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+  }
+  fail('pollUntil timed out after ${timeout.inSeconds}s');
 }

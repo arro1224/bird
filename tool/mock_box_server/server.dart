@@ -14,6 +14,9 @@ Future<void> main(List<String> arguments) async {
     deviceId: options.deviceId,
     progressiveMedia: options.progressiveMedia,
     emitAssetReadyEvents: options.emitAssetReadyEvents,
+    // 演示默认开启 workflow 任务推进器（import/analysis/sync 自动走完
+    // 生命周期并广播 job_updated）；测试/特殊排查用 --no-workflow-advance 关。
+    workflowAutoAdvance: options.workflowAutoAdvance,
     stateFile: options.stateFile,
   );
   final uri = await server.start(
@@ -30,6 +33,9 @@ Future<void> main(List<String> arguments) async {
   stdout.writeln('Asset-ready events: ${options.emitAssetReadyEvents ? 'enabled' : 'disabled'}');
   stdout.writeln(
     'Persistent state: ${options.stateFile?.path ?? 'disabled'}',
+  );
+  stdout.writeln(
+    'Workflow auto-advance: ${options.workflowAutoAdvance ? 'enabled' : 'disabled'}',
   );
   stdout.writeln('Press Ctrl+C to stop.');
 
@@ -51,6 +57,7 @@ class _Options {
     required this.deviceId,
     required this.progressiveMedia,
     required this.emitAssetReadyEvents,
+    required this.workflowAutoAdvance,
     required this.stateFile,
   });
 
@@ -62,6 +69,7 @@ class _Options {
   final String deviceId;
   final bool progressiveMedia;
   final bool emitAssetReadyEvents;
+  final bool workflowAutoAdvance;
   final File? stateFile;
 
   factory _Options.parse(List<String> arguments) {
@@ -73,6 +81,7 @@ class _Options {
     var deviceId = 'mock-k7-001';
     var progressiveMedia = false;
     var emitAssetReadyEvents = true;
+    var workflowAutoAdvance = true;
     File? stateFile;
     for (final argument in arguments) {
       if (argument == '--quick') {
@@ -85,6 +94,8 @@ class _Options {
         progressiveMedia = true;
       } else if (argument == '--no-asset-events') {
         emitAssetReadyEvents = false;
+      } else if (argument == '--no-workflow-advance') {
+        workflowAutoAdvance = false;
       } else if (argument.startsWith('--host=')) {
         host = argument.substring('--host='.length);
       } else if (argument.startsWith('--port=')) {
@@ -106,7 +117,7 @@ class _Options {
         stdout.writeln(
           'Usage: dart run tool/mock_box_server/server.dart '
           '[--quick] [--auth] [--progressive-media] [--no-asset-events] '
-          '[--photos=1200] [--host=0.0.0.0] '
+          '[--no-workflow-advance] [--photos=1200] [--host=0.0.0.0] '
           '[--port=8787] [--device-id=id] [--quiet] [--state-file=path]',
         );
         exit(0);
@@ -123,6 +134,7 @@ class _Options {
       deviceId: deviceId,
       progressiveMedia: progressiveMedia,
       emitAssetReadyEvents: emitAssetReadyEvents,
+      workflowAutoAdvance: workflowAutoAdvance,
       stateFile: stateFile,
     );
   }
