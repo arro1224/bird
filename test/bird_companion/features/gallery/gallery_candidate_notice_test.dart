@@ -8,11 +8,10 @@ Future<void> _pump(WidgetTester tester, Widget child) => tester.pumpWidget(Mater
 Color? _textColor(WidgetTester tester) => tester.widget<Text>(find.byKey(const Key('gallery-candidate-notice-text'))).style?.color;
 
 void main() {
-  testWidgets('在线完整候选：只留一行本机筛选说明，不显示重新连接', (tester) async {
+  testWidgets('在线完整候选：不显示提示且不占高度', (tester) async {
     await _pump(
       tester,
       GalleryCandidateNotice(
-        cachedAt: DateTime(2026, 11, 9, 12, 30),
         loadedCount: 40,
         totalCount: 40,
         resultComplete: true,
@@ -20,12 +19,8 @@ void main() {
         onRefresh: () {},
       ),
     );
-    expect(find.text('已使用完整候选数据在本机筛选'), findsOneWidget);
-    expect(find.text('重新连接'), findsNothing);
-    expect(find.byKey(const Key('gallery-candidate-notice-action')), findsNothing);
-    expect(_textColor(tester), AppColors.inkMuted);
-    // 单行提示不应再占一大块版面。
-    expect(tester.getSize(find.byKey(const Key('gallery-candidate-notice'))).height, lessThan(30));
+    expect(find.byKey(const Key('gallery-candidate-notice')), findsNothing);
+    expect(tester.getSize(find.byType(GalleryCandidateNotice)).height, 0);
   });
 
   testWidgets('真断线：短警示 + 重连入口，红色', (tester) async {

@@ -24,6 +24,7 @@ class PhotoTile extends StatelessWidget {
     this.mediaAssetLoader,
     this.mediaAssetCoordinator,
     this.allowNetworkFallback = true,
+    this.onFirstThumbnail,
   });
 
   final PhotoSummary photo;
@@ -37,6 +38,7 @@ class PhotoTile extends StatelessWidget {
   final MediaAssetLoader? mediaAssetLoader;
   final MediaAssetCoordinator? mediaAssetCoordinator;
   final bool allowNetworkFallback;
+  final VoidCallback? onFirstThumbnail;
 
   @override
   Widget build(BuildContext context) {
@@ -90,6 +92,7 @@ class PhotoTile extends StatelessWidget {
                         cacheWidth: cacheWidth,
                         cacheHeight: cacheHeight,
                         allowNetworkFallback: allowNetworkFallback,
+                        onFirstFrame: onFirstThumbnail,
                         placeholderBuilder: (_) => KeyedSubtree(
                           key: ValueKey('media-asset-pending-${photo.id}'),
                           child: AnalysisPlaceholder(

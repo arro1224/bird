@@ -14,13 +14,14 @@ import 'package:aves/bird_companion/features/batches/presentation/widgets/batch_
 import 'package:aves/bird_companion/features/batches/presentation/widgets/batch_list_tile.dart';
 import 'package:aves/bird_companion/features/batches/presentation/widgets/current_batch_card.dart';
 import 'package:aves/bird_companion/features/batches/presentation/widgets/batch_resume_dialog.dart';
+import 'package:aves/bird_companion/features/gallery/domain/gallery_timing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 enum BatchOpenMode { gallery, review }
 
 /// “继续挑选”始终从当前批次的照片主页开始，不携带上次连拍位置。
-GalleryArgs currentBatchGalleryArgs(BatchSummary batch) => GalleryArgs(
+GalleryArgs currentBatchGalleryArgs(BatchSummary batch, {GalleryTiming? timing}) => GalleryArgs(
   batch.id,
   batchName: batch.name,
   createdAt: batch.createdAt,
@@ -29,6 +30,7 @@ GalleryArgs currentBatchGalleryArgs(BatchSummary batch) => GalleryArgs(
   keepCount: batch.keepCount,
   discardCount: batch.discardCount,
   restoreSavedView: false,
+  timing: timing,
   reviewContext: ReviewContext(
     batchId: batch.id,
     batchName: batch.name,
@@ -233,10 +235,11 @@ class _ViewState extends State<_View> {
     BatchSummary batch,
   ) async {
     if (_resolvingBatchId != null) return;
+    final timing = GalleryTiming.start()?..event('continue_tap', {'total': batch.totalFiles});
     setState(() => _resolvingBatchId = batch.id);
     await Navigator.of(context).pushNamed(
       BirdRoutes.gallery,
-      arguments: currentBatchGalleryArgs(batch),
+      arguments: currentBatchGalleryArgs(batch, timing: timing),
     );
     if (!mounted || !context.mounted) return;
     setState(() => _resolvingBatchId = null);

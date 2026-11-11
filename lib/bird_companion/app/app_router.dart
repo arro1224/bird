@@ -151,6 +151,7 @@ abstract final class BirdAppRouter {
                 discardCount: args is GalleryArgs ? args.discardCount : null,
                 initialQuery: args is GalleryArgs ? args.initialQuery : const PhotoQuery(),
                 restoreSavedView: args is GalleryArgs ? args.restoreSavedView : true,
+                timing: args is GalleryArgs ? args.timing : null,
                 reviewContext: args is GalleryArgs ? args.context : null,
               );
       case BirdRoutes.scenes:

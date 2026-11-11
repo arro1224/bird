@@ -3,6 +3,7 @@ import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/scene_models.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
+import 'package:aves/bird_companion/features/gallery/domain/gallery_timing.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
 
@@ -10,10 +11,30 @@ class PhotoApi {
   PhotoApi(this._client);
   final ApiClient _client;
   Future<PhotoPage> page(String batchId, PhotoQuery q) async {
-    final data = await _client.get(ApiEndpoints.photos.replaceFirst('{batchId}', batchId), queryParameters: q.parameters);
+    final timing = GalleryTiming.current;
+    final request = timing == null ? null : ++timing.requests;
+    final started = timing?.elapsedUs ?? 0;
+    late final Map<String, dynamic> data;
+    try {
+      data = await _client.get(ApiEndpoints.photos.replaceFirst('{batchId}', batchId), queryParameters: q.parameters);
+    } catch (_) {
+      if (timing != null) {
+        timing.event('page_request_failed', {'request': request!, 'duration_us': timing.elapsedUs - started});
+      }
+      rethrow;
+    }
+    final received = timing?.elapsedUs ?? 0;
+    if (timing != null) {
+      timing.event('page_response', {'request': request!, 'duration_us': received - started});
+    }
     final list = data['items'] as List? ?? const [];
+    final parseStarted = timing?.elapsedUs ?? 0;
+    final items = list.whereType<Map>().map((e) => PhotoSummary.fromJson(Map<String, dynamic>.from(e))).toList();
+    if (timing != null) {
+      timing.event('page_parsed', {'request': request!, 'items': items.length, 'duration_us': timing.elapsedUs - parseStarted});
+    }
     return PhotoPage(
-      items: list.whereType<Map>().map((e) => PhotoSummary.fromJson(Map<String, dynamic>.from(e))).toList(),
+      items: items,
       hasMore: data['has_more'] == true,
       nextCursor: data['next_cursor']?.toString(),
     );

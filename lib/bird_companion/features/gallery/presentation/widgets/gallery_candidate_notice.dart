@@ -1,18 +1,10 @@
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
-/// 候选筛选来源提示（v10 返修问题 13）。
-///
-/// 「识别结果/评分/标签」这类条件由 App 在本机对候选集合筛选，因此只要该
-/// 筛选生效，就会走本机候选（`GalleryState.fromCache`）。这是正常路径，
-/// 不是断线：
-/// - 在线且候选完整：只留一行低对比度说明，不占版面、不显示"重新连接"；
-/// - 在线但候选不完整：短警示 + "刷新"，避免把缓存结果当完整结果；
-/// - 真断线：短警示 + "重新连接"（此时该操作才有意义）。
+/// 仅在断线或候选不完整时提示缓存结果的限制。
 class GalleryCandidateNotice extends StatelessWidget {
   const GalleryCandidateNotice({
     super.key,
-    this.cachedAt,
     required this.loadedCount,
     this.totalCount,
     required this.resultComplete,
@@ -21,7 +13,6 @@ class GalleryCandidateNotice extends StatelessWidget {
     this.onRefresh,
   });
 
-  final DateTime? cachedAt;
   final int loadedCount;
   final int? totalCount;
   final bool resultComplete;
@@ -29,31 +20,11 @@ class GalleryCandidateNotice extends StatelessWidget {
   final VoidCallback? onReconnect;
   final VoidCallback? onRefresh;
 
-  bool get _warning => offline || !resultComplete;
-
   @override
-  Widget build(BuildContext context) => _warning ? _warningNotice() : _inlineHint();
-
-  /// 在线完整候选：一行灰字，不再用大色块占界面。
-  Widget _inlineHint() => const Padding(
-    key: Key('gallery-candidate-notice'),
-    padding: EdgeInsets.fromLTRB(16, 2, 16, 2),
-    child: Row(
-      children: [
-        Icon(Icons.filter_alt_outlined, size: 14, color: AppColors.inkMuted),
-        SizedBox(width: 5),
-        Expanded(
-          child: Text(
-            '已使用完整候选数据在本机筛选',
-            key: Key('gallery-candidate-notice-text'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11.5, color: AppColors.inkMuted),
-          ),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    if (!offline && resultComplete) return const SizedBox.shrink();
+    return Padding(padding: const EdgeInsets.only(bottom: 12), child: _warningNotice());
+  }
 
   /// 断线或候选不完整：单行短警示，动作内联，避免额外一行按钮。
   Widget _warningNotice() {

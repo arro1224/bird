@@ -24,6 +24,7 @@ import 'package:aves/bird_companion/features/device/presentation/widgets/device_
 import 'package:aves/bird_companion/features/device/presentation/widgets/device_status_sheet.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_entry_guard.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
+import 'package:aves/bird_companion/features/gallery/domain/gallery_timing.dart';
 import 'package:aves/bird_companion/features/gallery/domain/batch_tag_removal.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_version_batch_coordinator.dart';
@@ -60,6 +61,7 @@ class GalleryPage extends StatelessWidget {
     this.restoreSavedView = true,
     this.rootMode = false,
     this.reviewContext,
+    this.timing,
   });
   final String batchId;
   final String? batchName;
@@ -72,6 +74,7 @@ class GalleryPage extends StatelessWidget {
   final bool restoreSavedView;
   final bool rootMode;
   final ReviewContext? reviewContext;
+  final GalleryTiming? timing;
 
   @override
   Widget build(BuildContext context) => MultiBlocProvider(
@@ -97,6 +100,7 @@ class GalleryPage extends StatelessWidget {
               ..restoreAndRefresh(
                 initialQuery,
                 restoreSavedView: restoreSavedView,
+                timing: timing,
               ),
       ),
       BlocProvider(create: (_) => SelectionCubit()),
@@ -140,6 +144,8 @@ class _GalleryView extends StatelessWidget {
   ReviewContext get _reviewContext => reviewContext ?? ReviewContext(batchId: batchId, batchName: batchName);
 
   Future<void> _openCurrentBatchCopy(BuildContext context) async {
+    final gallery = context.read<GalleryCubit>();
+    if (!gallery.state.resultComplete) return;
     final dependencies = BirdCompanionScope.of(context);
     try {
       // Start both frozen-v1 reads together, then navigate only with their
@@ -150,7 +156,7 @@ class _GalleryView extends StatelessWidget {
       ]);
       final currentProject = results[0] as BatchSummary?;
       final jobs = results[1] as JobPage;
-      if (!context.mounted) return;
+      if (!context.mounted || !gallery.state.resultComplete) return;
 
       final decision = resolveCurrentCopyEntry(
         displayedBatchId: batchId,
@@ -236,11 +242,14 @@ class _GalleryView extends StatelessWidget {
                     : [
                         if (rootMode) const AlbumHistoryAppBarAction(),
                         if (rootMode)
-                          IconButton(
-                            key: const Key('album-copy-project-button'),
-                            tooltip: '复制当前拍摄',
-                            icon: const Icon(Icons.copy_all_outlined),
-                            onPressed: totalCount != null && totalCount! <= 0 ? null : () => _openCurrentBatchCopy(context),
+                          BlocSelector<GalleryCubit, GalleryState, bool>(
+                            selector: (state) => state.resultComplete,
+                            builder: (context, complete) => IconButton(
+                              key: const Key('album-copy-project-button'),
+                              tooltip: '复制当前拍摄',
+                              icon: const Icon(Icons.copy_all_outlined),
+                              onPressed: !complete || (totalCount != null && totalCount! <= 0) ? null : () => _openCurrentBatchCopy(context),
+                            ),
                           ),
                         if (rootMode)
                           Padding(
@@ -297,11 +306,13 @@ class _GalleryView extends StatelessWidget {
                                   ),
                                 );
                               } else if (value == 'copy') {
+                                final state = context.read<GalleryCubit>().state;
+                                if (!state.resultComplete) return;
                                 Navigator.of(context).pushNamed(
                                   BirdRoutes.copyConfirmation,
                                   arguments: CopyConfirmationArgs(
                                     batchId,
-                                    filter: context.read<GalleryCubit>().state.query.toCopyFilterV1(),
+                                    filter: state.query.toCopyFilterV1(),
                                   ),
                                 );
                               } else {
@@ -320,23 +331,24 @@ class _GalleryView extends StatelessWidget {
                                 );
                               }
                             },
-                            itemBuilder: (_) => const [
-                              PopupMenuItem(
+                            itemBuilder: (_) => [
+                              const PopupMenuItem(
                                 value: 'scenes',
                                 child: ListTile(leading: Icon(Icons.account_tree_outlined), title: Text('按场景浏览')),
                               ),
-                              PopupMenuItem(
+                              const PopupMenuItem(
                                 value: 'review',
                                 child: ListTile(leading: Icon(Icons.auto_awesome_mosaic_outlined), title: Text('挑选连拍照片')),
                               ),
                               PopupMenuItem(
                                 value: 'copy',
-                                child: ListTile(
+                                enabled: context.read<GalleryCubit>().state.resultComplete,
+                                child: const ListTile(
                                   leading: Icon(Icons.copy_all_outlined),
                                   title: Text('复制当前拍摄'),
                                 ),
                               ),
-                              PopupMenuItem(
+                              const PopupMenuItem(
                                 value: 'sort',
                                 child: ListTile(leading: Icon(Icons.sort_rounded), title: Text('排序方式')),
                               ),
@@ -414,7 +426,9 @@ class _GalleryView extends StatelessWidget {
                                 hasScrollBody: false,
                                 child: _GalleryEmptyState(
                                   filtering: state.filtering,
+                                  waitingForFirstPage: state.scannedCount == 0,
                                   incomplete: !state.resultComplete,
+                                  fromCache: state.fromCache,
                                   onReset: () => context.read<GalleryCubit>().refresh(query: const PhotoQuery()),
                                 ),
                               )
@@ -428,6 +442,7 @@ class _GalleryView extends StatelessWidget {
                                     photo: photo,
                                     compact: rootMode,
                                     showRatingOverlay: state.showRatingOverlay,
+                                    onFirstThumbnail: context.read<GalleryCubit>().visibleTiming?.firstThumbnail,
                                     onTap: () async {
                                       final selection = context.read<SelectionCubit>();
                                       if (selection.state.ids.isEmpty) {
@@ -496,7 +511,7 @@ class _GalleryView extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                            if (state.items.isNotEmpty && (state.loading || state.hasMore || state.error != null))
+                            if (state.items.isNotEmpty && !state.filtering && (state.loading || state.hasMore || (state.resultComplete && state.error != null)))
                               SliverToBoxAdapter(
                                 child: SizedBox(
                                   height: state.error == null ? 52 : 68,
@@ -565,6 +580,7 @@ class _SelectablePhotoTile extends StatelessWidget {
     required this.onLongPress,
     required this.compact,
     required this.showRatingOverlay,
+    this.onFirstThumbnail,
   });
 
   final PhotoSummary photo;
@@ -572,6 +588,7 @@ class _SelectablePhotoTile extends StatelessWidget {
   final VoidCallback onLongPress;
   final bool compact;
   final bool showRatingOverlay;
+  final VoidCallback? onFirstThumbnail;
 
   @override
   Widget build(BuildContext context) {
@@ -593,6 +610,7 @@ class _SelectablePhotoTile extends StatelessWidget {
         mediaAssetLoader: dependencies.mediaAssetService,
         mediaAssetCoordinator: dependencies.mediaAssetCoordinator,
         allowNetworkFallback: session.isConnected,
+        onFirstThumbnail: onFirstThumbnail,
         onTap: onTap,
         onLongPress: onLongPress,
       ),
@@ -722,19 +740,21 @@ class _GalleryHeader extends StatelessWidget {
               ),
               const SizedBox(height: 12),
             ],
+            if (!state.filtering && !state.resultComplete && !state.fromCache && state.items.isNotEmpty)
+              TextButton(
+                onPressed: () => context.read<GalleryCubit>().refresh(),
+                child: const Text('筛选未完成，点击重新筛选'),
+              ),
+            if (state.fromCache)
+              GalleryCandidateNotice(
+                loadedCount: state.items.length,
+                totalCount: totalCount,
+                resultComplete: state.resultComplete,
+                offline: offline,
+                onReconnect: () => openReconnectConnection(context),
+                onRefresh: () => context.read<GalleryCubit>().refresh(query: state.query),
+              ),
             if (rootMode) ...[
-              if (state.fromCache) ...[
-                GalleryCandidateNotice(
-                  cachedAt: state.cachedAt,
-                  loadedCount: state.items.length,
-                  totalCount: totalCount,
-                  resultComplete: state.resultComplete,
-                  offline: !session.isConnected,
-                  onReconnect: () => openReconnectConnection(context),
-                  onRefresh: () => context.read<GalleryCubit>().refresh(query: state.query),
-                ),
-                const SizedBox(height: 12),
-              ],
               _AlbumDeviceArea(offline: offline),
               const SizedBox(height: 16),
               _QuickFilters(
@@ -753,18 +773,6 @@ class _GalleryHeader extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ] else ...[
-              if (state.fromCache) ...[
-                GalleryCandidateNotice(
-                  cachedAt: state.cachedAt,
-                  loadedCount: state.items.length,
-                  totalCount: totalCount,
-                  resultComplete: state.resultComplete,
-                  offline: !session.isConnected,
-                  onReconnect: () => openReconnectConnection(context),
-                  onRefresh: () => context.read<GalleryCubit>().refresh(query: state.query),
-                ),
-                const SizedBox(height: 12),
-              ],
               _QuickFilters(query: state.query),
               const SizedBox(height: 12),
               Row(
@@ -1273,11 +1281,15 @@ class _GalleryEmptyState extends StatelessWidget {
   const _GalleryEmptyState({
     required this.onReset,
     required this.filtering,
+    required this.waitingForFirstPage,
     required this.incomplete,
+    required this.fromCache,
   });
   final VoidCallback onReset;
   final bool filtering;
+  final bool waitingForFirstPage;
   final bool incomplete;
+  final bool fromCache;
   @override
   Widget build(BuildContext context) => Center(
     child: Column(
@@ -1287,9 +1299,9 @@ class _GalleryEmptyState extends StatelessWidget {
         const SizedBox(height: 12),
         Text(
           filtering
-              ? '正在筛选照片…'
+              ? waitingForFirstPage ? '正在读取照片列表…' : '正在筛选照片…'
               : incomplete
-              ? '已缓存照片中没有符合条件的结果'
+              ? fromCache ? '已缓存照片中没有符合条件的结果' : '筛选未完成'
               : '没有符合条件的照片',
         ),
         const SizedBox(height: 8),
@@ -1330,7 +1342,7 @@ class _FilterScanProgress extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                '正在筛选 · 已扫描 $scannedCount 张 · 命中 $matchedCount 张',
+                scannedCount == 0 ? '正在读取照片列表…' : '已扫描 $scannedCount 张 · 当前命中 $matchedCount 张',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
+import 'package:aves/bird_companion/features/gallery/domain/gallery_timing.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_local_filter_engine.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query_plan.dart';
@@ -12,6 +13,12 @@ typedef PhotoServerPageLoader =
       String batchId,
       PhotoQuery query,
     );
+typedef PhotoScanPageLoader = Future<PhotoPage> Function(
+  String batchId,
+  PhotoQuery query,
+  void Function(PhotoPage)? onReceived,
+  PhotoQueryCancellationToken? cancellationToken,
+);
 typedef SpeciesAliasLoader = Future<List<SpeciesCandidate>> Function(String query);
 typedef PhotoCandidateSnapshotReader =
     PhotoCandidateSnapshot? Function(
@@ -23,6 +30,7 @@ typedef PhotoCandidateSnapshotWriter =
       String batchId,
       PhotoQuery serverQuery,
       PhotoCandidateSnapshot snapshot,
+      PhotoQueryCancellationToken? cancellationToken,
     );
 
 class PhotoCandidateSnapshot {
@@ -43,6 +51,7 @@ class PhotoLocalQueryExecutor {
     this._filterEngine = const PhotoLocalFilterEngine(),
     this._readCandidateSnapshot,
     this._writeCandidateSnapshot,
+    this._loadScanPage,
   ]);
 
   final PhotoServerPageLoader _loadServerPage;
@@ -50,6 +59,7 @@ class PhotoLocalQueryExecutor {
   final PhotoLocalFilterEngine _filterEngine;
   final PhotoCandidateSnapshotReader? _readCandidateSnapshot;
   final PhotoCandidateSnapshotWriter? _writeCandidateSnapshot;
+  final PhotoScanPageLoader? _loadScanPage;
   final Map<int, _LocalQuerySession> _sessions = {};
   static const _maxSessionItems = 50000;
   int _nextSessionId = 1;
@@ -59,12 +69,15 @@ class PhotoLocalQueryExecutor {
     PhotoQuery query, {
     PhotoQueryProgressCallback? onProgress,
     PhotoQueryCancellationToken? cancellationToken,
+    String cacheNamespace = '',
   }) async {
     cancellationToken?.throwIfCancelled();
     final plan = PhotoQueryPlan(query);
-    if (!plan.requiresLocalScan) return _loadServerPage(batchId, query);
+    if (!plan.requiresLocalScan) {
+      return _loadScanPage?.call(batchId, query, null, cancellationToken) ?? _loadServerPage(batchId, query);
+    }
 
-    final signature = _signature(batchId, query);
+    final signature = _signature(cacheNamespace, batchId, query);
     final localCursor = _LocalCursor.tryParse(query.cursor);
     if (localCursor != null) {
       final session = _sessions[localCursor.sessionId];
@@ -77,7 +90,12 @@ class PhotoLocalQueryExecutor {
     final aliases = await _resolveAliases(query);
     cancellationToken?.throwIfCancelled();
     final serverQuery = plan.serverQuery();
+    final timing = GalleryTiming.current;
+    final cacheReadStarted = timing?.elapsedUs ?? 0;
     final cachedSnapshot = _readCandidateSnapshot?.call(batchId, serverQuery);
+    if (timing != null) {
+      timing.event('candidate_cache_read', {'hit': cachedSnapshot != null, 'duration_us': timing.elapsedUs - cacheReadStarted});
+    }
     if (cachedSnapshot != null) {
       final items = _filterEngine.filterAndSort(
         cachedSnapshot.items,
@@ -96,6 +114,7 @@ class PhotoLocalQueryExecutor {
       return _slice(
         _createSession(
           batchId: batchId,
+          cacheNamespace: cacheNamespace,
           signature: signature,
           items: items,
           fromCache: true,
@@ -114,35 +133,68 @@ class PhotoLocalQueryExecutor {
     String? serverCursor;
     DateTime? cachedAt;
     var fromCache = false;
+    final newestFirst = query.sort == 'captured_at_desc';
+    var canPreview = onProgress != null && (newestFirst || query.sort == 'captured_at_asc');
+    DateTime? lastCapture;
+
+    void acceptPage(PhotoPage serverPage) {
+      cancellationToken?.throwIfCancelled();
+      fromCache = fromCache || serverPage.fromCache;
+      if (serverPage.cachedAt != null && (cachedAt == null || serverPage.cachedAt!.isAfter(cachedAt!))) {
+        cachedAt = serverPage.cachedAt;
+      }
+      for (final photo in serverPage.items) {
+        if (photo.id.isEmpty) continue;
+        byId[photo.id] = photo;
+        if (!canPreview) continue;
+        final capture = photo.capturedAt;
+        final previous = lastCapture;
+        if (capture == null || (previous != null && (newestFirst ? capture.isAfter(previous) : capture.isBefore(previous)))) {
+          canPreview = false;
+        }
+        lastCapture = capture;
+      }
+      List<PhotoSummary>? preview;
+      if (canPreview && byId.isNotEmpty) {
+        final boundary = lastCapture!;
+        // A timestamp tied with the page boundary can continue onto the next
+        // page. Wait for the full tie before applying the file ID tiebreaker.
+        final candidates = serverPage.hasMore
+            ? byId.values.where((photo) => newestFirst ? photo.capturedAt!.isAfter(boundary) : photo.capturedAt!.isBefore(boundary))
+            : byId.values;
+        final matches = _filterEngine.filterAndSort(candidates, query, searchAliases: aliases.search, speciesAliases: aliases.species);
+        if (matches.isNotEmpty) {
+          preview = matches.take(query.pageSize > 0 ? query.pageSize : 1).toList(growable: false);
+          canPreview = false;
+        }
+      }
+      final matchedCount = _filterEngine.countMatches(
+        byId.values,
+        query,
+        searchAliases: aliases.search,
+        speciesAliases: aliases.species,
+      );
+      timing?.event('scan_progress', {'scanned': byId.length, 'matched': matchedCount});
+      onProgress?.call(
+        PhotoQueryProgress(
+          scannedCount: byId.length,
+          matchedCount: matchedCount,
+          fromCache: fromCache,
+          previewItems: preview,
+        ),
+      );
+    }
 
     try {
       while (true) {
         cancellationToken?.throwIfCancelled();
-        final serverPage = await _loadServerPage(
-          batchId,
-          plan.serverQuery(cursor: serverCursor),
-        );
+        final pageQuery = plan.serverQuery(cursor: serverCursor);
+        final loadScanPage = _loadScanPage;
+        final PhotoPage serverPage;
+        final onReceived = canPreview && loadScanPage != null ? acceptPage : null;
+        serverPage = await (loadScanPage?.call(batchId, pageQuery, onReceived, cancellationToken) ?? _loadServerPage(batchId, pageQuery));
+        if (onReceived == null) acceptPage(serverPage);
         cancellationToken?.throwIfCancelled();
-        fromCache = fromCache || serverPage.fromCache;
-        if (serverPage.cachedAt != null && (cachedAt == null || serverPage.cachedAt!.isAfter(cachedAt))) {
-          cachedAt = serverPage.cachedAt;
-        }
-        for (final photo in serverPage.items) {
-          if (photo.id.isNotEmpty) byId[photo.id] = photo;
-        }
-        final matchedCount = _filterEngine.countMatches(
-          byId.values,
-          query,
-          searchAliases: aliases.search,
-          speciesAliases: aliases.species,
-        );
-        onProgress?.call(
-          PhotoQueryProgress(
-            scannedCount: byId.length,
-            matchedCount: matchedCount,
-            fromCache: fromCache,
-          ),
-        );
 
         final nextCursor = serverPage.nextCursor;
         if (!serverPage.hasMore || nextCursor == null || nextCursor.isEmpty || !seenCursors.add(nextCursor)) {
@@ -168,6 +220,7 @@ class PhotoLocalQueryExecutor {
       return _slice(
         _createSession(
           batchId: batchId,
+          cacheNamespace: cacheNamespace,
           signature: signature,
           items: items,
           fromCache: true,
@@ -196,10 +249,12 @@ class PhotoLocalQueryExecutor {
         items: byId.values.toList(growable: false),
         cachedAt: completedAt,
       ),
+      cancellationToken,
     );
     cancellationToken?.throwIfCancelled();
     final session = _createSession(
       batchId: batchId,
+      cacheNamespace: cacheNamespace,
       signature: signature,
       items: items,
       fromCache: fromCache,
@@ -219,8 +274,8 @@ class PhotoLocalQueryExecutor {
     return _slice(session, 0, query.pageSize);
   }
 
-  void invalidateBatch(String batchId) {
-    _sessions.removeWhere((_, session) => session.batchId == batchId);
+  void invalidateBatch(String batchId, {String cacheNamespace = ''}) {
+    _sessions.removeWhere((_, session) => session.batchId == batchId && session.cacheNamespace == cacheNamespace);
   }
 
   Future<_ResolvedAliases> _resolveAliases(PhotoQuery query) async {
@@ -275,6 +330,7 @@ class PhotoLocalQueryExecutor {
 
   _LocalQuerySession _createSession({
     required String batchId,
+    required String cacheNamespace,
     required String signature,
     required List<PhotoSummary> items,
     required bool fromCache,
@@ -287,6 +343,7 @@ class PhotoLocalQueryExecutor {
     final session = _LocalQuerySession(
       id: sessionId,
       batchId: batchId,
+      cacheNamespace: cacheNamespace,
       signature: signature,
       items: items,
       fromCache: fromCache,
@@ -300,7 +357,8 @@ class PhotoLocalQueryExecutor {
     return session;
   }
 
-  String _signature(String batchId, PhotoQuery query) => jsonEncode({
+  String _signature(String cacheNamespace, String batchId, PhotoQuery query) => jsonEncode({
+    'namespace': cacheNamespace,
     'batch_id': batchId,
     ...query.copyWith(clearCursor: true).toJson(),
   });
@@ -321,6 +379,7 @@ class _LocalQuerySession {
   const _LocalQuerySession({
     required this.id,
     required this.batchId,
+    required this.cacheNamespace,
     required this.signature,
     required this.items,
     required this.fromCache,
@@ -332,6 +391,7 @@ class _LocalQuerySession {
 
   final int id;
   final String batchId;
+  final String cacheNamespace;
   final String signature;
   final List<PhotoSummary> items;
   final bool fromCache;

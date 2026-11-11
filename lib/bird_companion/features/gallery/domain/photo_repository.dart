@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/scene_models.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
@@ -10,21 +13,32 @@ class PhotoQueryProgress {
     required this.matchedCount,
     this.complete = false,
     this.fromCache = false,
+    this.previewItems,
   });
 
   final int scannedCount;
   final int matchedCount;
   final bool complete;
   final bool fromCache;
+  /// The first visible batch of matches, before the remaining pages finish.
+  final List<PhotoSummary>? previewItems;
 }
 
 class PhotoQueryCancellationToken {
-  bool _cancelled = false;
+  PhotoQueryCancellationToken({bool Function()? isCurrent}) : _isCurrent = isCurrent;
 
-  bool get isCancelled => _cancelled;
-  void cancel() => _cancelled = true;
+  final bool Function()? _isCurrent;
+  final _cancelled = Completer<void>();
+
+  bool get isCancelled => _cancelled.isCompleted || _isCurrent?.call() == false;
+  Future<void> get whenCancelled => _cancelled.future;
+
+  void cancel() {
+    if (!_cancelled.isCompleted) _cancelled.complete();
+  }
+
   void throwIfCancelled() {
-    if (_cancelled) throw const PhotoQueryCancelled();
+    if (isCancelled) throw const PhotoQueryCancelled();
   }
 }
 
@@ -87,5 +101,5 @@ abstract interface class PhotoQueryExecutionRepository {
     PhotoQueryCancellationToken? cancellationToken,
   });
 
-  Future<void> invalidateLocalQueries(String batchId);
+  Future<void> invalidateLocalQueries(String batchId, {Iterable<AppDataChange> changes = const []});
 }

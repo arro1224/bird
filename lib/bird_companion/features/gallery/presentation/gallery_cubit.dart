@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
+import 'package:aves/bird_companion/features/gallery/domain/gallery_timing.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query_plan.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
@@ -153,12 +155,13 @@ class GalleryCubit extends Cubit<GalleryState> {
            showRatingOverlay: _settingsShowRatingOverlay(_settingsStore),
          ),
        ) {
-    _refreshSubscription = refreshCoordinator?.changes.listen((_) => refresh());
+    _boundDevice = _currentDevice;
+    _refreshSubscription = refreshCoordinator?.changes.listen((_) => _queueBackgroundRefresh());
     _dataSubscription = dataChanges?.changes
         .where(
           (change) => change.affects(AppDataResource.photos) || change.affects(AppDataResource.cache) || change.affects(AppDataResource.photoPreferences),
         )
-        .listen((change) => unawaited(_handleDataChange(change)));
+        .listen(_handleDataChange);
   }
   final PhotoRepository _repo;
   final String batchId;
@@ -170,12 +173,26 @@ class GalleryCubit extends Cubit<GalleryState> {
   StreamSubscription<int>? _refreshSubscription;
   StreamSubscription<AppDataChange>? _dataSubscription;
   Timer? _searchDebounce;
+  Timer? _backgroundRefresh;
+  final _pendingChanges = <AppDataChange>{};
+  var _reconnectQueued = false;
+  var _drainingChanges = false;
+  var _closing = false;
+  String? _boundDevice;
+  String? _runningQueryKey;
+  Future<void>? _runningRefresh;
+  DateTime? _lastCompleteRefresh;
   int _requestGeneration = 0;
   PhotoQueryCancellationToken? _activeCancellation;
+  GalleryTiming? _visibleTiming;
+
+  GalleryTiming? get visibleTiming => _visibleTiming;
+  String? get _currentDevice => _activeDeviceId?.call()?.trim();
 
   Future<void> restoreAndRefresh(
     PhotoQuery fallback, {
     bool restoreSavedView = true,
+    GalleryTiming? timing,
   }) async {
     final raw = restoreSavedView ? _cache?.read<Map>(_viewCacheKey()) : null;
     final preferences = _settingsStore?.read();
@@ -194,7 +211,7 @@ class GalleryCubit extends Cubit<GalleryState> {
       restoreSavedView: restoreSavedView,
       preferredSort: preferences == null ? null : photoQuerySortFromPreference(preferences.sortOrder),
     );
-    await refresh(query: restored);
+    await refresh(query: restored, timing: timing);
   }
 
   /// Seeds the batch summary counters carried by the route into retained
@@ -217,21 +234,52 @@ class GalleryCubit extends Cubit<GalleryState> {
   }
 
   void search(String value) {
+    _bindCurrentDevice();
     _searchDebounce?.cancel();
     _cancelActiveQuery(invalidateGeneration: true);
     final query = state.query.copyWith(search: value.trim(), clearCursor: true);
     emit(state.copyWith(query: query, filtering: false, loading: false));
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
-      refresh(query: query);
+      _searchDebounce = null;
+      unawaited(refresh(query: query));
     });
   }
 
-  Future<void> refresh({PhotoQuery? query}) async {
-    _cancelActiveQuery();
-    final generation = ++_requestGeneration;
+  Future<void> refresh({PhotoQuery? query, GalleryTiming? timing}) {
+    if (_closing || isClosed) return Future.value();
+    _bindCurrentDevice();
     final q = (query ?? state.query).copyWith(clearCursor: true);
+    final key = jsonEncode(q.toJson());
+    final running = _runningRefresh;
+    if (running != null && _runningQueryKey == key) {
+      timing?.event('query_joined');
+      return running;
+    }
+    _searchDebounce?.cancel();
+    _searchDebounce = null;
+    _cancelActiveQuery();
+    final device = _boundDevice;
+    final task = _executeRefresh(q, device, timing);
+    _runningQueryKey = key;
+    _runningRefresh = task;
+    unawaited(task.whenComplete(() {
+      if (!identical(_runningRefresh, task)) return;
+      _runningRefresh = null;
+      _runningQueryKey = null;
+      _scheduleBackgroundRefresh();
+    }));
+    return task;
+  }
+
+  Future<void> _executeRefresh(PhotoQuery q, String? device, GalleryTiming? timing) async {
+    final generation = ++_requestGeneration;
     final filtering = PhotoQueryPlan(q).requiresLocalScan;
-    final cancellationToken = PhotoQueryCancellationToken();
+    final trace = timing ?? GalleryTiming.start();
+    trace?.event('query_start', {
+      'local_scan': filtering,
+      'recognized_only': q.recognitionState == 'recognized',
+    });
+    final cancellationToken = PhotoQueryCancellationToken(isCurrent: () => _isCurrent(generation, device));
     _activeCancellation = cancellationToken;
     emit(
       state.copyWith(
@@ -246,20 +294,42 @@ class GalleryCubit extends Cubit<GalleryState> {
       ),
     );
     try {
-      final p = _repo is PhotoQueryExecutionRepository
-          ? await (_repo as PhotoQueryExecutionRepository).pageWithProgress(
+      Future<PhotoPage> load() => _repo is PhotoQueryExecutionRepository
+          ? (_repo as PhotoQueryExecutionRepository).pageWithProgress(
               batchId,
               q,
               cancellationToken: cancellationToken,
               onProgress: (progress) => _onQueryProgress(
                 generation,
+                device,
                 progress,
+                trace,
               ),
             )
-          : await _repo.page(batchId, q);
-      if (generation != _requestGeneration) return;
+          : _repo.page(batchId, q);
+      final p = await (trace == null ? load() : trace.run(load));
+      if (!_isCurrent(generation, device)) {
+        trace?.event('superseded');
+        return;
+      }
       _activeCancellation = null;
+      if (p.resultComplete) {
+        _reconnectQueued = false;
+        _lastCompleteRefresh = DateTime.now();
+      }
       final operationCounts = _operationCounts();
+      _visibleTiming = trace;
+      if (trace != null) {
+        trace.event('result_ready', {
+          'visible': p.items.length,
+          'scanned': p.scannedCount,
+          'matched': p.matchedCount ?? p.items.length,
+          'requests': trace.requests,
+          'from_cache': p.fromCache,
+          'cache_scope': p.cacheScope.name,
+          'complete': p.resultComplete,
+        });
+      }
       emit(
         state.copyWith(
           loading: false,
@@ -271,19 +341,18 @@ class GalleryCubit extends Cubit<GalleryState> {
           cachedAt: p.cachedAt,
           scannedCount: p.scannedCount,
           matchedCount: p.matchedCount ?? p.items.length,
-          resultComplete: p.resultComplete,
+          resultComplete: p.resultComplete && _pendingChanges.isEmpty,
           cacheScope: p.cacheScope,
           pendingOperationCount: operationCounts.pending,
           conflictOperationCount: operationCounts.conflict,
           conflictFileIds: operationCounts.conflictFileIds,
         ),
       );
-      await _cache?.write(_viewCacheKey(), q.toJson());
-      final deviceId = _activeDeviceId?.call()?.trim();
-      if (deviceId != null && deviceId.isNotEmpty) {
+      await _cache?.write(albumViewCacheKey(deviceNamespace: device, projectId: batchId), q.toJson());
+      if (_isCurrent(generation, device) && device != null && device.isNotEmpty) {
         try {
           await _checkpointStore?.updateQuery(
-            deviceId: deviceId,
+            deviceId: device,
             batchId: batchId,
             query: q,
           );
@@ -293,20 +362,29 @@ class GalleryCubit extends Cubit<GalleryState> {
         }
       }
     } on PhotoQueryCancelled {
-      if (generation != _requestGeneration) return;
+      trace?.event('cancelled');
+      if (!_isCurrent(generation, device)) return;
       _activeCancellation = null;
       emit(state.copyWith(loading: false, filtering: false));
     } catch (e) {
-      if (generation != _requestGeneration) return;
+      trace?.event('query_failed', {'error_type': e.runtimeType.toString()});
+      if (!_isCurrent(generation, device)) return;
       _activeCancellation = null;
       emit(state.copyWith(loading: false, filtering: false, error: e));
     }
   }
 
   void cancelFiltering() {
+    if (_closing || isClosed || _bindCurrentDevice()) return;
     if (!state.filtering) return;
     _cancelActiveQuery(invalidateGeneration: true);
-    emit(state.copyWith(loading: false, filtering: false));
+    _backgroundRefresh?.cancel();
+    _backgroundRefresh = null;
+    _reconnectQueued = false;
+    final changes = _pendingChanges.toList();
+    _pendingChanges.clear();
+    if (changes.isNotEmpty) unawaited(_invalidate(changes));
+    emit(state.copyWith(loading: false, filtering: false, hasMore: false));
   }
 
   /// Applies only confirmed batch-operation successes to the visible gallery.
@@ -388,14 +466,20 @@ class GalleryCubit extends Cubit<GalleryState> {
     );
   }
 
-  void _onQueryProgress(int generation, PhotoQueryProgress progress) {
-    if (isClosed || generation != _requestGeneration) return;
+  void _onQueryProgress(int generation, String? device, PhotoQueryProgress progress, GalleryTiming? trace) {
+    if (!_isCurrent(generation, device) || progress.complete) return;
+    final preview = progress.previewItems;
+    if (preview != null) {
+      _visibleTiming = trace;
+      trace?.event('preview_ready', {'visible': preview.length, 'scanned': progress.scannedCount});
+    }
     emit(
       state.copyWith(
-        filtering: !progress.complete,
+        items: preview,
+        hasMore: preview == null ? null : false,
+        fromCache: preview == null ? null : progress.fromCache,
         scannedCount: progress.scannedCount,
         matchedCount: progress.matchedCount,
-        resultComplete: progress.complete,
       ),
     );
   }
@@ -403,11 +487,44 @@ class GalleryCubit extends Cubit<GalleryState> {
   void _cancelActiveQuery({bool invalidateGeneration = false}) {
     _activeCancellation?.cancel();
     _activeCancellation = null;
+    _runningRefresh = null;
+    _runningQueryKey = null;
     if (invalidateGeneration) _requestGeneration++;
   }
 
-  Future<void> _handleDataChange(AppDataChange change) async {
-    if (change is RecognitionFactsChanged && (change.projectId != batchId || change.deviceId != _activeDeviceId?.call())) return;
+  bool _isCurrent(int generation, String? device) =>
+      !_closing && !isClosed && generation == _requestGeneration && device == _currentDevice;
+
+  bool _bindCurrentDevice() {
+    final device = _currentDevice;
+    if (device == _boundDevice) return false;
+    _boundDevice = device;
+    _cancelActiveQuery(invalidateGeneration: true);
+    _searchDebounce?.cancel();
+    _searchDebounce = null;
+    _backgroundRefresh?.cancel();
+    _backgroundRefresh = null;
+    _pendingChanges.clear();
+    _reconnectQueued = false;
+    _lastCompleteRefresh = null;
+    _visibleTiming = null;
+    emit(GalleryState(
+      query: state.query.copyWith(clearCursor: true),
+      hasMore: false,
+      gridColumns: state.gridColumns,
+      showRatingOverlay: state.showRatingOverlay,
+    ));
+    return true;
+  }
+
+  void _handleDataChange(AppDataChange change) {
+    if (_closing || isClosed) return;
+    if (change is RecognitionFactsChanged && (change.projectId != batchId || change.deviceId != _currentDevice)) return;
+    if (change is AnalysisCompleted && (change.projectId != batchId || change.deviceId != _currentDevice)) return;
+    if (change is ReviewDecisionChanged &&
+        ((_currentDevice != null && change.deviceId != _currentDevice) || (change.projectId != null && change.projectId != batchId))) {
+      return;
+    }
     if (change.affects(AppDataResource.photoPreferences)) {
       _applyPhotoPreferences();
       return;
@@ -428,11 +545,69 @@ class GalleryCubit extends Cubit<GalleryState> {
       ]);
       if (change.queued) return;
     }
-    final repository = _repo;
-    if (repository case final PhotoQueryExecutionRepository execution) {
-      await execution.invalidateLocalQueries(batchId);
+    _queueBackgroundRefresh(change);
+  }
+
+  void _queueBackgroundRefresh([AppDataChange? change]) {
+    if (_closing || isClosed) return;
+    final switched = _bindCurrentDevice();
+    if (change != null) {
+      _pendingChanges.add(change);
+    } else {
+      if (switched) {
+        unawaited(refresh());
+        return;
+      }
+      final last = _lastCompleteRefresh;
+      if (last != null && DateTime.now().difference(last) < const Duration(milliseconds: 500) && state.resultComplete && state.error == null) {
+        return;
+      }
+      _reconnectQueued = true;
     }
-    if (!isClosed) await refresh();
+    _scheduleBackgroundRefresh();
+  }
+
+  void _scheduleBackgroundRefresh() {
+    if (_closing || _drainingChanges || _activeCancellation != null || _runningRefresh != null || _searchDebounce?.isActive == true) return;
+    if (!_reconnectQueued && _pendingChanges.isEmpty) return;
+    _backgroundRefresh ??= Timer(const Duration(milliseconds: 200), () {
+      _backgroundRefresh = null;
+      unawaited(_drainBackgroundRefresh());
+    });
+  }
+
+  Future<bool> _invalidate(List<AppDataChange> changes) async {
+    final repository = _repo;
+    if (repository is! PhotoQueryExecutionRepository) return true;
+    final device = _boundDevice;
+    try {
+      await (repository as PhotoQueryExecutionRepository).invalidateLocalQueries(batchId, changes: changes);
+      return true;
+    } catch (error) {
+      if (!_closing && !isClosed && device == _currentDevice) {
+        emit(state.copyWith(error: error, resultComplete: false));
+      }
+      return false;
+    }
+  }
+
+  Future<void> _drainBackgroundRefresh() async {
+    if (_closing || _activeCancellation != null || _runningRefresh != null || _searchDebounce?.isActive == true) return;
+    if (!_reconnectQueued && _pendingChanges.isEmpty) return;
+    final changes = _pendingChanges.toList();
+    _pendingChanges.clear();
+    _reconnectQueued = false;
+    final device = _boundDevice;
+    final generation = _requestGeneration;
+    _drainingChanges = true;
+    try {
+      if (!_isCurrent(generation, device)) return;
+      if (changes.isNotEmpty && !await _invalidate(changes)) return;
+      if (_isCurrent(generation, device)) await refresh();
+    } finally {
+      _drainingChanges = false;
+      _scheduleBackgroundRefresh();
+    }
   }
 
   String _viewCacheKey() {
@@ -443,13 +618,24 @@ class GalleryCubit extends Cubit<GalleryState> {
   }
 
   Future<void> loadMore() async {
+    if (_closing || isClosed) return;
+    if (_bindCurrentDevice()) {
+      await refresh();
+      return;
+    }
     if (state.loading || !state.hasMore) return;
     final generation = ++_requestGeneration;
+    final device = _boundDevice;
+    final token = PhotoQueryCancellationToken(isCurrent: () => _isCurrent(generation, device));
+    _activeCancellation = token;
     final requestedCursor = state.query.cursor;
     emit(state.copyWith(loading: true));
     try {
-      final p = await _repo.page(batchId, state.query);
-      if (generation != _requestGeneration) return;
+      final repository = _repo;
+      final p = repository is PhotoQueryExecutionRepository
+          ? await (repository as PhotoQueryExecutionRepository).pageWithProgress(batchId, state.query, cancellationToken: token)
+          : await repository.page(batchId, state.query);
+      if (!_isCurrent(generation, device)) return;
       final ids = state.items.map((item) => item.id).toSet();
       final merged = [...state.items, ...p.items.where((item) => ids.add(item.id))];
       final cursorAdvanced = p.nextCursor != null && p.nextCursor != requestedCursor;
@@ -465,7 +651,7 @@ class GalleryCubit extends Cubit<GalleryState> {
           cachedAt: p.cachedAt,
           scannedCount: p.scannedCount,
           matchedCount: p.matchedCount ?? merged.length,
-          resultComplete: p.resultComplete,
+          resultComplete: p.resultComplete && _pendingChanges.isEmpty,
           cacheScope: p.cacheScope,
           pendingOperationCount: operationCounts.pending,
           conflictOperationCount: operationCounts.conflict,
@@ -473,9 +659,16 @@ class GalleryCubit extends Cubit<GalleryState> {
           clearError: true,
         ),
       );
+    } on PhotoQueryCancelled {
+      if (_isCurrent(generation, device)) emit(state.copyWith(loading: false));
     } catch (e) {
-      if (generation != _requestGeneration) return;
+      if (!_isCurrent(generation, device)) return;
       emit(state.copyWith(loading: false, error: e));
+    } finally {
+      if (identical(_activeCancellation, token)) {
+        _activeCancellation = null;
+        _scheduleBackgroundRefresh();
+      }
     }
   }
 
@@ -538,9 +731,11 @@ class GalleryCubit extends Cubit<GalleryState> {
 
   @override
   Future<void> close() async {
+    _closing = true;
     _requestGeneration++;
     _cancelActiveQuery();
     _searchDebounce?.cancel();
+    _backgroundRefresh?.cancel();
     await _refreshSubscription?.cancel();
     await _dataSubscription?.cancel();
     return super.close();

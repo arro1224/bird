@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/scene_models.dart';
 import 'package:aves/bird_companion/features/gallery/data/photo_api.dart';
 import 'package:aves/bird_companion/features/gallery/data/photo_local_query_executor.dart';
+import 'package:aves/bird_companion/features/gallery/domain/gallery_timing.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_local_filter_engine.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
+import 'package:aves/bird_companion/features/gallery/domain/photo_query_plan.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
@@ -30,12 +34,17 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
   final LocalCache _cache;
   final String Function() _cacheNamespace;
   final String? Function() _deviceId;
+  final _reads = <(_PhotoScope, String), _PhotoRead>{};
+  final _invalidations = <_PhotoScope, Future<void>>{};
+  final _handledChanges = Expando<Set<_PhotoScope>>();
+  String? _readingNamespace;
   late final PhotoLocalQueryExecutor _localQueryExecutor = PhotoLocalQueryExecutor(
     _loadAndCacheServerPage,
     searchSpecies,
     const PhotoLocalFilterEngine(),
     _readCandidateSnapshot,
     _writeCandidateSnapshot,
+    _loadAndCacheServerPage,
   );
 
   static const _photoPrefix = 'album:photos:';
@@ -54,18 +63,69 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
     PhotoQueryProgressCallback? onProgress,
     PhotoQueryCancellationToken? cancellationToken,
   }) async {
-    final key = '$_photoPrefix${_cacheNamespace()}:$id:${_queryKey(q)}';
+    final scope = _captureScope(id);
+    bool isCurrent() => scope.$1 == _cacheNamespace();
+    var pending = _invalidations[scope];
+    while (pending != null) {
+      await pending;
+      pending = _invalidations[scope];
+    }
+    cancellationToken?.throwIfCancelled();
+    if (!isCurrent()) throw const PhotoQueryCancelled();
+    final key = (scope, jsonEncode(q.toJson()));
+    final previous = _reads[key];
+    if (previous != null && !previous.hasSubscribers) {
+      _reads.remove(key);
+      previous.cancel();
+    }
+    final read = _reads[key] ??= _PhotoRead(
+      isCurrent: isCurrent,
+      load: (report, token) => _readPage(scope, q, report, token),
+      onDone: (read) {
+        if (identical(_reads[key], read)) _reads.remove(key);
+      },
+    );
+    final subscriber = (progress: onProgress, token: cancellationToken);
+    final subscription = read.subscribe(subscriber);
     try {
-      return await _localQueryExecutor.page(
+      final page = await read.resultOrCancellation(cancellationToken);
+      cancellationToken?.throwIfCancelled();
+      if (!isCurrent()) throw const PhotoQueryCancelled();
+      return page;
+    } finally {
+      read.unsubscribe(subscription);
+      if (!read.hasSubscribers && identical(_reads[key], read)) {
+        _reads.remove(key);
+        read.cancel();
+      }
+    }
+  }
+
+  Future<PhotoPage> _readPage(
+    _PhotoScope scope,
+    PhotoQuery q,
+    PhotoQueryProgressCallback onProgress,
+    PhotoQueryCancellationToken cancellationToken,
+  ) async {
+    final (namespace, id) = scope;
+    final key = '$_photoPrefix$namespace:$id:${_queryKey(q)}';
+    try {
+      final page = await _localQueryExecutor.page(
         id,
         q,
         onProgress: onProgress,
         cancellationToken: cancellationToken,
+        cacheNamespace: namespace,
       );
+      cancellationToken.throwIfCancelled();
+      return page;
     } on ApiException {
-      final cached = _cache.read<Map>(key);
-      if (cached != null) return _photoPageFromCache(cached);
-      final local = _localPageFromSnapshots(id, q);
+      cancellationToken.throwIfCancelled();
+      // The exact wire key omits App-local conditions. A raw page cannot
+      // stand in for a complete filtered result when the box is unreachable.
+      final cached = PhotoQueryPlan(q).requiresLocalScan ? null : _cache.read<Map>(key);
+      if (cached != null) return _photoPageFromCache(cached, q);
+      final local = _localPageFromSnapshots(scope, q);
       if (local != null) return local;
       rethrow;
     }
@@ -90,35 +150,91 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
     String batchId,
     PhotoQuery serverQuery,
     PhotoCandidateSnapshot snapshot,
-  ) => _cache.write(_candidateKey(batchId, serverQuery), {
-    'complete': true,
-    'items': snapshot.items.map((item) => item.toJson()).toList(growable: false),
-    'cached_at': snapshot.cachedAt.toIso8601String(),
-  });
+    PhotoQueryCancellationToken? cancellationToken,
+  ) async {
+    cancellationToken?.throwIfCancelled();
+    final timing = GalleryTiming.current;
+    final started = timing?.elapsedUs ?? 0;
+    await _cache.write(_candidateKey(batchId, serverQuery), {
+      'complete': true,
+      'items': snapshot.items.map((item) => item.toJson()).toList(growable: false),
+      'cached_at': snapshot.cachedAt.toIso8601String(),
+    });
+    if (timing != null) {
+      timing.event('candidate_cache_written', {'items': snapshot.items.length, 'duration_us': timing.elapsedUs - started});
+    }
+  }
 
   String _candidateKey(String batchId, PhotoQuery serverQuery) => '$_candidatePrefix${_cacheNamespace()}:$batchId:${_queryKey(serverQuery)}';
 
   @override
-  Future<void> invalidateLocalQueries(String batchId) async {
-    _localQueryExecutor.invalidateBatch(batchId);
-    final prefix = '$_candidatePrefix${_cacheNamespace()}:$batchId:';
-    for (final key in _cache.keysWithPrefix(prefix)) {
-      await _cache.remove(key);
+  Future<void> invalidateLocalQueries(String batchId, {Iterable<AppDataChange> changes = const []}) async {
+    final scope = _captureScope(batchId);
+    final unseen = changes.where((change) => !(_handledChanges[change]?.contains(scope) ?? false)).toList();
+    if (changes.isNotEmpty && unseen.isEmpty) {
+      await _invalidations[scope];
+      return;
     }
+    for (final change in unseen) {
+      (_handledChanges[change] ??= {}).add(scope);
+    }
+    try {
+      await (_invalidations[scope] ??= Future<void>.microtask(() async {
+        _localQueryExecutor.invalidateBatch(batchId, cacheNamespace: scope.$1);
+        final keys = _reads.keys.where((key) => key.$1 == scope).toList();
+        for (final key in keys) {
+          _reads.remove(key)?.cancel();
+        }
+        final prefix = '$_candidatePrefix${scope.$1}:$batchId:';
+        for (final key in _cache.keysWithPrefix(prefix)) {
+          await _cache.remove(key);
+        }
+      }).whenComplete(() {
+        _invalidations.remove(scope);
+      }));
+    } catch (_) {
+      for (final change in unseen) {
+        _handledChanges[change]?.remove(scope);
+      }
+      rethrow;
+    }
+  }
+
+  _PhotoScope _captureScope(String batchId) {
+    final namespace = _cacheNamespace();
+    if (namespace != _readingNamespace) {
+      _readingNamespace = namespace;
+      for (final read in _reads.values) {
+        read.cancel();
+      }
+      _reads.clear();
+    }
+    return (namespace, batchId);
   }
 
   Future<PhotoPage> _loadAndCacheServerPage(
     String batchId,
-    PhotoQuery query,
-  ) async {
-    final page = await _api.page(batchId, query);
+    PhotoQuery query, [
+    void Function(PhotoPage)? onReceived,
+    PhotoQueryCancellationToken? cancellationToken,
+  ]) async {
+    cancellationToken?.throwIfCancelled();
     final key = '$_photoPrefix${_cacheNamespace()}:$batchId:${_queryKey(query)}';
+    final page = await _api.page(batchId, query);
+    cancellationToken?.throwIfCancelled();
+    onReceived?.call(page);
+    cancellationToken?.throwIfCancelled();
+    final timing = GalleryTiming.current;
+    final started = timing?.elapsedUs ?? 0;
     await _cache.write(key, {
       'items': page.items.map((item) => item.toJson()).toList(),
       'has_more': page.hasMore,
       'next_cursor': page.nextCursor,
       'cached_at': DateTime.now().toIso8601String(),
     });
+    if (timing != null) {
+      timing.event('page_cache_written', {'request': timing.requests, 'duration_us': timing.elapsedUs - started});
+    }
     return page;
   }
 
@@ -283,17 +399,24 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
     return value == null || value.isEmpty ? null : value;
   }
 
-  PhotoPage _photoPageFromCache(Map<dynamic, dynamic> raw) => PhotoPage(
-    items: (raw['items'] as List? ?? const []).whereType<Map>().map((item) => PhotoSummary.fromJson(Map<String, dynamic>.from(item))).toList(),
-    hasMore: raw['has_more'] == true,
-    nextCursor: raw['next_cursor']?.toString(),
-    fromCache: true,
-    cachedAt: DateTime.tryParse(raw['cached_at']?.toString() ?? ''),
-  );
+  PhotoPage _photoPageFromCache(Map<dynamic, dynamic> raw, PhotoQuery query) {
+    final complete = query.cursor == null && raw['has_more'] != true;
+    return PhotoPage(
+      items: (raw['items'] as List? ?? const []).whereType<Map>().map((item) => PhotoSummary.fromJson(Map<String, dynamic>.from(item))).toList(),
+      hasMore: raw['has_more'] == true,
+      nextCursor: raw['next_cursor']?.toString(),
+      fromCache: true,
+      cachedAt: DateTime.tryParse(raw['cached_at']?.toString() ?? ''),
+      resultComplete: complete,
+      cacheScope: complete ? PhotoCacheScope.complete : PhotoCacheScope.partial,
+    );
+  }
 
-  PhotoPage? _localPageFromSnapshots(String batchId, PhotoQuery query) {
-    final prefix = '$_photoPrefix${_cacheNamespace()}:$batchId:';
+  PhotoPage? _localPageFromSnapshots(_PhotoScope scope, PhotoQuery query) {
+    final (namespace, batchId) = scope;
+    final prefix = '$_photoPrefix$namespace:$batchId:';
     final byId = <String, PhotoSummary>{};
+    final savedAtById = <String, DateTime?>{};
     DateTime? cachedAt;
     for (final key in _cache.keysWithPrefix(prefix)) {
       final raw = _cache.read<Map>(key);
@@ -303,7 +426,11 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
       for (final item in (raw['items'] as List? ?? const [])) {
         if (item is! Map) continue;
         final photo = PhotoSummary.fromJson(Map<String, dynamic>.from(item));
-        if (photo.id.isNotEmpty) byId[photo.id] = photo;
+        if (photo.id.isEmpty) continue;
+        final previousSavedAt = savedAtById[photo.id];
+        if (previousSavedAt != null && (savedAt == null || savedAt.isBefore(previousSavedAt))) continue;
+        byId[photo.id] = photo;
+        savedAtById[photo.id] = savedAt;
       }
     }
     if (byId.isEmpty) return null;
@@ -322,6 +449,68 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
       resultComplete: false,
       cacheScope: PhotoCacheScope.partial,
       scannedCount: byId.length,
+      matchedCount: items.length,
     );
+  }
+}
+
+typedef _PhotoScope = (String namespace, String batchId);
+typedef _PhotoSubscriber = ({PhotoQueryProgressCallback? progress, PhotoQueryCancellationToken? token});
+
+/// A shared request with independently cancellable consumers.
+class _PhotoRead {
+  _PhotoRead({
+    required bool Function() isCurrent,
+    required Future<PhotoPage> Function(PhotoQueryProgressCallback, PhotoQueryCancellationToken) load,
+    required void Function(_PhotoRead) onDone,
+  }) {
+    _token = PhotoQueryCancellationToken(isCurrent: () => isCurrent() && hasSubscribers);
+    _result = Future.any([
+      Future<PhotoPage>.microtask(() => load(_report, _token)),
+      _cancelledResult(_token),
+    ]).whenComplete(() => onDone(this));
+  }
+
+  late final PhotoQueryCancellationToken _token;
+  late final Future<PhotoPage> _result;
+  final _subscribers = <Object, _PhotoSubscriber>{};
+  PhotoQueryProgress? _latest;
+  List<PhotoSummary>? _preview;
+
+  bool get hasSubscribers => _subscribers.values.any((subscriber) => subscriber.token?.isCancelled != true);
+
+  Object subscribe(_PhotoSubscriber subscriber) {
+    final id = Object();
+    _subscribers[id] = subscriber;
+    final latest = _latest;
+    if (latest != null && !latest.complete) {
+      subscriber.progress?.call(
+        PhotoQueryProgress(
+          scannedCount: latest.scannedCount,
+          matchedCount: latest.matchedCount,
+          fromCache: latest.fromCache,
+          previewItems: _preview,
+        ),
+      );
+    }
+    return id;
+  }
+
+  void unsubscribe(Object id) => _subscribers.remove(id);
+  void cancel() => _token.cancel();
+
+  Future<PhotoPage> resultOrCancellation(PhotoQueryCancellationToken? token) =>
+      token == null ? _result : Future.any([_result, _cancelledResult(token)]);
+
+  static Future<PhotoPage> _cancelledResult(PhotoQueryCancellationToken token) =>
+      token.whenCancelled.then((_) => throw const PhotoQueryCancelled());
+
+  void _report(PhotoQueryProgress progress) {
+    if (_token.isCancelled) return;
+    _latest = progress;
+    _preview = progress.previewItems ?? _preview;
+    for (final subscriber in _subscribers.values.toList()) {
+      if (subscriber.token?.isCancelled != true) subscriber.progress?.call(progress);
+    }
   }
 }

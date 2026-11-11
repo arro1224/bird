@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
+import 'package:aves/bird_companion/features/gallery/domain/gallery_timing.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 
 class PhotoSequencePage {
@@ -101,6 +102,7 @@ class GalleryArgs {
     this.initialQuery = const PhotoQuery(),
     this.restoreSavedView = true,
     this.reviewContext,
+    this.timing,
   });
   final String batchId;
   final String? batchName;
@@ -112,6 +114,7 @@ class GalleryArgs {
   final PhotoQuery initialQuery;
   final bool restoreSavedView;
   final ReviewContext? reviewContext;
+  final GalleryTiming? timing;
 
   ReviewContext get context => reviewContext ?? ReviewContext(batchId: batchId, batchName: batchName);
 }

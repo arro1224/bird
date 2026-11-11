@@ -15,6 +15,91 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('B10 filter progress, cancellation and candidate cache', () {
+    test('shows a stable first batch before the page cache and the next response', () async {
+      final firstPageCache = Completer<void>();
+      final secondPage = Completer<PhotoPage>();
+      final first = _photo('newest', '白鹭', day: 12);
+      final boundary = _photo('tie-z', '白鹭', day: 11);
+      final executor = PhotoLocalQueryExecutor(
+        (_, query) => secondPage.future,
+        (_) async => const [],
+        const PhotoLocalFilterEngine(),
+        null,
+        null,
+        (_, query, onReceived, _) async {
+          if (query.cursor != null) return secondPage.future;
+          final page = PhotoPage(items: [first, boundary], hasMore: true, nextCursor: 'second');
+          onReceived!(page);
+          await firstPageCache.future;
+          return page;
+        },
+      );
+      final cubit = GalleryCubit(_ControllableExecutionRepository(executor), 'project-1');
+      addTearDown(cubit.close);
+      final preview = cubit.stream.firstWhere((state) => state.items.isNotEmpty);
+      final refresh = cubit.refresh(query: const PhotoQuery(recognitionState: 'recognized', pageSize: 2));
+
+      final early = await preview;
+      expect(firstPageCache.isCompleted, isFalse);
+      expect(secondPage.isCompleted, isFalse);
+      expect(early.items.map((photo) => photo.id), ['newest']);
+      expect(early.filtering, isTrue);
+      expect(early.resultComplete, isFalse);
+      expect(early.hasMore, isFalse);
+
+      firstPageCache.complete();
+      secondPage.complete(PhotoPage(items: [_photo('tie-a', '白鹭', day: 11)], hasMore: false));
+      await refresh;
+      expect(cubit.state.items.map((photo) => photo.id), ['newest', 'tie-a']);
+      expect(cubit.state.resultComplete, isTrue);
+      expect(cubit.state.matchedCount, 3);
+      await cubit.loadMore();
+      expect(cubit.state.items.map((photo) => photo.id), ['newest', 'tie-a', 'tie-z']);
+    });
+
+    test('keeps the first batch as incomplete when the scan is cancelled', () async {
+      final secondPage = Completer<PhotoPage>();
+      final executor = PhotoLocalQueryExecutor(
+        (_, query) async => query.cursor == null
+            ? PhotoPage(
+                items: [_photo('first', '白鹭', day: 11), _photo('last', '白鹭')],
+                hasMore: true,
+                nextCursor: 'second',
+              )
+            : await secondPage.future,
+        (_) async => const [],
+      );
+      final cubit = GalleryCubit(_ControllableExecutionRepository(executor), 'project-1');
+      addTearDown(cubit.close);
+      final preview = cubit.stream.firstWhere((state) => state.items.isNotEmpty);
+      final refresh = cubit.refresh(query: const PhotoQuery(recognitionState: 'recognized'));
+      await preview;
+      cubit.cancelFiltering();
+      secondPage.complete(PhotoPage(items: [_photo('late', '白鹭', day: 9)], hasMore: false));
+      await refresh;
+      expect(cubit.state.items.map((photo) => photo.id), ['first']);
+      expect(cubit.state.filtering, isFalse);
+      expect(cubit.state.resultComplete, isFalse);
+      expect(cubit.state.hasMore, isFalse);
+    });
+
+    test('waits for the final sort when the box does not follow capture order', () async {
+      final progress = <PhotoQueryProgress>[];
+      final executor = PhotoLocalQueryExecutor(
+        (_, query) async => query.cursor == null
+            ? PhotoPage(
+                items: [_photo('old', '白鹭'), _photo('new', '白鹭', day: 12)],
+                hasMore: true,
+                nextCursor: 'second',
+              )
+            : PhotoPage(items: [_photo('middle', '白鹭', day: 11)], hasMore: false),
+        (_) async => const [],
+      );
+      final page = await executor.page('project-1', const PhotoQuery(recognitionState: 'recognized'), onProgress: progress.add);
+      expect(progress.every((value) => value.previewItems == null), isTrue);
+      expect(page.items.map((photo) => photo.id), ['new', 'middle', 'old']);
+    });
+
     test('reports scan progress for every server page and completion', () async {
       final progress = <PhotoQueryProgress>[];
       final executor = PhotoLocalQueryExecutor(
@@ -91,7 +176,7 @@ void main() {
         (query) async => const [],
         const PhotoLocalFilterEngine(),
         (batchId, query) => snapshot,
-        (batchId, query, value) async => snapshot = value,
+        (batchId, query, value, _) async => snapshot = value,
       );
 
       final egret = await executor.page(
@@ -257,7 +342,7 @@ void main() {
   });
 }
 
-PhotoSummary _photo(String id, String species) => PhotoSummary(
+PhotoSummary _photo(String id, String species, {int day = 10}) => PhotoSummary(
   id: id,
   filename: '$id.jpg',
   format: 'jpg',
@@ -268,10 +353,13 @@ PhotoSummary _photo(String id, String species) => PhotoSummary(
       SpeciesCandidate(name: species, confidence: .95),
     ],
   ),
-  capturedAt: DateTime.utc(2026, 8, 10),
+  capturedAt: DateTime.utc(2026, 8, day),
 );
 
 class _ControllableExecutionRepository implements PhotoRepository, PhotoQueryExecutionRepository {
+  _ControllableExecutionRepository([this.executor]);
+
+  final PhotoLocalQueryExecutor? executor;
   final filterStarted = Completer<void>();
   final invalidated = Completer<void>();
   String? invalidatedBatchId;
@@ -286,6 +374,10 @@ class _ControllableExecutionRepository implements PhotoRepository, PhotoQueryExe
     PhotoQueryProgressCallback? onProgress,
     PhotoQueryCancellationToken? cancellationToken,
   }) async {
+    final execution = executor;
+    if (execution != null) {
+      return execution.page(batchId, query, onProgress: onProgress, cancellationToken: cancellationToken);
+    }
     if (query.search == null || query.search!.isEmpty) {
       return PhotoPage(
         items: [_photo('existing', '麻雀')],
@@ -304,7 +396,7 @@ class _ControllableExecutionRepository implements PhotoRepository, PhotoQueryExe
   }
 
   @override
-  Future<void> invalidateLocalQueries(String batchId) async {
+  Future<void> invalidateLocalQueries(String batchId, {Iterable<AppDataChange> changes = const []}) async {
     invalidatedBatchId = batchId;
     if (!invalidated.isCompleted) invalidated.complete();
   }

@@ -6,6 +6,7 @@ import 'package:aves/bird_companion/core/media/media_asset_service.dart';
 import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show MatrixUtils, RenderAbstractViewport;
 
 typedef MediaPlaceholderBuilder = Widget Function(BuildContext context);
 typedef MediaFailureBuilder =
@@ -29,6 +30,7 @@ class ProgressiveMediaImage extends StatefulWidget {
     this.cacheWidth,
     this.cacheHeight,
     this.allowNetworkFallback = true,
+    this.onFirstFrame,
   });
 
   final MediaAssetDescriptor descriptor;
@@ -40,6 +42,7 @@ class ProgressiveMediaImage extends StatefulWidget {
   final int? cacheWidth;
   final int? cacheHeight;
   final bool allowNetworkFallback;
+  final VoidCallback? onFirstFrame;
 
   @override
   State<ProgressiveMediaImage> createState() => _ProgressiveMediaImageState();
@@ -253,7 +256,24 @@ class _ProgressiveMediaImageState extends State<ProgressiveMediaImage> {
         cacheWidth: widget.cacheWidth,
         cacheHeight: widget.cacheHeight,
         gaplessPlayback: true,
-        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) => wasSynchronouslyLoaded || frame != null ? child : widget.placeholderBuilder(context),
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          if (!wasSynchronouslyLoaded && frame == null) return widget.placeholderBuilder(context);
+          final onFirstFrame = widget.onFirstFrame;
+          if (onFirstFrame != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!context.mounted || widget.onFirstFrame != onFirstFrame || ModalRoute.isCurrentOf(context) == false) return;
+              final image = context.findRenderObject();
+              if (image == null || !image.attached) return;
+              final viewport = RenderAbstractViewport.maybeOf(image);
+              if (viewport != null) {
+                final bounds = MatrixUtils.transformRect(image.getTransformTo(viewport), image.paintBounds);
+                if (!bounds.overlaps(viewport.paintBounds)) return;
+              }
+              onFirstFrame();
+            });
+          }
+          return child;
+        },
         errorBuilder: (context, error, _) => widget.failureBuilder(context, error, _manualRetry),
       );
     }
