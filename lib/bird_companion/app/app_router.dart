@@ -83,7 +83,15 @@ void openReconnectConnection(BuildContext context) {
     final dependencies = BirdCompanionScope.maybeOf(context);
     final verification = dependencies?.deviceSessionCubit.verifySavedSession();
     final attemptId = dependencies?.deviceSessionCubit.activeAttemptId;
-    if (await verification == true) return;
+    if (await verification == true) {
+      // 已连接时点击"重新连接"过去会静默返回，用户以为按钮失效；给一次明确反馈。
+      if (context.mounted) {
+        ScaffoldMessenger.maybeOf(context)
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('连接正常，已刷新设备状态。')));
+      }
+      return;
+    }
     if (!context.mounted) return;
     if (dependencies != null && (dependencies.deviceSessionCubit.activeAttemptId != attemptId || dependencies.deviceSessionCubit.provisioningHandoffActive)) return;
     // A pending authenticated event gate is retried on the same saved device.
