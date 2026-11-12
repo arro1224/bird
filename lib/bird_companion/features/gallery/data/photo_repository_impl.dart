@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
+import 'package:aves/bird_companion/core/models/batch_tag_action.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/scene_models.dart';
@@ -284,6 +285,7 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
     if (deviceId == null) {
       throw StateError('没有可用于隔离修改的设备身份');
     }
+    final namespace = _cacheNamespace();
     final operationId = 'batch-$id-${DateTime.now().microsecondsSinceEpoch}';
     try {
       if (await _connectivity.hasNetwork) {
@@ -295,13 +297,14 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
           value: value,
           idempotencyKey: operationId,
         );
-        await _updateCachedPhotos(
-          id,
-          outcome.succeededIds,
-          action,
-          value,
-        );
-        await invalidateLocalQueries(id);
+        if (isBatchTagAction(action)) {
+          if (_activeDeviceId == deviceId && _cacheNamespace() == namespace) {
+            await acceptSyncedBatchTags(id, outcome.succeededIds, action, version, value);
+          }
+        } else {
+          await _updateCachedPhotos(id, outcome.succeededIds, action, value, namespace);
+          await invalidateLocalQueries(id);
+        }
         return outcome;
       }
     } on ApiException catch (error) {
@@ -354,8 +357,10 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
         projectId: id,
       ),
     );
-    await _updateCachedPhotos(id, queuedIds, action, value);
-    await invalidateLocalQueries(id);
+    if (!isBatchTagAction(action)) {
+      await _updateCachedPhotos(id, queuedIds, action, value, namespace);
+      await invalidateLocalQueries(id);
+    }
     return BatchOperationOutcome(
       succeededIds: queuedIds,
       failed: failed,
@@ -363,9 +368,42 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
     );
   }
 
-  Future<void> _updateCachedPhotos(String batchId, List<String> ids, String operation, Object? value) async {
+  Future<void> acceptSyncedBatchTags(String batchId, List<String> ids, String action, int version, Object? value) async {
+    if (ids.isEmpty) return;
+    final namespace = _cacheNamespace();
+    try {
+      await _updateCachedPhotos(batchId, ids, action, value, namespace, tagVersion: version);
+      for (final id in ids) {
+        final key = 'album:detail:$namespace:$id';
+        final raw = _cache.read<Map>(key);
+        if (raw == null) continue;
+        final detail = Map<String, dynamic>.from(raw);
+        final file = detail['file'] is Map ? Map<String, dynamic>.from(detail['file'] as Map) : detail;
+        final decision = detail['decision'] is Map ? Map<String, dynamic>.from(detail['decision'] as Map) : null;
+        final currentVersion = decision?['version'] ?? file['version'];
+        if (currentVersion is num && currentVersion > version) continue;
+        final tags = _applyTagChange(decision?['user_tags'] ?? file['user_tags'], action, value);
+        file['user_tags'] = tags;
+        if (!identical(file, detail)) detail['file'] = file;
+        if (decision != null) detail['decision'] = {...decision, 'user_tags': tags};
+        await _cache.write(key, detail);
+      }
+      if (_cacheNamespace() == namespace) await invalidateLocalQueries(batchId);
+    } catch (_) {
+      // Cache updates cannot change the outcome already confirmed by the box.
+    }
+  }
+
+  Future<void> _updateCachedPhotos(
+    String batchId,
+    List<String> ids,
+    String operation,
+    Object? value,
+    String namespace, {
+    int? tagVersion,
+  }) async {
     final selected = ids.toSet();
-    final prefix = '$_photoPrefix${_cacheNamespace()}:$batchId:';
+    final prefix = '$_photoPrefix$namespace:$batchId:';
     for (final key in _cache.keysWithPrefix(prefix)) {
       final raw = _cache.read<Map>(key);
       if (raw == null) continue;
@@ -374,19 +412,29 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
         if (item is! Map) return item;
         final photo = Map<String, dynamic>.from(item);
         if (!selected.contains(photo['file_id']?.toString())) return photo;
+        final currentVersion = photo['version'];
+        if (tagVersion != null && currentVersion is num && currentVersion > tagVersion) return photo;
         changed = true;
         if (const {'pending', 'keep', 'discard', 'featured'}.contains(operation)) {
           photo['keep_state'] = operation;
-        } else if (operation == 'add_tags' || operation == 'remove_tags') {
-          final tags = (photo['user_tags'] as List? ?? const []).map((tag) => tag.toString()).toSet();
-          final changedTags = (value as List? ?? const []).map((tag) => tag.toString());
-          operation == 'add_tags' ? tags.addAll(changedTags) : tags.removeAll(changedTags);
-          photo['user_tags'] = tags.toList();
+        } else if (isBatchTagAction(operation)) {
+          photo['user_tags'] = _applyTagChange(photo['user_tags'], operation, value);
         }
         return photo;
       }).toList();
       if (changed) await _cache.write(key, {...Map<String, dynamic>.from(raw), 'items': items, 'cached_at': DateTime.now().toIso8601String()});
     }
+  }
+
+  List<String> _applyTagChange(Object? existing, String operation, Object? value) {
+    final tags = (existing as List? ?? const []).map((tag) => tag.toString()).toSet();
+    final changed = (value as List? ?? const []).map((tag) => tag.toString());
+    if (operation == 'add_tags') {
+      tags.addAll(changed);
+    } else {
+      tags.removeAll(changed);
+    }
+    return tags.toList();
   }
 
   String _queryKey(PhotoQuery query) {

@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/bird_companion/core/models/photo_models.dart';
-import 'package:aves/bird_companion/features/gallery/domain/batch_tag_removal.dart';
+import 'package:aves/bird_companion/features/gallery/domain/batch_tag_change.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/batch_remove_tags_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,13 +11,13 @@ PhotoSummary _photo(String id, List<String> tags) => PhotoSummary(id: id, filena
 void main() {
   testWidgets('shows deduplicated detail tags; removal needs confirmation and can be undone', (tester) async {
     final loaded = Completer<List<PhotoSummary>>();
-    BatchTagRemoval? result;
+    BatchTagChange? result;
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
           builder: (context) => Scaffold(
             body: TextButton(
-              onPressed: () async => result = await showDialog<BatchTagRemoval>(
+              onPressed: () async => result = await showDialog<BatchTagChange>(
                 context: context,
                 builder: (_) => BatchRemoveTagsDialog(loadPhotos: () => loaded.future),
               ),
@@ -82,7 +82,7 @@ void main() {
   });
 
   test('removal and undo groups preserve each photo original tags', () {
-    final plan = BatchTagRemoval(
+    final plan = BatchTagChange.remove(
       photos: [
         _photo('p1', ['湿地', '水鸟']),
         _photo('p2', ['湿地']),

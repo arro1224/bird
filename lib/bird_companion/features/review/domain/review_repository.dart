@@ -6,6 +6,8 @@ class ReviewDetail {
   final PhotoDetail photo;
   final UserDecision? decision;
   final List<VersionHistory> history;
+
+  List<String> get userTags => decision?.userTags ?? photo.summary.userTags;
 }
 
 class ReviewSaveResult {

@@ -34,14 +34,16 @@ class PendingOperation extends Equatable {
   final String? failureReason;
 
   PendingOperation copyWith({
+    String? id,
+    Map<String, dynamic>? payload,
     int? retryCount,
     PendingOperationStatus? status,
     String? failureReason,
     bool clearFailureReason = false,
   }) => PendingOperation(
-    id: id,
+    id: id ?? this.id,
     type: type,
-    payload: payload,
+    payload: payload ?? this.payload,
     createdAt: createdAt,
     version: version,
     retryCount: retryCount ?? this.retryCount,

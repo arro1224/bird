@@ -1,9 +1,11 @@
 import 'package:aves/bird_companion/app/app_dependencies.dart';
+import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/media/media_asset_coordinator.dart';
 import 'package:aves/bird_companion/core/media/media_asset_service.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
@@ -24,6 +26,71 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('批量添加按每张照片补齐标签，撤销保留原有标签', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(360, 800);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final dependencies = _Dependencies(3);
+    addTearDown(dependencies.deviceSessionCubit.close);
+    addTearDown(dependencies.refreshCoordinator.dispose);
+    addTearDown(dependencies.dataChangeBus.dispose);
+    addTearDown(dependencies.pendingOperationStore.dispose);
+    final photos = dependencies.photoRepository;
+    photos.tagsById['photo-2'] = ['湿地', '水鸟', '晨拍'];
+    await tester.pumpWidget(
+      BirdCompanionScope(
+        dependencies: dependencies,
+        child: const MaterialApp(
+          home: GalleryPage(batchId: 'project-1', batchName: '测试拍摄', totalCount: 3),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.longPress(find.byKey(const ValueKey('photo-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('photo-1')));
+    await tester.tap(find.byKey(const ValueKey('photo-2')));
+    await tester.pump();
+    expect(tester.widget<SelectionActionBar>(find.byType(SelectionActionBar)).count, 3);
+    await tester.tap(find.text('添加标签'));
+    await tester.pumpAndSettle();
+
+    final field = find.byType(TextField);
+    final apply = find.widgetWithText(FilledButton, '应用');
+    expect(find.text('所选照片已有标签'), findsOneWidget);
+    expect(find.widgetWithText(Chip, '湿地'), findsOneWidget);
+    expect(find.widgetWithText(Chip, '水鸟'), findsOneWidget);
+    expect(find.widgetWithText(Chip, '晨拍'), findsOneWidget);
+    expect(tester.widget<EditableText>(find.byType(EditableText)).controller.text, isEmpty);
+    await tester.enterText(field, '湿地');
+    await tester.pump();
+    expect(tester.widget<FilledButton>(apply).onPressed, isNull);
+    expect(photos.operations, isEmpty);
+
+    await tester.enterText(field, '湿地，水鸟, 晨拍，水鸟');
+    await tester.pump();
+    await tester.tap(apply);
+    await tester.pumpAndSettle();
+    expect(find.text('已添加 2 张照片的标签'), findsOneWidget);
+    expect(photos.operations, [
+      {'operation': 'add_tags', 'ids': ['photo-0'], 'tags': ['晨拍'], 'version': 3},
+      {'operation': 'add_tags', 'ids': ['photo-1'], 'tags': ['水鸟', '晨拍'], 'version': 3},
+    ]);
+    expect(photos.tagsFor('photo-1'), ['湿地', '水鸟', '晨拍']);
+
+    await tester.tap(find.text('撤销'));
+    await tester.pumpAndSettle();
+    expect(photos.operations.skip(2), [
+      {'operation': 'remove_tags', 'ids': ['photo-0'], 'tags': ['晨拍'], 'version': 4},
+      {'operation': 'remove_tags', 'ids': ['photo-1'], 'tags': ['水鸟', '晨拍'], 'version': 4},
+    ]);
+    expect(photos.tagsFor('photo-0'), ['湿地', '水鸟']);
+    expect(photos.tagsFor('photo-1'), ['湿地']);
+    expect(photos.tagsFor('photo-2'), ['湿地', '水鸟', '晨拍']);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('批量删除从详情列出标签，仅处理含该标签的照片并精确撤销', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(360, 800);
@@ -57,7 +124,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('确认删除'));
     await tester.pumpAndSettle();
-    final photos = dependencies.photoRepository as _Photos;
+    final photos = dependencies.photoRepository;
     expect(photos.operations, [
       {
         'operation': 'remove_tags',
@@ -71,6 +138,59 @@ void main() {
     expect(photos.operations.last['operation'], 'add_tags');
     expect(photos.operations.last['ids'], ['photo-0']);
     expect(photos.operations.last['tags'], ['水鸟']);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('批量添加部分失败后保留失败选择，详情只显示已成功添加的标签', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(360, 800);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final dependencies = _Dependencies(2);
+    addTearDown(dependencies.deviceSessionCubit.close);
+    addTearDown(dependencies.refreshCoordinator.dispose);
+    addTearDown(dependencies.dataChangeBus.dispose);
+    addTearDown(dependencies.pendingOperationStore.dispose);
+    final photos = dependencies.photoRepository..rejectIds.add('photo-1');
+    await tester.pumpWidget(
+      BirdCompanionScope(
+        dependencies: dependencies,
+        child: const MaterialApp(
+          onGenerateRoute: BirdAppRouter.onGenerateRoute,
+          home: GalleryPage(batchId: 'project-1', batchName: '测试拍摄', totalCount: 2),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final first = find.byKey(const ValueKey('photo-0'));
+    final second = find.byKey(const ValueKey('photo-1'));
+    await tester.longPress(first);
+    await tester.pumpAndSettle();
+    await tester.tap(second);
+    await tester.pump();
+    await tester.tap(find.text('添加标签'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '晨拍');
+    await tester.pump();
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已添加 1 张的标签，1 张失败'), findsOneWidget);
+    expect(tester.widget<PhotoTile>(first).selected, isFalse);
+    expect(tester.widget<PhotoTile>(second).selected, isTrue);
+    expect(photos.tagsFor('photo-1'), ['湿地']);
+    await tester.tap(find.byTooltip('退出多选'));
+    await tester.pumpAndSettle();
+    await tester.tap(first);
+    await tester.pumpAndSettle();
+    final addTag = find.widgetWithText(OutlinedButton, '添加标签');
+    await tester.scrollUntilVisible(addTag, 250);
+    await tester.tap(addTag);
+    await tester.pumpAndSettle();
+    expect(find.text('已有标签'), findsOneWidget);
+    expect(find.widgetWithText(Chip, '晨拍'), findsOneWidget);
+    expect(find.widgetWithText(Chip, '水鸟'), findsOneWidget);
+    expect(tester.widget<EditableText>(find.byType(EditableText)).controller.text, isEmpty);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -162,9 +282,9 @@ class _Dependencies implements BirdCompanionDependencies {
   _Dependencies(int count) : photoRepository = _Photos(count);
 
   @override
-  final PhotoRepository photoRepository;
+  final _Photos photoRepository;
   @override
-  final ReviewRepository reviewRepository = _TagReviews();
+  late final ReviewRepository reviewRepository = _TagReviews(photoRepository);
   @override
   final LocalCache cache = _MemoryCache();
   @override
@@ -244,11 +364,36 @@ class _Photos implements PhotoRepository {
 
   final List<PhotoSummary> photos;
   final operations = <Map<String, Object?>>[];
+  final tagsById = <String, List<String>>{};
+  final versionsById = <String, int>{};
+  final rejectIds = <String>{};
+
+  List<String> tagsFor(String id) => tagsById[id] ?? ['湿地', if (id == 'photo-0') '水鸟'];
 
   @override
   Future<BatchOperationOutcome> batchOperation(String batchId, List<String> ids, String operation, {required int version, Object? value}) async {
     operations.add({'operation': operation, 'ids': ids, 'tags': value, 'version': version});
-    return BatchOperationOutcome(succeededIds: ids);
+    final succeeded = ids.where((id) => !rejectIds.contains(id)).toList();
+    for (final id in succeeded) {
+      final tags = tagsFor(id).toSet();
+      final changed = value as List<String>;
+      if (operation == 'add_tags') {
+        tags.addAll(changed);
+      } else if (operation == 'remove_tags') {
+        tags.removeAll(changed);
+      }
+      tagsById[id] = tags.toList();
+      versionsById[id] = version + 1;
+      final index = photos.indexWhere((photo) => photo.id == id);
+      photos[index] = PhotoSummary.fromJson({...photos[index].toJson(), 'version': versionsById[id]});
+    }
+    return BatchOperationOutcome(
+      succeededIds: succeeded,
+      failed: {
+        for (final id in ids)
+          if (rejectIds.contains(id)) id: '暂时无法写入',
+      },
+    );
   }
 
   @override
@@ -262,6 +407,10 @@ class _Photos implements PhotoRepository {
 }
 
 class _TagReviews implements ReviewRepository {
+  _TagReviews(this.photos);
+
+  final _Photos photos;
+
   @override
   Future<ReviewDetail> detail(String id) async => ReviewDetail(
     photo: PhotoDetail(
@@ -272,8 +421,13 @@ class _TagReviews implements ReviewRepository {
         preview: const PreviewRef(),
         analysisState: AnalysisState.completed,
         version: 3,
-        userTags: ['湿地', if (id == 'photo-0') '水鸟'],
       ),
+    ),
+    decision: UserDecision(
+      fileId: id,
+      keepState: KeepState.pending,
+      userTags: photos.tagsFor(id),
+      version: photos.versionsById[id] ?? 3,
     ),
   );
 

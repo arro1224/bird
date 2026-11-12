@@ -11,7 +11,6 @@ import 'package:aves/bird_companion/core/models/batch_models.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
-import 'package:aves/bird_companion/core/models/tag_input.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
@@ -25,12 +24,13 @@ import 'package:aves/bird_companion/features/device/presentation/widgets/device_
 import 'package:aves/bird_companion/features/copy/domain/copy_entry_guard.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/domain/gallery_timing.dart';
-import 'package:aves/bird_companion/features/gallery/domain/batch_tag_removal.dart';
+import 'package:aves/bird_companion/features/gallery/domain/batch_tag_change.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_version_batch_coordinator.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_cubit.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/selection_cubit.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/active_filter_summary.dart';
+import 'package:aves/bird_companion/features/gallery/presentation/widgets/batch_add_tags_dialog.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/batch_remove_tags_dialog.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/album_history_entry.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/filter_sheet.dart';
@@ -1459,109 +1459,81 @@ Future<void> _requestBatchAction(
 
 Future<void> _showTagDialog(BuildContext context, String batchId, List<String> ids, {required bool remove}) async {
   final dependencies = BirdCompanionScope.of(context);
-  BatchTagRemoval? removal;
-  if (remove) {
-    removal = await showDialog<BatchTagRemoval>(
-      context: context,
-      builder: (_) => BatchRemoveTagsDialog(
-        loadPhotos: () async {
-          final photos = <PhotoSummary>[];
-          for (var start = 0; start < ids.length; start += 6) {
-            final chunk = ids.skip(start).take(6);
-            final details = await Future.wait(chunk.map(dependencies.reviewRepository.detail));
-            for (final detail in details) {
-              photos.add(
-                PhotoSummary.fromJson({
-                  ...detail.photo.summary.toJson(),
-                  'user_tags': detail.decision?.userTags ?? detail.photo.summary.userTags,
-                  'version': detail.decision?.version ?? detail.photo.summary.version,
-                }),
-              );
-            }
-          }
-          return photos;
-        },
-      ),
-    );
-    if (removal == null || !context.mounted) return;
-  }
-  var draft = '';
-  final tags =
-      removal?.tags ??
-      await showDialog<List<String>>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('批量添加标签'),
-          content: TextField(
-            decoration: const InputDecoration(hintText: '例如：水鸟, 晨拍'),
-            onChanged: (value) => draft = value,
-            onSubmitted: (value) => Navigator.pop(dialogContext, parseUserTags(value)),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
-            FilledButton(
-              onPressed: () => Navigator.pop(
-                dialogContext,
-                parseUserTags(draft),
-              ),
-              child: const Text('应用'),
-            ),
-          ],
-        ),
-      );
-  if (tags == null || tags.isEmpty || !context.mounted) return;
-  final selection = context.read<SelectionCubit>();
-  selection.begin();
-  final operation = remove ? 'remove_tags' : 'add_tags';
-  final BatchOperationOutcome outcome;
-  final undoActions = <BatchUndoAction>[];
-  if (removal != null) {
-    final succeeded = <String>[];
-    final failed = <String, String>{};
-    var queued = false;
-    for (final group in removal.groups) {
-      final result = await PhotoVersionBatchCoordinator(dependencies.photoRepository, dependencies.reviewRepository).apply(
-        projectId: batchId,
-        fileIds: group.ids,
-        currentPhotos: removal.photos,
-        operation: operation,
-        value: group.tags,
-      );
-      succeeded.addAll(result.succeededIds);
-      failed.addAll(result.failed);
-      queued = queued || result.queued;
-      undoActions.add(BatchUndoAction(operation: 'add_tags', ids: result.succeededIds, value: group.tags));
+
+  Future<List<PhotoSummary>> loadPhotos() async {
+    final photos = <PhotoSummary>[];
+    for (var start = 0; start < ids.length; start += 6) {
+      final chunk = ids.skip(start).take(6);
+      final details = await Future.wait(chunk.map(dependencies.reviewRepository.detail));
+      for (final detail in details) {
+        photos.add(
+          PhotoSummary.fromJson({
+            ...detail.photo.summary.toJson(),
+            'user_tags': detail.userTags,
+            'version': detail.decision?.version ?? detail.photo.summary.version,
+          }),
+        );
+      }
     }
-    outcome = BatchOperationOutcome(succeededIds: succeeded, failed: failed, queued: queued);
-  } else {
-    outcome = await _batchOperationByPhotoVersion(
-      context,
-      batchId,
-      ids,
-      operation,
-      value: tags,
-    );
-    undoActions.add(BatchUndoAction(operation: 'remove_tags', ids: outcome.succeededIds, value: tags));
+    return photos;
   }
-  selection.complete(succeededIds: outcome.succeededIds, failed: outcome.failed);
-  if (!outcome.queued) {
+
+  final change = await showDialog<BatchTagChange>(
+    context: context,
+    builder: (_) => remove ? BatchRemoveTagsDialog(loadPhotos: loadPhotos) : BatchAddTagsDialog(loadPhotos: loadPhotos),
+  );
+  if (change == null || change.groups.isEmpty || !context.mounted) return;
+  final selection = context.read<SelectionCubit>();
+  if (selection.state.submitting) return;
+  selection.begin();
+
+  final coordinator = PhotoVersionBatchCoordinator(dependencies.photoRepository, dependencies.reviewRepository);
+  final operation = remove ? 'remove_tags' : 'add_tags';
+  final succeeded = <String>[];
+  final failed = <String, String>{};
+  var queued = false;
+  final undoActions = <BatchUndoAction>[];
+  for (final group in change.groups) {
+    final result = await coordinator.apply(
+      projectId: batchId,
+      fileIds: group.ids,
+      currentPhotos: group.photos,
+      operation: operation,
+      value: group.tags,
+      // An addition and its undo must use the tags and version from the same snapshot.
+      loadMissingVersions: remove,
+    );
+    succeeded.addAll(result.succeededIds);
+    failed.addAll(result.failed);
+    queued = queued || result.queued;
+    if (result.succeededIds.isNotEmpty) {
+      undoActions.add(BatchUndoAction(operation: remove ? 'add_tags' : 'remove_tags', ids: result.succeededIds, value: group.tags));
+    }
+  }
+
+  if (selection.isClosed) return;
+  selection.complete(succeededIds: succeeded, failed: failed);
+  if (!queued) {
     selection.setUndoActions(undoActions);
   }
   if (!context.mounted) return;
   await context.read<GalleryCubit>().refresh();
-  if (outcome.queued) {
+  if (!context.mounted) return;
+  if (queued && failed.isNotEmpty) {
+    BirdFeedback.error(context, '有标签修改等待同步，${failed.length} 张照片操作失败');
+  } else if (queued) {
     BirdFeedback.queued(context, '标签已保存在手机上，重新连接后会自动更新');
-  } else if (outcome.succeededIds.isEmpty) {
-    BirdFeedback.error(context, '${outcome.failed.length} 张照片标签操作失败');
-  } else if (outcome.failed.isNotEmpty) {
+  } else if (succeeded.isEmpty) {
+    BirdFeedback.error(context, '${failed.length} 张照片标签操作失败');
+  } else if (failed.isNotEmpty) {
     BirdFeedback.error(
       context,
-      '已${remove ? '删除' : '添加'} ${outcome.succeededIds.length} 张的标签，${outcome.failed.length} 张失败',
+      '已${remove ? '删除' : '添加'} ${succeeded.length} 张的标签，${failed.length} 张失败',
     );
   } else {
     BirdFeedback.undo(
       context,
-      '已${remove ? '删除' : '添加'} ${outcome.succeededIds.length} 张照片的标签',
+      '已${remove ? '删除' : '添加'} ${succeeded.length} 张照片的标签',
       onUndo: () => _undoBatch(context, batchId),
     );
   }

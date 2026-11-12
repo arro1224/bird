@@ -12,6 +12,57 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('详情只追加手输标签，取消不写入，撤销保留旧标签', (tester) async {
+    final repository = _ReviewRepository()..userTags = ['湿地'];
+    await tester.pumpWidget(_app(repository, const PhotoDetailPage(fileId: 'p1')));
+    await tester.pumpAndSettle();
+
+    final action = find.widgetWithText(OutlinedButton, '添加标签');
+    final input = find.byType(TextField);
+    final save = find.widgetWithText(FilledButton, '保存标签');
+    await tester.scrollUntilVisible(action, 300);
+    await tester.tap(action);
+    await tester.pumpAndSettle();
+    expect(find.text('已有标签'), findsOneWidget);
+    expect(find.widgetWithText(Chip, '湿地'), findsOneWidget);
+    expect(find.widgetWithText(Chip, '系统湿地'), findsNothing);
+    expect(tester.widget<EditableText>(find.byType(EditableText)).controller.text, isEmpty);
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+
+    await tester.enterText(input, '湿地， 湿地, ');
+    await tester.pump();
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    await tester.enterText(input, '不会保存');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(repository.savedDecisions, isEmpty);
+
+    await tester.tap(action);
+    await tester.pumpAndSettle();
+    expect(tester.widget<EditableText>(find.byType(EditableText)).controller.text, isEmpty);
+    await tester.enterText(input, ' 水鸟，湿地, 水鸟， 晨拍 ');
+    await tester.pump();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(repository.savedDecisions.single.userTags, ['湿地', '水鸟', '晨拍']);
+
+    await tester.tap(action);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(Chip, '湿地'), findsOneWidget);
+    expect(find.widgetWithText(Chip, '水鸟'), findsOneWidget);
+    expect(find.widgetWithText(Chip, '晨拍'), findsOneWidget);
+    expect(tester.widget<EditableText>(find.byType(EditableText)).controller.text, isEmpty);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('撤销最近修改'));
+    await tester.pumpAndSettle();
+    expect(repository.savedDecisions, hasLength(2));
+    expect(repository.savedDecisions.last.userTags, ['湿地']);
+  });
+
   testWidgets('照片人工标签传入识别编辑页，清空后不回填系统标签', (tester) async {
     final repository = _ReviewRepository()..userTags = ['湿地', '水鸟'];
     await tester.pumpWidget(_app(repository, const PhotoDetailPage(fileId: 'p1')));

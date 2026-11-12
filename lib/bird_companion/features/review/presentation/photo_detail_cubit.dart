@@ -1,6 +1,7 @@
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
+import 'package:aves/bird_companion/core/models/tag_input.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
 import 'package:aves/bird_companion/features/review/domain/review_save_receipt.dart';
 import 'package:aves/bird_companion/features/review/domain/review_undo_entry.dart';
@@ -81,6 +82,30 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
     }
   }
 
+  Future<void> addTags(String fileId, List<String> tags) async {
+    final detail = state.detail;
+    if (detail == null || detail.photo.summary.id != fileId) return;
+    final existingTags = detail.userTags;
+    final existingNames = normalizeUserTags(existingTags).toSet();
+    final additions = normalizeUserTags(tags).where((tag) => !existingNames.contains(tag)).toList();
+    if (additions.isEmpty) return;
+
+    final decision = detail.decision;
+    await save(
+      UserDecision(
+        fileId: fileId,
+        keepState: decision?.keepState ?? KeepStateWireValue.fromWire(detail.photo.summary.keepState),
+        userScore: decision?.userScore,
+        userSpeciesId: decision?.userSpeciesId,
+        userSpecies: decision?.userSpecies,
+        userTags: [...existingTags, ...additions],
+        updatedAt: DateTime.now(),
+        version: decision?.version ?? detail.photo.summary.version,
+      ),
+      successMessage: '标签添加成功',
+    );
+  }
+
   Future<void> save(
     UserDecision decision, {
     String successMessage = '修改已保存',
@@ -99,7 +124,8 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
         state.detail?.decision ??
         UserDecision(
           fileId: decision.fileId,
-          keepState: KeepState.pending,
+          keepState: KeepStateWireValue.fromWire(state.detail?.photo.summary.keepState),
+          userTags: state.detail?.userTags ?? const [],
           updatedAt: DateTime.now(),
           version: state.detail?.photo.summary.version,
         );

@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/models/batch_tag_action.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/scene_models.dart';
@@ -86,6 +87,10 @@ class PhotoApi {
       },
       idempotencyKey: idempotencyKey,
     );
+    if (isBatchTagAction(operation)) {
+      final result = BatchTagActionResult.fromResponse(normalizedIds, data);
+      return BatchOperationOutcome(succeededIds: result.succeededIds, failed: result.failed);
+    }
     final failed = <String, String>{};
     for (final item in (data['failed'] as List? ?? const [])) {
       if (item is Map) failed[item['file_id']?.toString() ?? 'unknown'] = item['reason']?.toString() ?? '操作失败';

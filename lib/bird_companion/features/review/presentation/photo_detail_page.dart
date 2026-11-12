@@ -107,7 +107,7 @@ class _ViewState extends State<_View> {
   String? _speciesId;
   final _species = TextEditingController();
   final _score = TextEditingController();
-  final _tags = TextEditingController();
+  List<String> _userTags = const [];
   ReviewDetail? _appliedDetail;
   late bool _showSubjects;
   late int _currentIndex;
@@ -138,7 +138,6 @@ class _ViewState extends State<_View> {
   void dispose() {
     _species.dispose();
     _score.dispose();
-    _tags.dispose();
     super.dispose();
   }
 
@@ -150,7 +149,7 @@ class _ViewState extends State<_View> {
     _speciesId = decision?.userSpeciesId;
     _species.text = decision?.userSpecies ?? (candidates.isEmpty ? '' : candidates.first.name);
     _score.text = decision?.userScore?.toString() ?? detail.photo.summary.rating?.totalScore.toString() ?? '';
-    _tags.text = (decision?.userTags ?? detail.photo.summary.userTags).join(', ');
+    _userTags = detail.userTags;
     _appliedDetail = detail;
   }
 
@@ -468,23 +467,19 @@ class _ViewState extends State<_View> {
     userSpeciesId: _speciesId,
     userSpecies: _species.text.trim().isEmpty ? null : _species.text.trim(),
     userScore: double.tryParse(_score.text),
-    userTags: parseUserTags(_tags.text),
+    userTags: _userTags,
     updatedAt: DateTime.now(),
     version: detail.decision?.version ?? detail.photo.summary.version,
   );
 
   Future<void> _editTags(BuildContext context, ReviewDetail detail) async {
-    final value = await showModalBottomSheet<String>(
+    final tags = await showModalBottomSheet<List<String>>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => TagEditorSheet(initialTags: _tags.text),
+      builder: (_) => TagEditorSheet(existingTags: detail.userTags),
     );
-    if (value == null || !mounted) return;
-    setState(() => _tags.text = value);
-    await context.read<PhotoDetailCubit>().save(
-      _decision(detail),
-      successMessage: '标签添加成功',
-    );
+    if (tags == null || !context.mounted) return;
+    await context.read<PhotoDetailCubit>().addTags(detail.photo.summary.id, tags);
   }
 
   Future<void> _openEditor(BuildContext context, ReviewDetail detail) async {
@@ -494,7 +489,7 @@ class _ViewState extends State<_View> {
           keepState: _keep,
           species: _species.text,
           score: _score.text,
-          tags: _tags.text,
+          tags: _userTags.join(', '),
           initialCandidates: detail.photo.summary.recognition?.candidates ?? const [],
           previewUri: detail.photo.summary.preview.previewUri,
           photo: detail.photo.summary,
@@ -511,7 +506,7 @@ class _ViewState extends State<_View> {
       _speciesId = result.speciesId;
       _species.text = result.species;
       _score.text = result.score;
-      _tags.text = result.tags;
+      _userTags = parseUserTags(result.tags);
     });
     await context.read<PhotoDetailCubit>().save(_decision(detail));
   }

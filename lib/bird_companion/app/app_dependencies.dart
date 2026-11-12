@@ -248,6 +248,14 @@ class BirdCompanionDependencies {
 
     String activeDeviceNamespace() => activeDeviceId() ?? apiClient.baseUri?.authority ?? 'unbound';
 
+    final photoRepository = PhotoRepositoryImpl(
+      PhotoApi(apiClient),
+      connectivityMonitor,
+      pendingOperationStore,
+      cache,
+      activeDeviceNamespace,
+      activeDeviceId,
+    );
     final birdSyncService = BirdSyncService(
       connectivityMonitor,
       SyncCoordinator(pendingOperationStore),
@@ -256,6 +264,7 @@ class BirdCompanionDependencies {
       activeDeviceId,
       (fileId) => reviewRepository.acceptRemoteDecision(fileId),
       (photo) => reviewRepository.acceptSyncedPhoto(photo),
+      photoRepository.acceptSyncedBatchTags,
     );
     final connectionAttempts = ConnectionAttemptRecorder(cache, bleConnectionDiagnosticStore);
     deviceSessionCubit = DeviceSessionCubit(
@@ -317,14 +326,7 @@ class BirdCompanionDependencies {
       provisioningRepository: provisioningRepository,
       deviceRepository: DeviceRepositoryImpl(DeviceStatusApi(apiClient), eventClient, apiClient),
       batchRepository: BatchRepositoryImpl(BatchApi(apiClient), cache, activeDeviceNamespace),
-      photoRepository: PhotoRepositoryImpl(
-        PhotoApi(apiClient),
-        connectivityMonitor,
-        pendingOperationStore,
-        cache,
-        activeDeviceNamespace,
-        activeDeviceId,
-      ),
+      photoRepository: photoRepository,
       reviewRepository: reviewRepository,
       reviewCheckpointStore: ReviewCheckpointStore(cache),
       // 后端交付 birdbox-copy-v1 后将开关置 false 即切真实接口（迁移对照文档 §7）。

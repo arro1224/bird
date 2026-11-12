@@ -1,6 +1,6 @@
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/tag_input.dart';
-import 'package:aves/bird_companion/features/gallery/domain/batch_tag_removal.dart';
+import 'package:aves/bird_companion/features/gallery/domain/batch_tag_change.dart';
 import 'package:flutter/material.dart';
 
 class BatchRemoveTagsDialog extends StatefulWidget {
@@ -91,7 +91,7 @@ class _BatchRemoveTagsDialogState extends State<BatchRemoveTagsDialog> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
         FilledButton(
-          onPressed: photos == null || _removed.isEmpty ? null : () => Navigator.pop(context, BatchTagRemoval(photos: photos, tags: _removed.toList())),
+          onPressed: photos == null || _removed.isEmpty ? null : () => Navigator.pop(context, BatchTagChange.remove(photos: photos, tags: _removed.toList())),
           child: const Text('确认删除'),
         ),
       ],

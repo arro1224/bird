@@ -19,6 +19,7 @@ class PhotoVersionBatchCoordinator {
     required Iterable<PhotoSummary> currentPhotos,
     required String operation,
     Object? value,
+    bool loadMissingVersions = true,
   }) async {
     final selectedIds = fileIds.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet().toList(growable: false);
     final currentById = {
@@ -29,7 +30,7 @@ class PhotoVersionBatchCoordinator {
 
     for (final id in selectedIds) {
       var version = currentById[id]?.version;
-      if (version == null) {
+      if (version == null && loadMissingVersions) {
         try {
           final detail = await _reviewRepository.detail(id);
           version = detail.decision?.version ?? detail.photo.summary.version;

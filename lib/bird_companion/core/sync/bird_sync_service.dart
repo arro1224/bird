@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:aves/bird_companion/core/models/batch_tag_action.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
@@ -21,6 +22,7 @@ class BirdSyncService {
     String? Function()? deviceId,
     this._acceptRemoteReview,
     this._acceptSyncedReview,
+    this._acceptSyncedBatchTags,
   ]) : _deviceId = deviceId ?? (() => null);
   final ConnectivityMonitor _connectivity;
   final SyncCoordinator _coordinator;
@@ -29,6 +31,7 @@ class BirdSyncService {
   final String? Function() _deviceId;
   final Future<void> Function(String fileId)? _acceptRemoteReview;
   final Future<void> Function(PhotoSummary photo)? _acceptSyncedReview;
+  final Future<void> Function(String projectId, List<String> ids, String action, int version, Object? value)? _acceptSyncedBatchTags;
   StreamSubscription<bool>? _subscription;
   Future<SyncResult>? _synchronizing;
   bool _synchronizeAgain = false;
@@ -124,11 +127,20 @@ class BirdSyncService {
             if (projectId.isEmpty) {
               throw StateError('Offline batch review is missing project_id.');
             }
-            await _client.post(
+            final payload = _batchPayload(operation.payload);
+            final response = await _client.post(
               ApiEndpoints.batchPhotoOperation.replaceFirst('{batchId}', projectId),
-              data: _batchPayload(operation.payload),
+              data: payload,
               idempotencyKey: operation.id,
             );
+            final action = payload['operation'] as String;
+            if (isBatchTagAction(action)) {
+              final result = BatchTagActionResult.fromResponse(payload['file_ids'] as List<String>, response);
+              if (result.succeededIds.isNotEmpty && _deviceId()?.trim() == activeDeviceId && _client.baseUri == activeBaseUri) {
+                await _acceptSyncedBatchTags?.call(projectId, result.succeededIds, action, payload['version'] as int, payload['value']);
+              }
+              if (result.failed.isNotEmpty) throw BatchTagSyncFailure(result.failed);
+            }
             return;
           case PendingOperationType.controlJob:
           case PendingOperationType.createCopyJob:

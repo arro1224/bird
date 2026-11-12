@@ -2,6 +2,12 @@ import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 
+class BatchTagSyncFailure implements Exception {
+  const BatchTagSyncFailure(this.failed);
+
+  final Map<String, String> failed;
+}
+
 class SyncResult {
   const SyncResult({
     required this.syncedCount,
@@ -50,6 +56,19 @@ class SyncCoordinator {
         await submit(operation);
         await _store.remove(operation.id);
         syncedCount++;
+      } on BatchTagSyncFailure catch (error) {
+        final retryCount = operation.retryCount + 1;
+        final originalId = operation.id.replaceFirst(RegExp(r'-tag-retry-\d+$'), '');
+        // The box may have cached the previous response for its idempotency key.
+        final retry = operation.copyWith(
+          id: '$originalId-tag-retry-$retryCount',
+          payload: {...operation.payload, 'file_ids': error.failed.keys.toList()},
+          retryCount: retryCount,
+          status: PendingOperationStatus.failed,
+          failureReason: '${error.failed.length} 张照片的标签未同步：${error.failed.values.toSet().join('、')}',
+        );
+        await _store.save(retry, supersedes: (existing) => existing.id == operation.id);
+        failed.add(retry);
       } catch (error) {
         final authenticationRequired = error is ApiException && (error.statusCode == 401 || error.statusCode == 403);
         if (authenticationRequired) {
