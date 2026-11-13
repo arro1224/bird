@@ -1,6 +1,7 @@
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
+import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_models.dart';
 import 'package:dio/dio.dart';
@@ -18,6 +19,12 @@ class UserMessage {
 }
 
 abstract final class UserMessageMapper {
+  static UserMessage fromTaskReadError(Object error) {
+    if (error is ProtocolCompatibilityException) return const UserMessage(title: '任务数据无法解析', message: '盒子返回的任务字段不符合协议，请刷新；若仍失败，请导出诊断交给维护人员。', actionLabel: '刷新任务');
+    if (error is ApiException && error.statusCode == 404) return const UserMessage(title: '任务不存在', message: '该任务可能已被清理，请刷新任务列表确认。', actionLabel: '刷新任务');
+    if (error is ApiException && error.statusCode == 409) return const UserMessage(title: '任务状态已变化', message: '请重新读取当前任务状态后再操作。', actionLabel: '刷新任务');
+    return fromError(error);
+  }
   /// A missing copy endpoint/resource must not be described as a deleted photo.
   /// Explicit copy business errors retain their more specific explanations.
   static UserMessage fromCopyConfigurationError(Object error) {
@@ -52,6 +59,7 @@ abstract final class UserMessageMapper {
   }
 
   static UserMessage fromError(Object error) {
+    if (error is CopyCreationPending) return UserMessage(title: '上次复制创建结果待确认', message: error.toString(), actionLabel: '查看复制任务');
     if (error is SmartFollowOutcomeUnknown) {
       return const UserMessage(
         title: '还没确认跟随是否已开始',

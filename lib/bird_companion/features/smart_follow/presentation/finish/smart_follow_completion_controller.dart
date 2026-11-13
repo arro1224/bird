@@ -41,13 +41,14 @@ class SmartFollowCompletionResult {
     return total;
   }
 
-  int? get copiedFiles => sum((c) => c.report?.copiedFiles);
-  int? get skippedFiles => sum((c) => c.report?.skippedFiles);
-  int? get failedFiles => sum((c) => c.report?.failedFiles);
-  int? get notApplicableFiles => sum((c) => c.report?.notApplicableFiles);
-  int? get copiedBytes => sum((c) => c.detail?.stats?.copiedBytesKnown == true ? c.detail!.stats!.copiedBytes : null);
+  int? get copiedFiles => session.isContinuous ? session.summary?.fileCounts['copied'] : sum((c) => c.report?.copiedFiles);
+  int? get skippedFiles => session.isContinuous ? session.summary?.fileCounts['skipped_conflict'] : sum((c) => c.report?.skippedFiles);
+  int? get failedFiles => session.isContinuous ? session.summary?.fileCounts['failed'] : sum((c) => c.report?.failedFiles);
+  int? get notApplicableFiles => session.isContinuous ? session.summary?.fileCounts['not_applicable'] : sum((c) => c.report?.notApplicableFiles);
+  int? get copiedBytes => session.isContinuous ? session.summary?.copiedBytes : sum((c) => c.detail?.stats?.copiedBytesKnown == true ? c.detail!.stats!.copiedBytes : null);
 
   bool get summaryComplete =>
+      session.isContinuous ? _continuousSummaryComplete :
       reportsComplete &&
       issues.isEmpty &&
       ['eligible_count', 'copied_asset_count', 'copied_file_count', 'failed_asset_count'].every((key) => sessionCount(key) != null) &&
@@ -57,8 +58,18 @@ class SmartFollowCompletionResult {
       notApplicableFiles != null &&
       copiedBytes != null;
 
+  bool get _continuousSummaryComplete {
+    final summary = session.summary;
+    const states = ['queued', 'copying', 'retry_wait', 'blocked', 'copied', 'skipped_conflict', 'failed', 'not_applicable', 'stopped'];
+    return summary != null && session.canShowCompletion && issues.isEmpty &&
+        states.every(summary.fileCounts.containsKey) && summary.plannedFileCount != null &&
+        summary.fileCounts.values.fold<int>(0, (sum, value) => sum + value) == summary.plannedFileCount &&
+        summary.copiedBytes != null;
+  }
+
   bool get metadataFailure => children.any((c) => c.report?.csvStatus == 'failed' || (c.report?.exportFailedCount ?? 0) > 0);
   String get informationStatus {
+    if (session.isContinuous) return '本版持续复制未开放识别信息保存与后到更新。';
     if (!reportsComplete) return '报告待补齐';
     if (children.isEmpty) return '无复制批次';
     if (metadataFailure) return '部分批次信息保存异常，请查看批次详情';
@@ -68,6 +79,7 @@ class SmartFollowCompletionResult {
   }
 
   String get title {
+    if (session.isContinuous && !session.canShowCompletion) return '仍在处理或等待核对';
     if (!session.isFinished) return '仍在处理';
     if (session.state == SmartFollowState.failed) return '跟随复制失败';
     if (session.state == SmartFollowState.completedPartial ||
@@ -136,6 +148,17 @@ class SmartFollowCompletionController extends ChangeNotifier {
       } catch (_) {
         _check(generation);
         issues.add('识别结果暂不可用，请刷新重试');
+      }
+      if (session.isContinuous) {
+        // No ordinary child CopyJobs exist in v2. Its summary and file receipts
+        // are authoritative; an empty legacy child list is not a missing report.
+        final latest = await repository.refresh(sessionId);
+        _check(generation);
+        result = SmartFollowCompletionResult(
+          session: latest, recognition: recognition, recognitionReport: recognitionReport,
+          issues: List.unmodifiable(issues),
+        );
+        return;
       }
       final jobs = <String, SmartFollowChildJob>{};
       var historyComplete = false;

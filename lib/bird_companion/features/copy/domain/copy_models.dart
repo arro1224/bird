@@ -122,6 +122,7 @@ class CopyCapabilities {
     required this.recognitionPolicyVersion,
     this.missingRequirements = const [],
     this.reviewExportReady = true,
+    this.atomicPreferencesOnCreate = false,
   });
 
   final String revision;
@@ -130,6 +131,7 @@ class CopyCapabilities {
   final String recognitionPolicyVersion;
   final List<String> missingRequirements;
   final bool reviewExportReady;
+  final bool atomicPreferencesOnCreate;
 
   factory CopyCapabilities.fromJson(Map<String, dynamic> json) => CopyCapabilities(
     revision: ProtocolValidation.requiredId(json, 'revision'),
@@ -141,6 +143,7 @@ class CopyCapabilities {
     ),
     missingRequirements: _stringList(json, 'missing_requirements'),
     reviewExportReady: json['review_export_ready'] == true,
+    atomicPreferencesOnCreate: json['atomic_preferences_on_create'] == true,
   );
 }
 
@@ -244,6 +247,8 @@ class StorageDeviceSummary {
     this.lastSeenAt,
     this.userAlias,
     this.productRole,
+    this.capacityKnown = true,
+    this.blockingTasks = const [],
   });
 
   final String mediaId;
@@ -275,6 +280,8 @@ class StorageDeviceSummary {
   /// Optional extension. Only the confirmed import_source exclusion is used;
   /// absence or other values fall back to capability and binding checks.
   final String? productRole;
+  final bool capacityKnown;
+  final List<BlockingCopyTask> blockingTasks;
 
   bool get online => roleState != 'removed' && roleState != 'unavailable' && roleState != 'offline';
   bool get identityStable => identityConfidence == 'stable_uuid';
@@ -334,8 +341,16 @@ class StorageDeviceSummary {
       lastSeenAt: ProtocolValidation.optionalDateTime(json, 'last_seen_at'),
       userAlias: (json['alias'] ?? json['user_alias'])?.toString(),
       productRole: json['product_role'] as String?,
+      capacityKnown: json['capacity_known'] != false,
+      blockingTasks: json['blocking_tasks'] is List ? (json['blocking_tasks'] as List).whereType<Map>().map((item) => BlockingCopyTask.fromJson(Map<String, dynamic>.from(item))).toList(growable: false) : const [],
     );
   }
+}
+
+class BlockingCopyTask {
+  const BlockingCopyTask({required this.kind, required this.id});
+  final String kind, id;
+  factory BlockingCopyTask.fromJson(Map<String, dynamic> json) => BlockingCopyTask(kind: ProtocolValidation.requiredId(json, 'kind'), id: ProtocolValidation.requiredId(json, 'id'));
 }
 
 /// 不可变选择快照（主协议 §3 / §13.3）。
@@ -500,6 +515,7 @@ class CopyRequestDraft {
     this.selectionId,
     this.pairPolicy = PairPolicy.rawOnly,
     this.conflictStrategy,
+    this.savePreferencesOnCreate = false,
   });
 
   final String? batchId;
@@ -513,6 +529,7 @@ class CopyRequestDraft {
   final PairPolicy pairPolicy;
   final ConflictStrategy? conflictStrategy;
   final ReviewExportConfig reviewExport;
+  final bool savePreferencesOnCreate;
 
   CopyRequestDraft copyWith({
     String? batchId,
@@ -527,6 +544,7 @@ class CopyRequestDraft {
     ConflictStrategy? conflictStrategy,
     ReviewExportConfig? reviewExport,
     bool clearSelectionId = false,
+    bool? savePreferencesOnCreate,
   }) => CopyRequestDraft(
     batchId: batchId ?? this.batchId,
     scope: scope ?? this.scope,
@@ -539,6 +557,7 @@ class CopyRequestDraft {
     pairPolicy: pairPolicy ?? this.pairPolicy,
     conflictStrategy: conflictStrategy ?? this.conflictStrategy,
     reviewExport: reviewExport ?? this.reviewExport,
+    savePreferencesOnCreate: savePreferencesOnCreate ?? this.savePreferencesOnCreate,
   );
 
   /// 预检请求体（§13.4）。`batchId` 在全量备份时可省略；
@@ -565,19 +584,28 @@ class CopyJobSummary {
     required this.state,
     required this.eventSeq,
     this.createdAt,
+    this.savedPreferences,
   });
 
   final String copyJobId;
   final String state;
   final int eventSeq;
   final DateTime? createdAt;
+  final CopyPreferences? savedPreferences;
 
   factory CopyJobSummary.fromJson(Map<String, dynamic> json) => CopyJobSummary(
     copyJobId: ProtocolValidation.requiredId(json, 'copy_job_id'),
     state: ProtocolValidation.requiredId(json, 'state'),
     eventSeq: ProtocolValidation.nonNegativeInt(json, 'event_seq'),
     createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
+    savedPreferences: json['saved_preferences'] is Map ? CopyPreferences.fromJson(Map<String, dynamic>.from(json['saved_preferences'] as Map)) : null,
   );
+}
+
+class CopyCreationPending implements Exception {
+  const CopyCreationPending();
+  @override
+  String toString() => '上次复制创建结果尚未确认，请在原盒子查看任务，或保持原配置重试查询。不要另建任务。';
 }
 
 /// 同批次上次成功目标设备（§4.4）。仅作为可修改的预选，不是全局默认盘。

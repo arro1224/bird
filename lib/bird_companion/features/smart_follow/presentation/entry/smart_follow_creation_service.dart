@@ -134,7 +134,8 @@ class SmartFollowCreationService {
           target.identityConfidence != intent.targetIdentityConfidence ||
           target.capacityBytes != intent.targetCapacityBytes ||
           target.freeBytes != intent.targetFreeBytes ||
-          validation.reviewExportEnabled != intent.request.reviewExportEnabled) {
+          validation.reviewExportEnabled != intent.request.reviewExportEnabled ||
+          validation.snapshot!.entry.capabilities.copy.continuousQueueAvailable != intent.request.continuousQueue) {
         throw SmartFollowConfirmationRequired('设备或策略已变化，请重新核对并确认配置。');
       }
     } finally {

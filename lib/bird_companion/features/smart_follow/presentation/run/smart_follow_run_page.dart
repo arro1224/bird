@@ -7,6 +7,7 @@ import 'package:aves/bird_companion/features/smart_follow/data/smart_follow_repo
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_metadata.dart';
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_models.dart';
 import 'package:aves/bird_companion/features/smart_follow/presentation/run/smart_follow_stage.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/run/smart_follow_files_page.dart';
 import 'package:flutter/material.dart';
 
 /// SmartFollow 运行详情页（分工任务书 R1）。
@@ -131,7 +132,7 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
   void _schedule() {
     _timer?.cancel();
     final interval = widget.pollInterval;
-    if (!mounted || !_foreground || !_routeVisible || !_current || interval == null || (_session?.isFinished == true && _loadError == null)) return;
+    if (!mounted || !_foreground || !_routeVisible || !_current || interval == null || (_session?.canShowCompletion == true && _loadError == null)) return;
     final delay = Duration(milliseconds: (interval.inMilliseconds * (1 << _failures.clamp(0, 4))).clamp(1, 60000));
     _timer = Timer(delay, () {
       if (mounted && _foreground && _routeVisible && _current) unawaited(_refresh());
@@ -155,7 +156,7 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
       final session = await widget.repository.refresh(widget.sessionId);
       if (!mounted || generation != _generation || !_current) return;
       try {
-        final page = await widget.repository.childJobs(widget.sessionId);
+        final page = session.isContinuous ? null : await widget.repository.childJobs(widget.sessionId);
         if (!mounted || generation != _generation || !_current) return;
         _children = page;
       } catch (_) {
@@ -278,7 +279,16 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
             ],
             _CountsCard(session: session),
             const SizedBox(height: 12),
-            if (_children == null)
+            if (session.isContinuous)
+              OutlinedButton.icon(
+                key: const Key('smart-follow-files'),
+                onPressed: () async {
+                  await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => SmartFollowFilesPage(repository: widget.repository, sessionId: session.sessionId)));
+                  if (mounted && _current) unawaited(_refresh());
+                },
+                icon: const Icon(Icons.list_alt), label: const Text('查看复制文件明细'),
+              )
+            else if (_children == null)
               _ChildJobsCard(session: session, onOpen: widget.onOpenChildJobs)
             else
               Card(child: ExpansionTile(title: TextButton(key: const Key('smart-follow-child-jobs'), onPressed: widget.onOpenChildJobs, child: Text('已创建 ${session.childJobCount} 批 · 查看复制详情')), children: [
@@ -408,7 +418,30 @@ class _CountsCard extends StatelessWidget {
   final SmartFollowSession session;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) {
+    if (session.isContinuous) {
+      final summary = session.summary;
+      const labels = {
+        'queued': '排队中', 'copying': '复制中', 'retry_wait': '等待重试',
+        'blocked': '受阻待处理', 'copied': '已复制', 'skipped_conflict': '同名跳过',
+        'failed': '复制失败', 'not_applicable': '不适用', 'stopped': '已停止未复制',
+      };
+      return Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('持续复制进度', style: TextStyle(fontWeight: FontWeight.w700)),
+          Text(summary?.recognitionProcessed == null || summary?.recognitionTotal == null
+              ? '识别进度正在读取'
+              : '识别 ${summary!.recognitionProcessed} / ${summary.recognitionTotal}'),
+          Text(summary?.eligibleAssetCount == null ? '合格索引项正在读取' : '合格索引项 ${summary!.eligibleAssetCount} 个'),
+          const Text('按索引文件记账，未合并 RAW/JPEG 照片。'),
+          Text(summary?.plannedFileCount == null ? '文件队列正在准备' : '当前计划 ${summary!.plannedFileCount} 个文件'),
+          for (final entry in labels.entries)
+            _row(entry.value, summary?.fileCounts.containsKey(entry.key) == true ? '${summary!.fileCounts[entry.key]} 个' : '正在读取', Key('continuous-count-${entry.key}'), danger: entry.key == 'failed'),
+        ],
+      )));
+    }
+    return Card(
     child: Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -427,7 +460,8 @@ class _CountsCard extends StatelessWidget {
         ],
       ),
     ),
-  );
+    );
+  }
 
   Widget _row(String label, String value, Key key, {bool danger = false}) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 4),
@@ -495,7 +529,7 @@ class _ActionsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final canFinish = session.isFinished && onOpenCompletion != null;
+    final canFinish = session.canShowCompletion && onOpenCompletion != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

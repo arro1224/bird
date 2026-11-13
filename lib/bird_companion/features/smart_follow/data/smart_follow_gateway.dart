@@ -1,5 +1,19 @@
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_metadata.dart';
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_models.dart';
+import 'package:aves/bird_companion/features/smart_follow/domain/continuous_queue_models.dart';
+
+/// Additive v2 API. Legacy implementations need not pretend to provide it.
+abstract interface class SmartFollowQueueGateway {
+  Future<SmartFollowFilePage> fileItems(String sessionId, {String? cursor, String? state, int pageSize = 50});
+}
+
+abstract interface class SmartFollowHistoryGateway {
+  Future<GroupedCopyHistoryPage> groupedHistory({String? cursor});
+}
+
+abstract interface class SmartFollowSessionListGateway {
+  Future<SmartFollowSessionPage> sessions({String? cursor});
+}
 
 /// Additive durable notification replay. Legacy gateways may omit this capability.
 abstract interface class SmartFollowEventGateway {

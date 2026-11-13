@@ -28,7 +28,7 @@ class StorageDeviceCard extends StatelessWidget {
   bool get _canFillRole => device.online && (role == '源设备' ? device.canBeSource : CopyDevicePolicy.canSelectTarget(device, null));
 
   /// v10 问题 5：热插拔恢复瞬间容量字段可能尚未就绪，不能显示 "0 MB"。
-  bool get _capacityKnown => device.capacityBytes > 0 && device.freeBytes <= device.capacityBytes;
+  bool get _capacityKnown => device.capacityKnown && device.capacityBytes > 0 && device.freeBytes <= device.capacityBytes;
 
   @override
   Widget build(BuildContext context) {

@@ -112,7 +112,12 @@ class _SmartFollowTaskTileState extends State<SmartFollowTaskTile> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(stage.label),
-            Text('$recognitionPart已识别 ${session.eligibleCount} 张 · 待复制 ${session.pendingCount} 张 · 已复制 ${session.copiedAssetCount} 张'),
+            if (session.isContinuous)
+              Text(session.summary?.recognitionProcessed == null
+                ? '正在读取识别与文件队列状态'
+                : '已识别 ${session.summary!.recognitionProcessed} 个索引项 · 已复制 ${session.summary!.fileCounts['copied']?.toString() ?? '待读取'} 个文件')
+            else
+              Text('$recognitionPart已识别 ${session.eligibleCount} 张 · 待复制 ${session.pendingCount} 张 · 已复制 ${session.copiedAssetCount} 张'),
           ],
         ),
         isThreeLine: true,

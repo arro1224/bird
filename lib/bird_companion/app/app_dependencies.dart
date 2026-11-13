@@ -73,6 +73,7 @@ import 'package:aves/bird_companion/features/copy/data/mock_copy_repository.dart
 import 'package:aves/bird_companion/features/copy/domain/copy_job_repository.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_api.dart';
+import 'package:aves/bird_companion/features/jobs/data/job_read_diagnostics.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_repository_impl.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_repository.dart';
 import 'package:aves/bird_companion/features/settings/data/settings_store.dart';
@@ -310,7 +311,7 @@ class BirdCompanionDependencies {
       copyRepositoryImpl = mock;
       copyJobRepositoryImpl = mock;
     } else {
-      final real = CopyRepositoryImpl(CopyApi(apiClient));
+      final real = CopyRepositoryImpl(CopyApi(apiClient, creationStorage: cache, creationDeviceId: () => deviceSessionCubit.state.device?.id));
       copyRepositoryImpl = real;
       copyJobRepositoryImpl = real;
     }
@@ -334,7 +335,7 @@ class BirdCompanionDependencies {
       copyRepository: copyRepositoryImpl,
       copyJobRepository: copyJobRepositoryImpl,
       activeCopyJobs: useMockCopyRepository ? ActiveCopyJobStore.memory() : ActiveCopyJobStore(cache),
-      jobRepository: JobRepositoryImpl(JobApi(apiClient)),
+      jobRepository: JobRepositoryImpl(JobApi(apiClient, diagnostics: JobReadDiagnostics.forJournal(bleConnectionDiagnosticStore))),
       storageRepository: StorageRepositoryImpl(StorageApi(apiClient)),
       deviceSessionCubit: deviceSessionCubit,
       birdSyncService: birdSyncService,

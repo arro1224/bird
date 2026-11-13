@@ -1,9 +1,11 @@
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
+import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/features/smart_follow/data/smart_follow_gateway.dart';
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_metadata.dart';
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_models.dart';
+import 'package:aves/bird_companion/features/smart_follow/domain/continuous_queue_models.dart';
 
 /// SmartFollow HTTP 接口（联合开发任务书 §6.3–§6.8）。
 ///
@@ -14,10 +16,33 @@ import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_mo
 /// 定义新的 `X-BirdBox-Protocol` 值，因此**不发明**头部，只复用
 /// `ApiClient` 已有的 `X-Api-Version`/`Authorization`。是否需要一个
 /// `smart-follow-v1` 协议头，列入分工任务书问询单第 10 条。
-class SmartFollowApi implements SmartFollowGateway, SmartFollowEventGateway {
+class SmartFollowApi implements SmartFollowGateway, SmartFollowEventGateway, SmartFollowQueueGateway, SmartFollowHistoryGateway, SmartFollowSessionListGateway {
   SmartFollowApi(this._client);
 
   final ApiClient _client;
+
+  @override
+  Future<SmartFollowSessionPage> sessions({String? cursor}) async => SmartFollowSessionPage.fromJson(await _client.get(
+    '${ApiEndpoints.apiV1Prefix}/smart-follow-sessions',
+    queryParameters: {'page_size': 30, 'cursor': ?cursor},
+  ));
+
+  @override
+  Future<GroupedCopyHistoryPage> groupedHistory({String? cursor}) async => GroupedCopyHistoryPage.fromJson(await _client.get(
+    ApiEndpoints.copyJobs,
+    queryParameters: {'grouped': true, 'page_size': 30, 'cursor': ?cursor},
+    headers: const {'X-BirdBox-Protocol': 'birdbox-copy-v1', 'X-BirdBox-Copy-Revision': '1.0-rc3'},
+  ));
+
+  @override
+  Future<SmartFollowFilePage> fileItems(String sessionId, {String? cursor, String? state, int pageSize = 50}) async {
+    if (pageSize < 1 || pageSize > 100) throw ArgumentError.value(pageSize, 'pageSize');
+    final raw = await _client.get(
+      '${ApiEndpoints.smartFollowSession(Uri.encodeComponent(_requiredId(sessionId, 'sessionId')))}/items',
+      queryParameters: {'page_size': pageSize, 'cursor': ?cursor, 'state': ?state},
+    );
+    return SmartFollowFilePage.fromJson(raw);
+  }
 
   @override
   Future<Map<String, dynamic>> sessionEvents(String sessionId, {required int afterEventSeq}) =>
@@ -85,8 +110,8 @@ class SmartFollowApi implements SmartFollowGateway, SmartFollowEventGateway {
       idempotencyKey: idempotencyKey,
     );
     final candidate = raw['session'] ?? raw['smart_follow_session'] ?? raw['smart_follow'] ?? raw;
-    if (candidate is! Map || !candidate.containsKey('session_id')) return null;
-    return SmartFollowSession.fromJson(Map<String, dynamic>.from(candidate));
+    if (candidate is! Map || (!candidate.containsKey('session_id') && !candidate.containsKey('id'))) return null;
+    return SmartFollowSession.fromJson(raw);
   }
 
   /// 识别任务 → 会话 ID。
@@ -96,8 +121,24 @@ class SmartFollowApi implements SmartFollowGateway, SmartFollowEventGateway {
   /// 读到"而不是正式契约，问询单第 5 条拿到专用查询接口后替换此实现。
   @override
   Future<String?> sessionIdForRecognitionJob(String recognitionJobId) async {
+    final jobId = _requiredId(recognitionJobId, 'recognitionJobId');
+    try {
+      final job = await _client.get(ApiEndpoints.jobDetail.replaceFirst('{jobId}', Uri.encodeComponent(jobId)));
+      if (job.containsKey('smart_follow_session_id')) {
+        final value = job['smart_follow_session_id'];
+        if (value == null) return null;
+        if (value is! String || value.trim().isEmpty) {
+          throw const ProtocolCompatibilityException('smart_follow_session_id', '必须是非空字符串或 null');
+        }
+        return value.trim();
+      }
+    } on ApiException catch (error) {
+      // Older servers only publish the association on recognition-events.
+      // Authentication, service and parse failures must not masquerade as absence.
+      if (error.statusCode != 404) rethrow;
+    }
     final raw = await _client.get(
-      ApiEndpoints.recognitionEvents(_requiredId(recognitionJobId, 'recognitionJobId')),
+      ApiEndpoints.recognitionEvents(Uri.encodeComponent(jobId)),
       queryParameters: {'after_event_seq': 0, 'page_size': 1},
     );
     final value = raw['smart_follow_session_id'];
@@ -177,7 +218,7 @@ class SmartFollowApi implements SmartFollowGateway, SmartFollowEventGateway {
     if (candidate is! Map) {
       throw const ProtocolCompatibilityException('session', '必须是对象');
     }
-    return Map<String, dynamic>.from(candidate);
+    return raw;
   }
 
   static String _requiredId(String value, String field) {

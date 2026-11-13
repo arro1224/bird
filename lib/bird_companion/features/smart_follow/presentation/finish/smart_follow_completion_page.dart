@@ -94,6 +94,7 @@ class _SmartFollowCompletionPageState extends State<SmartFollowCompletionPage> w
   }
 
   List<Widget> _content(SmartFollowCompletionResult result) {
+    if (result.session.isContinuous) return _continuousContent(result);
     if (!result.session.isFinished) {
       return [
         const Text('仍在处理', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
@@ -166,6 +167,36 @@ class _SmartFollowCompletionPageState extends State<SmartFollowCompletionPage> w
       ),
       const SizedBox(height: 16),
       OutlinedButton(onPressed: widget.onOpenRun, child: const Text('查看会话详情')),
+    ];
+  }
+
+  List<Widget> _continuousContent(SmartFollowCompletionResult result) {
+    final summary = result.session.summary;
+    const labels = {
+      'queued': '排队中', 'copying': '复制中', 'retry_wait': '等待重试', 'blocked': '受阻待处理',
+      'copied': '已复制', 'skipped_conflict': '同名跳过', 'failed': '复制失败',
+      'not_applicable': '不适用', 'stopped': '停止后未复制',
+    };
+    return [
+      Text(result.title, key: const Key('sf-completion-title'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+      Text('会话状态：${result.session.state.label}'),
+      if (!result.summaryComplete) const Text('结果仍需补齐或核对，不能据此判定全部复制成功。'),
+      for (final issue in result.issues) Text(issue),
+      if (result.session.errorMessage != null) Text('结束原因：${result.session.errorMessage}'),
+      if (summary?.raw['finish_reason'] is String) Text('收尾原因：${summary!.raw['finish_reason']}'),
+      _section('识别与文件结果', [
+        const Text('来源：持续队列主任务摘要。按索引文件计数，未合并 RAW/JPEG 照片。'),
+        _metric('识别总数', summary?.recognitionTotal, '项', 'recognition-total'),
+        _metric('已提交识别结果', summary?.recognitionProcessed, '项', 'recognition-processed'),
+        _metric('合格索引项', summary?.eligibleAssetCount, '项', 'eligible'),
+        _metric('计划文件', summary?.plannedFileCount, '个', 'planned-files'),
+        for (final entry in labels.entries) _metric(entry.value, summary?.fileCounts[entry.key], '个', 'continuous-${entry.key}'),
+        _metric('实际复制字节', summary?.copiedBytes, 'B', 'copied-bytes'),
+        if (summary?.eligibleAssetCount == 0 && result.summaryComplete) const Text('本轮没有符合自动复制条件的文件。'),
+      ]),
+      _section('识别信息保存', [Text(result.informationStatus), const Text('本页不会自动改写目标盘。')]),
+      const SizedBox(height: 16),
+      FilledButton(key: const Key('sf-completion-open-run'), onPressed: widget.onOpenRun, child: const Text('查看任务与文件明细')),
     ];
   }
 

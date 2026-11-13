@@ -11,6 +11,7 @@ import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_repository.dart';
 import 'package:flutter/material.dart';
+import 'package:aves/bird_companion/features/smart_follow/presentation/run/grouped_copy_history_page.dart';
 
 /// 复制任务列表页（RC3，审计 P0-3）。
 ///
@@ -38,6 +39,7 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
   StreamSubscription<void>? _sessionSubscription;
   String? _deviceId;
   int _generation = 0;
+  bool _continuousHistory = false;
 
   CopyJobRepository? get _repository => widget.repository ?? BirdCompanionScope.maybeOf(context)?.copyJobRepository;
 
@@ -59,6 +61,7 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
       if (!mounted) return;
       final device = dependencies.deviceSessionCubit.state.device?.id;
       if (device != _deviceId) {
+        _continuousHistory = false;
         _jobs.clear();
         _hasMore = false;
         _deviceId = device;
@@ -98,6 +101,16 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
       _loadingMore = false;
     });
     try {
+      final smartFollow = _dependencies?.smartFollowRepository;
+      if (smartFollow != null) {
+        final capabilities = await smartFollow.capabilities();
+        if (!mounted || generation != _generation || !_readable) return;
+        _continuousHistory = capabilities.copy.continuousQueueAvailable;
+        if (_continuousHistory) {
+          setState(() => _loading = false);
+          return;
+        }
+      }
       final page = await repository.listJobs();
       if (!mounted || generation != _generation || !_readable) return;
       setState(() {
@@ -147,6 +160,20 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
   @override
   Widget build(BuildContext context) {
     final repository = _repository;
+    if (_continuousHistory && _dependencies != null && _readable) {
+      return GroupedCopyHistoryPageView(
+        key: ValueKey('grouped-history-$_deviceId-$_generation'),
+        repository: _dependencies!.smartFollowRepository,
+        onOpenCopy: (id) async {
+          await Navigator.of(context).pushNamed(BirdRoutes.copyJobDetail, arguments: CopyJobDetailArgs(id, deviceId: _deviceId));
+          if (mounted) unawaited(_reload());
+        },
+        onOpenSession: (id) async {
+          await Navigator.of(context).pushNamed(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(id));
+          if (mounted) unawaited(_reload());
+        },
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('复制任务')),
       body: RefreshIndicator(

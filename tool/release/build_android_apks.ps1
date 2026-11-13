@@ -5,7 +5,11 @@
     [ValidateSet("Debug", "Release")]
     [string]$BuildType = "Debug",
 
-    [switch]$NoPub
+    [switch]$NoPub,
+
+    # Optional fresh directory under the repository. Keeps previous delivery
+    # evidence intact when building another dirty candidate of the same version.
+    [string]$OutputDirectory
 )
 
 $ErrorActionPreference = "Stop"
@@ -196,6 +200,15 @@ $deliveryRole = if ($Mode -eq "Normal") {
 $deliveryDirectory = Join-Path $repositoryRoot (
     "build\delivery\{0}-{1}\{2}\{3}" -f $versionName, $versionCode, $Mode.ToLowerInvariant(), $buildTypeValue
 )
+if (-not [string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    $deliveryDirectory = [IO.Path]::GetFullPath((Join-Path $repositoryRoot $OutputDirectory))
+    if (-not $deliveryDirectory.StartsWith($repositoryRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'OutputDirectory must stay inside the repository.'
+    }
+    if (Test-Path -LiteralPath $deliveryDirectory) {
+        throw 'OutputDirectory already exists; choose a fresh path rather than overwrite previous evidence.'
+    }
+}
 New-Item -ItemType Directory -Path $deliveryDirectory -Force | Out-Null
 
 $buildId = "ble-{0}-{1}" -f [DateTimeOffset]::UtcNow.ToString("yyyyMMddTHHmmssfffZ"), $sourceFingerprint.Substring(0, 12)

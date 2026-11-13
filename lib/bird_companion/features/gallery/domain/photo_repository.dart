@@ -25,12 +25,12 @@ class PhotoQueryProgress {
 }
 
 class PhotoQueryCancellationToken {
-  PhotoQueryCancellationToken({bool Function()? isCurrent}) : _isCurrent = isCurrent;
+  PhotoQueryCancellationToken({this.isCurrent});
 
-  final bool Function()? _isCurrent;
+  final bool Function()? isCurrent;
   final _cancelled = Completer<void>();
 
-  bool get isCancelled => _cancelled.isCompleted || _isCurrent?.call() == false;
+  bool get isCancelled => _cancelled.isCompleted || isCurrent?.call() == false;
   Future<void> get whenCancelled => _cancelled.future;
 
   void cancel() {

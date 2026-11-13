@@ -73,15 +73,17 @@ class SmartFollowConfiguredIntent {
 
   factory SmartFollowConfiguredIntent.fromLocalJson(Map<String, dynamic> json) {
     final request = Map<String, dynamic>.from(json['request'] as Map);
-    final export = Map<String, dynamic>.from(request['review_export'] as Map);
+    final continuous = request.containsKey('review_export_enabled');
+    final export = request['review_export'] is Map ? Map<String, dynamic>.from(request['review_export'] as Map) : const <String, dynamic>{};
     return SmartFollowConfiguredIntent(
       request: SmartFollowStartRequest(
         targetMediaId: request['target_media_id'] as String,
         eligibilityMode: request['eligibility_mode'] as String,
         pairPolicy: request['pair_policy'] as String,
         conflictStrategy: request['conflict_strategy'] as String,
-        reviewExportEnabled: export['enabled'] as bool,
-        preferEmbedded: export['prefer_embedded'] as bool,
+        continuousQueue: continuous,
+        reviewExportEnabled: continuous ? request['review_export_enabled'] as bool : export['enabled'] as bool,
+        preferEmbedded: export['prefer_embedded'] as bool? ?? true,
       ),
       contextKey: json['context'] as String,
       batchId: json['batch'] as String?,
@@ -116,6 +118,7 @@ class SmartFollowConfigurationController extends ChangeNotifier {
   bool _disposed = false, _policyChosen = false;
   int _generation = 0, _revision = 0;
   Timer? _expiry;
+  bool get canExportInformation => snapshot?.copyCapabilities.reviewExportReady == true && snapshot?.entry.capabilities.copy.continuousQueueAvailable != true;
 
   StorageDeviceSummary? get target => snapshot?.devices.where((device) => device.mediaId == targetMediaId).firstOrNull;
   List<StorageDeviceSummary> get candidates => snapshot?.devices.where((device) => CopyDevicePolicy.isTargetCandidate(device, snapshot!.binding.sourceMediaId)).toList(growable: false) ?? const [];
@@ -138,6 +141,7 @@ class SmartFollowConfigurationController extends ChangeNotifier {
     if (expectedRecognitionPhase != null && data.entry.phase != expectedRecognitionPhase) return '识别阶段已变化，请返回重新选择复制方式。';
     if (expectedRecognitionJobId != null && data.entry.job?.id != expectedRecognitionJobId) return '识别任务已变化，请返回确认要跟随的轮次。';
     if (data.entry.capabilities.copy.contractVersion != SmartFollowContract.version || data.entry.capabilities.copy.eligibilityMode != SmartFollowContract.eligibilityMode) return '盒子跟随协议或识别范围不兼容，暂不能确认。';
+    if (data.entry.capabilities.copy.continuousQueueAvailable && data.entry.capabilities.copy.continuousContractVersion != SmartFollowContract.continuousVersion) return '盒子持续复制协议版本不兼容，请更新 App 或联系维护人员。';
     if (!data.copyCapabilities.copyReady || data.copyCapabilities.revision != '1.0-rc3') return '盒子复制能力尚未就绪，请重新检测。';
     final binding = data.binding;
     if (binding.batchId != null && reader.batchId != null && binding.batchId != reader.batchId) return '源卡绑定不属于本批次，请重新检测。';
@@ -187,7 +191,7 @@ class SmartFollowConfigurationController extends ChangeNotifier {
       if (next.devices.map((device) => device.mediaId).toSet().length != next.devices.length) throw StateError('ambiguous device identities');
       snapshot = next;
       if (!_policyChosen) pairPolicy = next.preferences.pairPolicy;
-      if (!next.copyCapabilities.reviewExportReady) reviewExportEnabled = false;
+      if (!canExportInformation) reviewExportEnabled = false;
       final delay = next.binding.expiresAt.difference(now());
       _expiry = Timer(delay.isNegative ? Duration.zero : delay, () {
         if (_disposed) return;
@@ -228,7 +232,7 @@ class SmartFollowConfigurationController extends ChangeNotifier {
   }
 
   void setReviewExport(bool enabled) {
-    if (_disposed || loading || (enabled && snapshot?.copyCapabilities.reviewExportReady != true)) return;
+    if (_disposed || loading || (enabled && !canExportInformation)) return;
     reviewExportEnabled = enabled;
     _changed();
   }
@@ -258,6 +262,7 @@ class SmartFollowConfigurationController extends ChangeNotifier {
     pairPolicy.wireValue,
     conflictStrategy?.wireValue,
     reviewExportEnabled,
+    snapshot?.entry.capabilities.copy.continuousQueueAvailable,
   ]);
 
   Future<bool> confirm() async {
@@ -275,6 +280,7 @@ class SmartFollowConfigurationController extends ChangeNotifier {
         request: SmartFollowStartRequest(
           targetMediaId: selected.mediaId,
           reviewExportEnabled: reviewExportEnabled,
+          continuousQueue: data.entry.capabilities.copy.continuousQueueAvailable,
           eligibilityMode: SmartFollowContract.eligibilityMode,
           pairPolicy: pairPolicy.wireValue,
           conflictStrategy: conflictStrategy!.wireValue,

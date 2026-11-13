@@ -589,7 +589,7 @@ class CopyContentStep extends StatelessWidget {
             lastUsedForBatch: _isLastUsedForBatch(device.mediaId, context, state.batchId),
             onTap: () => onTargetSelected(device.mediaId),
           ),
-      if (state.occupiedByRunningJob) const _OccupiedJobHint(),
+      if (state.occupiedByRunningJob) _OccupiedJobHint(task: state.blockingTask),
       if (state.targetMediaId == null && state.preferredTargetMediaId != null) ...[
         const SizedBox(height: 4),
         const Text(
@@ -1272,19 +1272,20 @@ class _LoadingPlaceholder extends StatelessWidget {
 
 /// v10 返修问题 6：占用态提供"查看当前任务"入口，不再诱导反复检测设备。
 class _OccupiedJobHint extends StatelessWidget {
-  const _OccupiedJobHint();
+  const _OccupiedJobHint({this.task});
+  final BlockingCopyTask? task;
 
   @override
-  Widget build(BuildContext context) => const Padding(
-    padding: EdgeInsets.only(top: 8),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 8),
     child: Row(
       children: [
-        Icon(Icons.schedule_rounded, size: 16, color: AppColors.pending),
-        SizedBox(width: 6),
-        Expanded(
+        const Icon(Icons.schedule_rounded, size: 16, color: AppColors.pending),
+        const SizedBox(width: 6),
+        const Expanded(
           child: Text('设备正被进行中的复制任务占用，任务结束后自动恢复。', style: TextStyle(color: AppColors.pending, fontSize: 12.5)),
         ),
-        _ViewCurrentJobButton(),
+        _ViewCurrentJobButton(task: task),
       ],
     ),
   );
@@ -1318,12 +1319,22 @@ class _EmptyDeviceHint extends StatelessWidget {
 
 /// v10 返修问题 6：占用态提供"查看当前任务"入口，不再诱导反复检测设备。
 class _ViewCurrentJobButton extends StatelessWidget {
-  const _ViewCurrentJobButton();
+  const _ViewCurrentJobButton({this.task});
+  final BlockingCopyTask? task;
 
   @override
   Widget build(BuildContext context) => TextButton(
     key: const Key('copy-view-current-job'),
-    onPressed: () => Navigator.of(context).pushNamed(BirdRoutes.copyJobs),
+    onPressed: () {
+      final blocking = task;
+      if (blocking?.kind == 'copy') {
+        Navigator.of(context).pushNamed(BirdRoutes.copyJobDetail, arguments: CopyJobDetailArgs(blocking!.id));
+      } else if (blocking?.kind == 'smart_follow') {
+        Navigator.of(context).pushNamed(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(blocking!.id));
+      } else {
+        Navigator.of(context).pushNamed(BirdRoutes.copyJobs);
+      }
+    },
     child: const Text('查看当前任务'),
   );
 }

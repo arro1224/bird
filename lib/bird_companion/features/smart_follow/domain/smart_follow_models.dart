@@ -141,6 +141,7 @@ class SmartFollowStartRequest {
     this.eligibilityMode = SmartFollowContract.eligibilityMode,
     this.pairPolicy = 'raw_only',
     this.conflictStrategy = 'skip',
+    this.continuousQueue = false,
   });
 
   /// 目标存储设备的 `media_id`（唯一稳定身份，禁止传路径）。
@@ -159,13 +160,17 @@ class SmartFollowStartRequest {
 
   /// `skip` / `overwrite` / `keep_both`（RC3 wire 值）。
   final String conflictStrategy;
+  final bool continuousQueue;
 
   Map<String, dynamic> toJson() => {
     'target_media_id': targetMediaId,
     'eligibility_mode': eligibilityMode,
     'pair_policy': pairPolicy,
     'conflict_strategy': conflictStrategy,
-    'review_export': {'enabled': reviewExportEnabled, 'prefer_embedded': preferEmbedded},
+    if (continuousQueue)
+      'review_export_enabled': reviewExportEnabled
+    else
+      'review_export': {'enabled': reviewExportEnabled, 'prefer_embedded': preferEmbedded},
   };
 }
 
@@ -173,6 +178,7 @@ abstract final class SmartFollowContract {
   /// 首版唯一策略：只复制 `high + top1_class 非空`（RC3 增量 §3）。
   static const eligibilityMode = 'recognized_only_v1';
   static const version = 'smart-follow-v1';
+  static const continuousVersion = 'smart-follow-continuous-v2.0';
   static const metadataVersion = 'smart-follow-metadata-v1';
 }
 
@@ -221,6 +227,7 @@ class SmartFollowSession {
     this.updatedAt,
     this.finishedAt,
     this.raw = const {},
+    this.summary,
   });
 
   final String sessionId;
@@ -274,11 +281,14 @@ class SmartFollowSession {
 
   /// 未契约化字段原样保留，避免"后端补了字段 App 就丢"。
   final Map<String, dynamic> raw;
+  final SmartFollowSummary? summary;
+  bool get isContinuous => summary?.executionMode == 'continuous_queue' || raw['execution_mode'] == 'continuous_queue';
 
   bool get isFinished => state.isFinished;
   int? get notCopiedStoppedCount => raw['not_copied_stopped_count'] is int ? raw['not_copied_stopped_count'] as int : null;
   int? get notApplicableAssetCount => raw['not_applicable_asset_count'] is int ? raw['not_applicable_asset_count'] as int : null;
-  bool get canShowCompletion => state.isFinished;
+  bool get canShowCompletion => state.isFinished &&
+      (!isContinuous || (summary != null && summary!.phase != 'created' && !summary!.hasOutstandingFiles));
   bool get isWaiting => state.isWaiting;
 
   SmartFollowAction? action(SmartFollowAction value) => allowedActions.contains(value) ? value : null;
@@ -289,6 +299,39 @@ class SmartFollowSession {
   bool isNewerThan(SmartFollowSession other) => stateVersion >= other.stateVersion;
 
   factory SmartFollowSession.fromJson(Map<String, dynamic> json) {
+    // The installed continuous API returns an envelope, not a flat DTO.
+    // Keep the complete summary; never infer its counters from recognition.
+    final envelope = json['data'] is Map ? Map<String, dynamic>.from(json['data'] as Map) : json;
+    final nested = envelope['session'] ?? envelope['smart_follow_session'] ?? envelope['smart_follow'];
+    if (nested is Map) {
+      json = {...Map<String, dynamic>.from(nested), if (envelope['summary'] is Map) 'summary': envelope['summary']};
+    } else {
+      json = Map<String, dynamic>.from(envelope);
+    }
+    json['session_id'] ??= json['id'];
+    json['recognition_job_id'] ??= json['job_id'];
+    final summary = json['summary'] is Map ? SmartFollowSummary.fromJson(Map<String, dynamic>.from(json['summary'] as Map)) : null;
+    if (summary != null) {
+      for (final key in ['session_id', 'recognition_job_id']) {
+        if (summary.raw[key] != null && summary.raw[key] != json[key]) {
+          throw ProtocolCompatibilityException('summary.$key', '与当前会话归属不一致');
+        }
+      }
+      // V2 stores counters in the authoritative summary, not on session.
+      // Feed shared task widgets from those facts rather than their legacy
+      // missing-field zero defaults. Do not derive copied counts from AI.
+      if (summary.executionMode == 'continuous_queue') {
+        if (summary.recognitionProcessed != null) json['recognized_count'] = summary.recognitionProcessed;
+        if (summary.eligibleAssetCount != null) json['eligible_count'] = summary.eligibleAssetCount;
+        if (summary.fileCounts.containsKey('copied')) json['copied_file_count'] = summary.fileCounts['copied'];
+        if (summary.fileCounts.containsKey('queued')) json['pending_count'] = summary.fileCounts['queued'];
+        if (summary.raw['asset_counts'] is Map) {
+          final assets = Map<String, dynamic>.from(summary.raw['asset_counts'] as Map);
+          if (assets.containsKey('copied')) json['copied_asset_count'] = assets['copied'];
+          if (assets.containsKey('failed')) json['failed_asset_count'] = assets['failed'];
+        }
+      }
+    }
     final rawActions = json['allowed_actions'];
     final actions = <SmartFollowAction>[];
     if (rawActions is List) {
@@ -325,11 +368,37 @@ class SmartFollowSession {
       updatedAt: ProtocolValidation.optionalDateTime(json, 'updated_at'),
       finishedAt: ProtocolValidation.optionalDateTime(json, 'finished_at'),
       raw: Map.unmodifiable(json),
+      summary: summary,
     );
   }
 
   @override
   String toString() => 'SmartFollowSession($sessionId, ${state.wire}, v$stateVersion, eligible=$eligibleCount, copied=$copiedAssetCount)';
+}
+
+/// Authoritative v2 summary. Missing values stay unknown, including the short
+/// `phase=created` response before the worker has produced its first snapshot.
+class SmartFollowSummary {
+  SmartFollowSummary.fromJson(Map<String, dynamic> json)
+      : raw = Map.unmodifiable(json),
+        executionMode = json['execution_mode'] as String?,
+        phase = json['phase'] as String?,
+        fileCounts = Map.unmodifiable({
+          if (json['file_counts'] is Map)
+            for (final entry in (json['file_counts'] as Map).entries)
+              entry.key.toString(): ProtocolValidation.nonNegativeInt({'value': entry.value}, 'value'),
+        });
+
+  final Map<String, dynamic> raw;
+  final String? executionMode;
+  final String? phase;
+  final Map<String, int> fileCounts;
+  int? get recognitionTotal => ProtocolValidation.optionalNonNegativeInt(raw, 'recognition_total');
+  int? get recognitionProcessed => ProtocolValidation.optionalNonNegativeInt(raw, 'recognition_processed');
+  int? get eligibleAssetCount => ProtocolValidation.optionalNonNegativeInt(raw, 'eligible_asset_count');
+  int? get plannedFileCount => ProtocolValidation.optionalNonNegativeInt(raw, 'planned_file_count');
+  int? get copiedBytes => ProtocolValidation.optionalNonNegativeInt(raw, 'copied_bytes');
+  bool get hasOutstandingFiles => ['queued', 'copying', 'retry_wait', 'blocked'].any((state) => (fileCounts[state] ?? 0) > 0);
 }
 
 /// child CopyJob 摘要（联合任务书 §6.6）。清单不可变，App 只读。
@@ -429,9 +498,13 @@ class SmartFollowCapability {
     this.collectWindowMs = 0,
     this.batchSizeRange = const [],
     this.collectWindowMsRange = const [],
+    this.continuousQueueAvailable = false,
+    this.continuousContractVersion,
   });
 
   final bool available;
+  final bool continuousQueueAvailable;
+  final String? continuousContractVersion;
   final String contractVersion;
   final String eligibilityMode;
 
@@ -450,6 +523,8 @@ class SmartFollowCapability {
     final json = Map<String, dynamic>.from(value);
     return SmartFollowCapability(
       available: json['available'] == true,
+      continuousQueueAvailable: json['continuous_queue_available'] == true && json['execution_mode'] == 'continuous_queue',
+      continuousContractVersion: _stringAlias(json, const ['continuous_contract_version']),
       contractVersion: _stringAlias(json, const ['contract_version']) ?? SmartFollowContract.version,
       eligibilityMode: _stringAlias(json, const ['eligibility_mode', 'mode', 'policy_version']) ?? SmartFollowContract.eligibilityMode,
       batchSize: _intAlias(json, const ['default_batch_size', 'batch_size']),

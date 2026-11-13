@@ -8,6 +8,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'configuration_fixtures.dart';
 
 void main() {
+  test('continuous confirmation disables unsupported export and survives local restoration', () async {
+    final fixture = ConfigurationFixture()..continuous = true;
+    final controller = await fixture.controller();
+    addTearDown(controller.dispose);
+    expect(controller.canExportInformation, isFalse);
+    controller.setReviewExport(true);
+    expect(controller.reviewExportEnabled, isFalse);
+    controller.selectTarget('target');
+    controller.selectConflict(ConflictStrategy.skip);
+    expect(await controller.confirm(), isTrue);
+    final intent = controller.confirmed!;
+    expect(intent.request.toJson()['review_export_enabled'], isFalse);
+    expect(intent.request.toJson().containsKey('review_export'), isFalse);
+    final restored = SmartFollowConfiguredIntent.fromLocalJson(intent.toLocalJson());
+    expect(restored.request.continuousQueue, isTrue);
+    expect(restored.request.toJson(), intent.request.toJson());
+  });
   test('an entry cannot silently rebind its configuration to another recognition round', () async {
     final fixture = ConfigurationFixture();
     final controller = SmartFollowConfigurationController(fixture.reader(), expectedRecognitionJobId: 'rec-1', expectedRecognitionPhase: RecognitionEntryPhase.running);

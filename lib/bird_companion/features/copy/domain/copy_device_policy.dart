@@ -8,11 +8,12 @@ abstract final class CopyDevicePolicy {
       !(device.canBeSource && !device.canBeTarget && (device.targetBlockReasons.isEmpty || device.targetBlockReasons.contains('当前任务源设备'))) &&
       (device.canBeTarget || !device.online || device.targetBlockReasons.isNotEmpty);
 
-  static bool canSelectTarget(StorageDeviceSummary device, String? sourceMediaId) => isTargetCandidate(device, sourceMediaId) && device.online && device.canBeTarget && device.targetBlockReasons.isEmpty;
+  static bool canSelectTarget(StorageDeviceSummary device, String? sourceMediaId) => isTargetCandidate(device, sourceMediaId) && device.online && device.canBeTarget && device.capacityKnown && device.targetBlockReasons.isEmpty;
 
   static String? targetDisabledReason(StorageDeviceSummary device, {String? sourceMediaId}) {
     if (device.mediaId == sourceMediaId || device.productRole == 'import_source') return '相机卡用于导入，不能作为复制目标。';
     if (!device.online) return '设备已断开，请重新插入后检测。';
+    if (!device.capacityKnown) return '正在读取设备容量，请稍后重新检查。';
     if (canSelectTarget(device, sourceMediaId)) return null;
     final reasons = device.targetBlockReasons.map(_reason).toSet();
     return reasons.isEmpty ? '该设备当前不能作为复制目标。' : reasons.join('；');

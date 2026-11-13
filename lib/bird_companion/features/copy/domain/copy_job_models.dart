@@ -319,6 +319,8 @@ class CopyJobDetail {
     this.reviewExportEnabled,
     this.errorCode,
     this.errorMessage,
+    this.origin,
+    this.parentSessionId,
   });
 
   /// 唯一必填字段：没有任务 id 时该响应不可用，直接抛协议异常。
@@ -349,6 +351,10 @@ class CopyJobDetail {
   /// 后端字段未冻结，容错读取；缺失时不显示。
   final String? errorCode;
   final String? errorMessage;
+
+  /// Additive server association; absence never establishes a guessed parent.
+  final String? origin;
+  final String? parentSessionId;
 
   bool get isFullBackup => scopeWire == 'media_full_backup';
 
@@ -386,6 +392,8 @@ class CopyJobDetail {
       reviewExportEnabled: json['review_export'] is Map && (json['review_export'] as Map)['enabled'] is bool ? (json['review_export'] as Map)['enabled'] as bool : null,
       errorCode: _string(json, 'error_code') ?? _string(json, 'failure_reason'),
       errorMessage: _string(json, 'error_message') ?? _string(json, 'failure_message'),
+      origin: _string(json, 'origin'),
+      parentSessionId: json['parent_session_id'] == null ? null : ProtocolValidation.requiredId(json, 'parent_session_id'),
     );
   }
 }

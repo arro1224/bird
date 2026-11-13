@@ -9,6 +9,10 @@
 和 `Simulation` 必须显式选择，且只允许 Debug。Gradle 同时禁用了三个内部
 flavor 的 Release variant，正常发布只能生成 `bird` Release。
 
+同一版本构建新的未提交候选时，可加 `-OutputDirectory build/delivery/唯一目录名`，
+将 APK、源码指纹和构建清单写入新的仓库内目录。显式指定的目录已存在时拒绝覆盖，
+以免新版候选覆盖上次交付证据。
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File tool/release/build_android_apks.ps1
 powershell -ExecutionPolicy Bypass -File tool/release/build_android_apks.ps1 -Mode HuaweiAB

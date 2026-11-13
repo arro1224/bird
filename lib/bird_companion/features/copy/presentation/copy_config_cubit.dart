@@ -45,6 +45,7 @@ class CopyConfigState {
     this.preferencesVersion,
     this.scopeOptions = const [],
     this.copyReady = false,
+    this.atomicPreferencesOnCreate = false,
     this.reviewExportReady = true,
     this.targetMediaId,
     this.conflictStrategy,
@@ -90,6 +91,7 @@ class CopyConfigState {
   final int? preferencesVersion;
   final List<CopyScopeOption> scopeOptions;
   final bool copyReady;
+  final bool atomicPreferencesOnCreate;
   final bool reviewExportReady;
   final String? targetMediaId;
   final ConflictStrategy? conflictStrategy;
@@ -197,6 +199,7 @@ class CopyConfigState {
   bool get targetOccupiedByJob => targetDevice?.online == true && targetDevice!.targetBlockReasons.contains('COPY_TARGET_BUSY');
 
   bool get occupiedByRunningJob => !loadingDevices && devicesFresh && (sourceOccupiedByJob || targetOccupiedByJob);
+  BlockingCopyTask? get blockingTask => [...?sourceDevice?.blockingTasks, ...?targetDevice?.blockingTasks].firstOrNull;
 
   String? get submissionBlockReason {
     if (scopeUnavailable) return '当前盒子不支持全量备份，本次不会创建任务';
@@ -240,6 +243,7 @@ class CopyConfigState {
     pairPolicy: pairPolicy,
     conflictStrategy: conflictStrategy,
     reviewExport: reviewExport,
+    savePreferencesOnCreate: atomicPreferencesOnCreate && !fullBackup && preferencesVersion != null,
   );
 
   CopyConfigState copyWith({
@@ -257,6 +261,7 @@ class CopyConfigState {
     int? preferencesVersion,
     List<CopyScopeOption>? scopeOptions,
     bool? copyReady,
+    bool? atomicPreferencesOnCreate,
     bool? reviewExportReady,
     String? targetMediaId,
     ConflictStrategy? conflictStrategy,
@@ -311,6 +316,7 @@ class CopyConfigState {
     preferencesVersion: preferencesVersion ?? this.preferencesVersion,
     scopeOptions: scopeOptions ?? this.scopeOptions,
     copyReady: copyReady ?? this.copyReady,
+    atomicPreferencesOnCreate: atomicPreferencesOnCreate ?? this.atomicPreferencesOnCreate,
     reviewExportReady: reviewExportReady ?? this.reviewExportReady,
     targetMediaId: clearTargetMediaId ? null : targetMediaId ?? this.targetMediaId,
     conflictStrategy: conflictStrategy ?? this.conflictStrategy,
@@ -637,6 +643,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
           clearDevicesError: true,
           clearError: true,
           copyReady: true,
+          atomicPreferencesOnCreate: capabilities.atomicPreferencesOnCreate,
           reviewExportReady: capabilities.reviewExportReady,
           reviewExport: capabilities.reviewExportReady ? state.reviewExport : const ReviewExportConfig.disabled(),
           sourceMediaId: binding.sourceMediaId,
@@ -1058,7 +1065,19 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
           /* A convenience preference cannot invalidate POST success. */
         }
       }
-      await _persistPairPolicyAfterCreate(draft.pairPolicy, environment);
+      if (draft.savePreferencesOnCreate) {
+        final saved = job.savedPreferences;
+        if (saved != null && saved.pairPolicy == draft.pairPolicy && saved.version == draft.expectedPreferencesVersion! + 1) {
+          _persistedPairPolicy = saved.pairPolicy;
+          emit(state.copyWith(preferencesVersion: saved.version, preferenceSavePending: false, clearPreferenceSaveNotice: true));
+        } else {
+          // The task already exists. Never compensate by creating another one
+          // or by silently falling back to a non-atomic preference write.
+          emit(state.copyWith(preferenceSavePending: false, preferenceSaveNotice: '任务已创建，但原子偏好回执尚未确认。请读取复制设置核对，不要重复创建任务。'));
+        }
+      } else {
+        await _persistPairPolicyAfterCreate(draft.pairPolicy, environment);
+      }
       dataChanges?.publish({AppDataResource.jobs, AppDataResource.device, AppDataResource.batches}, reason: 'copy_job_created');
       _poll?.cancel();
       _expiry?.cancel();

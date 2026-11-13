@@ -47,6 +47,21 @@ SmartFollowStage resolveSmartFollowStage({
     );
   }
 
+  if (session.isContinuous) {
+    if ((session.state.wire == 'created' || session.state.wire == 'following') && (session.summary == null || session.summary!.phase == 'created')) {
+      return const SmartFollowStage(id: 'preparing', label: '正在准备持续复制', hint: '会话已建立，正在读取队列状态。', tone: SmartFollowStageTone.running);
+    }
+    if (session.state.wire == 'completed' && (session.summary == null || session.summary!.phase == 'created' || session.summary!.hasOutstandingFiles)) {
+      return const SmartFollowStage(id: 'queue_unsettled', label: '队列尚未处理完', hint: '仍有排队、复制中或受阻文件，正在重新核对任务状态。', tone: SmartFollowStageTone.waiting);
+    }
+    if (session.state.wire == 'following') {
+      return const SmartFollowStage(id: 'continuous_following', label: '识别与持续复制中', hint: '新结果进入队列后逐项复制；退出 App 不会停止盒子任务。', tone: SmartFollowStageTone.running);
+    }
+    if (session.state.wire == 'paused') {
+      return const SmartFollowStage(id: 'paused', label: '已暂停', hint: '识别结果继续保留，暂停新的文件复制。', tone: SmartFollowStageTone.waiting);
+    }
+  }
+
   switch (session.state.wire) {
     case 'waiting_for_target':
       return const SmartFollowStage(

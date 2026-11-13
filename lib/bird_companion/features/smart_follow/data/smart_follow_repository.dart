@@ -7,6 +7,7 @@ import 'package:aves/bird_companion/core/storage/diagnostic_storage.dart';
 import 'package:aves/bird_companion/features/smart_follow/data/smart_follow_gateway.dart';
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_metadata.dart';
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_models.dart';
+import 'package:aves/bird_companion/features/smart_follow/domain/continuous_queue_models.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
@@ -25,6 +26,30 @@ class SmartFollowRepository extends ChangeNotifier {
   SmartFollowRepository(this._gateway, {this.metadataStorage, this.metadataDeviceId});
 
   final SmartFollowGateway _gateway;
+  Future<SmartFollowSessionPage> sessions({String? cursor}) async {
+    final generation = _deviceGeneration;
+    final gateway = _gateway;
+    if (gateway is! SmartFollowSessionListGateway) throw StateError('当前盒子不支持跟随会话列表。');
+    final page = await (gateway as SmartFollowSessionListGateway).sessions(cursor: cursor);
+    _checkDevice(generation);
+    return page;
+  }
+  Future<GroupedCopyHistoryPage> groupedHistory({String? cursor}) async {
+    final generation = _deviceGeneration;
+    final gateway = _gateway;
+    if (gateway is! SmartFollowHistoryGateway) throw StateError('当前盒子不支持分组复制历史。');
+    final page = await (gateway as SmartFollowHistoryGateway).groupedHistory(cursor: cursor);
+    _checkDevice(generation);
+    return page;
+  }
+  Future<SmartFollowFilePage> fileItems(String sessionId, {String? cursor, String? state}) async {
+    final generation = _deviceGeneration;
+    final gateway = _gateway;
+    if (gateway is! SmartFollowQueueGateway) throw StateError('当前盒子不支持持续队列文件明细。');
+    final page = await (gateway as SmartFollowQueueGateway).fileItems(sessionId, cursor: cursor, state: state);
+    _checkDevice(generation);
+    return page;
+  }
   final DiagnosticStorage? metadataStorage;
   final String? Function()? metadataDeviceId;
   final Map<String, Map<String, dynamic>> _metadataPending = {};
@@ -180,17 +205,19 @@ class SmartFollowRepository extends ChangeNotifier {
           rethrow;
         }
         _checkDevice(generation);
-        if (response['session_id'] != sessionId || response['items'] is! List || response['has_more'] is! bool) throw StateError('跟随事件归属或分页不完整');
+        final legacyCursor = response.containsKey('next_after_event_seq') && !response.containsKey('has_more');
+        if ((!legacyCursor && response['session_id'] != sessionId) || response['items'] is! List || (!legacyCursor && response['has_more'] is! bool)) throw StateError('跟随事件归属或分页不完整');
         final items = response['items'] as List;
         for (final item in items) {
           if (item is! Map || item['session_id'] != sessionId || item['event_seq'] != cursor + 1) throw StateError('跟随事件不连续，请重新核对原任务');
           cursor++;
           changed = true;
         }
-        if (response['next_event_seq'] != cursor || (response['has_more'] == true && items.isEmpty)) throw StateError('跟随事件游标无效');
+        final more = legacyCursor ? items.length == 200 : response['has_more'] == true;
+        if ((legacyCursor ? response['next_after_event_seq'] : response['next_event_seq']) != cursor || (more && items.isEmpty)) throw StateError('跟随事件游标无效');
         await metadataStorage?.write(slot, cursor);
         _checkDevice(generation);
-        if (response['has_more'] != true) break;
+        if (!more) break;
       }
       // Persisted event cursors never replace authoritative counts. Read a fresh
       // snapshot after catch-up so an event cannot advance past an older screen.

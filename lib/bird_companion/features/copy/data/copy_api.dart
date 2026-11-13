@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
+import 'package:aves/bird_companion/core/network/api_exception.dart';
+import 'package:aves/bird_companion/core/storage/diagnostic_storage.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
@@ -10,8 +13,13 @@ import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 /// [ApiClient.post] 自动附加同值的 `Idempotency-Key` 与兼容头
 /// `X-Idempotency-Key`。
 class CopyApi {
-  CopyApi(this._c);
+  CopyApi(this._c, {this.creationStorage, this.creationDeviceId});
   final ApiClient _c;
+  final DiagnosticStorage? creationStorage;
+  final String? Function()? creationDeviceId;
+  final _atomicPending = <String, Map<String, dynamic>>{};
+  final _atomicRequests = <String, Future<CopyJobSummary>>{};
+  final _atomicActiveIntents = <String, String>{};
   final Map<String, StorageDeviceSummary> _deviceCache = {};
   int _deviceReadGeneration = 0;
 
@@ -232,16 +240,72 @@ class CopyApi {
     CopyRequestDraft draft,
     String previewToken,
   ) async {
+    if (draft.savePreferencesOnCreate) {
+      final slot = _creationSlot;
+      final active = _atomicRequests[slot];
+      final intent = _creationIntent(draft);
+      if (active != null) {
+        if (_atomicActiveIntents[slot] != intent) throw const CopyCreationPending();
+        return active;
+      }
+      final request = _createAtomic(draft, previewToken, slot);
+      _atomicRequests[slot] = request;
+      _atomicActiveIntents[slot] = intent;
+      try { return await request; } finally {
+        if (identical(_atomicRequests[slot], request)) {
+          _atomicRequests.removeWhere((key, _) => key == slot);
+          _atomicActiveIntents.remove(slot);
+        }
+      }
+    }
     return CopyJobSummary.fromJson(
       await _c.post(
         ApiEndpoints.copyJobs,
         data: {
           ...draft.toJson(),
           'preview_token': previewToken,
+          if (draft.savePreferencesOnCreate) 'save_preferences_on_create': true,
         },
         headers: _protocolHeader,
       ),
     );
+  }
+
+  String get _creationSlot => 'copy-atomic-create:${creationDeviceId?.call() ?? 'local'}|${_c.baseUri}';
+  String _creationIntent(CopyRequestDraft draft) => jsonEncode({...draft.toJson(), 'source_binding_token': null, 'expected_preferences_version': null, 'source_media_id': draft.sourceMediaId});
+
+  Future<CopyJobSummary> _createAtomic(CopyRequestDraft draft, String previewToken, String slot) async {
+    // A refreshed preview/binding/version is not permission to duplicate an
+    // unresolved creation. Recover the original body and key even after restart.
+    final intent = _creationIntent(draft);
+    final saved = creationStorage?.read<Map>(slot) ?? _atomicPending[slot];
+    Map<String, dynamic> record;
+    if (saved != null) {
+      if (saved['intent'] != intent) throw const CopyCreationPending();
+      record = Map<String, dynamic>.from(saved);
+    } else {
+      record = {'intent': intent, 'key': 'copy-atomic-$previewToken', 'body': {...draft.toJson(), 'preview_token': previewToken, 'save_preferences_on_create': true}};
+      await creationStorage?.write(slot, record);
+      _atomicPending[slot] = record;
+    }
+    void check() { if (_creationSlot != slot) throw StateError('盒子连接已变化，请返回原盒子查询复制创建结果。'); }
+    check();
+    try {
+      final response = await _c.post(ApiEndpoints.copyJobs, data: Map<String, dynamic>.from(record['body'] as Map), idempotencyKey: record['key'] as String, headers: _protocolHeader);
+      check();
+      final job = CopyJobSummary.fromJson(response);
+      await creationStorage?.remove(slot);
+      _atomicPending.remove(slot);
+      return job;
+    } on ApiException catch (error) {
+      // These definitive rejections are evaluated only after server-side replay.
+      // Timeouts, auth failures and 5xx retain the original durable intent.
+      if (const {'COPY_PREVIEW_EXPIRED', 'COPY_PREFERENCES_VERSION_CONFLICT', 'COPY_VALIDATION_ERROR'}.contains(error.code)) {
+        await creationStorage?.remove(slot);
+        _atomicPending.remove(slot);
+      }
+      rethrow;
+    }
   }
 
   // ---- RC3 任务闭环（§13.5/§13.6，响应解析容错，模型见 copy_job_models.dart）----

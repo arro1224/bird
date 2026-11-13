@@ -6,10 +6,12 @@ import 'package:aves/bird_companion/features/jobs/domain/job_failure.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_create_requests.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_report.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_page.dart';
+import 'package:aves/bird_companion/features/jobs/data/job_read_diagnostics.dart';
 
 class JobApi {
-  JobApi(this._c);
+  JobApi(this._c, {this.diagnostics});
   final ApiClient _c;
+  final JobReadDiagnostics? diagnostics;
   Future<JobPage> page({
     String? cursor,
     int pageSize = 50,
@@ -33,9 +35,21 @@ class JobApi {
     );
   }
 
-  Future<BirdJobStatus> detail(String id) {
+  Future<BirdJobStatus> detail(String id) async {
     _validateId(id, 'jobId');
-    return _c.get(ApiEndpoints.jobDetail.replaceFirst('{jobId}', id)).then(BirdJobStatus.fromJson);
+    Map<String, dynamic>? raw;
+    Object? failure;
+    try {
+      raw = await _c.get(ApiEndpoints.jobDetail.replaceFirst('{jobId}', Uri.encodeComponent(id)));
+      final job = BirdJobStatus.fromJson(raw);
+      if (job.id != id) throw const ProtocolCompatibilityException('job_id', '返回的任务与请求不一致');
+      return job;
+    } catch (error) {
+      failure = error;
+      rethrow;
+    } finally {
+      diagnostics?.record(id, batchId: raw?['source_project_id'], error: failure, responseReceived: raw != null);
+    }
   }
 
   Future<BirdJobStatus> createImport(

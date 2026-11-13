@@ -5,7 +5,7 @@ import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_repository.dart';
 
-StorageDeviceSummary b3Device(String id, {String? name, bool source = false, bool target = true, bool online = true, String? productRole, List<String> reasons = const [], int free = 1000000}) => StorageDeviceSummary(
+StorageDeviceSummary b3Device(String id, {String? name, bool source = false, bool target = true, bool online = true, String? productRole, List<String> reasons = const [], int free = 1000000, bool capacityKnown = true, List<BlockingCopyTask> blockingTasks = const []}) => StorageDeviceSummary(
   mediaId: id,
   displayName: name ?? id,
   kind: source ? 'memory_card' : 'usb_flash',
@@ -21,6 +21,8 @@ StorageDeviceSummary b3Device(String id, {String? name, bool source = false, boo
   targetBlockReasons: reasons,
   identityConfidence: 'stable_uuid',
   productRole: productRole,
+  capacityKnown: capacityKnown,
+  blockingTasks: blockingTasks,
 );
 
 /// Synthetic rc3 environment. These are not captured board responses.
@@ -40,6 +42,7 @@ class FakeCopyEnvironment with SyntheticCopyPlan implements CopyRepository {
   Completer<CopyJobSummary>? pendingCreate;
   int deviceCalls = 0, sourceCalls = 0, previewCalls = 0, createCalls = 0, preferenceVersion = 1;
   PairPolicy preferencePolicy = PairPolicy.rawOnly;
+  bool atomicPreferences = false, includeAtomicReceipt = true;
   final drafts = <CopyRequestDraft>[], savedVersions = <int>[];
   final createdTokens = <String>[];
   CopyRequestDraft? createdDraft;
@@ -64,7 +67,7 @@ class FakeCopyEnvironment with SyntheticCopyPlan implements CopyRepository {
   );
 
   @override
-  Future<CopyCapabilities> capabilities() async => const CopyCapabilities(revision: '1.0-rc3', copyReady: true, supportedScopes: [CopyScope.batchAllAssets, CopyScope.recognizedAssets], recognitionPolicyVersion: 'recognized-assets-v1');
+  Future<CopyCapabilities> capabilities() async => CopyCapabilities(revision: '1.0-rc3', copyReady: true, supportedScopes: const [CopyScope.batchAllAssets, CopyScope.recognizedAssets], recognitionPolicyVersion: 'recognized-assets-v1', atomicPreferencesOnCreate: atomicPreferences);
   @override
   Future<CopyDeviceList> devices() async {
     deviceCalls++;
@@ -102,6 +105,11 @@ class FakeCopyEnvironment with SyntheticCopyPlan implements CopyRepository {
     createCalls++;
     createdDraft = draft;
     createdTokens.add(previewToken);
+    if (draft.savePreferencesOnCreate && pendingCreate == null) {
+      preferencePolicy = draft.pairPolicy;
+      final saved = CopyPreferences(pairPolicy: draft.pairPolicy, version: ++preferenceVersion, origin: 'user_saved');
+      return CopyJobSummary(copyJobId: 'created-job', state: 'queued', eventSeq: 0, savedPreferences: includeAtomicReceipt ? saved : null);
+    }
     return pendingCreate == null ? const CopyJobSummary(copyJobId: 'created-job', state: 'queued', eventSeq: 0) : await pendingCreate!.future;
   }
 

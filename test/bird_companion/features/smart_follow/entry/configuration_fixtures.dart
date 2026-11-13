@@ -48,6 +48,7 @@ class ConfigurationFixture {
   String sourceId = 'source', token = 'binding-token';
   String jobId = 'rec-1';
   bool notStarted = false;
+  bool continuous = false;
   PairPolicy preferred = PairPolicy.rawOnly;
   List<StorageDeviceSummary> devices = [configDevice('source', source: true), configDevice('target')];
   Future<SmartFollowConfigurationSnapshot> Function()? pending;
@@ -57,7 +58,7 @@ class ConfigurationFixture {
     entry: SmartFollowEntryDecision(
       phase: notStarted ? RecognitionEntryPhase.notStarted : RecognitionEntryPhase.running,
       job: notStarted ? null : BirdJobStatus(id: jobId, type: BirdJobType.analysis, state: BirdJobState.running, sourceProjectId: 'batch-1'),
-      capabilities: SmartFollowCapabilities(incrementalRecognition: available, copy: const SmartFollowCapability(available: true), metadataUpdate: false),
+      capabilities: SmartFollowCapabilities(incrementalRecognition: available, copy: SmartFollowCapability(available: true, continuousQueueAvailable: continuous, continuousContractVersion: continuous ? SmartFollowContract.continuousVersion : null), metadataUpdate: false),
     ),
     binding: SourceBinding(sourceMediaId: sourceId, displayName: '相机卡', token: token, expiresAt: expiry ?? clock.add(const Duration(minutes: 10)), verifiedReadOnly: readOnly, batchId: bindingBatch),
     preferences: CopyPreferences(pairPolicy: preferred, version: preferencesVersion, origin: 'synthetic'),

@@ -168,9 +168,26 @@ void main() {
       'version': 5,
     });
   });
+  test('offline tag replay never acknowledges an empty success response', () async {
+    final store = PendingOperationStore.memory();
+    await store.save(PendingOperation(
+      id: 'unconfirmed-tags', type: PendingOperationType.batchReview,
+      payload: const {'file_ids': ['file-2'], 'operation': 'add_tags', 'value': ['湿地'], 'version': 5},
+      createdAt: DateTime.utc(2026, 8, 10), deviceId: 'box-b5', projectId: 'project-b5',
+    ));
+    final client = _B5ApiClient()..confirmTags = false;
+    final service = BirdSyncService(ConnectivityMonitor(), SyncCoordinator(store), client, null, () => 'box-b5');
+    final result = await service.synchronize();
+    expect(result.syncedCount, 0);
+    expect(result.failedOperations, hasLength(1));
+    expect(store.readAll().single.id, 'unconfirmed-tags-tag-retry-1');
+    expect(store.readAll().single.payload['file_ids'], ['file-2']);
+    expect(store.readAll().single.status, PendingOperationStatus.failed);
+  });
 }
 
 class _B5ApiClient extends ApiClient {
+  bool confirmTags = true;
   String analysisType = 'analysis';
   String analysisProjectId = 'project-b5';
   String? lastPath;
@@ -210,6 +227,9 @@ class _B5ApiClient extends ApiClient {
         'version': 1,
         'source_project_id': analysisProjectId,
       };
+    }
+    if (confirmTags && path.endsWith('/files/actions') && data is Map) {
+      return {'succeeded_ids': data['file_ids'], 'failed': <dynamic>[]};
     }
     return const <String, dynamic>{};
   }

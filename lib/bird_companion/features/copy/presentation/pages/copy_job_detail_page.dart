@@ -315,6 +315,13 @@ class _DetailView extends StatelessWidget {
           _WaitingBanner(state: detail.state, errorMessage: detail.errorMessage),
           _JobFailureNotice(detail: detail),
           _StateHeader(detail: detail, state: state),
+          if (detail.parentSessionId != null)
+            OutlinedButton.icon(
+              key: const Key('copy-open-parent-session'),
+              onPressed: deviceAvailable ? () => Navigator.of(context).pushNamed(BirdRoutes.smartFollowRun, arguments: detail.parentSessionId) : null,
+              icon: const Icon(Icons.account_tree_outlined),
+              label: const Text('查看所属智能复制主任务'),
+            ),
           if (detail.state.isTerminal && deviceAvailable && BirdCompanionScope.maybeOf(context) != null)
             Builder(
               builder: (context) {

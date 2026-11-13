@@ -336,7 +336,10 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
     try {
       await controller.refreshJobDetail(taskId);
     } catch (error) {
-      if (mounted) _showError(context, error);
+      if (mounted) {
+        final message = UserMessageMapper.fromTaskReadError(error);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${message.title}：${message.message}')));
+      }
       return;
     }
     if (!mounted) return;
