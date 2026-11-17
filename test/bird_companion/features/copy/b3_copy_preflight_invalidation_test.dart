@@ -479,4 +479,36 @@ void main() {
     expect(await cubit.submit(), false);
     expect(repository.createCalls, 1);
   });
+
+  test('空间不足的预检结论不被周期设备刷新静默洗掉（现场演示反馈）', () async {
+    final repository = FakeCopyEnvironment();
+    var failWithSpace = true;
+    repository.makePreview = (draft) async {
+      if (failWithSpace) {
+        throw const ApiException(message: 'insufficient', code: 'COPY_INSUFFICIENT_SPACE', statusCode: 422);
+      }
+      return repository.previewFor(draft);
+    };
+    final cubit = CopyConfigCubit(repository, batchId: 'batch', scope: CopyScope.batchAllAssets, pollInterval: const Duration(milliseconds: 5), canUseDevice: () => true);
+    addTearDown(cubit.close);
+    await cubit.initialize();
+    cubit.selectTarget('target');
+    cubit.setConflictStrategy(ConflictStrategy.skip);
+    expect(await cubit.fetchPreview(), false);
+    expect(cubit.state.invalidationReason, CopyPreflightInvalidation.insufficientSpace);
+    expect(cubit.state.preflightNotice, contains('空间不足'));
+
+    // 允许周期设备刷新跑几轮：空间不足不在豁免清除列表，提示必须原样保留。
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    expect(repository.deviceCalls, greaterThan(0));
+    expect(cubit.state.invalidationReason, CopyPreflightInvalidation.insufficientSpace,
+        reason: '盘还是那块盘，刷新不能把空间不足结论冲成「设备已恢复」');
+    expect(cubit.state.preflightNotice, contains('空间不足'));
+
+    // 用户换小批次后重新预检成功，提示才消失。
+    failWithSpace = false;
+    expect(await cubit.fetchPreview(), true);
+    expect(cubit.state.invalidationReason, isNull);
+    expect(cubit.state.preflightNotice, isNull);
+  });
 }

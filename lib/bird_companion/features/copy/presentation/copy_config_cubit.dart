@@ -759,8 +759,15 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
           state.invalidationReason != CopyPreflightInvalidation.configurationChanged &&
           state.invalidationReason != CopyPreflightInvalidation.planInconsistent &&
           state.invalidationReason != CopyPreflightInvalidation.verificationFailed &&
+          // 空间不足是预检实测结论，不随设备轮询消失（盘还是那块盘）；
+          // 静默清除会让用户没看清就被「设备已恢复」覆盖（现场演示反馈）。
+          // 保持原 reason 与 invalidated 态，直到用户修改配置或重新预检。
+          state.invalidationReason != CopyPreflightInvalidation.insufficientSpace &&
           state.preview == null) {
         emit(next.copyWith(clearPreview: true, clearError: true, preflightStatus: CopyPreflightStatus.needsRecheck));
+      } else if (state.invalidationReason == CopyPreflightInvalidation.insufficientSpace && state.preview == null) {
+        // 设备无新问题且上次失败是空间不足：保住提示原样（仍可重新预检）。
+        emit(next.copyWith(clearError: true, loadingDevices: false, refreshingDevices: false));
       } else {
         // v10 问题 3：刷新成功且无问题时恢复原确认页——清除陈旧标记，
         // 让确认页在生命周期往返后仍持有原预检（令牌 120s 内仍有效）。
