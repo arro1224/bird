@@ -205,6 +205,17 @@ class MockBoxServer {
       ..['available_actions'] = <String>['delete']
       ..['version'] = (job['version'] as int) + 1
       ..['updated_at'] = _clock().toUtc().toIso8601String();
+    // 导入完成必须回填项目照片数（真实盒子导入后会上报 total_files）。
+    // 此前新建项目永远 total_files=0，App 门控「批次无照片」会永久锁死
+    // AI 分析入口——现场演示发现的第四个保真度缺口。
+    final sourceProjectId = job['source_project_id']?.toString();
+    if (job['job_type'] == 'import' && sourceProjectId != null && sourceProjectId.isNotEmpty) {
+      final project = _createdProjects[sourceProjectId];
+      if (project != null) {
+        project['total_files'] = job['total_count'];
+        project['state'] = 'ready_to_review';
+      }
+    }
     await _persistState();
     if (emitEvent) await _emitJob(job);
   }
@@ -964,9 +975,12 @@ class MockBoxServer {
         },
         {
           'scope': 'media_full_backup',
-          'available': false,
-          'count_state': 'preview_required',
-          'unavailable_reason': 'unsupported',
+          // 与 copy-capabilities 的 supported_scopes 保持一致：那里声明支持
+          // media_full_backup，这里却标 unsupported 会把全量备份入口直接
+          // 卡死在预检前（App canFetchPreview 要求 scope option 可用）。
+          'available': true,
+          'count_state': 'requires_preview',
+          'unavailable_reason': null,
           'navigation_action': 'none',
         },
       ],
@@ -987,11 +1001,9 @@ class MockBoxServer {
       await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_SCOPE_INVALID');
       return;
     }
-    // 镜像真实后端（联调 01 §二 P0-2）：全量备份未开放，预检直接拒绝。
-    if (scope == 'media_full_backup') {
-      await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_SCOPE_UNSUPPORTED');
-      return;
-    }
+    // 镜像真实后端（联调 01 §二 P0-2）的全量备份口径已过时：capabilities 与
+    // scope-options 均已声明支持 media_full_backup，预检不再拒绝；行为与
+    // 其余 scope 一致，走正常预检流程（full_backup 的 logical 数量见下方）。
     if (body['conflict_strategy'] == null) {
       await _copyV1Error(request, HttpStatus.unprocessableEntity, 'COPY_CONFLICT_STRATEGY_REQUIRED');
       return;
@@ -1001,6 +1013,8 @@ class MockBoxServer {
       'batch_all_assets' => 120,
       'filtered_assets' => 21,
       'recognized_assets' => 47,
+      // 全量备份按相机卡全卡计（mock 卡容量 119.2 GB ≈ 2480 个 RAW+JPEG 对）。
+      'media_full_backup' => 2480,
       _ => (body['selection_id']?.toString().length ?? 4) % 9 + 2,
     };
     final files = logical * 2 - 1;
@@ -3133,6 +3147,33 @@ class MockBoxServer {
   }
 
   /// 返回 null 表示成功，否则返回错误码（供动作接口与 /mock/control 共用）。
+  /// 把跟随链路的识别进度同步到分析任务本体并广播 job_updated。
+  ///
+  /// 真实盒子上识别流水线每产出一张就会推进 job.finished_count 并推事件
+  /// （回执 P2-9：事件携带完整 Job 且 version 递增）；此前 mock 的 commit
+  /// 只更新会话快照、不同步 job，App「识别 X/Y」卡会永远停在 0。
+  Future<void> _syncSmartFollowRecognitionJob({bool complete = false}) async {
+    final id = _smartFollowJobId;
+    if (id.isEmpty) return;
+    final job = _jobs[id];
+    if (job == null) return;
+    final total = (job['total_count'] as num?)?.toInt() ?? 0;
+    final finished = complete ? total : min(_smartFollowRecognized, total);
+    if (finished <= (job['finished_count'] as int) && !complete) return;
+    job
+      ..['finished_count'] = finished
+      ..['progress'] = total <= 0 ? 0.0 : finished / total
+      ..['estimated_remaining_seconds'] = complete ? 0 : ((total - finished) * 2).clamp(0, 600)
+      ..['version'] = (job['version'] as int) + 1
+      ..['updated_at'] = _clock().toUtc().toIso8601String();
+    if (complete) {
+      await completeJob(id);
+      return;
+    }
+    await _persistState();
+    await _emitJob(job);
+  }
+
   String? _advanceSmartFollow(Map<String, dynamic> body) {
     final action = (body['action'] ?? '').toString();
     if (action.isEmpty) return 'action is required';
@@ -3169,10 +3210,12 @@ class MockBoxServer {
         }
         _sealSmartFollowFilledBatches();
         _smartFollowVersion++;
+        unawaited(_syncSmartFollowRecognitionJob());
       case 'finish_recognition':
         _sealSmartFollowRemainder();
         _smartFollowState = 'draining';
         _smartFollowVersion++;
+        unawaited(_syncSmartFollowRecognitionJob(complete: true));
       case 'complete_children':
         for (final child in _smartFollowChildren) {
           if (child['state'] != 'completed') {

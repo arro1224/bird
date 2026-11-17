@@ -331,6 +331,11 @@ void main() {
     expect(capabilities.copyReady, isTrue);
     expect(capabilities.supportedScopes, contains(CopyScope.mediaFullBackup));
 
+    // 预检前必须先读设备列表：CopyApi 用设备快照核对 source/target
+    // （真实 App 流程同样先加载设备再预检）。
+    final rc3Devices = (await copyApi.devices()).devices;
+    expect(rc3Devices, isNotEmpty);
+
     const draft = CopyRequestDraft(
       batchId: 'mock-batch-current',
       scope: CopyScope.keptAssets,
@@ -340,22 +345,19 @@ void main() {
       reviewExport: ReviewExportConfig.disabled(),
     );
 
-    // 预检拒绝全量备份（镜像真实后端 P0-2）。
-    await expectLater(
-      copyApi.preview(
-        CopyRequestDraft(
-          batchId: 'mock-batch-current',
-          scope: CopyScope.mediaFullBackup,
-          sourceMediaId: draft.sourceMediaId,
-          targetMediaId: draft.targetMediaId,
-          conflictStrategy: ConflictStrategy.skip,
-          reviewExport: const ReviewExportConfig.disabled(),
-        ),
-      ),
-      throwsA(
-        isA<ApiException>().having((error) => error.code, 'code', 'COPY_SCOPE_UNSUPPORTED').having((error) => error.statusCode, 'status', 422),
+    // 预检接受全量备份（capabilities 与 scope-options 均已声明支持，
+    // 预检/创建不再单独拒绝——镜像口径已随真实后端放开而同步）。
+    final fullBackupPreview = await copyApi.preview(
+      CopyRequestDraft(
+        batchId: 'mock-batch-current',
+        scope: CopyScope.mediaFullBackup,
+        sourceMediaId: draft.sourceMediaId,
+        targetMediaId: draft.targetMediaId,
+        conflictStrategy: ConflictStrategy.skip,
+        reviewExport: const ReviewExportConfig.disabled(),
       ),
     );
+    expect(fullBackupPreview.logicalPhotoCount, greaterThan(0));
 
     // 创建任务并轮询到部分完成。
     final summary = await copyApi.createJob(draft, 'unused_token_for_mock');
