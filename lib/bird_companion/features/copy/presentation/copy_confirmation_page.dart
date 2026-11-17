@@ -668,6 +668,17 @@ class CopyContentStep extends StatelessWidget {
     if (state.scope == CopyScope.selectedAssets && state.selectionId == null) {
       return '需要先创建选择快照，请返回相册重新发起。';
     }
+    // 设备与策略都齐了却仍不可预检时，唯一残项是 scope 可用性；把盒子的
+    // 不可用原因透出，而不是停在含糊的「请选择完整配置」（现场排查发现：
+    // 全量备份被 scope-options 判 unavailable 时按钮禁用原因无处显示）。
+    if (state.conflictStrategy != null && state.sourceMediaId != null && state.targetMediaId != null) {
+      final option = state.currentScopeOption;
+      if (option != null && !option.available) {
+        return option.unavailableReason == 'unsupported'
+            ? '当前盒子不支持${state.scope.label}，请返回任务中心改用其他复制方式。'
+            : '当前复制范围暂不可用（${option.unavailableReason ?? '盒子未提供原因'}），请稍后重试。';
+      }
+    }
     if (state.conflictStrategy == null) return '请先选择同名文件处理策略，再获取预检。';
     if (state.sourceMediaId == null || state.targetMediaId == null) {
       return '请先选择源设备与目标设备，再获取预检。';
