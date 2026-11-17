@@ -4,12 +4,15 @@ import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
+import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 Future<void> showDeviceStatusSheet(
   BuildContext context, {
   required DeviceStatus status,
   DeviceSessionState? session,
+  DeviceSessionCubit? sessionCubit,
   required VoidCallback onReconnect,
   required VoidCallback onOpenDetails,
   VoidCallback? onOpenTask,
@@ -18,13 +21,25 @@ Future<void> showDeviceStatusSheet(
   isScrollControlled: true,
   useSafeArea: true,
   showDragHandle: true,
-  builder: (context) => DeviceStatusSheet(
-    status: status,
-    session: session,
-    onReconnect: onReconnect,
-    onOpenDetails: onOpenDetails,
-    onOpenTask: onOpenTask,
-  ),
+  builder: (context) {
+    final sheet = DeviceStatusSheet(
+      status: status,
+      session: session,
+      onReconnect: onReconnect,
+      onOpenDetails: onOpenDetails,
+      onOpenTask: onOpenTask,
+    );
+    if (sessionCubit == null) return sheet;
+    return BlocListener<DeviceSessionCubit, DeviceSessionState>(
+      bloc: sessionCubit,
+      listenWhen: (_, current) =>
+          !current.isConnected || current.device?.id != status.connection.id || current.device?.baseUri != status.connection.baseUri,
+      listener: (context, _) {
+        if (ModalRoute.of(context)?.isCurrent == true) Navigator.of(context).pop();
+      },
+      child: sheet,
+    );
+  },
 );
 
 class DeviceStatusSheet extends StatelessWidget {

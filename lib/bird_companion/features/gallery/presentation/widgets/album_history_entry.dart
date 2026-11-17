@@ -28,14 +28,23 @@ class AlbumHistorySecondaryAction extends StatelessWidget {
   const AlbumHistorySecondaryAction({super.key});
 
   @override
-  Widget build(BuildContext context) => OutlinedButton.icon(
+  Widget build(BuildContext context) => TextButton(
     key: const Key('album-history-secondary-button'),
     onPressed: () => openAlbumHistory(context),
-    icon: const Icon(Icons.history_rounded, size: 20),
-    label: const Text('查看全部拍摄记录'),
-    style: OutlinedButton.styleFrom(
-      minimumSize: const Size(0, 48),
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+    style: TextButton.styleFrom(
+      minimumSize: const Size(48, 48),
+      tapTargetSize: MaterialTapTargetSize.padded,
+      padding: const EdgeInsets.only(left: 4),
+      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+    ),
+    child: const Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text('查看全部拍摄记录', maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+        Icon(Icons.chevron_right_rounded, size: 18),
+      ],
     ),
   );
 }

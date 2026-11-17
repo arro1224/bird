@@ -5,6 +5,7 @@ import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/app_shell.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/batch_models.dart';
@@ -19,7 +20,6 @@ import 'package:aves/bird_companion/core/widgets/page_back_button.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:aves/bird_companion/features/batches/presentation/batch_list_cubit.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
-import 'package:aves/bird_companion/features/device/presentation/widgets/device_status_pills.dart';
 import 'package:aves/bird_companion/features/device/presentation/widgets/device_status_sheet.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_entry_guard.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
@@ -143,6 +143,21 @@ class _GalleryView extends StatelessWidget {
 
   ReviewContext get _reviewContext => reviewContext ?? ReviewContext(batchId: batchId, batchName: batchName);
 
+  bool _compactAlbumToolbar(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 360 || MediaQuery.textScalerOf(context).scale(28) > 36;
+
+  bool _albumToolbarNeedsMenu(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    return width < 320 || width < 400 && MediaQuery.textScalerOf(context).scale(24) > 42;
+  }
+
+  void _addOrSwitchAlbumDevice(BuildContext context) {
+    unawaited(Navigator.of(context, rootNavigator: true).pushNamed<void>(
+      BirdRoutes.connection,
+      arguments: const ConnectionArgs(entryMode: ConnectionEntryMode.addOrSwitch),
+    ));
+  }
+
   Future<void> _openCurrentBatchCopy(BuildContext context) async {
     final gallery = context.read<GalleryCubit>();
     if (!gallery.state.resultComplete) return;
@@ -207,6 +222,7 @@ class _GalleryView extends StatelessWidget {
             child: BlocBuilder<SelectionCubit, SelectionState>(
               builder: (context, selection) => AppBar(
                 automaticallyImplyLeading: !rootMode,
+                titleSpacing: rootMode && selection.ids.isEmpty && _compactAlbumToolbar(context) ? 8 : null,
                 leading: selection.ids.isEmpty
                     ? rootMode
                           ? null
@@ -218,9 +234,11 @@ class _GalleryView extends StatelessWidget {
                     : rootMode
                     ? Text(
                         '相册',
+                         maxLines: 1,
+                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.headlineLarge?.copyWith(
                           color: AppColors.brandDark,
-                          fontSize: 28,
+                           fontSize: _compactAlbumToolbar(context) ? 24 : 28,
                           fontWeight: FontWeight.w800,
                         ),
                       )
@@ -240,25 +258,42 @@ class _GalleryView extends StatelessWidget {
                 actions: selection.ids.isNotEmpty
                     ? [TextButton(onPressed: selection.submitting ? null : context.read<SelectionCubit>().clear, child: const Text('取消'))]
                     : [
+                         if (rootMode) _AlbumStatusAction(compact: _compactAlbumToolbar(context)),
                         if (rootMode) const AlbumHistoryAppBarAction(),
                         if (rootMode)
                           BlocSelector<GalleryCubit, GalleryState, bool>(
                             selector: (state) => state.resultComplete,
-                            builder: (context, complete) => IconButton(
-                              key: const Key('album-copy-project-button'),
-                              tooltip: '复制当前拍摄',
-                              icon: const Icon(Icons.copy_all_outlined),
-                              onPressed: !complete || (totalCount != null && totalCount! <= 0) ? null : () => _openCurrentBatchCopy(context),
-                            ),
+                             builder: (context, complete) {
+                               final canCopy = complete && (totalCount == null || totalCount! > 0);
+                               if (_albumToolbarNeedsMenu(context)) {
+                                 return PopupMenuButton<bool>(
+                                   tooltip: '更多操作',
+                                   onSelected: (copy) {
+                                     if (copy) {
+                                       unawaited(_openCurrentBatchCopy(context));
+                                     } else {
+                                       _addOrSwitchAlbumDevice(context);
+                                     }
+                                   },
+                                   itemBuilder: (_) => [
+                                     PopupMenuItem(value: true, enabled: canCopy, child: const Text('复制当前拍摄')),
+                                     const PopupMenuItem(value: false, child: Text('新增或切换设备')),
+                                   ],
+                                 );
+                               }
+                               return IconButton(
+                                 key: const Key('album-copy-project-button'),
+                                 tooltip: '复制当前拍摄',
+                                 icon: const Icon(Icons.copy_all_outlined),
+                                 onPressed: canCopy ? () => _openCurrentBatchCopy(context) : null,
+                               );
+                             },
                           ),
-                        if (rootMode)
+                         if (rootMode && !_albumToolbarNeedsMenu(context))
                           Padding(
                             padding: const EdgeInsets.only(right: 12),
                             child: AlbumAddDeviceButton(
-                              onPressed: () => Navigator.of(context, rootNavigator: true).pushNamed(
-                                BirdRoutes.connection,
-                                arguments: const ConnectionArgs(entryMode: ConnectionEntryMode.addOrSwitch),
-                              ),
+                               onPressed: () => _addOrSwitchAlbumDevice(context),
                             ),
                           ),
                         if (!rootMode)
@@ -364,9 +399,9 @@ class _GalleryView extends StatelessWidget {
           body: BlocBuilder<GalleryCubit, GalleryState>(
             builder: (context, state) {
               if (state.loading && state.items.isEmpty && !state.filtering) {
-                return const Center(child: CircularProgressIndicator());
+                return const Center(child: CircularProgressIndicator(semanticsLabel: '正在读取照片列表'));
               }
-              if (state.error != null && state.items.isEmpty) {
+              if (!rootMode && state.error != null && state.items.isEmpty) {
                 final message = UserMessageMapper.fromError(state.error!);
                 return NaturalBackdrop(
                   child: Center(
@@ -412,8 +447,11 @@ class _GalleryView extends StatelessWidget {
                             if (state.query.activeLabels.isNotEmpty)
                               SliverToBoxAdapter(
                                 child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                                  padding: rootMode
+                                      ? const EdgeInsets.fromLTRB(12, 0, 12, 4)
+                                      : const EdgeInsets.fromLTRB(24, 0, 24, 8),
                                   child: ActiveFilterSummary(
+                                    compact: rootMode,
                                     labels: state.query.activeLabels,
                                     onClear: () => context.read<GalleryCubit>().refresh(
                                       query: const PhotoQuery(),
@@ -424,13 +462,7 @@ class _GalleryView extends StatelessWidget {
                             if (state.items.isEmpty)
                               SliverFillRemaining(
                                 hasScrollBody: false,
-                                child: _GalleryEmptyState(
-                                  filtering: state.filtering,
-                                  waitingForFirstPage: state.scannedCount == 0,
-                                  incomplete: !state.resultComplete,
-                                  fromCache: state.fromCache,
-                                  onReset: () => context.read<GalleryCubit>().refresh(query: const PhotoQuery()),
-                                ),
+                                child: _emptyContent(context, state),
                               )
                             else
                               SliverPadding(
@@ -539,28 +571,17 @@ class _GalleryView extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (state.filtering)
+                    if (state.filtering && (!rootMode || state.items.isNotEmpty))
                       Positioned(
                         left: 12,
                         right: 12,
-                        bottom: rootMode ? 76 : 12,
+                        bottom: 12,
                         child: _FilterScanProgress(
+                          compact: rootMode,
                           scannedCount: state.scannedCount,
                           matchedCount: state.matchedCount,
                           onCancel: context.read<GalleryCubit>().cancelFiltering,
                         ),
-                      ),
-                    if (rootMode)
-                      BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
-                        bloc: BirdCompanionScope.of(context).deviceSessionCubit,
-                        builder: (context, session) => !session.isConnected || state.cacheScope == PhotoCacheScope.partial
-                            ? const Positioned(
-                                left: 12,
-                                right: 12,
-                                bottom: 12,
-                                child: _OfflinePreservedNotice(),
-                              )
-                            : const SizedBox.shrink(),
                       ),
                   ],
                 ),
@@ -571,6 +592,54 @@ class _GalleryView extends StatelessWidget {
       ),
     ),
   );
+
+  Widget _emptyContent(BuildContext context, GalleryState state) {
+    final gallery = context.read<GalleryCubit>();
+    void reset() => unawaited(gallery.refresh(query: const PhotoQuery()));
+    final empty = _GalleryEmptyState(
+      filtering: state.filtering,
+      waitingForFirstPage: state.scannedCount == 0,
+      incomplete: !state.resultComplete,
+      fromCache: state.fromCache,
+      onReset: reset,
+      onRetry: rootMode && !state.resultComplete ? gallery.refresh : null,
+    );
+    if (!rootMode) return empty;
+    if (state.filtering) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: _FilterScanProgress(
+            compact: true,
+            scannedCount: state.scannedCount,
+            matchedCount: state.matchedCount,
+            onCancel: gallery.cancelFiltering,
+          ),
+        ),
+      );
+    }
+    return BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
+      bloc: BirdCompanionScope.of(context).deviceSessionCubit,
+      builder: (context, session) {
+        if (!session.isConnected) {
+          return AlbumOfflineEmptyState(
+            reconnecting: session.isVerifying,
+            onReconnect: () => openReconnectConnection(context),
+            onClearFilters: state.query.activeLabels.isNotEmpty ? reset : null,
+          );
+        }
+        final error = state.error;
+        if (error == null) return empty;
+        return Center(
+          child: ErrorNotice(
+            title: '暂时无法加载照片',
+            message: UserMessageMapper.fromError(error).message,
+            onRetry: gallery.refresh,
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _SelectablePhotoTile extends StatelessWidget {
@@ -723,12 +792,14 @@ class _GalleryHeader extends StatelessWidget {
     builder: (context, session) {
       final offline = !session.isConnected;
       return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        padding: EdgeInsets.fromLTRB(12, 8, 12, rootMode ? 4 : 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (state.pendingOperationCount > 0 || state.conflictOperationCount > 0) ...[
+            if (rootMode && !offline) _AlbumDeviceWarning(session: session),
+            if (state.conflictOperationCount > 0 || state.pendingOperationCount > 0 && (!rootMode || !offline || state.items.isEmpty)) ...[
               _PendingSyncNotice(
+                compact: rootMode,
                 pendingCount: state.pendingOperationCount,
                 conflictCount: state.conflictOperationCount,
                 onOpenConflict: state.firstConflictFileId == null
@@ -738,14 +809,14 @@ class _GalleryHeader extends StatelessWidget {
                         state.firstConflictFileId!,
                       ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: rootMode ? 4 : 12),
             ],
-            if (!state.filtering && !state.resultComplete && !state.fromCache && state.items.isNotEmpty)
+            if (!rootMode && !state.filtering && !state.resultComplete && !state.fromCache && state.items.isNotEmpty)
               TextButton(
                 onPressed: () => context.read<GalleryCubit>().refresh(),
                 child: const Text('筛选未完成，点击重新筛选'),
               ),
-            if (state.fromCache)
+            if (!rootMode && state.fromCache)
               GalleryCandidateNotice(
                 loadedCount: state.items.length,
                 totalCount: totalCount,
@@ -755,23 +826,32 @@ class _GalleryHeader extends StatelessWidget {
                 onRefresh: () => context.read<GalleryCubit>().refresh(query: state.query),
               ),
             if (rootMode) ...[
-              _AlbumDeviceArea(offline: offline),
-              const SizedBox(height: 16),
               _QuickFilters(
                 query: state.query,
+                pinFilterAction: true,
                 pendingCount: state.pendingCount,
                 keepCount: state.keepCount,
                 discardCount: state.discardCount,
                 offline: offline,
               ),
-              const SizedBox(height: 18),
               _AlbumBatchHeading(
                 batchId: batchId,
                 batchName: batchName,
                 createdAt: createdAt,
                 offline: offline,
               ),
-              const SizedBox(height: 8),
+              if (state.items.isNotEmpty && (offline || !state.loading && !state.filtering && (!state.resultComplete || state.cacheScope == PhotoCacheScope.partial)))
+                GalleryCandidateNotice(
+                  album: true,
+                  loadedCount: state.items.length,
+                  resultComplete: state.resultComplete && state.cacheScope != PhotoCacheScope.partial && (!offline || !state.hasMore),
+                  fromCache: state.fromCache || state.cacheScope != PhotoCacheScope.none,
+                  offline: offline,
+                  reconnecting: session.isVerifying,
+                  pendingSyncCount: offline && state.conflictOperationCount == 0 ? state.pendingOperationCount : 0,
+                  onReconnect: () => openReconnectConnection(context),
+                  onRefresh: () => context.read<GalleryCubit>().refresh(query: state.query),
+                ),
             ] else ...[
               _QuickFilters(query: state.query),
               const SizedBox(height: 12),
@@ -830,188 +910,203 @@ class _GalleryHeader extends StatelessWidget {
   }
 }
 
-class _AlbumDeviceArea extends StatelessWidget {
-  const _AlbumDeviceArea({required this.offline});
+DeviceStatus? _currentAlbumDeviceStatus(DeviceSessionState session, DeviceStatusState state) {
+  final status = state.status;
+  final device = session.device;
+  if (!session.isConnected || state.phase != DeviceStatusPhase.ready || status == null || device == null) return null;
+  return status.connection.id == device.id && status.connection.baseUri == device.baseUri ? status : null;
+}
 
-  final bool offline;
+class _AlbumStatusAction extends StatelessWidget {
+  const _AlbumStatusAction({required this.compact});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    if (offline) {
-      return _OfflineConnectionBanner(
-        onReconnect: () => openReconnectConnection(context),
-        session: BirdCompanionScope.of(context).deviceSessionCubit.state,
-      );
-    }
-    return const _AlbumDeviceAlert();
+    final sessionCubit = BirdCompanionScope.of(context).deviceSessionCubit;
+    return BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
+      bloc: sessionCubit,
+      builder: (context, session) {
+        if (!session.isConnected) {
+          final label = switch (session.phase) {
+            DeviceSessionPhase.connecting => '连接中',
+            DeviceSessionPhase.reconnecting => '重连中',
+            DeviceSessionPhase.incompatible => '版本不兼容',
+            _ => '未连接',
+          };
+          return _button(
+            context,
+            label: label,
+            description: '盒子$label',
+            icon: session.isVerifying ? Icons.sync_rounded : Icons.wifi_off_rounded,
+            warning: !session.isVerifying,
+            onTap: session.isVerifying ? null : () => openReconnectConnection(context),
+          );
+        }
+
+        return BlocBuilder<DeviceStatusCubit, DeviceStatusState>(
+          builder: (context, state) {
+            final status = _currentAlbumDeviceStatus(session, state);
+            final reading = state.phase == DeviceStatusPhase.loading;
+            final battery = status?.batteryPercent;
+            return _button(
+              context,
+              label: reading ? '读取中' : battery == null ? '电量未知' : '$battery%',
+              description: reading ? '盒子已连接，正在读取状态' : '盒子已连接，${battery == null ? '电量未知' : '电量 $battery%'}',
+              icon: reading ? Icons.hourglass_top_rounded : Icons.wifi_rounded,
+              showBattery: !reading,
+              batteryPercent: battery,
+              onTap: reading
+                  ? null
+                  : status == null
+                  ? context.read<DeviceStatusCubit>().load
+                  : () => _openStatus(context, status, session, sessionCubit),
+            );
+          },
+        );
+      },
+    );
   }
-}
 
-class _OfflineConnectionBanner extends StatelessWidget {
-  const _OfflineConnectionBanner({required this.onReconnect, required this.session});
-
-  final VoidCallback onReconnect;
-  final DeviceSessionState session;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
-    decoration: BoxDecoration(
-      color: AppColors.dangerSoft,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: AppColors.danger.withValues(alpha: .28)),
-    ),
-    child: Row(
-      children: [
-        const CircleAvatar(
-          radius: 18,
-          backgroundColor: AppColors.danger,
-          child: Icon(Icons.link_off_rounded, color: Colors.white, size: 20),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            session.isVerifying ? '正在恢复盒子连接 · 当前为手机缓存' : '设备连接已断开 · 当前为手机缓存',
-            style: const TextStyle(
-              color: AppColors.danger,
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
+  Widget _button(
+    BuildContext context, {
+    required String label,
+    required String description,
+    required IconData icon,
+    required VoidCallback? onTap,
+    bool showBattery = false,
+    int? batteryPercent,
+    bool warning = false,
+  }) {
+    final color = warning ? AppColors.danger : AppColors.brand;
+    return Semantics(
+      key: const ValueKey('album-device-status'),
+      label: description,
+      button: true,
+      enabled: onTap != null,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: description,
+        child: SizedBox(
+          width: compact ? 56 : 92,
+          height: AppSpacing.minimumTouchTarget,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+            child: Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: warning ? AppColors.dangerSoft : AppColors.brandLight,
+                  border: Border.all(color: color.withValues(alpha: .25)),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: compact ? 5 : 6, vertical: 5),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon, size: 17, color: color),
+                      if (!compact) ...[
+                        const SizedBox(width: 3),
+                        if (batteryPercent != null) Icon(Icons.battery_5_bar_rounded, size: 15, color: color),
+                        Flexible(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ] else if (showBattery)
+                        if (batteryPercent == null)
+                          Icon(Icons.battery_unknown_rounded, size: 14, color: color)
+                        else
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+                            ),
+                          ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ),
-        TextButton.icon(
-          onPressed: session.isVerifying ? null : onReconnect,
-          iconAlignment: IconAlignment.end,
-          icon: const Icon(Icons.chevron_right_rounded),
-          label: const Text('重新连接'),
-          style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-        ),
-      ],
-    ),
-  );
-}
-
-class _AlbumDeviceAlert extends StatelessWidget {
-  const _AlbumDeviceAlert();
-
-  @override
-  Widget build(BuildContext context) {
-    final dependencies = BirdCompanionScope.of(context);
-    return BlocBuilder<DeviceStatusCubit, DeviceStatusState>(
-      builder: (context, statusState) => BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
-        bloc: dependencies.deviceSessionCubit,
-        builder: (context, session) {
-          final status = statusState.status;
-          final message = _message(status, session);
-          if (status == null) {
-            return const _AlbumStatusLoading();
-          }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              DeviceStatusPills(
-                status: status,
-                session: session,
-                onTap: () => showDeviceStatusSheet(
-                  context,
-                  status: status,
-                  session: session,
-                  onReconnect: () {
-                    Navigator.of(context).pop();
-                    openReconnectConnection(context);
-                  },
-                  onOpenDetails: () {
-                    Navigator.of(context).pop();
-                    final navigation = BirdShellNavigation.maybeOf(context);
-                    if (navigation != null) {
-                      navigation.openTabRoute(2, BirdRoutes.settingsDeviceDetails);
-                    } else {
-                      Navigator.of(context).pushNamed(BirdRoutes.settingsDeviceDetails);
-                    }
-                  },
-                  onOpenTask: status.currentJob == null
-                      ? null
-                      : () {
-                          Navigator.of(context).pop();
-                          BirdShellNavigation.maybeOf(context)?.selectTab(1);
-                        },
-                ),
-              ),
-              if (message != null) ...[
-                const SizedBox(height: 10),
-                _AlbumExceptionBanner(message: message),
-              ],
-            ],
-          );
-        },
       ),
     );
   }
 
-  String? _message(DeviceStatus? status, DeviceSessionState session) {
-    if (session.isVerifying) return session.message ?? '正在验证盒子连接，当前为手机缓存';
-    if (!session.isConnected) return '设备连接已断开，当前为手机缓存';
-    if (status == null) return null;
-    if (status.hasError) return status.errorMessage ?? '设备发生异常，请检查后重试';
-    if (status.temperatureCelsius != null && status.temperatureCelsius! >= 70) {
-      return '设备温度偏高，请暂停处理并检查散热';
-    }
-    if (!status.card.inserted || !status.card.readable) return '存储卡不可用，请检查后重试';
-    return null;
+  void _openStatus(BuildContext context, DeviceStatus status, DeviceSessionState session, DeviceSessionCubit sessionCubit) {
+    final navigator = Navigator.of(context);
+    final navigation = BirdShellNavigation.maybeOf(context);
+    unawaited(showDeviceStatusSheet(
+      context,
+      status: status,
+      session: session,
+      sessionCubit: sessionCubit,
+      onReconnect: () {
+        navigator.pop();
+        if (context.mounted) openReconnectConnection(context);
+      },
+      onOpenDetails: () {
+        navigator.pop();
+        if (navigation != null) {
+          navigation.openTabRoute(2, BirdRoutes.settingsDeviceDetails);
+        } else {
+          unawaited(navigator.pushNamed<void>(BirdRoutes.settingsDeviceDetails));
+        }
+      },
+      onOpenTask: status.currentJob == null || navigation == null
+          ? null
+          : () {
+              navigator.pop();
+              navigation.selectTab(1);
+            },
+    ));
   }
 }
 
-class _AlbumStatusLoading extends StatelessWidget {
-  const _AlbumStatusLoading();
+class _AlbumDeviceWarning extends StatelessWidget {
+  const _AlbumDeviceWarning({required this.session});
+
+  final DeviceSessionState session;
 
   @override
-  Widget build(BuildContext context) => Container(
-    height: 42,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: AppColors.paperStrong,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: AppColors.outline),
-    ),
-    child: const Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-        SizedBox(width: 10),
-        Text('正在读取盒子状态'),
-      ],
-    ),
-  );
-}
-
-class _AlbumExceptionBanner extends StatelessWidget {
-  const _AlbumExceptionBanner({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    decoration: BoxDecoration(
-      color: AppColors.dangerSoft,
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: AppColors.danger.withValues(alpha: .28)),
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.error_outline_rounded, color: AppColors.danger),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            message,
-            style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700),
+  Widget build(BuildContext context) {
+    final status = _currentAlbumDeviceStatus(session, context.watch<DeviceStatusCubit>().state);
+    if (status == null) return const SizedBox.shrink();
+    final message = status.hasError
+        ? status.errorMessage ?? '设备发生异常，请检查后重试'
+        : (status.temperatureCelsius ?? 0) >= 70
+        ? '设备温度偏高，请暂停处理并检查散热'
+        : !status.card.inserted || !status.card.readable || status.card.errorCode != null
+        ? status.card.errorMessage ?? '存储卡不可用，请检查后重试'
+        : null;
+    if (message == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.dangerSoft,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusCompact),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            children: [
+              const Icon(Icons.error_outline_rounded, size: 18, color: AppColors.danger),
+              const SizedBox(width: 8),
+              Expanded(child: Text(message, style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700))),
+            ],
           ),
         ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 class _AlbumBatchHeading extends StatelessWidget {
@@ -1028,36 +1123,23 @@ class _AlbumBatchHeading extends StatelessWidget {
   final bool offline;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
-      Text(
-        _displayName,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-          color: AppColors.brandDark,
-          fontSize: 20,
+      Expanded(
+        flex: 3,
+        child: Text(
+          _displayName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            color: AppColors.brandDark,
+            fontSize: 17,
+          ),
         ),
       ),
-      if (offline)
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Text(
-            '这些照片已保存在手机上；重新连接后会自动更新你的修改',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
-          ),
-        )
-      else
-        const Padding(
-          padding: EdgeInsets.only(top: 12, bottom: 8),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: AlbumHistorySecondaryAction(),
-          ),
-        ),
+      const SizedBox(width: 8),
+      const Flexible(flex: 2, child: AlbumHistorySecondaryAction()),
     ],
   );
 
@@ -1079,26 +1161,34 @@ class _PendingSyncNotice extends StatelessWidget {
     required this.pendingCount,
     required this.conflictCount,
     this.onOpenConflict,
+    this.compact = false,
   });
 
   final int pendingCount;
   final int conflictCount;
   final VoidCallback? onOpenConflict;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final hasConflict = conflictCount > 0;
-    final text = hasConflict ? '有 $conflictCount 条照片修改与盒子版本冲突，需在照片详情中处理。' : '有 $pendingCount 条照片修改保存在手机上，重连后只会同步到当前设备。';
+    final text = compact
+        ? hasConflict
+              ? '$conflictCount 项照片修改冲突'
+              : '$pendingCount 项照片修改待同步'
+        : hasConflict
+        ? '有 $conflictCount 条照片修改与盒子版本冲突，需在照片详情中处理。'
+        : '有 $pendingCount 条照片修改保存在手机上，重连后只会同步到当前设备。';
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: compact ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4) : const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: hasConflict ? AppColors.dangerSoft : AppColors.amberLight,
         border: Border.all(color: (hasConflict ? AppColors.danger : AppColors.pending).withValues(alpha: .3)),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         children: [
           Icon(hasConflict ? Icons.warning_amber_rounded : Icons.cloud_upload_outlined, color: hasConflict ? AppColors.danger : AppColors.pending),
           const SizedBox(width: 10),
@@ -1119,46 +1209,6 @@ class _PendingSyncNotice extends StatelessWidget {
   }
 }
 
-class _OfflinePreservedNotice extends StatelessWidget {
-  const _OfflinePreservedNotice();
-
-  @override
-  Widget build(BuildContext context) => Material(
-    color: AppColors.paperStrong.withValues(alpha: .97),
-    elevation: 3,
-    shadowColor: AppColors.brandDark.withValues(alpha: .14),
-    borderRadius: BorderRadius.circular(14),
-    child: Container(
-      height: 54,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.outline),
-      ),
-      child: const Row(
-        children: [
-          CircleAvatar(
-            radius: 15,
-            backgroundColor: AppColors.brand,
-            child: Icon(Icons.check_rounded, color: AppColors.cream, size: 20),
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              '已保留当前浏览与筛选状态',
-              style: TextStyle(
-                color: AppColors.brandDark,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
 class _QuickFilters extends StatelessWidget {
   const _QuickFilters({
     required this.query,
@@ -1166,6 +1216,7 @@ class _QuickFilters extends StatelessWidget {
     this.keepCount,
     this.discardCount,
     this.offline = false,
+    this.pinFilterAction = false,
   });
 
   final PhotoQuery query;
@@ -1173,6 +1224,7 @@ class _QuickFilters extends StatelessWidget {
   final int? keepCount;
   final int? discardCount;
   final bool offline;
+  final bool pinFilterAction;
 
   @override
   Widget build(BuildContext context) {
@@ -1184,20 +1236,27 @@ class _QuickFilters extends StatelessWidget {
       if (!offline) ('精选', 'featured', null, AppColors.amber, Icons.star_rounded),
     ];
     final selected = query.recommendedOnly ? '__ai__' : query.keepState;
-    return SingleChildScrollView(
+    final chips = SingleChildScrollView(
+      key: pinFilterAction ? const ValueKey('album-quick-filters') : null,
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
           ...values.map((entry) {
             final active = selected == entry.$2;
             return Padding(
-              padding: const EdgeInsets.only(right: 8),
+              padding: EdgeInsets.only(right: pinFilterAction ? 6 : 8),
               child: ChoiceChip(
                 selected: active,
                 showCheckmark: false,
                 materialTapTargetSize: MaterialTapTargetSize.padded,
                 visualDensity: VisualDensity.standard,
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                padding: pinFilterAction
+                    ? const EdgeInsets.symmetric(horizontal: 3, vertical: 2)
+                    : const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                labelPadding: pinFilterAction ? const EdgeInsets.symmetric(horizontal: 5) : null,
+                avatarBoxConstraints: pinFilterAction
+                    ? BoxConstraints.tightFor(width: entry.$5 == Icons.star_rounded ? 18 : 13, height: 18)
+                    : null,
                 labelStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: active ? AppColors.cream : AppColors.ink,
                   fontSize: 13,
@@ -1210,25 +1269,59 @@ class _QuickFilters extends StatelessWidget {
               ),
             );
           }),
-          ActionChip(
-            materialTapTargetSize: MaterialTapTargetSize.padded,
-            visualDensity: VisualDensity.standard,
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-            avatar: const Icon(Icons.tune_rounded, size: 18),
-            label: const Text('筛选'),
-            onPressed: () => showModalBottomSheet(
-              context: context,
-              useRootNavigator: true,
-              isScrollControlled: true,
-              showDragHandle: false,
-              backgroundColor: Colors.transparent,
-              builder: (_) => FilterSheet(
-                initial: context.read<GalleryCubit>().state.query,
-                onApply: (value) => context.read<GalleryCubit>().refresh(query: value),
+          if (!pinFilterAction)
+            ActionChip(
+              materialTapTargetSize: MaterialTapTargetSize.padded,
+              visualDensity: VisualDensity.standard,
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+              avatar: const Icon(Icons.tune_rounded, size: 18),
+              label: const Text('筛选'),
+              onPressed: () => _openFilters(context),
+            ),
+        ],
+      ),
+    );
+    if (!pinFilterAction) return chips;
+
+    final hasFilters = query.activeLabels.isNotEmpty;
+    return Row(
+      children: [
+        Expanded(child: chips),
+        SizedBox.square(
+          dimension: 48,
+          child: IconButton(
+            key: const ValueKey('album-filter-button'),
+            tooltip: '筛选照片',
+            onPressed: () => _openFilters(context),
+            padding: EdgeInsets.zero,
+            icon: DecoratedBox(
+              decoration: BoxDecoration(
+                color: hasFilters ? AppColors.brandLight : AppColors.paperStrong,
+                border: Border.all(color: hasFilters ? AppColors.outlineStrong : AppColors.outline),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const SizedBox.square(
+                dimension: 34,
+                child: Icon(Icons.tune_rounded, color: AppColors.brand, size: 20),
               ),
             ),
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  void _openFilters(BuildContext context) {
+    final cubit = context.read<GalleryCubit>();
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      showDragHandle: false,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FilterSheet(
+        initial: cubit.state.query,
+        onApply: (query) => cubit.refresh(query: query),
       ),
     );
   }
@@ -1284,12 +1377,14 @@ class _GalleryEmptyState extends StatelessWidget {
     required this.waitingForFirstPage,
     required this.incomplete,
     required this.fromCache,
+    this.onRetry,
   });
   final VoidCallback onReset;
   final bool filtering;
   final bool waitingForFirstPage;
   final bool incomplete;
   final bool fromCache;
+  final VoidCallback? onRetry;
   @override
   Widget build(BuildContext context) => Center(
     child: Column(
@@ -1305,7 +1400,16 @@ class _GalleryEmptyState extends StatelessWidget {
               : '没有符合条件的照片',
         ),
         const SizedBox(height: 8),
-        if (!filtering) OutlinedButton(onPressed: onReset, child: const Text('清除筛选')),
+        if (!filtering)
+          Wrap(
+            spacing: 8,
+            alignment: WrapAlignment.center,
+            children: [
+              if (onRetry != null)
+                OutlinedButton(onPressed: onRetry, child: Text(fromCache ? '刷新' : '重新筛选')),
+              OutlinedButton(onPressed: onReset, child: const Text('清除筛选')),
+            ],
+          ),
       ],
     ),
   );
@@ -1316,11 +1420,13 @@ class _FilterScanProgress extends StatelessWidget {
     required this.scannedCount,
     required this.matchedCount,
     required this.onCancel,
+    this.compact = false,
   });
 
   final int scannedCount;
   final int matchedCount;
   final VoidCallback onCancel;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -1349,8 +1455,10 @@ class _FilterScanProgress extends StatelessWidget {
             TextButton(onPressed: onCancel, child: const Text('取消')),
           ],
         ),
-        const SizedBox(height: 6),
-        const LinearProgressIndicator(minHeight: 3),
+        if (!compact) ...[
+          const SizedBox(height: 6),
+          const LinearProgressIndicator(minHeight: 3),
+        ],
       ],
     ),
   );

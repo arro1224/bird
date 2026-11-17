@@ -4,6 +4,8 @@ import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/core/session/device_session.dart';
+import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/widgets/empty_state.dart';
 import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/features/batches/presentation/batch_list_cubit.dart';
@@ -11,6 +13,7 @@ import 'package:aves/bird_companion/features/gallery/presentation/album_material
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_page.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/album_add_device_button.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/widgets/album_history_entry.dart';
+import 'package:aves/bird_companion/features/gallery/presentation/widgets/gallery_candidate_notice.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -214,19 +217,31 @@ class _AlbumHomeView extends StatelessWidget {
               const SizedBox(width: 12),
             ],
           ),
-          body: state.error != null
-              ? ErrorNotice(
+          body: BlocBuilder<DeviceSessionCubit, DeviceSessionState>(
+            bloc: BirdCompanionScope.of(context).deviceSessionCubit,
+            builder: (context, session) {
+              if (!session.isConnected) {
+                return AlbumOfflineEmptyState(
+                  reconnecting: session.isVerifying,
+                  onReconnect: () => openReconnectConnection(context),
+                );
+              }
+              if (state.error != null) {
+                return ErrorNotice(
                   title: '暂时无法读取相册',
                   message: '请检查设备连接，或稍后重新加载本次拍摄。',
                   onRetry: context.read<BatchListCubit>().load,
-                )
-              : EmptyState(
-                  icon: Icons.photo_library_outlined,
-                  title: '还没有可浏览的照片',
-                  message: '插入存储卡并开始导入后，照片会直接显示在相册首页。',
-                  actionLabel: '查看全部拍摄记录',
-                  onAction: () => openAlbumHistory(context),
-                ),
+                );
+              }
+              return EmptyState(
+                icon: Icons.photo_library_outlined,
+                title: '还没有可浏览的照片',
+                message: '插入存储卡并开始导入后，照片会直接显示在相册首页。',
+                actionLabel: '查看全部拍摄记录',
+                onAction: () => openAlbumHistory(context),
+              );
+            },
+          ),
         );
       },
     ),

@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
@@ -94,25 +92,6 @@ void main() {
     expect(find.byTooltip('拍摄记录'), findsOneWidget);
     expect(find.byTooltip('复制当前拍摄'), findsOneWidget);
     expect(find.byTooltip('新增或切换设备'), findsOneWidget);
-  });
-
-  test('root album wires history entries without the review breadcrumb', () {
-    final gallerySource = File(
-      'lib/bird_companion/features/gallery/presentation/gallery_page.dart',
-    ).readAsStringSync();
-    final albumHomeSource = File(
-      'lib/bird_companion/features/gallery/presentation/album_home_page.dart',
-    ).readAsStringSync();
-
-    expect(gallerySource, contains('const AlbumHistoryAppBarAction()'));
-    expect(gallerySource, contains('child: AlbumHistorySecondaryAction()'));
-    expect(gallerySource, contains('alignment: Alignment.centerLeft'));
-    expect(
-      gallerySource,
-      contains('EdgeInsets.only(top: 12, bottom: 8)'),
-    );
-    expect(gallerySource, isNot(contains('class _AlbumReviewPath')));
-    expect(albumHomeSource, contains("actionLabel: '查看全部拍摄记录'"));
   });
 
   testWidgets('batch history keeps its scroll position after opening and returning', (

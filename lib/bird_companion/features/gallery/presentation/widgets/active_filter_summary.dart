@@ -11,10 +11,12 @@ class ActiveFilterSummary extends StatefulWidget {
     super.key,
     required this.labels,
     required this.onClear,
+    this.compact = false,
   });
 
   final List<String> labels;
   final VoidCallback onClear;
+  final bool compact;
 
   @override
   State<ActiveFilterSummary> createState() => _ActiveFilterSummaryState();
@@ -27,7 +29,9 @@ class _ActiveFilterSummaryState extends State<ActiveFilterSummary> {
   Widget build(BuildContext context) {
     if (widget.labels.isEmpty) return const SizedBox.shrink();
 
-    final borderRadius = BorderRadius.circular(AppSpacing.radiusCard);
+    final borderRadius = BorderRadius.circular(
+      widget.compact ? AppSpacing.radiusCompact : AppSpacing.radiusCard,
+    );
     final visibleLabels = widget.labels.take(2).join(' · ');
     final remainingCount = widget.labels.length - 2;
     final compactSummary = remainingCount > 0 ? '$visibleLabels · +$remainingCount' : visibleLabels;
@@ -38,7 +42,7 @@ class _ActiveFilterSummaryState extends State<ActiveFilterSummary> {
       child: DecoratedBox(
         key: const ValueKey('active-filter-summary'),
         decoration: BoxDecoration(
-          color: AppColors.paperStrong.withValues(alpha: .82),
+          color: widget.compact ? AppColors.brandLight : AppColors.paperStrong.withValues(alpha: .82),
           borderRadius: borderRadius,
           border: Border.all(color: AppColors.outlineStrong),
         ),
