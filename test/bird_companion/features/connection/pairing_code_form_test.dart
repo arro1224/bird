@@ -30,6 +30,10 @@ void main() {
         tester.widget<TextField>(find.byType(TextField)).controller?.text,
         isEmpty,
       );
+      // autofocus 加首帧补请求后，输入框必须实际持有焦点（真机 IME 才会弹出）。
+      await tester.pumpAndSettle();
+      final focusNode = tester.widget<TextField>(find.byType(TextField)).focusNode;
+      expect(focusNode?.hasFocus ?? false, isTrue);
 
       await tester.enterText(find.byType(TextField), '1234');
       await tester.tap(find.text('安全配对并连接'));

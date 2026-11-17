@@ -2,6 +2,7 @@ import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class PairingCodeForm extends StatefulWidget {
   const PairingCodeForm({
@@ -29,10 +30,22 @@ class PairingCodeForm extends StatefulWidget {
 
 class _PairingCodeFormState extends State<PairingCodeForm> {
   final _controller = TextEditingController();
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // 配对页常在 BLE 阶段切换的同一帧挂载，autofocus 的申请可能赶在 IME 就绪
+    // 之前（真机键盘概率性不弹）；首帧落定后补一次焦点请求，已聚焦时是 no-op。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
 
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -57,14 +70,22 @@ class _PairingCodeFormState extends State<PairingCodeForm> {
       const SizedBox(height: AppSpacing.lg),
       TextField(
         controller: _controller,
+        focusNode: _focusNode,
         autofocus: true,
         autocorrect: false,
         enableSuggestions: false,
-        keyboardType: TextInputType.visiblePassword,
+        // 配对码是纯数字（RC4 协议与两段模拟码均为数字）。不用
+        // visiblePassword：MIUI 的 SecurityInputMethodSwitcher 会在密码类
+        // 输入框上切换到安全输入法，切换偶发超时（PHASE_SERVER_WAIT_IME
+        // STATUS_TIMEOUT），键盘概率性弹不出来；数字键盘不触发该切换。
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        maxLength: widget.codeLength,
         textInputAction: TextInputAction.done,
         decoration: InputDecoration(
           labelText: '配对码',
           hintText: '${widget.codeLength} 位配对码',
+          counterText: '',
           prefixIcon: const Icon(Icons.password_rounded),
         ),
         onSubmitted: _submit,
