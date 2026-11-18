@@ -7,6 +7,19 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val configuredDartTarget = providers.gradleProperty("target").orElse("lib/main.dart").get().replace('\\', '/')
+// Flutter runs integration tests through a generated listener in a temp folder.
+val embeddedDemoIntegrationTest = configuredDartTarget.endsWith("integration_test/embedded_demo_app_test.dart") ||
+    (configuredDartTarget.contains("/flutter_test_listener.") && configuredDartTarget.endsWith("/listener.dart"))
+val embeddedDemoTarget = configuredDartTarget.endsWith("main_bird_demo.dart") || embeddedDemoIntegrationTest
+if (embeddedDemoIntegrationTest && gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }) {
+    throw GradleException("Embedded integration tests are Debug-only; Release demos use lib/main_bird_demo.dart.")
+}
+val embeddedDemoBuild = gradle.startParameter.taskNames.any { it.contains("birddemo", ignoreCase = true) }
+if (embeddedDemoBuild != embeddedDemoTarget && (embeddedDemoBuild || embeddedDemoTarget)) {
+    throw GradleException("Embedded demo requires birdDemo + lib/main_bird_demo.dart; normal bird builds keep lib/main.dart.")
+}
+
 val releasePropertiesFile = rootProject.file("key.properties")
 val releaseProperties = Properties().apply {
     if (releasePropertiesFile.exists()) {
@@ -62,7 +75,7 @@ require(diagnosticBuildId.matches(Regex("[A-Za-z0-9._-]{1,100}"))) { "Invalid bu
 // A final APK cannot embed its own final hash. Read installed APK bytes at runtime.
 val diagnosticApkSha = "unknown"
 
-if (hasAnyReleaseCredential && !hasCompleteReleaseCredentials) {
+if (!embeddedDemoBuild && hasAnyReleaseCredential && !hasCompleteReleaseCredentials) {
     throw GradleException(
         "Release signing is only partially configured. " +
             "Provide storeFile, storePassword, keyAlias and keyPassword together.",
@@ -108,6 +121,11 @@ android {
             applicationId = "deckers.thibault.aves.bird"
             buildConfigField("boolean", "BLE_SCAN_STRATEGY_FALLBACK_ENABLED", "true")
         }
+        create("birdDemo") {
+            dimension = "app"
+            applicationId = "deckers.thibault.aves.bird.demo"
+            resValue("string", "app_name", "拍鸟伴侣演示版")
+        }
         create("birdSim") {
             dimension = "app"
             applicationId = "deckers.thibault.aves.bird.sim"
@@ -143,7 +161,9 @@ android {
         getByName("release") {
             isMinifyEnabled = false
             isShrinkResources = false
-            if (hasCompleteReleaseCredentials) {
+            if (embeddedDemoBuild) {
+                signingConfig = signingConfigs.getByName("debug")
+            } else if (hasCompleteReleaseCredentials) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
@@ -155,7 +175,10 @@ androidComponents {
         val appFlavor = variantBuilder.productFlavors
             .firstOrNull { (dimension, _) -> dimension == "app" }
             ?.second
-        if (appFlavor != "bird" && variantBuilder.buildType != "debug") {
+        if (appFlavor != "bird" && appFlavor != "birdDemo" && variantBuilder.buildType != "debug") {
+            variantBuilder.enable = false
+        }
+        if (embeddedDemoTarget && appFlavor != "birdDemo") {
             variantBuilder.enable = false
         }
     }

@@ -16,6 +16,7 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository,
     DateTime Function()? clock,
     this.directApAuthorizationStore,
     this.clientIdentity,
+    this.sessionLifetime = const Duration(minutes: 2),
   }) : baseUri = baseUri ?? simulatedBirdBoxBaseUri,
        _clock = clock ?? DateTime.now,
        _networkStatus = _directApStatusFor(
@@ -30,6 +31,8 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository,
     }
   }
 
+  final Duration sessionLifetime;
+  ProvisioningNetworkMode get currentNetworkMode => _networkStatus.activeMode;
   final Uri baseUri;
   final String deviceId;
   final DateTime Function() _clock;
@@ -177,7 +180,7 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository,
       throw const ProvisioningException(code: ProvisioningErrorCode.pairingCodeInvalid, retryable: true);
     }
     _windowExpiresAt = null;
-    _sessionExpiresAt = _clock().add(const Duration(minutes: 2));
+    _sessionExpiresAt = _clock().add(sessionLifetime);
     _httpSessionUsed = false;
     // The direct AP handoff redeems this session through the production
     // repository's authorization store, so publish it there when bridged.

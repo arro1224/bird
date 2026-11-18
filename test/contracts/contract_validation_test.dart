@@ -83,6 +83,9 @@ void main() {
         .listSync(recursive: true)
         .whereType<File>()
         .where((file) => file.path.endsWith('.dart'))
+        // This server mirrors HTTP routes for CLI and embedded simulation.
+        // The production import-graph test separately rejects importing it.
+        .where((file) => !file.path.replaceAll(Platform.pathSeparator, '/').endsWith('/simulation/mock_box_server.dart'))
         .where(
           (file) => !file.path.endsWith(
             '${Platform.pathSeparator}core${Platform.pathSeparator}network${Platform.pathSeparator}api_endpoints.dart',

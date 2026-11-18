@@ -18,6 +18,7 @@ Future<void> main(List<String> arguments) async {
     // 生命周期并广播 job_updated）；测试/特殊排查用 --no-workflow-advance 关。
     workflowAutoAdvance: options.workflowAutoAdvance,
     stateFile: options.stateFile,
+    embeddedDemo: options.embeddedDemo,
   );
   final uri = await server.start(
     address: InternetAddress(options.host),
@@ -59,6 +60,7 @@ class _Options {
     required this.emitAssetReadyEvents,
     required this.workflowAutoAdvance,
     required this.stateFile,
+    required this.embeddedDemo,
   });
 
   final String host;
@@ -71,6 +73,7 @@ class _Options {
   final bool emitAssetReadyEvents;
   final bool workflowAutoAdvance;
   final File? stateFile;
+  final bool embeddedDemo;
 
   factory _Options.parse(List<String> arguments) {
     var host = '0.0.0.0';
@@ -82,9 +85,12 @@ class _Options {
     var progressiveMedia = false;
     var emitAssetReadyEvents = true;
     var workflowAutoAdvance = true;
+    var embeddedDemo = false;
     File? stateFile;
     for (final argument in arguments) {
-      if (argument == '--quick') {
+      if (argument == '--embedded-demo') {
+        embeddedDemo = true;
+      } else if (argument == '--quick') {
         photoCount = 60;
       } else if (argument == '--quiet') {
         quiet = true;
@@ -116,7 +122,7 @@ class _Options {
       } else if (argument == '--help' || argument == '-h') {
         stdout.writeln(
           'Usage: dart run tool/mock_box_server/server.dart '
-          '[--quick] [--auth] [--progressive-media] [--no-asset-events] '
+          '[--embedded-demo] [--quick] [--auth] [--progressive-media] [--no-asset-events] '
           '[--no-workflow-advance] [--photos=1200] [--host=0.0.0.0] '
           '[--port=8787] [--device-id=id] [--quiet] [--state-file=path]',
         );
@@ -136,6 +142,7 @@ class _Options {
       emitAssetReadyEvents: emitAssetReadyEvents,
       workflowAutoAdvance: workflowAutoAdvance,
       stateFile: stateFile,
+      embeddedDemo: embeddedDemo,
     );
   }
 }

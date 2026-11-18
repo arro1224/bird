@@ -9,6 +9,11 @@
 和 `Simulation` 必须显式选择，且只允许 Debug。Gradle 同时禁用了三个内部
 flavor 的 Release variant，正常发布只能生成 `bird` Release。
 
+`EmbeddedDemo` 是显式启用的独立演示构建，使用 `birdDemo`、独立入口及本机调试证书，
+支持演示用 Release。其清单固定标记 `releasable=false`、`environment=simulated`、
+`real_box_evidence=false`，不进入正式发布流程。执行 `tool/build_demo_apk.ps1` 即可生成，
+详细说明见 `docs/embedded-box-demo.md`。
+
 同一版本构建新的未提交候选时，可加 `-OutputDirectory build/delivery/唯一目录名`，
 将 APK、源码指纹和构建清单写入新的仓库内目录。显式指定的目录已存在时拒绝覆盖，
 以免新版候选覆盖上次交付证据。

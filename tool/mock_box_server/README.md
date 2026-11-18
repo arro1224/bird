@@ -273,3 +273,19 @@ flutter test test/contracts/a7_mock_security_audit_test.dart
 到期、设备切换、媒体与日志重新申请，以及原有图片、分页、场景、连拍组、详情和
 审阅操作。A7 安全审计另行验证请求日志不包含查询串、Authorization、Wi-Fi 密码
 或完整 DPP URI，并验证持久化状态不写入验证码、配对会话或 Token。
+
+## 与 App 内置盒子共享实现
+
+模拟服务唯一实现已整理到 `lib/bird_companion/simulation/mock_box_server.dart`，
+本目录的 `mock_box_server.dart` 保留兼容导出，原命令和已有测试继续使用。
+默认保留传统 SmartFollow 能力和手动推进语义。
+
+如需电脑端复现内置演示模式，可明确开启：
+
+```powershell
+dart run tool/mock_box_server/server.dart --quick --embedded-demo
+```
+
+`--embedded-demo` 启用持续复制、文件明细、信息更新和自动推进；它不连接真实硬件。
+选择照片复制、设备别名及任务/审阅持久化等接口补齐共用同一实现。
+App 内置演示版无需启动此电脑服务，直接运行 `tool/build_demo_apk.ps1` 构建。

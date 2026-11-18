@@ -191,11 +191,14 @@ class BirdCompanionDependencies {
     bool restoreSavedSession = true,
     DirectApAuthorizationStore? directApAuthorizationStore,
     ClientIdentityStore? clientIdentityStore,
+    ProvisioningRepository? provisioningRepositoryOverride,
+    ConnectivityMonitor? connectivityMonitorOverride,
+    SecureSessionStore? sessionStoreOverride,
   }) async {
     final cache = await LocalCache.open();
     final apiClient = ApiClient();
     final eventClient = EventClient();
-    final secureSessionStore = SerializedSecureSessionStore(AndroidKeystoreSessionStore());
+    final secureSessionStore = SerializedSecureSessionStore(sessionStoreOverride ?? AndroidKeystoreSessionStore());
     final sessionCoordinator = SessionCoordinator(
       apiClient,
       eventClient,
@@ -213,30 +216,32 @@ class BirdCompanionDependencies {
       cache,
       CompositeDeviceDiscoverySource([MdnsDeviceDiscoverySource(), KnownDeviceDiscoverySource(() async => const [])]),
     );
-    final provisioningRepository = ProvisioningRepositoryImpl(
-      ble: PlatformBirdBoxBleDataSource(
-        diagnosticSink: bleScanDiagnosticStore,
-        connectionDiagnosticSink: bleConnectionDiagnosticStore,
-      ),
-      wifi: MethodChannelBirdBoxWifiPlatform(),
-      dpp: MethodChannelBirdBoxDppPlatform(),
-      clientIdentityStore: clientIdentityStore ?? AndroidKeystoreClientIdentityStore(),
-      credentialStore: secureSessionStore,
-      directApAuthorizationStore: directApAuthorizationStore ?? const EncryptedDirectApAuthorizationStore(),
-      healthApi: HealthApi(apiClient),
-      pairingApi: pairingApi,
-      sessionCoordinator: sessionCoordinator,
-      rememberDynamicAddress: (deviceId, baseUri, mode) => connectionRepository.rememberDynamicAddress(
-        deviceId: deviceId,
-        baseUri: baseUri,
-        networkMode: switch (mode) {
-          ProvisioningNetworkMode.directAp => NetworkMode.directAp,
-          ProvisioningNetworkMode.infrastructureSta => NetworkMode.infrastructureSta,
-          ProvisioningNetworkMode.none => NetworkMode.none,
-        },
-      ),
-    );
-    final connectivityMonitor = ConnectivityMonitor();
+    final provisioningRepository =
+        provisioningRepositoryOverride ??
+        ProvisioningRepositoryImpl(
+          ble: PlatformBirdBoxBleDataSource(
+            diagnosticSink: bleScanDiagnosticStore,
+            connectionDiagnosticSink: bleConnectionDiagnosticStore,
+          ),
+          wifi: MethodChannelBirdBoxWifiPlatform(),
+          dpp: MethodChannelBirdBoxDppPlatform(),
+          clientIdentityStore: clientIdentityStore ?? AndroidKeystoreClientIdentityStore(),
+          credentialStore: secureSessionStore,
+          directApAuthorizationStore: directApAuthorizationStore ?? const EncryptedDirectApAuthorizationStore(),
+          healthApi: HealthApi(apiClient),
+          pairingApi: pairingApi,
+          sessionCoordinator: sessionCoordinator,
+          rememberDynamicAddress: (deviceId, baseUri, mode) => connectionRepository.rememberDynamicAddress(
+            deviceId: deviceId,
+            baseUri: baseUri,
+            networkMode: switch (mode) {
+              ProvisioningNetworkMode.directAp => NetworkMode.directAp,
+              ProvisioningNetworkMode.infrastructureSta => NetworkMode.infrastructureSta,
+              ProvisioningNetworkMode.none => NetworkMode.none,
+            },
+          ),
+        );
+    final connectivityMonitor = connectivityMonitorOverride ?? ConnectivityMonitor();
     final pendingOperationStore = PendingOperationStore(cache);
     final refreshCoordinator = SessionRefreshCoordinator();
     final dataChangeBus = AppDataChangeBus();

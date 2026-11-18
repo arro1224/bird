@@ -1,5 +1,5 @@
 ﻿param(
-    [ValidateSet("Normal", "HuaweiAB", "Simulation")]
+    [ValidateSet("Normal", "HuaweiAB", "Simulation", "EmbeddedDemo")]
     [string]$Mode = "Normal",
 
     [ValidateSet("Debug", "Release")]
@@ -108,8 +108,12 @@ function Get-ApkCertificateSha256([string]$ApkPath) {
     return $match.Groups[1].Value.ToLowerInvariant()
 }
 
-if ($Mode -ne "Normal" -and $BuildType -ne "Debug") {
+if ($Mode -in @("HuaweiAB", "Simulation") -and $BuildType -ne "Debug") {
     throw "$Mode is an internal test mode and only supports Debug builds."
+}
+
+if ($Mode -eq "EmbeddedDemo" -and $BuildType -eq "Release" -and $NoPub) {
+    throw 'EmbeddedDemo Release must regenerate release plugin registrations; omit -NoPub.'
 }
 
 $flutterExecutable = Get-Command flutter -ErrorAction SilentlyContinue
@@ -179,6 +183,16 @@ $variants = switch ($Mode) {
             }
         )
     }
+    "EmbeddedDemo" {
+        @([ordered]@{
+            flavor = "birdDemo"
+            package_id = "deckers.thibault.aves.bird.demo"
+            target = "lib/main_bird_demo.dart"
+            label = "BirdBox-EmbeddedDemo"
+            scan_permission_policy = "never_for_location"
+            scan_strategy_fallback_enabled = $false
+        })
+    }
     "Simulation" {
         @([ordered]@{
             flavor = "birdSim"
@@ -194,6 +208,8 @@ $variants = switch ($Mode) {
 $buildTypeValue = $BuildType.ToLowerInvariant()
 $deliveryRole = if ($Mode -eq "Normal") {
     "app_board_backend_integration"
+} elseif ($Mode -eq "EmbeddedDemo") {
+    "embedded_simulated_demo"
 } else {
     "internal_experiment"
 }
@@ -252,6 +268,18 @@ try {
         if (-not (Test-Path -LiteralPath $sourcePath)) {
             throw "Expected APK was not produced: $sourcePath"
         }
+        # Verify flavor-scoped samples from the actual APK, not just pubspec text.
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $archive = [IO.Compression.ZipFile]::OpenRead($sourcePath)
+        try {
+            $sampleNames = @('egret.png', 'kingfisher.png', 'sandpiper.png', 'warbler.png')
+            foreach ($sample in $sampleNames) {
+                $sampleEntry = $archive.GetEntry("assets/flutter_assets/tool/mock_box_server/assets/$sample")
+                if ($Mode -eq "EmbeddedDemo" -and $null -eq $sampleEntry) { throw "Demo sample missing: $sample" }
+                if ($Mode -eq "Normal" -and $null -ne $sampleEntry) { throw "Normal APK contains demo-only sample: $sample" }
+            }
+        } finally { $archive.Dispose() }
+
         $destinationName = "{0}-{1}-{2}-{3}.apk" -f $variant.label, $versionName, $versionCode, $buildTypeValue
         $destinationPath = Join-Path $deliveryDirectory $destinationName
         Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
@@ -293,6 +321,12 @@ $manifest = [ordered]@{
     }
     releasable = $Mode -eq "Normal" -and $BuildType -eq "Release" -and $workingTreeClean
     artifacts = $artifacts
+}
+if ($Mode -eq "EmbeddedDemo") {
+    $manifest['embedded_box'] = $true
+    $manifest['environment'] = 'simulated'
+    $manifest['signing_role'] = 'local_debug_certificate'
+    $manifest['real_box_evidence'] = $false
 }
 [IO.File]::WriteAllText((Join-Path $deliveryDirectory "source-files.sha256"), (($sourceIdentity.lines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
 $manifestPath = Join-Path $deliveryDirectory "build-manifest.json"

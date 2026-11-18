@@ -27,5 +27,25 @@ powershell -ExecutionPolicy Bypass -File tool/release/build_android_apks.ps1 -Mo
 powershell -ExecutionPolicy Bypass -File tool/release/build_android_apks.ps1 -Mode Simulation
 ```
 
-只有 `bird` 允许生成 Release；`birdSim`、`birdScanA` 和 `birdScanB` 均为内部 Debug
-构建，不得作为正常 App 交付。
+正式 App 仍仅使用 `bird` Release；`birdSim`、`birdScanA` 和 `birdScanB` 仍仅支持内部 Debug。
+独立的 `birdDemo` 可生成演示用 Debug / Release，使用独立包名和本机调试证书，不作为正式 App 或真实盒子验收证据。
+
+## 内置盒子演示版（显式启用）
+
+默认 `lib/main.dart` 和 `bird` 不变。需要内置盒子时，在项目根目录运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool/build_demo_apk.ps1
+```
+
+脚本先运行模拟业务和正常入口隔离检查，再生成独立演示 APK，并输出完整路径。
+也可使用统一构建入口：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool/release/build_android_apks.ps1 -Mode EmbeddedDemo -BuildType Release
+```
+
+演示入口为 `lib/main_bird_demo.dart`，应用标识为 `deckers.thibault.aves.bird.demo`，
+内置本机盒子服务与离线示例照片，可与正常 App 共存。示例照片只打入 `birdDemo`。
+电脑端与 App 内置端共用同一套模拟盒子实现。使用边界、维护位置和验证方式见
+[内置盒子复用说明](docs/embedded-box-demo.md)。

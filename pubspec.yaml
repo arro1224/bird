@@ -39,6 +39,9 @@ dev_dependencies:
 flutter:
   default-flavor: bird
   assets:
+    - path: tool/mock_box_server/assets/
+      flavors:
+        - birdDemo
     - assets/bird_companion/connection/
     - assets/bird_companion/ui_extracted/connection/batch-01/
     - assets/bird_companion/ui_extracted/connection/batch-02/
