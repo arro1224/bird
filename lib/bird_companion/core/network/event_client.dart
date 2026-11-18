@@ -37,6 +37,11 @@ class EventClient {
   EventClient({
     ReconnectPolicy? reconnectPolicy,
     EventChannelConnector? connector,
+    // 僵尸连接探活：默认无 ping 时 Wi-Fi 抖动/省电断 TCP 后双方都不知情，
+    // App 侧 WS 状态一直显示 connected，任务事件流静默死亡且 REST 轮询被
+    // 抑制（_configurePolling），任务进度会冻结——2026-11-18 演示反馈。
+    // 20s ping 让半开连接在两个周期内暴露，走既有重连与 REST 恢复链路。
+    this.pingInterval = const Duration(seconds: 20),
   }) : _reconnectPolicy = reconnectPolicy ?? const ReconnectPolicy(),
        _connector =
            connector ??
@@ -44,11 +49,14 @@ class EventClient {
              endpoint,
              headers: headers,
              connectTimeout: const Duration(seconds: 5),
+             pingInterval: pingInterval,
            ));
 
+  final Duration pingInterval;
   final ReconnectPolicy _reconnectPolicy;
   final EventChannelConnector _connector;
   static const _closeTimeout = Duration(seconds: 2);
+
   final _events = StreamController<DeviceEvent>.broadcast();
   final _connectionStates = StreamController<EventConnectionState>.broadcast();
   final _authenticationFailures = StreamController<int>.broadcast();

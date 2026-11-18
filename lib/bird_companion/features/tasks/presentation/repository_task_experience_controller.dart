@@ -48,7 +48,9 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     RecognitionRepository? recognitionRepository,
     SmartFollowCreationService? smartFollowCreation,
     SmartFollowConfigurationReader Function(String)? smartFollowConfiguration,
-    Duration pollInterval = const Duration(seconds: 4),
+    // 历史参数：轮询周期曾是它，2026-11-18 起退化轮询统一 1.5s（见
+    // _configurePolling）。保留入参避免既有测试/调用点破坏，值不再透传。
+    @Deprecated('Polling cadence is fixed by _configurePolling; kept for call-site compatibility.') Duration pollInterval = const Duration(seconds: 4),
   }) : this._(
          storageRepository: storageRepository,
          deviceRepository: deviceRepository,
@@ -63,7 +65,6 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
          recognitionRepository: recognitionRepository,
          smartFollowCreation: smartFollowCreation,
          smartFollowConfiguration: smartFollowConfiguration,
-         pollInterval: pollInterval,
        );
 
   RepositoryTaskExperienceController._({
@@ -80,7 +81,6 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     required this.recognitionRepository,
     required this.smartFollowCreation,
     required this.smartFollowConfiguration,
-    required this._pollInterval,
   }) : super(const ProductionTaskExperienceDataSource()) {
     setConnectionState(_mapConnection(_deviceSessionCubit.state.phase));
     _lastEventConnectionState = _eventClient.currentState;
@@ -112,7 +112,6 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   final DeviceSessionCubit _deviceSessionCubit;
   final PendingOperationStore _pendingOperationStore;
   final AppDataChangeBus? _dataChangeBus;
-  final Duration _pollInterval;
   final Map<String, BirdJobStatus> _jobs = {};
   /// loadMore 拉到的页；刷新第一页时不能把它们一起清掉。
   final Map<String, BirdJobStatus> _pagedJobs = {};
@@ -788,8 +787,12 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
           (job) => job.state == BirdJobState.running || job.state == BirdJobState.queued,
         );
     if (needsPolling) {
+      // 2026-11-18 演示反馈：WS 断连期间事件流缺失，4s 轮询 + refreshFromBox
+      // 串行请求让任务进度每 4~8s 才跳一格（返回主页后「从 0 稳步涨到 100」）。
+      // 事件通道不可用是退化态，用更密的采样把进度追上来；pingInterval 已让
+      // 僵尸连接尽快暴露，此轮询只是 WS 恢复前的过渡兜底。
       _pollTimer = Timer.periodic(
-        _pollInterval,
+        const Duration(milliseconds: 1500),
         (_) => unawaited(refreshFromBox()),
       );
     }
