@@ -566,7 +566,7 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
   Future<void> _refreshAfterResume(int lifecycle) async {
     for (var attempt = 0; attempt < 3; attempt++) {
       if (isClosed || !_appActive || lifecycle != _lifecycleGeneration || !state.pageActive || !_usable) return;
-      if (await refreshDevices(invalidateOnFailure: false)) {
+      if (await refreshDevices(invalidateOnFailure: false, silent: true)) {
         if (_appActive && lifecycle == _lifecycleGeneration && state.invalidationReason == CopyPreflightInvalidation.expired && state.preview == null) {
           await _recheckAfterExpiry(_expiredPlanSignature);
         }
@@ -585,14 +585,14 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     if (!isClosed && _appActive && state.pageActive && !state.submitted && pollInterval > Duration.zero) {
       final delay = pollInterval * (1 << (_refreshFailures < 3 ? _refreshFailures : 3));
       _poll = Timer(delay, () async {
-        if (_usable) await refreshDevices();
+        if (_usable) await refreshDevices(silent: true);
         _startPolling();
       });
     }
   }
 
   void _requestRefresh() {
-    if (!isClosed && _appActive && state.pageActive && !state.submitted && _usable) unawaited(refreshDevices());
+    if (!isClosed && _appActive && state.pageActive && !state.submitted && _usable) unawaited(refreshDevices(silent: true));
   }
 
   Future<void> initialize() {
@@ -674,7 +674,12 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
 
   /// Devices and source are one authoritative snapshot. Failed reads retain
   /// the last list as stale data, never invent a physical unplug event.
-  Future<bool> refreshDevices({bool renewSourceBinding = false, bool invalidateOnFailure = true}) {
+  ///
+  /// `silent`（后台轮询 / 事件驱动 / 回前台静默刷新）不翻转
+  /// `refreshingDevices`：footer 的「重新检测设备」按钮绑定该标志，
+  /// 每轮 pollInterval 都会灰一下并切换文案，肉眼表现为按钮闪烁
+  /// （2026-11-17 演示遗留问题）。
+  Future<bool> refreshDevices({bool renewSourceBinding = false, bool invalidateOnFailure = true, bool silent = false}) {
     if (isClosed || !_appActive || state.submitted || !state.pageActive) return Future.value(false);
     if (!_usable) {
       sessionChanged();
@@ -683,11 +688,13 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     if (!_initialized) return initialize().then((_) => _initialized && state.devicesFresh);
     if (_refreshing != null) {
       if (renewSourceBinding && !_refreshingRenewsBinding) return _renewAfterRefresh(_refreshing!);
+      // 合并到已在途的后台静默读时保留手动刷新反馈，避免点击毫无响应。
+      if (!silent && !state.refreshingDevices) emit(state.copyWith(refreshingDevices: true));
       return _refreshing!;
     }
     final environment = _environment;
     _refreshingRenewsBinding = renewSourceBinding;
-    final future = _readDevices(environment, ++_deviceReadGeneration, renewSourceBinding: renewSourceBinding, invalidateOnFailure: invalidateOnFailure);
+    final future = _readDevices(environment, ++_deviceReadGeneration, renewSourceBinding: renewSourceBinding, invalidateOnFailure: invalidateOnFailure, silent: silent);
     _refreshing = future;
     unawaited(
       future.whenComplete(() {
@@ -703,8 +710,8 @@ class CopyConfigCubit extends Cubit<CopyConfigState> {
     return refreshDevices(renewSourceBinding: true);
   }
 
-  Future<bool> _readDevices(int environment, int readGeneration, {required bool renewSourceBinding, bool invalidateOnFailure = true}) async {
-    emit(state.copyWith(refreshingDevices: true));
+  Future<bool> _readDevices(int environment, int readGeneration, {required bool renewSourceBinding, bool invalidateOnFailure = true, bool silent = false}) async {
+    if (!silent) emit(state.copyWith(refreshingDevices: true));
     try {
       final configuration = _configuration;
       final readPreferences = !state.fullBackup;

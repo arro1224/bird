@@ -480,6 +480,24 @@ void main() {
     expect(repository.createCalls, 1);
   });
 
+  test('后台轮询静默刷新不再翻转 refreshingDevices（2026-11-17 按钮闪烁）', () async {
+    final repository = FakeCopyEnvironment();
+    final cubit = await ready(repository, poll: const Duration(milliseconds: 10));
+    final before = repository.deviceCalls;
+    await until(() => repository.deviceCalls > before);
+    expect(cubit.state.refreshingDevices, false, reason: '后台轮询不得让「重新检测设备」按钮每轮灰一下并切换文案');
+
+    // 手动刷新仍然给即时反馈；与在途读合并时也点亮标志。
+    final gate = Completer<CopyDeviceList>();
+    repository.readDevices = () => gate.future;
+    final manual = cubit.refreshDevices();
+    await until(() => cubit.state.refreshingDevices);
+    gate.complete(CopyDeviceList(devices: List.of(repository.storage)));
+    expect(await manual, true);
+    expect(cubit.state.refreshingDevices, false);
+    expect(cubit.state.preview, isNotNull, reason: '无变化的静默刷新不得销毁有效预检');
+  });
+
   test('空间不足的预检结论不被周期设备刷新静默洗掉（现场演示反馈）', () async {
     final repository = FakeCopyEnvironment();
     var failWithSpace = true;
