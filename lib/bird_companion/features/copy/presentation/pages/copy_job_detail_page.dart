@@ -402,6 +402,7 @@ class _WaitingBanner extends StatelessWidget {
       'waiting_for_source' => '等待相机卡：请将源相机卡插回盒子，任务将自动继续。',
       'waiting_for_target' => '等待原目标 U 盘：请重新插入同一目标设备，不会自动更换其他设备。',
       'pause_requested' => '当前文件完成后暂停。',
+      'waiting_for_storage' => '存储暂不可用，任务已保留，正在等待重新核验原介质。',
       'cancel_requested' => '正在取消：已完成的副本不会删除。',
       _ => null,
     };

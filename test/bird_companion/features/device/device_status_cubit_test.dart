@@ -73,7 +73,7 @@ void main() {
     final events = EventClient();
     final refresh = SessionRefreshCoordinator();
     final connection = _ConnectionRepository(status);
-    final session = DeviceSessionCubit(connection, _OnlineConnectivityMonitor(), events, refresh);
+    final session = DeviceSessionCubit(connection, _OnlineConnectivityMonitor(), events, refresh, probeReachability: (_, _) async => false);
     final cubit = DeviceStatusCubit(
       _FailingDeviceRepository(const ApiException(message: 'offline', code: 'NETWORK_UNREACHABLE', retryable: true)),
       session,

@@ -277,6 +277,7 @@ class BirdCompanionDependencies {
       diagnostic: connectionAttempts.record,
       transportChanges: connectivityMonitor.onTransportChanged,
       connectionFailures: apiClient.connectionFailures,
+      probeReachability: apiClient.probeReachability,
       onConnectionRecovered: () async {
         await birdSyncService.synchronize();
       },

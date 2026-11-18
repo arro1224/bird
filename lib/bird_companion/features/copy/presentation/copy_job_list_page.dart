@@ -66,6 +66,10 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
         _hasMore = false;
         _deviceId = device;
       }
+      if (_continuousHistory) {
+        setState(() {}); // Keep the mounted grouped list across reconnects.
+        return;
+      }
       unawaited(_reload());
     });
   }
@@ -160,17 +164,16 @@ class _CopyJobListPageState extends State<CopyJobListPage> {
   @override
   Widget build(BuildContext context) {
     final repository = _repository;
-    if (_continuousHistory && _dependencies != null && _readable) {
+    if (_continuousHistory && _dependencies != null) {
       return GroupedCopyHistoryPageView(
-        key: ValueKey('grouped-history-$_deviceId-$_generation'),
+        key: ValueKey('grouped-history-$_deviceId'),
         repository: _dependencies!.smartFollowRepository,
+        canRead: _readable,
         onOpenCopy: (id) async {
           await Navigator.of(context).pushNamed(BirdRoutes.copyJobDetail, arguments: CopyJobDetailArgs(id, deviceId: _deviceId));
-          if (mounted) unawaited(_reload());
         },
         onOpenSession: (id) async {
           await Navigator.of(context).pushNamed(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(id));
-          if (mounted) unawaited(_reload());
         },
       );
     }

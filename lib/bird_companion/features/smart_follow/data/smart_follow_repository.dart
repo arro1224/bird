@@ -26,6 +26,34 @@ class SmartFollowRepository extends ChangeNotifier {
   SmartFollowRepository(this._gateway, {this.metadataStorage, this.metadataDeviceId});
 
   final SmartFollowGateway _gateway;
+  Iterable<SmartFollowSession> get knownSessions => _sessions.values;
+  Future<void>? _discovering;
+
+  Future<void> discoverSessions() {
+    final pending = _discovering;
+    if (pending != null) return pending;
+    final request = _discoverSessions();
+    _discovering = request;
+    return request.whenComplete(() {
+      if (identical(_discovering, request)) _discovering = null;
+    });
+  }
+
+  Future<void> _discoverSessions() async {
+    final generation = _deviceGeneration;
+    String? cursor;
+    final cursors = <String>{};
+    do {
+      final page = await sessions(cursor: cursor);
+      _checkDevice(generation);
+      for (final session in page.items) {
+        _merge(session);
+      }
+      cursor = page.hasMore ? page.nextCursor : null;
+      if (cursor != null && !cursors.add(cursor)) throw StateError('跟随会话分页没有推进。');
+    } while (cursor != null);
+  }
+
   Future<SmartFollowSessionPage> sessions({String? cursor}) async {
     final generation = _deviceGeneration;
     final gateway = _gateway;
@@ -95,6 +123,7 @@ class SmartFollowRepository extends ChangeNotifier {
   final Map<String, SmartFollowSession> _sessions = {};
   final Map<String, String> _sessionIdByJob = {};
   final Map<String, Future<SmartFollowSession>> _refreshing = {};
+  final Map<String, Future<SmartFollowSession?>> _finding = {};
   final Set<String> _repeatRefresh = {};
   SmartFollowCapabilities? _capabilities;
   StreamSubscription<DeviceEvent>? _eventSubscription;
@@ -138,6 +167,8 @@ class SmartFollowRepository extends ChangeNotifier {
     _metadataHistory.clear();
     _metadataRemembering.clear();
     _refreshing.clear();
+    _finding.clear();
+    _discovering = null;
     _starting.clear();
     _startBodies.clear();
     final hadState = _sessions.isNotEmpty || _sessionIdByJob.isNotEmpty || _capabilities != null;
@@ -167,12 +198,14 @@ class SmartFollowRepository extends ChangeNotifier {
   }
 
   /// 重读会话（同一会话并发调用合并成一次请求）。
-  Future<SmartFollowSession> refresh(String sessionId) {
+  Future<SmartFollowSession> refresh(String sessionId) => _refreshCoalesced(sessionId);
+
+  Future<SmartFollowSession> _refreshCoalesced(String sessionId, {bool eventArrived = false}) {
     final id = sessionId.trim();
     if (id.isEmpty) throw ArgumentError.value(sessionId, 'sessionId', 'must not be empty');
     final inFlight = _refreshing[id];
     if (inFlight != null) {
-      _repeatRefresh.add(id);
+      if (eventArrived) _repeatRefresh.add(id);
       return inFlight;
     }
     final request = _refresh(id);
@@ -232,11 +265,16 @@ class SmartFollowRepository extends ChangeNotifier {
   SmartFollowSession _missing(String sessionId) => _sessions[sessionId] ?? (throw ArgumentError.value(sessionId, 'sessionId', 'unknown session'));
 
   /// 按 job 重读：先看已映射的会话，再尝试从识别事件里找回。
-  Future<SmartFollowSession?> refreshForJob(String recognitionJobId) async {
+  Future<SmartFollowSession?> refreshForJob(String recognitionJobId) {
     final known = sessionIdForJob(recognitionJobId);
     if (known != null) return refresh(known);
-    final recovered = await _tryRecover(recognitionJobId);
-    return recovered;
+    final pending = _finding[recognitionJobId];
+    if (pending != null) return pending;
+    final read = _tryRecover(recognitionJobId);
+    _finding[recognitionJobId] = read;
+    return read.whenComplete(() {
+      if (identical(_finding[recognitionJobId], read)) _finding.remove(recognitionJobId);
+    });
   }
 
   /// 开启跟随（联合 §6.3）。
@@ -449,7 +487,7 @@ class SmartFollowRepository extends ChangeNotifier {
     final target = sessionId ?? (jobId == null ? null : sessionIdForJob(jobId));
     try {
       if (target != null) {
-        await refresh(target);
+        await _refreshCoalesced(target, eventArrived: true);
       } else if (jobId != null) {
         await refreshForJob(jobId);
       }

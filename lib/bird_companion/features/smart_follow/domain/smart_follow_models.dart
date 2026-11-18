@@ -37,6 +37,7 @@ class SmartFollowState {
   static const completed = SmartFollowState._('completed', '已完成', isTerminal: true);
   static const completedPartial = SmartFollowState._('completed_partial', '部分完成', isTerminal: true);
   static const failed = SmartFollowState._('failed', '失败，需要处理', isTerminal: true);
+  static const cancelled = SmartFollowState._('cancelled', '已取消', isTerminal: true);
 
   /// 缺字段/空串兜底；未知 wire 值走 [_custom]。
   static const unknown = SmartFollowState._('unknown', '状态未知', isTerminal: false);
@@ -70,6 +71,7 @@ class SmartFollowState {
       'completed' => completed,
       'completed_partial' => completedPartial,
       'failed' => failed,
+      'cancelled' => cancelled,
       _ => SmartFollowState._custom(value),
     };
   }
@@ -291,6 +293,11 @@ class SmartFollowSession {
       (!isContinuous || (summary != null && summary!.phase != 'created' && !summary!.hasOutstandingFiles));
   bool get isWaiting => state.isWaiting;
 
+  String displayCount(String key, {String unit = '张'}) {
+    final value = ProtocolValidation.optionalNonNegativeInt(raw, key);
+    return value == null ? '未知' : '$value $unit';
+  }
+
   SmartFollowAction? action(SmartFollowAction value) => allowedActions.contains(value) ? value : null;
 
   bool supports(SmartFollowAction value) => allowedActions.contains(value);
@@ -310,6 +317,13 @@ class SmartFollowSession {
     }
     json['session_id'] ??= json['id'];
     json['recognition_job_id'] ??= json['job_id'];
+    final recognitionTask = envelope['recognition_task'];
+    if (recognitionTask is Map && recognitionTask['job_id'] == json['recognition_job_id']) {
+      json['recognized_count'] ??= recognitionTask['last_event_seq'];
+    }
+    final counts = envelope['counts'];
+    final childJobs = envelope['child_jobs'];
+    if (childJobs is List) json['child_job_count'] ??= childJobs.length;
     final summary = json['summary'] is Map ? SmartFollowSummary.fromJson(Map<String, dynamic>.from(json['summary'] as Map)) : null;
     if (summary != null) {
       for (final key in ['session_id', 'recognition_job_id']) {
@@ -330,7 +344,27 @@ class SmartFollowSession {
           if (assets.containsKey('copied')) json['copied_asset_count'] = assets['copied'];
           if (assets.containsKey('failed')) json['failed_asset_count'] = assets['failed'];
         }
+      } else {
+        // Legacy controllers may put the same counters under summary/stats.
+        // Keep units distinct: a copied file is not necessarily one photo.
+        final stats = summary.raw['stats'];
+        for (final key in ['recognized_count', 'eligible_count', 'pending_count', 'assigned_count',
+          'copied_asset_count', 'copied_file_count', 'failed_asset_count', 'child_job_count',
+          'skipped_file_count', 'not_copied_stopped_count', 'not_applicable_asset_count']) {
+          json[key] ??= summary.raw[key] ?? (stats is Map ? stats[key] : null);
+        }
+        json['eligible_count'] ??= summary.eligibleAssetCount;
+        if (summary.raw['file_counts_complete'] != false) {
+          json['copied_file_count'] ??= summary.fileCounts['copied'];
+          json['skipped_file_count'] ??= summary.fileCounts['skipped_conflict'];
+          json['legacy_unprocessed_files'] ??= summary.raw['legacy_unprocessed_files'];
+        }
       }
+    }
+    if (summary?.executionMode != 'continuous_queue' && counts is Map) {
+      json['pending_count'] ??= counts['pending'];
+      json['assigned_count'] ??= counts['assigned'];
+      json['not_copied_stopped_count'] ??= counts['not_copied_stopped'];
     }
     final rawActions = json['allowed_actions'];
     final actions = <SmartFollowAction>[];
@@ -415,6 +449,7 @@ class SmartFollowChildJob {
     this.index = 0,
     this.createdAt,
     this.finishedAt,
+    this.missingCounts = const {},
   });
 
   final String copyJobId;
@@ -434,20 +469,38 @@ class SmartFollowChildJob {
   final int failedFileCount;
   final DateTime? createdAt;
   final DateTime? finishedAt;
+  final Set<String> missingCounts;
 
-  factory SmartFollowChildJob.fromJson(Map<String, dynamic> json) => SmartFollowChildJob(
+  String displayCount(String key, int value, {String unit = ''}) => missingCounts.contains(key) ? '未知' : '$value$unit';
+
+  factory SmartFollowChildJob.fromJson(Map<String, dynamic> json) {
+    final nested = json['stats'];
+    if (nested is Map) json = {...Map<String, dynamic>.from(nested), ...json};
+    const keys = {
+      'assets': ['asset_count', 'frozen_asset_count', 'logical_assets'],
+      'files': ['total_files', 'file_count', 'planned_files'],
+      'copied': ['copied_file_count', 'copied_files', 'copied_count'],
+      'skipped': ['skipped_file_count', 'skipped_files', 'skipped_count'],
+      'failed': ['failed_file_count', 'failed_files', 'failed_count'],
+    };
+    return SmartFollowChildJob(
     copyJobId: ProtocolValidation.requiredId(json, 'copy_job_id'),
-    index: _intAlias(json, const ['index', 'ordinal', 'sequence']),
+    index: _intAlias(json, const ['index', 'ordinal', 'sequence', 'batch_number']),
     state: CopyJobState.fromWire(_stringAlias(json, const ['state'])),
-    assetCount: _intAlias(json, const ['asset_count', 'frozen_asset_count', 'logical_assets']),
-    fileCount: _intAlias(json, const ['file_count', 'planned_files', 'total_files']),
+    assetCount: _intAlias(json, keys['assets']!),
+    fileCount: _intAlias(json, keys['files']!),
     totalBytes: _intAlias(json, const ['total_bytes', 'planned_bytes']),
-    copiedFileCount: _intAlias(json, const ['copied_file_count', 'copied_files', 'copied_count']),
-    skippedFileCount: _intAlias(json, const ['skipped_file_count', 'skipped_files', 'skipped_count']),
-    failedFileCount: _intAlias(json, const ['failed_file_count', 'failed_files', 'failed_count']),
+    copiedFileCount: _intAlias(json, keys['copied']!),
+    skippedFileCount: _intAlias(json, keys['skipped']!),
+    failedFileCount: _intAlias(json, keys['failed']!),
+    missingCounts: Set.unmodifiable({
+      for (final entry in keys.entries)
+        if (!entry.value.any((key) => json[key] is num)) entry.key,
+    }),
     createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
     finishedAt: ProtocolValidation.optionalDateTime(json, 'finished_at'),
-  );
+    );
+  }
 }
 
 /// 子任务分页（服务端固定排序 + cursor 快照）。

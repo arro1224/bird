@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:aves/bird_companion/features/smart_follow/data/fake_smart_follow_backend.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_repository.dart';
@@ -23,9 +25,11 @@ Map<String, dynamic> fullSummary() => {
 
 class HistoryGateway extends FakeSmartFollowBackend implements SmartFollowHistoryGateway {
   final cursors = <String?>[];
+  Completer<GroupedCopyHistoryPage>? next;
   @override
   Future<GroupedCopyHistoryPage> groupedHistory({String? cursor}) async {
     cursors.add(cursor);
+    if (next case final pending?) return pending.future;
     return GroupedCopyHistoryPage.fromJson({
       'items': [
         {'kind': 'smart_follow', 'session_id': 'follow-example', 'data': envelope()},
@@ -87,8 +91,34 @@ void main() {
     expect(backend.cursors, [null, 'opaque-history==']);
     expect(find.byKey(const ValueKey('smart_follow:follow-example')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('smart_follow:follow-example')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('加载更多任务'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('copy:ordinary')));
     expect(opened, ['session:follow-example', 'copy:ordinary']);
+  });
+  testWidgets('slow duplicate history refresh is coalesced; failure keeps last items', (tester) async {
+    final gateway = HistoryGateway();
+    final repository = SmartFollowRepository(gateway);
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(MaterialApp(home: GroupedCopyHistoryPageView(
+      repository: repository, onOpenCopy: (_) {}, onOpenSession: (_) {},
+    )));
+    await tester.pumpAndSettle();
+    gateway.next = Completer<GroupedCopyHistoryPage>();
+    await tester.tap(find.byTooltip('刷新任务'));
+    await tester.tap(find.byTooltip('刷新任务'));
+    await tester.pump();
+    expect(gateway.cursors, [null, null]);
+    expect(find.byKey(const ValueKey('smart_follow:follow-example')), findsOneWidget);
+    gateway.next!.completeError(StateError('isolated failure'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('smart_follow:follow-example')), findsOneWidget);
+    expect(find.text('重新读取任务'), findsOneWidget);
+    gateway.next = null;
+    await tester.tap(find.text('重新读取任务'));
+    await tester.pumpAndSettle();
+    expect(find.text('重新读取任务'), findsNothing);
   });
   test('grouped history rejects false parent association', () {
     expect(() => GroupedCopyHistoryItem.fromJson({'kind': 'smart_follow', 'session_id': 'wrong', 'data': envelope()}), throwsException);

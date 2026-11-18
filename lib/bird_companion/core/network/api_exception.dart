@@ -17,6 +17,12 @@ class ApiException implements Exception {
   final Map<String, dynamic> details;
   final Object? cause;
 
+  bool get isTransportFailure => statusCode == null &&
+      (cause is DioException ? isTransportError(cause as DioException) : code == 'NETWORK_UNREACHABLE');
+
+  static bool isTransportError(DioException error) => error.response == null &&
+      const {DioExceptionType.connectionError, DioExceptionType.connectionTimeout, DioExceptionType.receiveTimeout, DioExceptionType.sendTimeout}.contains(error.type);
+
   factory ApiException.fromDio(DioException error) {
     final responseData = error.response?.data;
     final data = responseData is Map ? Map<String, dynamic>.from(responseData) : const <String, dynamic>{};

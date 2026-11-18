@@ -89,6 +89,27 @@ class ApiClient {
   Stream<int> get authenticationFailures => _authenticationFailures.stream;
   Stream<void> get connectionFailures => _connectionFailures.stream;
 
+  /// Check reachability independently of the business route. An HTTP response
+  /// proves reachability, not device identity, authorization or readiness.
+  Future<bool> probeReachability(Uri baseUri, CancelToken cancelToken) async {
+    try {
+      await _publicDio.getUri<String>(
+        baseUri.resolve(ApiEndpoints.health),
+        cancelToken: cancelToken,
+        options: Options(
+          responseType: ResponseType.plain,
+          followRedirects: false,
+          validateStatus: (_) => true,
+        ),
+      );
+      return true;
+    } on DioException catch (error) {
+      if (error.response != null) return true;
+      if (ApiException.isTransportError(error)) return false;
+      rethrow;
+    }
+  }
+
   /// Public device status proves reachability, not authorization. A read-only,
   /// bounded protected request verifies the restored token before handoff.
   Future<void> verifyAuthenticatedSession(CancelToken? cancelToken) async {
@@ -219,8 +240,7 @@ class ApiClient {
       );
     } on DioException catch (error) {
       final exception = ApiException.fromDio(error);
-      final transportFailure = error.response == null && const {DioExceptionType.connectionError, DioExceptionType.connectionTimeout, DioExceptionType.receiveTimeout, DioExceptionType.sendTimeout}.contains(error.type);
-      if (reportAuthenticationFailure && requestBase != null && requestBase == _baseUri && sessionGeneration == _sessionGeneration && transportFailure && !_connectionFailures.isClosed) {
+      if (reportAuthenticationFailure && requestBase != null && requestBase == _baseUri && sessionGeneration == _sessionGeneration && exception.isTransportFailure && !_connectionFailures.isClosed) {
         _connectionFailures.add(null);
       }
       if (reportAuthenticationFailure && sessionGeneration == _sessionGeneration && (exception.statusCode == 401 || exception.statusCode == 403)) {

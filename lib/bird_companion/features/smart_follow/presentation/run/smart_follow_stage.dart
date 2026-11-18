@@ -54,6 +54,14 @@ SmartFollowStage resolveSmartFollowStage({
     if (session.state.wire == 'completed' && (session.summary == null || session.summary!.phase == 'created' || session.summary!.hasOutstandingFiles)) {
       return const SmartFollowStage(id: 'queue_unsettled', label: '队列尚未处理完', hint: '仍有排队、复制中或受阻文件，正在重新核对任务状态。', tone: SmartFollowStageTone.waiting);
     }
+    final waiting = switch (session.summary?.phase) {
+      'waiting_for_writer' => const SmartFollowStage(id: 'waiting_for_writer', label: '等待写盘', hint: '目标盘写入资源正被占用，轮到本任务后继续。', tone: SmartFollowStageTone.waiting),
+      'awaiting_results' => const SmartFollowStage(id: 'awaiting_results', label: '等待新的识别结果', hint: '有合格结果入队后将继续复制。', tone: SmartFollowStageTone.waiting),
+      'pause_requested' => const SmartFollowStage(id: 'pause_requested', label: '正在暂停', hint: '等待当前文件处理完毕；此时不要拔盘。', tone: SmartFollowStageTone.waiting),
+      'waiting_for_storage' => const SmartFollowStage(id: 'waiting_for_storage', label: '存储暂不可用', hint: '保留原队列，等待存储服务恢复。', tone: SmartFollowStageTone.waiting),
+      _ => null,
+    };
+    if (!session.isFinished && waiting != null) return waiting;
     if (session.state.wire == 'following') {
       return const SmartFollowStage(id: 'continuous_following', label: '识别与持续复制中', hint: '新结果进入队列后逐项复制；退出 App 不会停止盒子任务。', tone: SmartFollowStageTone.running);
     }

@@ -82,10 +82,10 @@ void main() {
     expect(session.state.phase, DeviceSessionPhase.disconnected);
   });
 
-  test('子页面 reportUnreachable 回写全局状态并触发健康检查', () async {
+  test('独立探测失败后，子页面 reportUnreachable 才触发全局恢复', () async {
     final monitor = _ManualConnectivityMonitor();
     final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status());
-    final session = _session(monitor, repository);
+    final session = _session(monitor, repository, probeReachability: (_, _) async => false);
     addTearDown(session.close);
     await session.setConnectedFromStatus(_status());
     final callsBefore = repository.reconnectCalls;
@@ -188,9 +188,67 @@ void main() {
     expect(session.state.isConnected, true);
   });
 
+  test('concurrent page failures share one probe, and a healthy result keeps the session', () async {
+    final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status());
+    final result = Completer<bool>();
+    var probes = 0;
+    final session = _session(_ManualConnectivityMonitor(), repository, probeReachability: (_, _) {
+      probes++;
+      return result.future;
+    });
+    addTearDown(session.close);
+    await session.setConnectedFromStatus(_status());
+    for (var i = 0; i < 6; i++) {
+      session.reportUnreachable();
+    }
+    expect(probes, 1);
+    expect(session.state.isConnected, true);
+    result.complete(true);
+    await Future<void>.delayed(Duration.zero);
+    expect(session.state.isConnected, true);
+    expect(repository.reconnectCalls, 0);
+  });
+
+  test('late negative probe cannot demote a replacement session', () async {
+    final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status());
+    final result = Completer<bool>();
+    CancelToken? activeProbe;
+    final session = _session(_ManualConnectivityMonitor(), repository, probeReachability: (_, token) {
+      activeProbe = token;
+      return result.future;
+    });
+    addTearDown(session.close);
+    await session.setConnectedFromStatus(_status());
+    session.reportUnreachable();
+    final newAddress = Uri.parse('http://192.0.2.11:8080');
+    await session.setConnectedFromStatus(DeviceStatus(connection: _savedDevice.copyWith(baseUri: newAddress), card: const CardStatus(inserted: false)));
+    expect(activeProbe?.isCancelled, true);
+    result.complete(false);
+    await Future<void>.delayed(Duration.zero);
+    expect(session.state.isConnected, true);
+    expect(session.state.device?.baseUri, newAddress);
+    expect(repository.reconnectCalls, 0);
+  });
+
+  test('an unanswered health probe is bounded and enters recovery', () async {
+    final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status());
+    CancelToken? token;
+    final session = _session(_ManualConnectivityMonitor(), repository, probeReachability: (_, current) {
+      token = current;
+      return Completer<bool>().future;
+    });
+    addTearDown(session.close);
+    await session.setConnectedFromStatus(_status());
+    final reconnecting = session.stream.firstWhere((state) => state.phase == DeviceSessionPhase.reconnecting);
+    session.reportUnreachable();
+    expect(session.state.isConnected, true);
+    await reconnecting.timeout(const Duration(seconds: 5));
+    expect(token?.isCancelled, true);
+  });
+
   test('配网交接期间 reportUnreachable 不打断交接', () async {
     final monitor = _ManualConnectivityMonitor();
-    final session = _session(monitor, _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status()));
+    final session = _session(monitor, _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status()), probeReachability: (_, _) async => false);
     addTearDown(session.close);
     await session.setConnectedFromStatus(_status());
     session.provisioningHandoffActive = true;
@@ -200,10 +258,10 @@ void main() {
   });
 }
 
-DeviceSessionCubit _session(_ManualConnectivityMonitor monitor, _RecoveryRepository repository, {Stream<void>? transportChanges}) {
+DeviceSessionCubit _session(_ManualConnectivityMonitor monitor, _RecoveryRepository repository, {Stream<void>? transportChanges, Future<bool> Function(Uri, CancelToken)? probeReachability}) {
   final events = EventClient();
   final refresh = SessionRefreshCoordinator();
-  final session = DeviceSessionCubit(repository, monitor, events, refresh, transportChanges: transportChanges);
+  final session = DeviceSessionCubit(repository, monitor, events, refresh, transportChanges: transportChanges, probeReachability: probeReachability);
   return session;
 }
 

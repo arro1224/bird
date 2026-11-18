@@ -39,18 +39,59 @@ class TaskExperienceRoot extends StatefulWidget {
   State<TaskExperienceRoot> createState() => _TaskExperienceRootState();
 }
 
-class _TaskExperienceRootState extends State<TaskExperienceRoot> {
+class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBindingObserver {
   RepositoryTaskExperienceController? _controller;
   StreamSubscription<String>? _analysisSubscription;
   StreamSubscription<String>? _copySubscription;
   var _autoOpeningReport = false;
   final Set<String> _openingReportJobs = {};
   var _syncing = false;
+  bool _openingTask = false;
+  bool _openingCopy = false;
+  bool _openingHistory = false;
+  bool _visible = false;
+  int? _followDiscoveryGeneration;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _followDiscoveryGeneration = null;
+      _discoverFollow();
+    }
+  }
+
+  void _discoverFollow() {
+    if (!mounted || !_visible) return;
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+    if (_controller?.connectionState != TaskConnectionState.connected) {
+      _followDiscoveryGeneration = null;
+      return;
+    }
+    final repository = BirdCompanionScope.of(context).smartFollowRepository;
+    if (_followDiscoveryGeneration == repository.deviceGeneration) return;
+    _followDiscoveryGeneration = repository.deviceGeneration;
+    unawaited(repository.discoverSessions().catchError((Object _) {
+      // Do not block the whole tasks screen on an optional history request.
+    }));
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_controller != null) return;
+    final visible = TickerMode.valuesOf(context).enabled;
+    if (visible && !_visible) _followDiscoveryGeneration = null;
+    _visible = visible;
+    if (_controller != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _discoverFollow());
+      return;
+    }
     final dependencies = BirdCompanionScope.of(context);
     final controller = RepositoryTaskExperienceController(
       deviceRepository: dependencies.deviceRepository,
@@ -68,6 +109,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       smartFollowConfiguration: (batch) => smartFollowConfigurationReader(dependencies, batch),
     );
     _controller = controller;
+    controller.addListener(_discoverFollow);
     _analysisSubscription = controller.analysisCompletedProjects.listen(
       (projectId) async {
         final device = dependencies.smartFollowCreation.contextKey();
@@ -115,6 +157,8 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _controller?.removeListener(_discoverFollow);
     unawaited(_analysisSubscription?.cancel());
     unawaited(_copySubscription?.cancel());
     _controller?.dispose();
@@ -133,24 +177,40 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       onOpenTask: _openTask,
       onStartTask: _startTask,
       onOpenCopyJobs: _openCopyJobs,
-      copyRecoveryBanner: Column(children: [
-        for (final task in controller.tasks.where((task) => task.type == TaskType.aiAnalysis))
+      copyRecoveryBanner: _buildCopyOverview(context),
+    );
+  }
+
+  Widget _buildCopyOverview(BuildContext context) {
+    final deps = BirdCompanionScope.of(context);
+    final repository = deps.smartFollowRepository;
+    return ListenableBuilder(
+      listenable: repository,
+      builder: (context, _) => Column(children: [
+        for (final session in repository.knownSessions.where((session) => !session.isFinished))
           SmartFollowTaskTile(
-            key: ValueKey('home-follow-${task.id}'),
-            repository: BirdCompanionScope.of(context).smartFollowRepository,
-            recognitionJobId: task.id,
-            onOpenRun: (id) => Navigator.of(context).pushNamed<void>(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(id, recognitionJobId: task.id)),
+            key: ValueKey('home-follow-${session.sessionId}'),
+            repository: repository,
+            recognitionJobId: session.recognitionJobId,
+            onOpenRun: (id) => Navigator.of(context).pushNamed<void>(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(id, recognitionJobId: session.recognitionJobId)),
           ),
-        ActiveCopyJobsBanner(recovery: BirdCompanionScope.of(context).copyJobRecovery),
+        ActiveCopyJobsBanner(recovery: deps.copyJobRecovery),
       ]),
     );
   }
 
   /// RC3 复制任务列表（独立于通用任务中心，不含 copy_jobs_v1 任务）。
   Future<void> _openCopyJobs() async {
-    await Navigator.of(context).pushNamed<void>(BirdRoutes.copyJobs);
-    // 详情页可能已执行取消/重试等动作，返回后刷新任务首页。
-    await _controller?.refreshFromBox();
+    if (_openingHistory) return;
+    _openingHistory = true;
+    try {
+      await Navigator.of(context).pushNamed<void>(BirdRoutes.copyJobs);
+      await _controller?.refreshFromBox();
+      _followDiscoveryGeneration = null;
+      _discoverFollow();
+    } finally {
+      _openingHistory = false;
+    }
   }
 
   Future<void> _startTask(TaskType type) async {
@@ -189,16 +249,22 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
           if (mounted) await _openTask(jobId);
           return;
         case TaskType.copy:
+          if (_openingCopy) return;
           final batchId = controller.activeBatchId?.trim();
           if (batchId == null || batchId.isEmpty) {
             throw StateError('There is no active project to copy');
           }
           if (mounted) {
-            await Navigator.of(context).pushNamed<void>(
-              BirdRoutes.copyConfirmation,
-              arguments: CopyConfirmationArgs(batchId, enableSmartFollow: true),
-            );
-            await controller.refreshFromBox();
+            _openingCopy = true;
+            try {
+              await Navigator.of(context).pushNamed<void>(
+                BirdRoutes.copyConfirmation,
+                arguments: CopyConfirmationArgs(batchId, enableSmartFollow: true),
+              );
+              await controller.refreshFromBox();
+            } finally {
+              _openingCopy = false;
+            }
           }
           return;
         case TaskType.fullBackup:
@@ -332,6 +398,16 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
   }
 
   Future<void> _openTask(String taskId) async {
+    if (_openingTask) return;
+    _openingTask = true;
+    try {
+      await _openTaskOnce(taskId);
+    } finally {
+      _openingTask = false;
+    }
+  }
+
+  Future<void> _openTaskOnce(String taskId) async {
     final controller = _controller!;
     try {
       await controller.refreshJobDetail(taskId);
@@ -390,8 +466,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
       case TaskDestinationKind.detail:
         break;
     }
-    unawaited(
-      Navigator.of(context).push<void>(
+    await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
           builder: (_) => TaskDetailPage(
             controller: controller,
@@ -442,8 +517,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> {
             },
           ),
         ),
-      ),
-    );
+      );
   }
 
   Future<void> _showSyncJobSummary(TaskSummary task) => showModalBottomSheet<void>(

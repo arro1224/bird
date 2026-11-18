@@ -150,7 +150,7 @@ class _ChildJobTile extends StatelessWidget {
       key: Key('smart-follow-child-job-${job.copyJobId}'),
       leading: Icon(done ? Icons.check_circle_outline : Icons.sync, color: done ? AppColors.forestDeep : AppColors.mutedInk),
       title: Text(job.index > 0 ? '第 ${job.index} 批' : '复制批次'),
-      subtitle: Text('${job.assetCount} 张照片 · ${job.fileCount} 个文件 · ${job.state.label}'),
+      subtitle: Text('${job.displayCount("assets", job.assetCount, unit: " 张照片")} · ${job.displayCount("files", job.fileCount, unit: " 个文件")} · ${job.state.label}'),
       trailing: onOpen == null ? null : const Icon(Icons.chevron_right),
       onTap: onOpen == null ? null : () => onOpen!(job.copyJobId),
     );

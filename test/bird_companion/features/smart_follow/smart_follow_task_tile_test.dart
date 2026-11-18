@@ -46,7 +46,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('smart-follow-task-tile')), findsOneWidget);
-    expect(find.textContaining('已识别 1 张'), findsOneWidget);
+    expect(find.textContaining('合格 1 张'), findsOneWidget);
   });
 
   testWidgets('有会话时显示阶段与三项计数，点击带着会话 ID 进运行页', (tester) async {
@@ -63,7 +63,7 @@ void main() {
     expect(find.text('边识别边复制'), findsOneWidget);
     expect(find.text('识别与复制中'), findsOneWidget);
     expect(find.text('已识别 2 张 · 待复制 2 张 · 已复制 0 张'), findsNothing);
-    expect(find.text('识别 3/14 · 已识别 2 张 · 待复制 2 张 · 已复制 0 张'), findsOneWidget);
+    expect(find.text('识别 3/14 · 合格 2 张 · 待复制 2 张 · 已复制 0 个文件'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('smart-follow-task-tile')));
     await tester.pumpAndSettle();
@@ -81,6 +81,34 @@ void main() {
     expect(find.text('已完成'), findsOneWidget);
   });
 
+  testWidgets('terminal cards do not poll, active cards stop on a hidden tab', (tester) async {
+    final counting = _CountingGateway();
+    final repo = SmartFollowRepository(counting);
+    addTearDown(repo.dispose);
+    await repo.startOnRecognitionJob('rec_fake', startRequest);
+    Widget app(bool visible) => MaterialApp(home: Scaffold(body: TickerMode(
+      enabled: visible,
+      child: SmartFollowTaskTile(repository: repo, recognitionJobId: 'rec_fake', onOpenRun: (_) {}),
+    )));
+    await tester.pumpWidget(app(true));
+    await tester.pumpAndSettle();
+    final initialReads = counting.reads;
+    await tester.pump(const Duration(seconds: 2));
+    expect(counting.reads, initialReads + 1);
+    await tester.pumpWidget(app(false));
+    final hiddenReads = counting.reads;
+    await tester.pump(const Duration(seconds: 8));
+    expect(counting.reads, hiddenReads);
+    counting.finishRecognition();
+    counting.completeChildJobs();
+    await repo.refreshForJob('rec_fake');
+    await tester.pumpWidget(app(true));
+    final finishedReads = counting.reads;
+    await tester.pump(const Duration(seconds: 8));
+    expect(counting.reads, finishedReads);
+    expect(find.text('已完成'), findsOneWidget);
+  });
+
   testWidgets('读会话失败时静默隐藏，不打断任务详情其它内容', (tester) async {
     final failing = _FailingTileRepository();
     await tester.pumpWidget(
@@ -94,6 +122,15 @@ void main() {
     expect(find.byKey(const Key('smart-follow-task-tile')), findsNothing);
     expect(tester.takeException(), isNull);
   });
+}
+
+class _CountingGateway extends FakeSmartFollowBackend {
+  int reads = 0;
+  @override
+  Future<SmartFollowSession> session(String id) {
+    reads++;
+    return super.session(id);
+  }
 }
 
 class _FailingTileRepository extends SmartFollowRepository {

@@ -56,6 +56,7 @@ class CopyJobState {
     isTerminal: false,
   );
   static const completed = CopyJobState._('completed', '已完成', isTerminal: true);
+  static const waitingForStorage = CopyJobState._('waiting_for_storage', '存储暂不可用', isTerminal: false);
   static const completedWithErrors = CopyJobState._(
     'completed_with_errors',
     '部分完成',
@@ -78,7 +79,7 @@ class CopyJobState {
   };
 
   bool get isWaitingDevice => switch (wire) {
-    'waiting_for_source' || 'waiting_for_target' => true,
+    'waiting_for_source' || 'waiting_for_target' || 'waiting_for_storage' => true,
     _ => false,
   };
 
@@ -101,6 +102,7 @@ class CopyJobState {
       'cancelled' => cancelled,
       'waiting_for_source' => waitingForSource,
       'waiting_for_target' => waitingForTarget,
+      'waiting_for_storage' => waitingForStorage,
       'completed' => completed,
       'completed_with_errors' => completedWithErrors,
       'failed' => failed,
@@ -406,6 +408,7 @@ class CopyJobListItem {
     this.scopeWire,
     this.stats,
     this.createdAt,
+    this.isFollowChild = false,
   });
 
   final String copyJobId;
@@ -413,6 +416,7 @@ class CopyJobListItem {
   final String? scopeWire;
   final CopyJobStats? stats;
   final DateTime? createdAt;
+  final bool isFollowChild;
 
   bool get isFullBackup => scopeWire == 'media_full_backup';
 
@@ -424,6 +428,7 @@ class CopyJobListItem {
       scopeWire: _string(json, 'scope'),
       stats: rawStats is Map ? CopyJobStats.fromJson(Map<String, dynamic>.from(rawStats)) : null,
       createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
+      isFollowChild: json['origin'] == 'smart_follow' || _string(json, 'parent_session_id') != null,
     );
   }
 }

@@ -31,7 +31,9 @@ class CopyJobRecovery extends ChangeNotifier {
   bool _retryRequested = false;
   final _reads = <(String, String, int), Future<CopyJobDetail>>{};
   final _latestHistoryIds = <String, String>{};
+  final _followChildren = <(String, String)>{};
   String? latestHistoryId(String device) => _latestHistoryIds[device];
+  bool isFollowChild(String device, String job) => _followChildren.contains((device, job));
 
   bool canRead(String deviceId) => !_disposed && isConnected() && currentDeviceId() == deviceId;
 
@@ -94,13 +96,24 @@ class CopyJobRecovery extends ChangeNotifier {
       if (!canRead(device) || listGeneration != _generation) return;
       // Use server order (same endpoint as history), not the last opened item.
       // Only the newest server item updates the recent summary.
-      if (page.items.isNotEmpty) {
-        final latest = page.items.first;
+      for (final item in page.items.where((item) => item.isFollowChild)) {
+        _followChildren.add((device, item.copyJobId));
+      }
+      String? newestOrdinary;
+      for (final latest in page.items.where((item) => !isFollowChild(device, item.copyJobId))) {
         final detail = await readJob(device, latest.copyJobId);
         if (!canRead(device) || listGeneration != _generation) return;
-        _latestHistoryIds[device] = detail.copyJobId;
+        if (detail.origin == 'smart_follow' || detail.parentSessionId != null) {
+          _followChildren.add((device, detail.copyJobId));
+          continue;
+        }
+        newestOrdinary = detail.copyJobId;
+        _latestHistoryIds[device] = newestOrdinary;
         await store.remember(device, detail.copyJobId, detail.state, stateVersion: detail.stateVersion);
+        break;
       }
+      if (newestOrdinary == null && !page.hasMore) _latestHistoryIds.remove(device);
+      if (!_disposed) notifyListeners();
     } catch (_) {
       // Retain known IDs when the history endpoint is temporarily unavailable.
     }

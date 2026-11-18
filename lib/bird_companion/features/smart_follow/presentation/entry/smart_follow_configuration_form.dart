@@ -109,7 +109,7 @@ class _SmartFollowConfigurationFormState extends State<SmartFollowConfigurationF
                     if (value != null) state.selectPairPolicy(value);
                   },
           ),
-          const Text('RAW 优先在无 RAW 时保留可用 JPEG/HEIF；两份都复制会分别计入实际文件数。'),
+          const Text('仅 RAW 不会回退到 JPEG/HEIF；两份都复制会分别计入实际文件数。'),
           const SizedBox(height: 12),
           DropdownButtonFormField<ConflictStrategy>(
             key: ValueKey(('smart-follow-conflict-policy', state.conflictStrategy)),

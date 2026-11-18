@@ -23,6 +23,40 @@ Map<String, dynamic> envelope({Map<String, dynamic>? summary}) => {
 };
 
 void main() {
+  test('legacy partial session shows 65 eligible, 44 copied, 15 skipped and 6 unprocessed', () {
+    final legacy = SmartFollowSession.fromJson({
+      'session': {'id': 's-old', 'job_id': 'j-old', 'state': 'completed_partial'},
+      'recognition_task': {'job_id': 'j-old', 'last_event_seq': 182},
+      'summary': {
+        'execution_mode': 'legacy_microbatch',
+        'eligible_asset_count': 65,
+        'file_counts': {'copied': 44, 'skipped_conflict': 15, 'blocked': 6},
+        'legacy_unprocessed_files': 6,
+      },
+    });
+    expect(legacy.recognizedCount, 182);
+    expect(legacy.eligibleCount, 65);
+    expect(legacy.copiedFileCount, 44);
+    expect(legacy.raw['skipped_file_count'], 15);
+    expect(legacy.raw['legacy_unprocessed_files'], 6);
+    expect(legacy.displayCount('copied_asset_count'), '未知');
+    final child = SmartFollowChildJob.fromJson({
+      'copy_job_id': 'old-child', 'state': 'completed_with_errors', 'batch_number': 1,
+      'file_count': 65, 'stats': {'total_files': 65, 'copied_files': 44, 'skipped_files': 15},
+    });
+    expect([child.index, child.fileCount, child.copiedFileCount, child.skippedFileCount], [1, 65, 44, 15]);
+    expect(child.displayCount('failed', child.failedFileCount), '未知');
+  });
+
+  test('continuous queue phases keep waiting and pause completion distinct', () {
+    for (final phase in ['waiting_for_writer', 'awaiting_results', 'pause_requested', 'waiting_for_storage']) {
+      final json = envelope(summary: {'execution_mode': 'continuous_queue', 'phase': phase});
+      (json['session'] as Map)['state'] = 'following';
+      final stage = resolveSmartFollowStage(session: SmartFollowSession.fromJson(json));
+      expect(stage.id, phase);
+      expect(stage.isWaiting, isTrue);
+    }
+  });
   test('installed envelope preserves identity, summary, actions and zero child history', () {
     final session = SmartFollowSession.fromJson(envelope());
     expect(session.sessionId, 'follow-example');

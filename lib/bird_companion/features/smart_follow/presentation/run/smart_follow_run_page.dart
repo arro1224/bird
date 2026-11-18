@@ -67,6 +67,7 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
   Future<void>? _refreshing;
   bool _foreground = true;
   bool _routeVisible = true;
+  bool _openingFiles = false;
   int _generation = 0, _failures = 0;
   bool get _current => widget.isCurrent?.call() ?? true;
 
@@ -97,7 +98,7 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final visible = ModalRoute.isCurrentOf(context) ?? true;
+    final visible = TickerMode.valuesOf(context).enabled && (ModalRoute.isCurrentOf(context) ?? true);
     if (_routeVisible != visible) {
       _routeVisible = visible;
       _timer?.cancel();
@@ -132,7 +133,7 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
   void _schedule() {
     _timer?.cancel();
     final interval = widget.pollInterval;
-    if (!mounted || !_foreground || !_routeVisible || !_current || interval == null || (_session?.canShowCompletion == true && _loadError == null)) return;
+    if (!mounted || !_foreground || !_routeVisible || !_current || interval == null || _session?.isFinished == true) return;
     final delay = Duration(milliseconds: (interval.inMilliseconds * (1 << _failures.clamp(0, 4))).clamp(1, 60000));
     _timer = Timer(delay, () {
       if (mounted && _foreground && _routeVisible && _current) unawaited(_refresh());
@@ -187,13 +188,10 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
   Future<void> _act(SmartFollowAction action) async {
     final session = _session;
     if (session == null || _busy || !_current || _loadError != null) return;
-    if (action.destructive) {
-      final confirmed = await _confirmDestructive(action);
-      if (confirmed != true) return;
-    }
-    if (!mounted || !_current) return;
     setState(() => _busy = true);
     try {
+      if (action.destructive && await _confirmDestructive(action) != true) return;
+      if (!mounted || !_current) return;
       await widget.repository.act(widget.sessionId, action);
     } catch (error) {
       if (mounted) _showError(error);
@@ -283,7 +281,13 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
               OutlinedButton.icon(
                 key: const Key('smart-follow-files'),
                 onPressed: () async {
-                  await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => SmartFollowFilesPage(repository: widget.repository, sessionId: session.sessionId)));
+                  if (_openingFiles) return;
+                  _openingFiles = true;
+                  try {
+                    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => SmartFollowFilesPage(repository: widget.repository, sessionId: session.sessionId)));
+                  } finally {
+                    _openingFiles = false;
+                  }
                   if (mounted && _current) unawaited(_refresh());
                 },
                 icon: const Icon(Icons.list_alt), label: const Text('查看复制文件明细'),
@@ -295,7 +299,7 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
                 for (final child in _children!.items)
                   ListTile(
                     title: Text('复制批次 ${child.copyJobId}'),
-                    subtitle: Text('${child.state.label} · 已复制 ${child.copiedFileCount} · 同名跳过 ${child.skippedFileCount} · 失败 ${child.failedFileCount} 个文件'),
+                    subtitle: Text('${child.state.label} · 已复制 ${child.displayCount("copied", child.copiedFileCount)} · 同名跳过 ${child.displayCount("skipped", child.skippedFileCount)} · 失败 ${child.displayCount("failed", child.failedFileCount)}'),
                     onTap: widget.onOpenChildJobs,
                   ),
                 if (_children!.hasMore) TextButton(onPressed: widget.onOpenChildJobs, child: const Text('查看全部复制批次')),
@@ -449,11 +453,12 @@ class _CountsCard extends StatelessWidget {
         children: [
           const Text('进度', style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 12),
-          _row('已识别', '${session.eligibleCount} 张', const Key('smart-follow-eligible')),
-          _row('待复制', '${session.pendingCount} 张', const Key('smart-follow-pending')),
-          _row('已复制照片', '${session.copiedAssetCount} 张', const Key('smart-follow-copied-assets')),
-          _row('已复制文件', '${session.copiedFileCount} 个', const Key('smart-follow-copied-files')),
+          _row('合格照片', session.displayCount('eligible_count'), const Key('smart-follow-eligible')),
+          _row('待复制', session.displayCount('pending_count'), const Key('smart-follow-pending')),
+          _row('已复制照片', session.displayCount('copied_asset_count'), const Key('smart-follow-copied-assets')),
+          _row('已复制文件', session.displayCount('copied_file_count', unit: '个'), const Key('smart-follow-copied-files')),
           if (session.raw['skipped_file_count'] is int) _row('同名跳过', '${session.raw['skipped_file_count']} 个', const Key('smart-follow-skipped-files')),
+          if (session.raw['legacy_unprocessed_files'] is int) _row('未处理文件', session.displayCount('legacy_unprocessed_files', unit: '个'), const Key('smart-follow-unprocessed-files')),
           if (session.notCopiedStoppedCount != null) _row('停止后未复制', '${session.notCopiedStoppedCount} 张', const Key('smart-follow-stopped-count')),
           if (session.notApplicableAssetCount != null) _row('不适用', '${session.notApplicableAssetCount} 张', const Key('smart-follow-not-applicable-count')),
           if (session.failedAssetCount > 0) _row('复制失败', '${session.failedAssetCount} 张', const Key('smart-follow-failed'), danger: true),

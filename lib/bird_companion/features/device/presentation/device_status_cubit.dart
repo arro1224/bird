@@ -97,14 +97,8 @@ class DeviceStatusCubit extends Cubit<DeviceStatusState> {
 
   static bool _isConnectionFailure(Object error) {
     if (error is SocketException || error is TimeoutException) return true;
-    if (error is DioException) {
-      final status = error.response?.statusCode;
-      return error.type != DioExceptionType.badResponse || status == null || status >= 500;
-    }
-    if (error is ApiException) {
-      final status = error.statusCode;
-      return error.retryable || status == null || status == 0 || status == 408 || status == 429 || status >= 500;
-    }
+    if (error is DioException) return ApiException.isTransportError(error);
+    if (error is ApiException) return error.isTransportFailure;
     return false;
   }
 

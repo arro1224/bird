@@ -4,6 +4,29 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('health probe uses a public GET; an HTTP 503 is still a response', () async {
+    final publicDio = Dio();
+    final client = ApiClient(publicDio: publicDio);
+    final uri = Uri.parse('http://192.0.2.1:8080');
+    client.configure(uri);
+    client.setSession(accessToken: 'isolated-probe-test');
+    var failures = 0;
+    final subscription = client.connectionFailures.listen((_) => failures++);
+    addTearDown(() async {
+      await subscription.cancel();
+      await client.dispose();
+    });
+    publicDio.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
+      expect(options.uri, uri.resolve('/health'));
+      expect(options.method, 'GET');
+      expect(options.followRedirects, false);
+      expect(options.headers.keys.map((key) => key.toLowerCase()), isNot(contains('authorization')));
+      handler.resolve(Response(requestOptions: options, statusCode: 503, data: 'busy'));
+    }));
+    expect(await client.probeReachability(uri, CancelToken()), true);
+    expect(failures, 0);
+  });
+
   test('only current private transport failures report global unreachability', () async {
     final dio = Dio();
     final client = ApiClient(dio: dio, publicDio: dio);

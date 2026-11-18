@@ -23,7 +23,7 @@ class SmartFollowTaskTile extends StatefulWidget {
   final String recognitionJobId;
 
   /// 打开运行页；参数是会话 ID（不是识别任务 ID）。
-  final ValueChanged<String> onOpenRun;
+  final FutureOr<void> Function(String) onOpenRun;
   final int? recognitionProcessed;
   final int? recognitionTotal;
 
@@ -31,19 +31,50 @@ class SmartFollowTaskTile extends StatefulWidget {
   State<SmartFollowTaskTile> createState() => _SmartFollowTaskTileState();
 }
 
-class _SmartFollowTaskTileState extends State<SmartFollowTaskTile> {
+class _SmartFollowTaskTileState extends State<SmartFollowTaskTile> with WidgetsBindingObserver {
   bool _resolved = false;
   Timer? _poll;
   bool _reading = false;
+  bool _opening = false;
+  bool _visible = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.repository.addListener(_changed);
     unawaited(_resolve());
-    _poll = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (mounted && (ModalRoute.isCurrentOf(context) ?? true)) unawaited(_resolve(force: true));
-    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _visible = TickerMode.valuesOf(context).enabled && (ModalRoute.isCurrentOf(context) ?? true);
+    _updatePoll();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => _updatePoll();
+
+  void _updatePoll() {
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    final foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    if (!_visible || !foreground || widget.repository.snapshotForJob(widget.recognitionJobId)?.isFinished == true) {
+      _poll?.cancel();
+      _poll = null;
+      return;
+    }
+    _poll ??= Timer.periodic(const Duration(seconds: 2), (_) => unawaited(_resolve(force: true)));
+  }
+
+  Future<void> _open(String id) async {
+    if (_opening) return;
+    _opening = true;
+    try {
+      await widget.onOpenRun(id);
+    } finally {
+      _opening = false;
+    }
   }
 
   @override
@@ -55,11 +86,14 @@ class _SmartFollowTaskTileState extends State<SmartFollowTaskTile> {
       widget.repository.addListener(_changed);
     }
     _resolved = false;
+    _updatePoll();
     unawaited(_resolve());
   }
 
   void _changed() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    _updatePoll();
+    setState(() {});
   }
 
   Future<void> _resolve({bool force = false}) async {
@@ -112,23 +146,26 @@ class _SmartFollowTaskTileState extends State<SmartFollowTaskTile> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(stage.label),
+            if (session.createdAt case final date?)
+              Text(MaterialLocalizations.of(context).formatShortDate(date.toLocal())),
             if (session.isContinuous)
               Text(session.summary?.recognitionProcessed == null
                 ? '正在读取识别与文件队列状态'
                 : '已识别 ${session.summary!.recognitionProcessed} 个索引项 · 已复制 ${session.summary!.fileCounts['copied']?.toString() ?? '待读取'} 个文件')
             else
-              Text('$recognitionPart已识别 ${session.eligibleCount} 张 · 待复制 ${session.pendingCount} 张 · 已复制 ${session.copiedAssetCount} 张'),
+              Text('$recognitionPart合格 ${session.displayCount("eligible_count")} · 待复制 ${session.displayCount("pending_count")} · 已复制 ${session.displayCount("copied_file_count", unit: "个文件")}'),
           ],
         ),
         isThreeLine: true,
         trailing: const Icon(Icons.chevron_right),
-        onTap: () => widget.onOpenRun(session.sessionId),
+        onTap: () => _open(session.sessionId),
       ),
     );
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _poll?.cancel();
     widget.repository.removeListener(_changed);
     super.dispose();

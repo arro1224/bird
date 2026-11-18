@@ -28,6 +28,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     this.retryDelay = const Duration(seconds: 1),
     Stream<void>? transportChanges,
     Stream<void>? connectionFailures,
+    this.probeReachability,
   }) : super(const DeviceSessionState()) {
     _requestFailureSubscription = connectionFailures?.listen((_) => reportUnreachable());
     _networkSubscription = _connectivityMonitor.onNetworkChanged.listen((available) {
@@ -98,6 +99,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       // Session activation is not yet protected-HTTP verification. Its address
       // may be used only when this intent finally commits.
       if (isClosed || !state.isConnected || device == null || device.id != change.deviceId || (_activeAttempt != null && !_activeAttempt!.committed)) return;
+      if (device.baseUri != change.baseUri) _cancelReachabilityProbe();
       emit(
         state.copyWith(
           device: device.copyWith(baseUri: change.baseUri),
@@ -115,6 +117,9 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   final Future<void> Function()? onConnectionRecovered;
   final void Function(Map<String, dynamic>)? diagnostic;
   final Duration retryDelay;
+  final Future<bool> Function(Uri baseUri, CancelToken cancelToken)? probeReachability;
+  static const _reachabilityBudget = Duration(seconds: 3);
+  CancelToken? _reachabilityProbe;
   static const _eventUnavailableMessage = '实时事件连接暂不可用，页面会在刷新时读取最新状态。';
   late final StreamSubscription<bool> _networkSubscription;
   late final StreamSubscription<EventConnectionState> _eventSubscription;
@@ -177,6 +182,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   bool acceptsNetworkIntent(String id) => !isClosed && _intentId == id;
 
   void _invalidateConnection({bool preserveIntent = false}) {
+    _cancelReachabilityProbe();
     _activeAttempt?.record('connection_superseded', {'final_trigger': 'new_intent_or_cancel'});
     ++_connectionGeneration;
     _activeAttempt?.token.cancel('Connection intent superseded');
@@ -186,6 +192,11 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       _intentId = null;
       _networkIntentPending = false;
     }
+  }
+
+  void _cancelReachabilityProbe() {
+    _reachabilityProbe?.cancel('Device session changed');
+    _reachabilityProbe = null;
   }
 
   ConnectionAttempt _beginAttempt(String intent, {String? attemptId, String? deviceId, String? operationId, CancelToken? token}) {
@@ -398,12 +409,51 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     await verifySavedSession();
   }
 
-  /// v10 返修问题 8：子页面请求失败时回写全局连接状态。子页面捕获到
-  /// 连接类错误（网络不可达/超时）调用本方法；全局状态降级为重连中并
-  /// 触发一次轻量健康检查，避免"首页已连接、子页面请求全失败"的分叉。
+  /// A page error stays local unless a separate, bounded probe fails.
+  /// Actual Wi-Fi loss still enters recovery immediately via transport events.
   void reportUnreachable([Object? error]) {
-    if (isClosed || provisioningHandoffActive || state.device == null) return;
-    if (state.phase != DeviceSessionPhase.connected) return;
+    final device = state.device;
+    final probe = probeReachability;
+    if (isClosed || provisioningHandoffActive || !state.isConnected ||
+        device == null || probe == null || _reachabilityProbe != null) {
+      return;
+    }
+    final token = _reachabilityProbe = CancelToken();
+    unawaited(_checkReachability(device, probe, token));
+  }
+
+  Future<void> _checkReachability(
+    DeviceConnection device,
+    Future<bool> Function(Uri, CancelToken) probe,
+    CancelToken token,
+  ) async {
+    final clock = Stopwatch()..start();
+    try {
+      final reachable = await probe(device.baseUri, token).timeout(_reachabilityBudget, onTimeout: () => false);
+      if (isClosed || provisioningHandoffActive || !state.isConnected ||
+          !identical(_reachabilityProbe, token) || state.device?.id != device.id ||
+          state.device?.baseUri != device.baseUri) {
+        return;
+      }
+      try {
+        diagnostic?.call({
+          'event': 'business_failure_reachability_checked',
+          'device_id': device.id,
+          'generation': _connectionGeneration,
+          'elapsed_ms': clock.elapsedMilliseconds,
+          'outcome': reachable ? 'reachable' : 'unreachable',
+        });
+      } catch (_) {
+        // Diagnostics must not affect the connection decision.
+      }
+      if (reachable) return;
+    } catch (_) {
+      // An unexpected or cancelled probe is not proof of a network failure.
+      return;
+    } finally {
+      if (identical(_reachabilityProbe, token)) _reachabilityProbe = null;
+      token.cancel('Reachability probe finished');
+    }
     emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '盒子连接暂时不可用，正在恢复…'));
     unawaited(verifySavedSession(intent: 'page_reported_unreachable'));
   }

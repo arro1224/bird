@@ -16,11 +16,14 @@ void main() {
   test('latest summary is discovered from server history rather than stale saved cancellation', () async {
     final fixture = await _RecoveryFixture.create();
     addTearDown(fixture.close);
-    fixture.repository.history = const CopyJobPage(items: [CopyJobListItem(copyJobId: 'new-follow-child', state: CopyJobState.completed)], hasMore: false);
+    fixture.repository.history = const CopyJobPage(items: [
+      CopyJobListItem(copyJobId: 'new-follow-child', state: CopyJobState.completed, isFollowChild: true),
+      CopyJobListItem(copyJobId: 'recent-ordinary', state: CopyJobState.completed),
+    ], hasMore: false);
     await fixture.recovery.recover();
-    expect(fixture.repository.reads, contains('new-follow-child'));
-    expect(fixture.recovery.latestHistoryId('box-a'), 'new-follow-child');
-    expect(fixture.store.forDevice('box-a').any((job) => job.jobId == 'new-follow-child'), isTrue);
+    expect(fixture.repository.reads, isNot(contains('new-follow-child')));
+    expect(fixture.recovery.latestHistoryId('box-a'), 'recent-ordinary');
+    expect(fixture.store.forDevice('box-a').any((job) => job.jobId == 'recent-ordinary'), isTrue);
   });
   test('存储重建保留设备隔离和多活动任务，终态仅作为最近结果', () async {
     final disk = _Disk();
@@ -162,10 +165,10 @@ void main() {
         },
       ),
     );
-    expect(find.text('继续查看复制任务'), findsOneWidget);
+    expect(find.text('继续查看普通复制任务'), findsOneWidget);
     expect(find.textContaining('等待盒子连接'), findsOneWidget);
     expect(arguments, isNull);
-    await tester.tap(find.text('继续查看复制任务'));
+    await tester.tap(find.text('继续查看普通复制任务'));
     await tester.pumpAndSettle();
     expect((arguments as CopyJobDetailArgs).copyJobId, 'job-a');
     expect((arguments as CopyJobDetailArgs).deviceId, 'box-a');

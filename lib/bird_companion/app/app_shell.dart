@@ -7,6 +7,7 @@ import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/widgets/disconnected_banner.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/core/widgets/lazy_indexed_stack.dart';
+import 'package:aves/bird_companion/core/widgets/tab_back_dispatch.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/album_home_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/settings_experience_root.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/task_experience_root.dart';
@@ -227,31 +228,31 @@ class _TabNavigator extends StatelessWidget {
       enabled: selected == index,
       // 仅当内层 Navigator 有根路由之外的页面时才转发 pop；tab 根页面按返回
       // 若直接 pop 会弹掉唯一路由，导致 _history 为空、下次 build 断言红屏。
-      onPopWithResult: (result) {
-        final navigator = navigatorKey.currentState;
-        if (navigator != null && navigator.canPop()) navigator.pop(result);
-      },
-      child: Navigator(
-        key: navigatorKey,
-        observers: [
-          BirdFeedbackNavigatorObserver(),
-          if (onChildRouteChanged != null)
-            _TabRouteVisibilityObserver(
-              enabled: index == 2,
-              onChanged: onChildRouteChanged!,
-            ),
-        ],
-        onGenerateRoute: (settings) {
-          if (settings.name == Navigator.defaultRouteName) {
-            return MaterialPageRoute<void>(settings: settings, builder: (_) => root);
-          }
-          final route = onGenerateRoute?.call(settings);
-          return route ??
-              MaterialPageRoute<void>(
-                settings: settings,
-                builder: (_) => const Scaffold(body: Center(child: Text('页面暂不可用'))),
-              );
-        },
+      onPopWithResult: (result) => dispatchTabBack(navigatorKey.currentState, result),
+      child: TickerMode(
+        enabled: selected == index,
+        child: Navigator(
+          key: navigatorKey,
+          observers: [
+            BirdFeedbackNavigatorObserver(),
+            if (onChildRouteChanged != null)
+              _TabRouteVisibilityObserver(
+                enabled: index == 2,
+                onChanged: onChildRouteChanged!,
+              ),
+          ],
+          onGenerateRoute: (settings) {
+            if (settings.name == Navigator.defaultRouteName) {
+              return MaterialPageRoute<void>(settings: settings, builder: (_) => root);
+            }
+            final route = onGenerateRoute?.call(settings);
+            return route ??
+                MaterialPageRoute<void>(
+                  settings: settings,
+                  builder: (_) => const Scaffold(body: Center(child: Text('页面暂不可用'))),
+                );
+          },
+        ),
       ),
     ),
   );
