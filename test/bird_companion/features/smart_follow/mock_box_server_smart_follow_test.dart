@@ -159,4 +159,64 @@ void main() {
     expect(waiting.errorCode, 'SMART_FOLLOW_TARGET_UNAVAILABLE');
     expect(waiting.allowedActions, [SmartFollowAction.pause, SmartFollowAction.stopFollowing]);
   });
+
+  test('会话列表：App 回前台能恢复跟随卡片（discoverSessions 不再吃 404）', () async {
+    final repository = SmartFollowRepository(api);
+    addTearDown(repository.dispose);
+    await repository.discoverSessions();
+    expect(repository.knownSessions, isEmpty);
+
+    final jobId = await createAnalysisJob();
+    final started = await repository.startOnRecognitionJob(
+      jobId,
+      const SmartFollowStartRequest(targetMediaId: 'mock-media-usb-1', reviewExportEnabled: false),
+    );
+
+    // 模拟 App 冷启动：新仓库只能靠列表接口发现已有会话。
+    final fresh = SmartFollowRepository(api);
+    addTearDown(fresh.dispose);
+    await fresh.discoverSessions();
+    expect(fresh.knownSessions.map((session) => session.sessionId), contains(started.sessionId));
+  });
+
+  test('auto-smart-follow 驱动器：没有外部控制端点也能把识别任务推进到完成', () async {
+    await client.dispose();
+    await server.close();
+    server = MockBoxServer(
+      photoCount: 14,
+      assetDirectory: Directory('tool/mock_box_server/assets'),
+      logRequests: false,
+      workflowAutoAdvance: true,
+      autoSmartFollow: true,
+    );
+    final baseUri = await server.start();
+    client = ApiClient()..configure(baseUri);
+    api = SmartFollowApi(client);
+
+    final raw = await client.post(
+      '/api/v1/projects/mock-batch-current/analysis-jobs',
+      data: const {
+        'mode': 'standard',
+        'include_grouping': false,
+        'smart_follow': {'target_media_id': 'mock-media-usb-1', 'eligibility_mode': 'recognized_only_v1'},
+      },
+    );
+    final jobId = raw['job_id'].toString();
+    final sessionId = raw['smart_follow_session_id'].toString();
+
+    var job = raw;
+    var session = await api.session(sessionId);
+    for (var i = 0; i < 40 && session.state != SmartFollowState.completed; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      job = await client.get('/api/v1/jobs/$jobId');
+      session = await api.session(sessionId);
+    }
+
+    // 14 张按 8 + 6 封两批；识别任务本体必须同步到 14（此前被推进器跳过，永远停 0）。
+    expect(job['finished_count'], 14);
+    expect(session.state, SmartFollowState.completed);
+    expect(session.recognizedCount, 14);
+    expect(session.eligibleCount, 14);
+    expect(session.copiedAssetCount, 14);
+  });
 }

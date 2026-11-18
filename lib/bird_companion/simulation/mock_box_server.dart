@@ -20,6 +20,7 @@ class MockBoxServer {
     this.progressiveMedia = false,
     this.emitAssetReadyEvents = true,
     this.workflowAutoAdvance = false,
+    this.autoSmartFollow = false,
     this.stateFile,
     this.networkModeProvider,
     this.embeddedDemo = false,
@@ -84,6 +85,16 @@ class MockBoxServer {
   /// clock）路径默认关闭，保证既有测试行为零变化；演示启动脚本（server.dart）
   /// 默认开启。
   final bool workflowAutoAdvance;
+
+  /// SmartFollow 自动驱动器开关。
+  ///
+  /// 带 `smart_follow_session_id` 的分析任务会被 [_tickWorkflowJobs] 刻意跳过
+  /// （见该处注释），进度只能由 `POST /mock/control/smart-follow` 驱动；演示
+  /// 现场没人去 curl 这个测试端点，于是「边识别边复制」永远停在 0%。开启后
+  /// 每 tick 自动 commit 一批识别结果，等价于把人工驱动内置化。
+  ///
+  /// 默认关闭：测试钩子与契约测试的行为保持零变化。
+  final bool autoSmartFollow;
   final File? stateFile;
   final void Function(String message) requestLogSink;
   late final DateTime Function() _clock;
@@ -103,6 +114,7 @@ class MockBoxServer {
   final Map<String, int> _workflowElapsedMs = {};
   final Map<String, DateTime> _workflowLastTickAt = {};
   Timer? _workflowTicker;
+  Timer? _smartFollowTicker;
   // SmartFollow 边识别边复制内存态（联合开发任务书 §6.3–§6.7）。
   // 只模拟状态机与接口，不做真识别/真复制；推进靠 POST /mock/control/smart-follow。
   String? _smartFollowSessionId;
@@ -229,6 +241,14 @@ class MockBoxServer {
         project['state'] = 'ready_to_review';
       }
     }
+    if (job['job_type'] == 'analysis') {
+      // 分析完成 → 批次进入可审阅，计数随照片状态刷新（真实盒子会主动更新摘要）。
+      _syncCreatedProjectCounts();
+      final analysisProjectId = job['source_project_id']?.toString();
+      if (analysisProjectId != null && analysisProjectId.isNotEmpty) {
+        _createdProjects[analysisProjectId]?['state'] = 'ready_to_review';
+      }
+    }
     await _persistState();
     if (emitEvent) await _emitJob(job);
   }
@@ -276,6 +296,13 @@ class MockBoxServer {
         unawaited(_tickWorkflowJobs());
       });
     }
+    if (autoSmartFollow) {
+      // 「边识别边复制」演示自走：1s 一批，60 张约 8s 识别完，再由同一状态机
+      // 走 draining → complete_children 收尾。
+      _smartFollowTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+        _driveSmartFollow();
+      });
+    }
     unawaited(
       server.forEach((request) async {
         try {
@@ -308,6 +335,8 @@ class MockBoxServer {
   Future<void> close() async {
     _workflowTicker?.cancel();
     _workflowTicker = null;
+    _smartFollowTicker?.cancel();
+    _smartFollowTicker = null;
     for (final socket in List<WebSocket>.of(_eventSockets)) {
       await socket.close();
     }
@@ -642,6 +671,18 @@ class MockBoxServer {
       } else {
         await _json(request, HttpStatus.created, started);
       }
+      return;
+    }
+    // 会话列表：App 启动/回前台时用它恢复「边识别边复制」卡片
+    // （SmartFollowRepository.discoverSessions，2026-11-18 队友提交 d19b80bca
+    // 引入）。缺这条路由时 App 每次进任务页都吃 404，卡片在 App 重启后不恢复。
+    if (method == 'GET' && path == '/api/v1/smart-follow-sessions') {
+      final snapshot = _smartFollowSnapshot();
+      await _json(request, HttpStatus.ok, {
+        'items': snapshot == null ? <Map<String, dynamic>>[] : [snapshot],
+        'has_more': false,
+        'next_cursor': null,
+      });
       return;
     }
     final smartFollowSession = RegExp(r'^/api/v1/smart-follow-sessions/([^/]+)$').firstMatch(path);
@@ -2172,6 +2213,22 @@ class MockBoxServer {
     'updated_at': DateTime.now().toUtc().toIso8601String(),
   };
 
+  /// 把审阅计数同步到「本次新建的批次」摘要上。
+  ///
+  /// 真实盒子在分析完成、单张决定、批量决定之后都会更新批次摘要里的
+  /// analyzed / pending_review / keep / discard 计数；缺了这一步，App 相册顶部的
+  /// 「待确认 / 已保留 / 已弃选」胶囊在演示时永远停在 0，看起来像没识别过。
+  void _syncCreatedProjectCounts() {
+    final id = _currentCreatedProjectId;
+    if (id == null) return;
+    final project = _createdProjects[id];
+    if (project == null) return;
+    project['analyzed_count'] = _photos.where((photo) => photo['analysis_state'] == 'completed').length;
+    project['pending_review_count'] = _photos.where((photo) => photo['keep_state'] == 'pending').length;
+    project['keep_count'] = _photos.where((photo) => photo['keep_state'] == 'keep' || photo['keep_state'] == 'featured').length;
+    project['discard_count'] = _photos.where((photo) => photo['keep_state'] == 'discard').length;
+  }
+
   Map<String, dynamic> _currentBatch() {
     final keepCount = _photos.where((photo) => photo['keep_state'] == 'keep' || photo['keep_state'] == 'featured').length;
     final discardCount = _photos.where((photo) => photo['keep_state'] == 'discard').length;
@@ -2482,6 +2539,7 @@ class MockBoxServer {
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
     _decisions[fileId] = updated;
+    _syncCreatedProjectCounts();
     photo['keep_state'] = updated['keep_state'] ?? photo['keep_state'];
     photo['user_tags'] = updated['user_tags'] ?? photo['user_tags'];
     photo['version'] = version;
@@ -2537,6 +2595,7 @@ class MockBoxServer {
       });
       succeeded.add(id);
     }
+    _syncCreatedProjectCounts();
     await _json(request, HttpStatus.ok, {
       'succeeded_ids': succeeded,
       'failed': failed,
@@ -3377,6 +3436,30 @@ class MockBoxServer {
     }
     await _persistState();
     await _emitJob(job);
+  }
+
+  /// 自动驱动器（`--auto-smart-follow`）：把"人工 curl 控制端点"内置化。
+  ///
+  /// 刻意复用 [_advanceSmartFollow]，与动作端点走完全相同的状态机与副作用
+  /// （封批、子任务分页、识别任务 finished_count 同步、job_updated 广播），
+  /// 因此不会出现"会话快照与任务进度撕裂"的情况——那正是推进器跳过这类任务
+  /// 的原因。
+  void _driveSmartFollow() {
+    if (_smartFollowSessionId == null) return;
+    final total = (_jobs[_smartFollowJobId]?['total_count'] as num?)?.toInt() ?? 0;
+    if (_smartFollowState == 'following') {
+      if (total > 0 && _smartFollowRecognized >= total) {
+        _advanceSmartFollow(const {'action': 'finish_recognition'});
+        return;
+      }
+      final remaining = total > 0 ? total - _smartFollowRecognized : _smartFollowBatchSize;
+      final step = min(_smartFollowBatchSize, remaining);
+      if (step > 0) {
+        _advanceSmartFollow({'action': 'commit', 'count': step, 'eligible': true});
+      }
+    } else if (_smartFollowState == 'draining') {
+      _advanceSmartFollow(const {'action': 'complete_children'});
+    }
   }
 
   String? _advanceSmartFollow(Map<String, dynamic> body) {
