@@ -11,7 +11,10 @@ final class BleDiagnosticExport {
     required DateTime generatedAt,
     Map<String, dynamic> retention = const {},
     Map<String, dynamic>? exporterBuild,
+    Map<String, dynamic>? phoneDiagnostics,
   }) {
+    phoneEventCount = (phoneDiagnostics?['events'] as List?)?.length;
+    _phoneTruncated = (phoneDiagnostics?['retention'] as Map?)?['truncated'] == true;
     this.traceId = traceId;
     retainedEventCount = events.length;
     retainedScanCount = scans.length;
@@ -67,7 +70,7 @@ final class BleDiagnosticExport {
         'secondary_errors_dropped': failure['secondary_errors_dropped'] ?? 0,
       },
     };
-    fullJson = jsonEncode({...header, 'scan_sessions': scans, 'connection_events': events});
+    fullJson = jsonEncode({...header, 'scan_sessions': scans, 'connection_events': events, 'phone_diagnostics': ?phoneDiagnostics});
     payloadSha256 = sha256.convert(utf8.encode(fullJson)).toString();
     final firstError = failure != null
         ? {..._pick(failure, _eventKeys), ..._pick(Map<String, dynamic>.from(failure['first_terminal_error'] as Map), _eventKeys)}
@@ -76,6 +79,13 @@ final class BleDiagnosticExport {
         : _pick(requestedErrors.isNotEmpty ? requestedErrors.first : errors.first, _eventKeys);
     final summary = <String, dynamic>{
       ...header,
+      if (phoneDiagnostics != null)
+        'phone_diagnostics': {
+          'source': 'phone',
+          'retained_events': phoneEventCount,
+          'truncated': (phoneDiagnostics['retention'] as Map?)?['truncated'],
+          'box_logs_included': false,
+        },
       if (retention.containsKey('per_flow_retention'))
         'retention': {
           'export_scope': retention['export_scope'],
@@ -161,10 +171,13 @@ final class BleDiagnosticExport {
 
   late final String summaryJson;
   late final String traceId;
+  late final int? phoneEventCount;
+  late final bool _phoneTruncated;
   late final int retainedEventCount, retainedScanCount;
   late final String payloadSha256;
   late final Map<String, dynamic> retention;
   bool get truncated =>
+      _phoneTruncated ||
       retention.isEmpty ||
       (retention['observations_dropped'] as int? ?? 0) > 0 ||
       ['scan_sessions', 'connection_events'].any((key) => (retention[key] as Map?)?['truncated'] != false) ||

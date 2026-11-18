@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
@@ -57,11 +58,14 @@ class BatchListPage extends StatelessWidget {
       appBar: BirdSecondaryAppBar(
         title: openMode == BatchOpenMode.gallery ? '拍摄记录' : '照片挑选',
         helpTooltip: '拍摄记录说明',
-        onHelp: () => showDialog<void>(
-          context: context,
-          builder: (_) => const AlertDialog(
-            title: Text('什么是拍摄记录？'),
-            content: Text('每次导入存储卡或完成一次拍摄行程，盒子都会建立一条拍摄记录，方便你查找这次拍摄的照片。'),
+        onHelp: () => guardBirdNavigation(
+          context,
+          () => showDialog<void>(
+            context: context,
+            builder: (_) => const AlertDialog(
+              title: Text('什么是拍摄记录？'),
+              content: Text('每次导入存储卡或完成一次拍摄行程，盒子都会建立一条拍摄记录，方便你查找这次拍摄的照片。'),
+            ),
           ),
         ),
       ),
@@ -148,9 +152,12 @@ class _ViewState extends State<_View> {
                         batch: item,
                         actionLabel: widget.openMode == BatchOpenMode.gallery ? '查看图库' : '选择场景',
                         onOpen: () => _openBatch(context, item),
-                        onResume: () => showDialog(
-                          context: context,
-                          builder: (_) => BatchResumeDialog(onConfirm: () => context.read<BatchListCubit>().resume(item.id)),
+                        onResume: () => guardBirdNavigation(
+                          context,
+                          () => showDialog(
+                            context: context,
+                            builder: (_) => BatchResumeDialog(onConfirm: () => context.read<BatchListCubit>().resume(item.id)),
+                          ),
                         ),
                       ),
                     ),
@@ -178,9 +185,12 @@ class _ViewState extends State<_View> {
                         batch: item,
                         actionLabel: widget.openMode == BatchOpenMode.gallery ? '查看图库' : '选择场景',
                         onOpen: () => _openBatch(context, item),
-                        onResume: () => showDialog(
-                          context: context,
-                          builder: (_) => BatchResumeDialog(onConfirm: () => context.read<BatchListCubit>().resume(item.id)),
+                        onResume: () => guardBirdNavigation(
+                          context,
+                          () => showDialog(
+                            context: context,
+                            builder: (_) => BatchResumeDialog(onConfirm: () => context.read<BatchListCubit>().resume(item.id)),
+                          ),
                         ),
                       ),
                     ),
@@ -204,25 +214,28 @@ class _ViewState extends State<_View> {
       batchId: batch.id,
       batchName: batch.name,
     );
-    await Navigator.of(context).pushNamed(
-      widget.openMode == BatchOpenMode.gallery ? BirdRoutes.gallery : BirdRoutes.scenes,
-      arguments: widget.openMode == BatchOpenMode.gallery
-          ? GalleryArgs(
-              batch.id,
-              batchName: batch.name,
-              createdAt: batch.createdAt,
-              totalCount: batch.totalFiles,
-              pendingCount: batch.pendingReviewCount,
-              keepCount: batch.keepCount,
-              discardCount: batch.discardCount,
-              reviewContext: reviewContext,
-            )
-          : SceneListArgs(
-              batch.id,
-              batchName: batch.name,
-              totalCount: batch.totalFiles,
-              reviewContext: reviewContext,
-            ),
+    await guardBirdNavigation(
+      context,
+      () => Navigator.of(context).pushNamed(
+        widget.openMode == BatchOpenMode.gallery ? BirdRoutes.gallery : BirdRoutes.scenes,
+        arguments: widget.openMode == BatchOpenMode.gallery
+            ? GalleryArgs(
+                batch.id,
+                batchName: batch.name,
+                createdAt: batch.createdAt,
+                totalCount: batch.totalFiles,
+                pendingCount: batch.pendingReviewCount,
+                keepCount: batch.keepCount,
+                discardCount: batch.discardCount,
+                reviewContext: reviewContext,
+              )
+            : SceneListArgs(
+                batch.id,
+                batchName: batch.name,
+                totalCount: batch.totalFiles,
+                reviewContext: reviewContext,
+              ),
+      ),
     );
     if (context.mounted) {
       final cubit = context.read<BatchListCubit>();
@@ -237,9 +250,12 @@ class _ViewState extends State<_View> {
     if (_resolvingBatchId != null) return;
     final timing = GalleryTiming.start()?..event('continue_tap', {'total': batch.totalFiles});
     setState(() => _resolvingBatchId = batch.id);
-    await Navigator.of(context).pushNamed(
-      BirdRoutes.gallery,
-      arguments: currentBatchGalleryArgs(batch, timing: timing),
+    await guardBirdNavigation(
+      context,
+      () => Navigator.of(context).pushNamed(
+        BirdRoutes.gallery,
+        arguments: currentBatchGalleryArgs(batch, timing: timing),
+      ),
     );
     if (!mounted || !context.mounted) return;
     setState(() => _resolvingBatchId = null);

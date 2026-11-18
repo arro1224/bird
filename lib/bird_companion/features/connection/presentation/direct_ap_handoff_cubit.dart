@@ -334,11 +334,25 @@ String directApErrorKind(Object error) {
 String directApErrorMessage(Object error) {
   if (error is ProvisioningException && error.code == ProvisioningErrorCode.deviceIdMismatch) return '设备身份不一致，已停止连接。';
   if (error is ProvisioningCredentialSaveException) return '授权已取得，但手机保存失败。可以继续验证以重试保存，不会再次兑换授权。';
+  if (error is ProvisioningException) {
+    switch (error.code) {
+      case ProvisioningErrorCode.authorizationRequired:
+        return '盒子可达，但手机尚未取得有效授权。请点「返回并重新配对」完成验证码授权。';
+      case ProvisioningErrorCode.pairingSessionExpired:
+        return '盒子可达，但配对授权已过期。请点「返回并重新配对」重新授权。';
+      case ProvisioningErrorCode.pairingSessionUsed:
+        return '盒子可达，但本次配对授权已经使用。请点「返回并重新配对」重新授权。';
+      case ProvisioningErrorCode.pairingSessionInvalid:
+        return '盒子可达，但配对授权不匹配。请点「返回并重新配对」重新授权。';
+      default:
+        break;
+    }
+  }
   if (error is PairingRequiredException ||
       error is ProvisioningException &&
           {ProvisioningErrorCode.authorizationRequired, ProvisioningErrorCode.pairingSessionExpired, ProvisioningErrorCode.pairingSessionUsed, ProvisioningErrorCode.pairingSessionInvalid}.contains(error.code) ||
       error is ApiException && {401, 403}.contains(error.statusCode)) {
-    return '盒子可达，但授权已失效（授权记录在兑换前已被消费，无法自动重试）。请点「返回并重新配对」重新安全授权，无需重新启动热点。';
+    return '盒子可达，但当前授权已失效。请点「返回并重新配对」重新安全授权，无需重新启动热点。';
   }
   return '盒子验证未通过，已停止自动重试。请查看连接诊断或返回。';
 }

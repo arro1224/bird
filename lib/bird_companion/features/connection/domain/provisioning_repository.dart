@@ -7,6 +7,12 @@ abstract interface class DirectApHttpPreparation {
   Future<void> cancelDirectApHttp(String deviceId);
 }
 
+/// Local readiness only; HTTP identity and authorization must still be verified.
+/// Reading this view never consumes a pairing session or exposes its secrets.
+abstract interface class ProvisioningHttpAuthorizationReadiness {
+  Future<bool> hasHttpAuthorization(String deviceId);
+}
+
 /// Last identity-correlated snapshot read during Device Info verification.
 /// It is only an endpoint hint; HTTP identity/auth still have to be checked.
 abstract interface class ProvisioningEndpointSnapshot {

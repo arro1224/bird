@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/network_diagnostics_page.dart';
@@ -54,8 +55,11 @@ class FaqDetailPage extends StatelessWidget {
                 subtitle: '检查当前连接链路',
                 leading: const Icon(Icons.wifi_find_rounded, color: AppColors.forestPrimary),
                 trailing: const BirdChevron(),
-                onTap: () => Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(builder: (_) => const NetworkDiagnosticsPage()),
+                onTap: () => guardBirdNavigation(
+                  context,
+                  () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(builder: (_) => const NetworkDiagnosticsPage()),
+                  ),
                 ),
               ),
               BirdSettingsRow(
@@ -64,8 +68,11 @@ class FaqDetailPage extends StatelessWidget {
                 showDivider: false,
                 leading: const Icon(Icons.archive_outlined, color: AppColors.forestPrimary),
                 trailing: const BirdChevron(),
-                onTap: () => Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(builder: (_) => const SystemLogsPage()),
+                onTap: () => guardBirdNavigation(
+                  context,
+                  () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(builder: (_) => const SystemLogsPage()),
+                  ),
                 ),
               ),
             ],
@@ -270,14 +277,17 @@ class UserGuidePage extends StatelessWidget {
                   leading: Icon(const [Icons.link_rounded, Icons.photo_outlined, Icons.storage_outlined][i], color: AppColors.forestPrimary),
                   trailing: const BirdChevron(),
                   showDivider: i != 2,
-                  onTap: () => Navigator.of(context).push<void>(
-                    MaterialPageRoute<void>(
-                      builder: (_) => FaqDetailPage(
-                        question: i == 0
-                            ? '连接不上设备'
-                            : i == 1
-                            ? '如何修改 AI 识别结果'
-                            : '复制失败如何重试',
+                  onTap: () => guardBirdNavigation(
+                    context,
+                    () => Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => FaqDetailPage(
+                          question: i == 0
+                              ? '连接不上设备'
+                              : i == 1
+                              ? '如何修改 AI 识别结果'
+                              : '复制失败如何重试',
+                        ),
                       ),
                     ),
                   ),

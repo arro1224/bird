@@ -24,7 +24,7 @@ class ReviewApi {
     ]);
     final data = requests[0] as Map<String, dynamic>;
     final photoData = data['file'] is Map ? Map<String, dynamic>.from(data['file'] as Map) : data;
-    final photo = PhotoSummary.fromJson(photoData);
+    var photo = PhotoSummary.fromJson(photoData);
     final subjects = (data['subjects'] as List? ?? const []).whereType<Map>().map((x) => SubjectBox.fromJson(Map<String, dynamic>.from(x))).toList();
     final historyData = requests[1] as Map<String, dynamic>;
     final history = (historyData['items'] as List? ?? const []).whereType<Map>().map((item) {
@@ -47,6 +47,7 @@ class ReviewApi {
             ...decisionMap,
             if (photoData.containsKey('user_tags')) 'user_tags': photo.userTags,
           });
+    photo = PhotoSummary.fromJson({...photo.toJson(), 'user_species_id': decision.userSpeciesId, 'user_species': decision.userSpecies});
     return ReviewDetail(
       photo: PhotoDetail(
         summary: photo,
@@ -147,7 +148,9 @@ class ReviewApi {
       fileId: photo.id,
       keepState: KeepStateWireValue.fromWire(photo.keepState),
       userTags: photo.userTags,
-      version: photo.version,
+      userSpeciesId: photo.userSpeciesId,
+      userSpecies: photo.userSpecies,
+      version: 0,
     );
   }
 }

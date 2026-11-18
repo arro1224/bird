@@ -11,7 +11,7 @@ import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 
-class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictResolver, AuthoritativeReviewWriter, SyncedReviewReceiptConsumer {
+class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictResolver, AuthoritativeReviewWriter, SyncedReviewReceiptConsumer, AiSpeciesRestorer {
   ReviewRepositoryImpl(
     this._api,
     this._connectivity,
@@ -33,15 +33,19 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
 
   @override
   Future<List<BirdGroup>> groups(String id, {String? sceneId}) async {
-    final key = 'album:groups:${_cacheNamespace()}:$id:${sceneId ?? ''}';
+    final namespace = _cacheNamespace();
+    final key = 'album:groups:$namespace:$id:${sceneId ?? ''}';
     try {
-      final items = (await _api.groups(
+      final remote = await _api.groups(
         id,
         sceneId: sceneId,
-      )).map(_withOptimisticGroup).toList(growable: false);
+      );
+      _ensureNamespace(namespace);
+      final items = remote.map(_withOptimisticGroup).toList(growable: false);
       await _cache.write(key, items.map((item) => item.toJson()).toList());
       return items;
     } on ApiException {
+      _ensureNamespace(namespace);
       final raw = _cache.read<List<dynamic>>(key);
       if (raw == null) rethrow;
       return raw.whereType<Map>().map((item) => BirdGroup.fromJson(Map<String, dynamic>.from(item))).map(_withOptimisticGroup).toList();
@@ -50,12 +54,16 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
 
   @override
   Future<ReviewDetail> detail(String id) async {
-    final key = 'album:detail:${_cacheNamespace()}:$id';
+    final namespace = _cacheNamespace();
+    final key = 'album:detail:$namespace:$id';
     try {
-      final detail = _withOptimisticDetail(await _api.detail(id));
+      final remote = await _api.detail(id);
+      _ensureNamespace(namespace);
+      final detail = _withOptimisticDetail(remote);
       await _cache.write(key, _detailToJson(detail));
       return detail;
     } on ApiException {
+      _ensureNamespace(namespace);
       final raw = _cache.read<Map>(key);
       if (raw != null) {
         return _withOptimisticDetail(
@@ -82,10 +90,24 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
   Future<ReviewSaveReceipt> saveAuthoritative(
     UserDecision v, {
     String? projectId,
-  }) async {
+  }) => _saveDecision(v, projectId: projectId);
+
+  @override
+  Future<ReviewSaveReceipt> restoreAiSpecies(UserDecision current, {String? projectId}) => _saveDecision(
+    UserDecision(fileId: current.fileId, keepState: current.keepState, userScore: current.userScore, userTags: current.userTags, version: current.version, updatedAt: DateTime.now()),
+    projectId: projectId,
+    speciesOnly: true,
+  );
+
+  Future<ReviewSaveReceipt> _saveDecision(UserDecision v, {String? projectId, bool speciesOnly = false}) async {
+    final namespace = _cacheNamespace();
     final previous = _optimisticDecisions[_optimisticKey(v.fileId)] ?? _cachedDecision(v.fileId);
-    final beforeKeepState = previous?.keepState ?? _cachedKeepState(v.fileId) ?? KeepState.pending;
-    final patch = previous == null ? UserDecisionPatch.fromDecision(v) : UserDecisionPatch.diff(previous, v);
+    final beforeKeepState = speciesOnly ? v.keepState : previous?.keepState ?? _cachedKeepState(v.fileId) ?? KeepState.pending;
+    final patch = speciesOnly
+        ? UserDecisionPatch(fileId: v.fileId, version: v.version, userSpeciesId: const PatchField.clear(), userSpecies: const PatchField.clear())
+        : previous == null
+        ? UserDecisionPatch.fromDecision(v)
+        : UserDecisionPatch.diff(previous, v);
     if (patch.version == null || patch.version! < 0) {
       throw const ProtocolCompatibilityException('version', '必须是非负整数');
     }
@@ -98,7 +120,14 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
     }
     final operationId = 'review-${v.fileId}-${DateTime.now().microsecondsSinceEpoch}';
     try {
-      if (!await _connectivity.hasNetwork) {
+      // Keep prior unsent fields when another edit/restore is made before the
+      // existing draft has synced. A narrow online patch cannot acknowledge it.
+      if (_pending.readAll().any((operation) => operation.type == PendingOperationType.updateReview && operation.deviceId == deviceId && operation.projectId == projectId && (operation.fileId ?? operation.payload['file_id']) == v.fileId)) {
+        return _queue(v, patch, operationId, deviceId, '修改已合并到本机草稿，等待同步', beforeKeepState, projectId: projectId, namespace: namespace);
+      }
+      final online = await _connectivity.hasNetwork;
+      _ensureNamespace(namespace);
+      if (!online) {
         return _queue(
           v,
           patch,
@@ -107,17 +136,20 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
           '设备离线，修改将在重新连接后同步',
           beforeKeepState,
           projectId: projectId,
+          namespace: namespace,
         );
       }
       final photo = await _api.saveWithPhoto(
         patch,
         idempotencyKey: operationId,
       );
+      _ensureNamespace(namespace);
       final accepted = _decisionWithAuthoritativePhoto(v, photo);
       await _removeQueuedReviewOperationsSafely(
         v.fileId,
         projectId: projectId,
       );
+      _ensureNamespace(namespace);
       await _acceptAuthoritativeDecision(accepted);
       _publishDecisionChanged(
         deviceId: deviceId,
@@ -133,6 +165,7 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
         authoritativePhoto: _photoWithDecision(photo, accepted),
       );
     } on ApiException catch (error) {
+      _ensureNamespace(namespace);
       if (error.statusCode == 409) {
         return ReviewSaveReceipt(
           result: ReviewSaveResult(
@@ -151,6 +184,7 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
         '暂时无法连接盒子，修改已保存在本机',
         beforeKeepState,
         projectId: projectId,
+        namespace: namespace,
       );
     }
   }
@@ -163,7 +197,9 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
     String message,
     KeepState beforeKeepState, {
     String? projectId,
+    required String namespace,
   }) async {
+    _ensureNamespace(namespace);
     final matching = _pending
         .readAll()
         .where((operation) {
@@ -205,6 +241,7 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
       supersedes: (existing) =>
           existing.type == PendingOperationType.updateReview && existing.deviceId == operation.deviceId && existing.projectId == operation.projectId && (existing.fileId ?? existing.payload['file_id']?.toString()) == value.fileId,
     );
+    _ensureNamespace(namespace);
     _optimisticDecisions[_optimisticKey(value.fileId)] = value;
     await _updateCachedDecisionSafely(value);
     _publishDecisionChanged(
@@ -379,13 +416,13 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
     final cachedDetail = _cache.read<Map>(detailKey);
     if (cachedDetail != null) {
       final detail = Map<String, dynamic>.from(cachedDetail);
-      final rawFile = detail['file'];
-      if (rawFile is Map) {
-        detail['file'] = mergeReviewDecisionIntoPhotoJson(
-          rawFile,
-          value,
-        );
+      final rawFile = detail['file'] is Map ? Map<String, dynamic>.from(detail['file'] as Map) : Map<String, dynamic>.from(detail);
+      final oldDecision = detail['decision'];
+      if (detail['_app_review_projection_version'] != 2 && oldDecision is Map && (oldDecision['user_species'] != null || oldDecision['user_species_id'] != null) && rawFile['recognition'] is Map) {
+        rawFile['recognition'] = {...Map<String, dynamic>.from(rawFile['recognition'] as Map), '_app_original_verified': false};
       }
+      detail['file'] = mergeReviewDecisionIntoPhotoJson(rawFile, value);
+      detail['_app_review_projection_version'] = 2;
       detail['decision'] = value.toJson();
       await _cache.write(detailKey, detail);
     }
@@ -541,9 +578,13 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
 
   String _optimisticKey(String fileId) => '${_cacheNamespace()}:$fileId';
 
+  void _ensureNamespace(String namespace) {
+    if (_cacheNamespace() != namespace) throw StateError('设备已切换，请在当前设备重新读取后操作');
+  }
+
   UserDecision? _optimisticDecisionFor(PhotoSummary photo) {
     final key = _optimisticKey(photo.id);
-    final decision = _optimisticDecisions[key];
+    final decision = _optimisticDecisions[key] ?? _cachedDecision(photo.id);
     if (decision == null) return null;
     final remoteVersion = photo.version;
     final localVersion = decision.version;
@@ -563,11 +604,12 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
     members: group.members
         .map((photo) {
           final decision = _optimisticDecisionFor(photo);
-          return decision == null
-              ? photo
-              : PhotoSummary.fromJson(
-                  mergeReviewDecisionIntoPhotoJson(photo.toJson(), decision),
-                );
+          if (decision != null) return PhotoSummary.fromJson(mergeReviewDecisionIntoPhotoJson(photo.toJson(), decision));
+          final acknowledged = _cachedDecision(photo.id);
+          if (acknowledged == null || acknowledged.version != photo.version) return photo;
+          // Same-version server tags/keep state stay authoritative; only the
+          // separately cached species projection is missing from group rows.
+          return PhotoSummary.fromJson({...photo.toJson(), 'user_species_id': acknowledged.userSpeciesId, 'user_species': acknowledged.userSpecies});
         })
         .toList(growable: false),
   );
@@ -595,12 +637,19 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
 
   Map<String, dynamic> _detailToJson(ReviewDetail detail) => {
     ...detail.photo.toJson(),
+    '_app_review_projection_version': 2,
     if (detail.decision != null) 'decision': detail.decision!.toJson(),
     'history': detail.history.map((item) => item.toJson()).toList(),
   };
 
   ReviewDetail _detailFromJson(Map<String, dynamic> json) {
     final file = json['file'] is Map ? Map<String, dynamic>.from(json['file'] as Map) : json;
+    final oldDecision = json['decision'];
+    if (json['_app_review_projection_version'] != 2 && oldDecision is Map && (oldDecision['user_species'] != null || oldDecision['user_species_id'] != null) && file['recognition'] is Map) {
+      // Earlier caches may have replaced the original AI candidates. They
+      // cannot be reconstructed offline, so do not present them as verified AI.
+      file['recognition'] = {...Map<String, dynamic>.from(file['recognition'] as Map), '_app_original_verified': false};
+    }
     return ReviewDetail(
       photo: PhotoDetail(
         summary: PhotoSummary.fromJson(file),
@@ -652,6 +701,8 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
       userTags: summary.userTags,
       capturedAt: summary.capturedAt,
       version: summary.version,
+      userSpeciesId: summary.userSpeciesId,
+      userSpecies: summary.userSpecies,
     );
   }
 }
@@ -680,21 +731,10 @@ Map<String, dynamic> mergeReviewDecisionIntoPhotoJson(
     photo['rating'] = rating;
   }
 
-  final species = decision.userSpecies?.trim();
-  if (species?.isNotEmpty == true) {
-    final recognition = photo['recognition'] is Map ? Map<String, dynamic>.from(photo['recognition'] as Map) : <String, dynamic>{};
-    final candidates = recognition['species_topn'] as List? ?? const [];
-    final first = candidates.firstOrNull;
-    final candidate = first is Map ? Map<String, dynamic>.from(first) : <String, dynamic>{};
-    candidate
-      ..['species_id'] = decision.userSpeciesId
-      ..['name'] = species
-      ..['confidence'] = (candidate['confidence'] as num?)?.toDouble() ?? 1.0;
-    recognition
-      ..['species_topn'] = [candidate]
-      ..['low_confidence'] = false;
-    photo['recognition'] = recognition;
-  }
+  // Manual fields are a separate projection. Never synthesize AI candidates,
+  // probabilities, verdicts, or confidence flags from a human decision.
+  photo['user_species_id'] = decision.userSpeciesId;
+  photo['user_species'] = decision.userSpecies?.trim();
 
   return photo;
 }

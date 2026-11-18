@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
@@ -79,6 +80,7 @@ class _BirdAppShellState extends State<BirdAppShell> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
+    BirdCompanionScope.maybeOf(context)?.phoneDiagnostics.setActiveTab(_selectedIndex);
     return Scaffold(
       body: BirdShellNavigation(
         selectTab: _selectTab,
@@ -235,6 +237,7 @@ class _TabNavigator extends StatelessWidget {
           key: navigatorKey,
           observers: [
             BirdFeedbackNavigatorObserver(),
+            if (BirdCompanionScope.maybeOf(context) case final dependencies?) PhoneDiagnosticNavigationObserver(dependencies.phoneDiagnostics, surface: 'tab_$index'),
             if (onChildRouteChanged != null)
               _TabRouteVisibilityObserver(
                 enabled: index == 2,

@@ -5,6 +5,7 @@ import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/features/review/domain/review_repository.dart';
+import 'package:aves/bird_companion/features/review/domain/review_save_receipt.dart';
 import 'package:aves/bird_companion/features/review/presentation/photo_detail_page.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/subject_overlay_view.dart';
 import 'package:aves/bird_companion/features/settings/data/settings_store.dart';
@@ -12,6 +13,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('真实详情页恢复 AI 鸟种入口限制重入并保留其他人工字段', (tester) async {
+    final repository = _ManualSpeciesRepository();
+    await tester.pumpWidget(_app(repository, const PhotoDetailPage(fileId: 'p1')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('详细指标'), 250);
+    await tester.tap(find.text('详细指标'));
+    await tester.pumpAndSettle();
+    final restore = find.byKey(const ValueKey('restore-ai-species'));
+    await tester.ensureVisible(restore);
+    await tester.pumpAndSettle();
+    expect(restore.hitTestable(), findsOneWidget);
+    await tester.tap(restore);
+    await tester.tap(restore);
+    await tester.pumpAndSettle();
+    expect(repository.restoreCalls, 1);
+    expect(repository.current.userSpecies, null);
+    expect(repository.current.userTags, ['湿地']);
+    expect(repository.current.userScore, 4);
+    expect(repository.current.keepState, KeepState.keep);
+    expect(find.byKey(const ValueKey('restore-ai-species')), findsNothing);
+    expect(tester.takeException(), null);
+  });
   testWidgets('详情只追加手输标签，取消不写入，撤销保留旧标签', (tester) async {
     final repository = _ReviewRepository()..userTags = ['湿地'];
     await tester.pumpWidget(_app(repository, const PhotoDetailPage(fileId: 'p1')));
@@ -333,5 +356,37 @@ class _ReviewRepository implements ReviewRepository {
   Future<ReviewSaveResult> save(UserDecision value, {String? projectId}) async {
     savedDecisions.add(value);
     return const ReviewSaveResult();
+  }
+}
+
+class _ManualSpeciesRepository extends _ReviewRepository implements AiSpeciesRestorer {
+  int restoreCalls = 0;
+  UserDecision current = const UserDecision(fileId: 'p1', keepState: KeepState.keep, userSpeciesId: 'little-egret', userSpecies: '白鹭', userScore: 4, userTags: ['湿地'], version: 1);
+  @override
+  Future<ReviewDetail> detail(String fileId) async => ReviewDetail(
+    photo: PhotoDetail(
+      summary: PhotoSummary(
+        id: fileId,
+        filename: '$fileId.ARW',
+        format: 'RAW',
+        preview: const PreviewRef(),
+        analysisState: AnalysisState.completed,
+        recognition: const RecognitionResult(
+          candidates: [
+            SpeciesCandidate(name: '普通翠鸟', confidence: .42),
+            SpeciesCandidate(name: '白鹭', confidence: .37),
+          ],
+          isLowConfidence: true,
+        ),
+      ),
+    ),
+    decision: current,
+  );
+  @override
+  Future<ReviewSaveReceipt> restoreAiSpecies(UserDecision value, {String? projectId}) async {
+    restoreCalls++;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    current = UserDecision(fileId: value.fileId, keepState: value.keepState, userScore: value.userScore, userTags: value.userTags, version: 2);
+    return ReviewSaveReceipt(authoritativeDecision: current, authoritativePhoto: (await detail(value.fileId)).photo.summary);
   }
 }

@@ -11,6 +11,14 @@ final class BleCriticalEventPolicy {
   }
 
   static const events = {
+    'phone_build_identified',
+    'business_failure_probe_started',
+    'business_failure_probe_coalesced',
+    'business_failure_reachability_checked',
+    'business_failure_recovery_started',
+    'business_failure_probe_cancelled',
+    'connection_state_changed',
+    'connection_authentication_invalidated',
     'connection_intent_started',
     'sta_intent_started',
     'sta_command_accepted',

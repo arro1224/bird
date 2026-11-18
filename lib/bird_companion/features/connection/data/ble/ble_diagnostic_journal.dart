@@ -217,25 +217,31 @@ final class BleDiagnosticJournal {
     }
   }
 
-  Future<void> record(Map<String, Object?> record) {
-    final frozen = Map<String, dynamic>.from(jsonDecode(jsonEncode(record)) as Map);
+  Future<void> record(Map<String, Object?> record) => recordBatch([record]);
+
+  /// One atomic write for a bounded batch; callers can buffer busy HTTP traces.
+  Future<void> recordBatch(Iterable<Map<String, Object?>> records) {
+    final frozenRecords = records.map((record) => Map<String, dynamic>.from(jsonDecode(jsonEncode(record)) as Map)).toList(growable: false);
+    if (frozenRecords.isEmpty) return Future.value();
     return _enqueue(() async {
       final state = _state();
       _addUnpersistedLosses(state);
-      final sequence = state['next_sequence'] as int;
-      state['next_sequence'] = sequence + 1;
-      frozen['record_sequence'] = sequence;
-      (state['records'] as List).insert(0, frozen);
-      final flows = state['flows'] as Map;
-      final flow = group(frozen);
-      final stats = flows.putIfAbsent(flow, () => _newStats(state['metadata_evicted'] == true)) as Map;
-      stats['total'] = (stats['total'] as int) + 1;
-      if (BleCriticalEventPolicy.isCritical(frozen)) stats['critical_observed'] = (stats['critical_observed'] as int) + 1;
-      final request = pinCurrentAttempt ? BleCriticalEventPolicy.requestKey(frozen, flow) : null;
-      final protected = state['protected_requests'] as List;
-      if (request != null && !protected.contains(request)) protected.insert(0, request);
-      while (protected.length > maximumProtectedRequests) {
-        protected.removeLast();
+      for (final frozen in frozenRecords) {
+        final sequence = state['next_sequence'] as int;
+        state['next_sequence'] = sequence + 1;
+        frozen['record_sequence'] = sequence;
+        (state['records'] as List).insert(0, frozen);
+        final flows = state['flows'] as Map;
+        final flow = group(frozen);
+        final stats = flows.putIfAbsent(flow, () => _newStats(state['metadata_evicted'] == true)) as Map;
+        stats['total'] = (stats['total'] as int) + 1;
+        if (BleCriticalEventPolicy.isCritical(frozen)) stats['critical_observed'] = (stats['critical_observed'] as int) + 1;
+        final request = pinCurrentAttempt ? BleCriticalEventPolicy.requestKey(frozen, flow) : null;
+        final protected = state['protected_requests'] as List;
+        if (request != null && !protected.contains(request)) protected.insert(0, request);
+        while (protected.length > maximumProtectedRequests) {
+          protected.removeLast();
+        }
       }
       final pendingFailures = _writeFailures;
       state['write_failures'] = (state['write_failures'] as int? ?? 0) + pendingFailures;
@@ -244,12 +250,15 @@ final class BleDiagnosticJournal {
         await storage.write(key, state);
       } catch (_) {
         _writeFailures++;
-        final loss = _unpersistedLosses.putIfAbsent(flow, () => _newStats(false));
-        loss['total'] = (loss['total'] as int) + 1;
-        loss['dropped'] = (loss['dropped'] as int) + 1;
-        if (BleCriticalEventPolicy.isCritical(frozen)) {
-          loss['critical_observed'] = (loss['critical_observed'] as int) + 1;
-          loss['critical_dropped'] = (loss['critical_dropped'] as int) + 1;
+        for (final frozen in frozenRecords) {
+          final flow = group(frozen);
+          final loss = _unpersistedLosses.putIfAbsent(flow, () => _newStats(false));
+          loss['total'] = (loss['total'] as int) + 1;
+          loss['dropped'] = (loss['dropped'] as int) + 1;
+          if (BleCriticalEventPolicy.isCritical(frozen)) {
+            loss['critical_observed'] = (loss['critical_observed'] as int) + 1;
+            loss['critical_dropped'] = (loss['critical_dropped'] as int) + 1;
+          }
         }
         while (_unpersistedLosses.length > 128) {
           _unpersistedLosses.remove(_unpersistedLosses.keys.first);

@@ -2,12 +2,19 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:aves/bird_companion/core/diagnostics/http_request_diagnostics.dart';
+import 'package:aves/bird_companion/features/connection/domain/request_id_factory.dart';
+
+import 'repair_acceptance_profile.dart';
+import 'repair_acceptance_workflow.dart';
+
+export 'repair_acceptance_profile.dart';
 
 /// Shared simulated box. Legacy fixtures remain the default; the embedded
 /// demonstration explicitly enables continuous-copy and metadata simulation.
 class MockBoxServer {
   MockBoxServer({
-    this.photoCount = 1200,
+    int? photoCount,
     Directory? assetDirectory,
     this.logRequests = true,
     this.requireAuthentication = false,
@@ -23,18 +30,30 @@ class MockBoxServer {
     this.autoSmartFollow = false,
     this.stateFile,
     this.networkModeProvider,
-    this.embeddedDemo = false,
+    bool embeddedDemo = false,
+    this.acceptanceProfile,
+    this.httpDiagnostic,
+    this.requestOverride,
     void Function(String message)? requestLogSink,
     DateTime Function()? clock,
-  }) : assetDirectory = assetDirectory ?? Directory('tool/mock_box_server/assets'),
+  }) : photoCount = acceptanceProfile?.total ?? photoCount ?? 1200,
+       embeddedDemo = embeddedDemo || acceptanceProfile != null,
+       assetDirectory = assetDirectory ?? Directory('tool/mock_box_server/assets'),
        requestLogSink = requestLogSink ?? ((message) => stdout.writeln(message)) {
     _clock = clock ?? DateTime.now;
     _pairingSessionExpiresAt = _clock().toUtc().add(pairingSessionLifetime);
     _assetEventsEnabled = emitAssetReadyEvents;
-    if (photoCount <= 0) {
+    if (acceptanceProfile != null && photoCount != null && photoCount != acceptanceProfile!.total) {
+      throw ArgumentError('Acceptance profile photo count is fixed.');
+    }
+    if (this.photoCount <= 0) {
       throw ArgumentError.value(photoCount, 'photoCount', '必须大于 0');
     }
-    _photos = List.generate(photoCount, _buildPhoto, growable: false);
+    _photos = List.generate(this.photoCount, (index) {
+      final photo = _buildPhoto(index);
+      return acceptanceProfile?.seed(photo, index) ?? photo;
+    }, growable: false);
+    _acceptanceWorkflow = acceptanceProfile == null ? null : RepairAcceptanceWorkflow(acceptanceProfile!, _photos);
     _photosById = {for (final photo in _photos) photo['file_id'] as String: photo};
     _photoAssetNames = {
       for (final photo in _photos) photo['file_id'] as String: Uri.parse(photo['thumb_ref'] as String).pathSegments.last,
@@ -46,6 +65,12 @@ class MockBoxServer {
   }
 
   final bool embeddedDemo;
+  final RepairAcceptanceProfile? acceptanceProfile;
+
+  /// Explicit lab hooks. Default demo and production entrypoints do not set them.
+  final void Function(Map<String, dynamic>)? httpDiagnostic;
+  final Future<bool> Function(HttpRequest)? requestOverride;
+  late final RepairAcceptanceWorkflow? _acceptanceWorkflow;
   final String Function()? networkModeProvider;
   String get _networkMode => networkModeProvider?.call() ?? 'direct_ap';
   final Map<String, List<String>> _selectionAssets = {};
@@ -296,17 +321,23 @@ class MockBoxServer {
         unawaited(_tickWorkflowJobs());
       });
     }
-    if (autoSmartFollow) {
+    // Embedded/repair workflows already advance this session from their ticker.
+    // Keep one owner when both CLI switches are enabled.
+    if (autoSmartFollow && !(workflowAutoAdvance && embeddedDemo)) {
       // 「边识别边复制」演示自走：1s 一批，60 张约 8s 识别完，再由同一状态机
       // 走 draining → complete_children 收尾。
       _smartFollowTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-        _driveSmartFollow();
+        unawaited(_driveSmartFollow());
       });
     }
     unawaited(
       server.forEach((request) async {
+        final clock = Stopwatch()..start();
+        final supplied = request.headers.value('X-Request-Id');
+        final requestId = supplied != null && isUuidV4(supplied) ? supplied.toLowerCase() : SecureRequestIdFactory().create();
+        if (httpDiagnostic != null) request.response.headers.set('X-Request-Id', requestId);
         try {
-          await _handle(request);
+          if (await requestOverride?.call(request) != true) await _handle(request);
         } catch (error, stackTrace) {
           // Never print the raw exception value. URI and decoding exceptions can
           // contain request material, including short-lived credentials.
@@ -326,6 +357,19 @@ class MockBoxServer {
           } catch (_) {
             await request.response.close();
           }
+        } finally {
+          try {
+            httpDiagnostic?.call({
+              'event': request.uri.path == '/api/v1/events' ? 'websocket_handshake' : 'api_request',
+              'request_id': requestId,
+              'method': request.method,
+              'route': HttpRequestDiagnostics.safeRoute(request.uri),
+              'status': request.response.statusCode,
+              'elapsed_ms': clock.elapsedMilliseconds,
+              'finished_at': DateTime.now().toUtc().toIso8601String(),
+              'environment': 'lan_virtual_box',
+            });
+          } catch (_) {}
         }
       }),
     );
@@ -448,6 +492,10 @@ class MockBoxServer {
       return;
     }
     if (!await _authorize(request)) return;
+    if (method == 'POST' && path == '/mock/control/acceptance' && acceptanceProfile != null) {
+      await _controlAcceptance(request);
+      return;
+    }
     // SmartFollow 联调推进器：控制端点不要求幂等键（它是测试工具，不是业务写）。
     // 必须先于下面的全局 POST 幂等门，否则会被要求 X-Idempotency-Key。
     if (method == 'POST' && path == '/mock/control/smart-follow') {
@@ -459,6 +507,7 @@ class MockBoxServer {
           'error_message': error,
         }, envelope: false);
       } else {
+        if (_acceptanceWorkflow != null) await _persistAcceptanceProgress();
         await _json(request, HttpStatus.ok, _smartFollowSnapshot() ?? const {});
       }
       return;
@@ -935,17 +984,19 @@ class MockBoxServer {
     return false;
   }
 
-  List<Map<String, dynamic>> _demoFileItems() => [
-    for (var i = 0; i < _smartFollowEligible; i++)
-      {
-        'item_id': 'demo-item-$i',
-        'file_id': _photos[i % photoCount]['file_id'],
-        'name': _photos[i % photoCount]['filename'] ?? 'DSC_${i + 1}.JPG',
-        'state': i < _smartFollowCopied ? 'copied' : 'queued',
-        'attempt_count': i < _smartFollowCopied ? 1 : 0,
-        'target_relative_path': 'BirdBox/DSC_${i + 1}.JPG',
-      },
-  ];
+  List<Map<String, dynamic>> _demoFileItems() =>
+      _acceptanceWorkflow?.items ??
+      [
+        for (var i = 0; i < _smartFollowEligible; i++)
+          {
+            'item_id': 'demo-item-$i',
+            'file_id': _photos[i % photoCount]['file_id'],
+            'name': _photos[i % photoCount]['filename'] ?? 'DSC_${i + 1}.JPG',
+            'state': i < _smartFollowCopied ? 'copied' : 'queued',
+            'attempt_count': i < _smartFollowCopied ? 1 : 0,
+            'target_relative_path': 'BirdBox/DSC_${i + 1}.JPG',
+          },
+      ];
 
   Map<String, dynamic> _demoMetadataPreview() => {
     'preview_id': 'demo-metadata-preview',
@@ -1767,10 +1818,79 @@ class MockBoxServer {
   ///
   /// - SmartFollow 关联的分析任务（带 smart_follow_session_id）跳过：其
   ///   传统模式由 /mock/control/smart-follow 驱动；embeddedDemo 模式在上方统一推进会话。
+  void _syncAcceptanceCounters() {
+    final workflow = _acceptanceWorkflow;
+    if (workflow == null) return;
+    _smartFollowState = workflow.state;
+    _smartFollowVersion = workflow.version;
+    _smartFollowRecognized = workflow.processed;
+    _smartFollowEligible = workflow.accepted.length;
+    _smartFollowCopied = workflow.copied.length;
+    _smartFollowFailed = workflow.failed.length;
+    _smartFollowSealed = workflow.copied.length + workflow.failed.length + workflow.stopped.length;
+    _smartFollowErrorCode = workflow.errorCode;
+    _smartFollowErrorMessage = workflow.errorMessage;
+    _smartFollowEligibleSeqs
+      ..clear()
+      ..addAll(workflow.accepted);
+  }
+
+  Future<void> _persistAcceptanceProgress() async {
+    final workflow = _acceptanceWorkflow!;
+    _jobs[_smartFollowJobId]?['smart_follow'] = _smartFollowSnapshot();
+    if (_jobs[_smartFollowJobId]?['job_state'] == 'running') {
+      await _syncSmartFollowRecognitionJob(complete: workflow.recognitionFinished);
+    }
+    await _persistState();
+  }
+
+  Future<void> _tickAcceptanceWorkflow({int recognitionCount = 5, bool completeWrites = true}) async {
+    final workflow = _acceptanceWorkflow!;
+    final before = workflow.version;
+    workflow.tick(recognitionCount: recognitionCount, completeWrites: completeWrites, recognitionRunning: _jobs[_smartFollowJobId]?['job_state'] == 'running');
+    _syncAcceptanceCounters();
+    if (workflow.version != before) await _persistAcceptanceProgress();
+  }
+
+  Future<void> _controlAcceptance(HttpRequest request) async {
+    final body = await _requestJson(request);
+    String? error;
+    if (body['action'] == 'set_analysis_state') {
+      final photo = _photosById[body['file_id']];
+      final state = body['analysis_state'];
+      if (photo == null || !const {'completed', 'skipped', 'processing', 'failed'}.contains(state)) {
+        error = 'invalid file or analysis state';
+      } else {
+        photo['analysis_state'] = state;
+        await _persistState();
+      }
+    } else if (_smartFollowSessionId == null) {
+      error = 'create an analysis and continuous-copy session first';
+    } else if (body['action'] == 'tick') {
+      final count = body['recognition_count'] ?? 5;
+      final writes = body['complete_writes'] ?? true;
+      if (count is! int || count < 0 || count > photoCount || writes is! bool) {
+        error = 'invalid tick controls';
+      } else {
+        await _tickAcceptanceWorkflow(recognitionCount: count, completeWrites: writes);
+      }
+    } else {
+      error = _advanceSmartFollow(body);
+      if (error == null) await _persistAcceptanceProgress();
+    }
+    if (error != null) {
+      await _json(request, HttpStatus.unprocessableEntity, {'error_code': 'mock_control_invalid', 'error_message': error}, envelope: false);
+    } else {
+      await _json(request, HttpStatus.ok, {'acceptance_profile': acceptanceProfile!.id, 'batch': _currentBatch(), 'session': _smartFollowSnapshot()});
+    }
+  }
+
   Future<void> _tickWorkflowJobs() async {
     final now = _clock();
     // The demonstration runs without a separate control terminal.
-    if (embeddedDemo && _smartFollowSessionId != null) {
+    if (_acceptanceWorkflow != null && _smartFollowSessionId != null) {
+      await _tickAcceptanceWorkflow();
+    } else if (embeddedDemo && _smartFollowSessionId != null) {
       final versionBeforeTick = _smartFollowVersion;
       final job = _jobs[_smartFollowJobId];
       if (_smartFollowState == 'following' && job != null && job['job_state'] == 'running') {
@@ -2009,6 +2129,8 @@ class MockBoxServer {
         _smartFollowVersion++;
       }
       job['smart_follow_session_id'] = _smartFollowSessionId;
+      _acceptanceWorkflow?.start((smartFollow['target_media_id'] ?? 'media_7f9a76e6c97690b61aedf6fd').toString());
+      _syncAcceptanceCounters();
       job['smart_follow'] = _smartFollowSnapshot();
     }
     await _json(request, HttpStatus.accepted, job);
@@ -2223,25 +2345,29 @@ class MockBoxServer {
     if (id == null) return;
     final project = _createdProjects[id];
     if (project == null) return;
-    project['analyzed_count'] = _photos.where((photo) => photo['analysis_state'] == 'completed').length;
-    project['pending_review_count'] = _photos.where((photo) => photo['keep_state'] == 'pending').length;
-    project['keep_count'] = _photos.where((photo) => photo['keep_state'] == 'keep' || photo['keep_state'] == 'featured').length;
-    project['discard_count'] = _photos.where((photo) => photo['keep_state'] == 'discard').length;
+    project.addAll(_photoSummaryCounts());
   }
 
+  Map<String, dynamic> _photoSummaryCounts() => {
+    'analyzed_count': _photos.where((photo) => photo['analysis_state'] == 'completed').length,
+    'pending_review_count': _photos.where((photo) => acceptanceProfile == null ? photo['keep_state'] == 'pending' : RepairAcceptanceProfile.requiresReview(photo)).length,
+    if (acceptanceProfile != null) ...{
+      'recognized_count': _photos.where(RepairAcceptanceProfile.recognized).length,
+      'filtered_count': _photos.where((photo) => photo['analysis_state'] == 'skipped').length,
+      'acceptance_profile': acceptanceProfile!.id,
+    },
+    'keep_count': _photos.where((photo) => photo['keep_state'] == 'keep' || photo['keep_state'] == 'featured').length,
+    'discard_count': _photos.where((photo) => photo['keep_state'] == 'discard').length,
+  };
+
   Map<String, dynamic> _currentBatch() {
-    final keepCount = _photos.where((photo) => photo['keep_state'] == 'keep' || photo['keep_state'] == 'featured').length;
-    final discardCount = _photos.where((photo) => photo['keep_state'] == 'discard').length;
     return {
       'project_id': 'mock-batch-current',
-      'name': '2026.07.16 崇明东滩',
+      'name': acceptanceProfile == null ? '2026.07.16 崇明东滩' : '返修验收 ${acceptanceProfile!.total} 张',
       'created_at': '2026-07-16T06:12:00Z',
       'state': 'ready_to_review',
       'total_files': photoCount,
-      'analyzed_count': _photos.where((photo) => photo['analysis_state'] == 'completed').length,
-      'pending_review_count': _photos.where((photo) => photo['keep_state'] == 'pending').length,
-      'keep_count': keepCount,
-      'discard_count': discardCount,
+      ..._photoSummaryCounts(),
       'pending_copy_count': 0,
       'copy_state': 'idle',
       'scene_count': _scenes.length,
@@ -2402,8 +2528,8 @@ class MockBoxServer {
     }
     if (query['recommended_only'] == 'true' && photo['is_recommended'] != true) return false;
     final recognitionState = query['recognition_state'];
-    if (recognitionState == 'recognized' && (candidates.isEmpty || recognition['low_confidence'] == true)) return false;
-    if (recognitionState == 'needs_review' && recognition['low_confidence'] != true) return false;
+    if (recognitionState == 'recognized' && (acceptanceProfile == null ? candidates.isEmpty || recognition['low_confidence'] == true : !RepairAcceptanceProfile.recognized(photo))) return false;
+    if (recognitionState == 'needs_review' && (acceptanceProfile == null ? recognition['low_confidence'] != true : !RepairAcceptanceProfile.requiresReview(photo))) return false;
     if (recognitionState == 'unknown' && candidates.isNotEmpty) return false;
 
     final tags = (query['tags'] ?? '').split(',').where((tag) => tag.isNotEmpty);
@@ -2480,14 +2606,16 @@ class MockBoxServer {
     }
     final items = _history.putIfAbsent(
       fileId,
-      () => [
-        {
-          'version': 1,
-          'source': 'box',
-          'updated_at': '2026-07-16T08:00:00Z',
-          'summary': '盒子完成自动识别与评分',
-        },
-      ],
+      () => acceptanceProfile != null
+          ? <Map<String, dynamic>>[]
+          : [
+              {
+                'version': 1,
+                'source': 'box',
+                'updated_at': '2026-07-16T08:00:00Z',
+                'summary': '盒子完成自动识别与评分',
+              },
+            ],
     );
     await _json(request, HttpStatus.ok, {'items': items});
   }
@@ -2539,10 +2667,10 @@ class MockBoxServer {
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
     _decisions[fileId] = updated;
-    _syncCreatedProjectCounts();
     photo['keep_state'] = updated['keep_state'] ?? photo['keep_state'];
     photo['user_tags'] = updated['user_tags'] ?? photo['user_tags'];
     photo['version'] = version;
+    _syncCreatedProjectCounts();
     final history = _history.putIfAbsent(fileId, () => []);
     history.add({
       'version': version,
@@ -3216,6 +3344,9 @@ class MockBoxServer {
   };
 
   Map<String, dynamic> _initialDecision(Map<String, dynamic> photo) {
+    if (acceptanceProfile != null) {
+      return {'file_id': photo['file_id'], 'keep_state': photo['keep_state'], 'user_score': null, 'user_species_id': null, 'user_species': null, 'user_tags': photo['user_tags'], 'updated_at': null, 'version': photo['version'] ?? 0};
+    }
     final candidates = ((photo['recognition'] as Map)['species_topn'] as List? ?? const []);
     final candidate = candidates.isEmpty ? null : Map<String, dynamic>.from(candidates.first as Map);
     return {
@@ -3292,14 +3423,15 @@ class MockBoxServer {
     final after = int.tryParse(query['after_event_seq'] ?? '0') ?? 0;
     final items = <Map<String, dynamic>>[];
     for (var seq = after + 1; seq <= _smartFollowRecognized; seq++) {
-      final eligible = _smartFollowEligibleSeqs.contains(seq);
+      final photo = acceptanceProfile == null ? null : _photos[seq - 1];
+      final eligible = photo == null ? _smartFollowEligibleSeqs.contains(seq) : RepairAcceptanceProfile.recognized(photo);
       items.add({
         'event_seq': seq,
         'recognition_job_id': jobId,
         'project_id': 'mock-batch-current',
-        'file_id': 'mock_file_$seq',
-        'verdict': eligible ? 'high' : 'medium',
-        'top1_class': eligible ? 'Ithaginis_cruentus' : null,
+        'file_id': photo?['file_id'] ?? 'mock_file_$seq',
+        'verdict': photo == null ? (eligible ? 'high' : 'medium') : (photo['recognition'] as Map)['verdict'],
+        'top1_class': photo == null ? (eligible ? 'Ithaginis_cruentus' : null) : (photo['recognition'] as Map)['top1_class'],
         'eligible': eligible,
       });
     }
@@ -3310,8 +3442,8 @@ class MockBoxServer {
       'last_event_seq': _smartFollowRecognized,
       'has_more': false,
       'committed_count': _smartFollowRecognized,
-      'failed_count': _smartFollowFailed,
-      'state': running ? 'running' : 'completed',
+      'failed_count': acceptanceProfile == null ? _smartFollowFailed : _photos.take(_smartFollowRecognized).where((photo) => photo['analysis_state'] == 'failed').length,
+      'state': _acceptanceWorkflow == null ? (running ? 'running' : 'completed') : (_acceptanceWorkflow.recognitionFinished ? 'completed' : 'running'),
       'smart_follow_session_id': _smartFollowSessionId,
     };
   }
@@ -3325,6 +3457,8 @@ class MockBoxServer {
       _smartFollowState = 'following';
       _smartFollowVersion++;
     }
+    if (_acceptanceWorkflow?.state == 'created') _acceptanceWorkflow!.start(target);
+    _syncAcceptanceCounters();
     return _smartFollowSnapshot()!;
   }
 
@@ -3335,27 +3469,29 @@ class MockBoxServer {
       'session_id': sessionId,
       if (embeddedDemo) ...{
         'execution_mode': 'continuous_queue',
-        'summary': {
-          'execution_mode': 'continuous_queue',
-          'phase': _smartFollowState,
-          'recognition_total': (_jobs[_smartFollowJobId]?['total_count'] as num?)?.toInt() ?? photoCount,
-          'recognition_processed': _smartFollowRecognized,
-          'eligible_asset_count': _smartFollowEligible,
-          'planned_file_count': _smartFollowEligible,
-          'copied_bytes': _smartFollowCopied * 25 * 1024 * 1024,
-          'file_counts': {'queued': max(0, _smartFollowEligible - _smartFollowCopied), 'copying': 0, 'retry_wait': 0, 'blocked': 0, 'copied': _smartFollowCopied, 'failed': _smartFollowFailed, 'skipped_conflict': 0},
-          'asset_counts': {'copied': _smartFollowCopied, 'failed': _smartFollowFailed},
-        },
+        'summary':
+            _acceptanceWorkflow?.summary ??
+            {
+              'execution_mode': 'continuous_queue',
+              'phase': _smartFollowState,
+              'recognition_total': (_jobs[_smartFollowJobId]?['total_count'] as num?)?.toInt() ?? photoCount,
+              'recognition_processed': _smartFollowRecognized,
+              'eligible_asset_count': _smartFollowEligible,
+              'planned_file_count': _smartFollowEligible,
+              'copied_bytes': _smartFollowCopied * 25 * 1024 * 1024,
+              'file_counts': {'queued': max(0, _smartFollowEligible - _smartFollowCopied), 'copying': 0, 'retry_wait': 0, 'blocked': 0, 'copied': _smartFollowCopied, 'failed': _smartFollowFailed, 'skipped_conflict': 0},
+              'asset_counts': {'copied': _smartFollowCopied, 'failed': _smartFollowFailed},
+            },
       },
       'recognition_job_id': _smartFollowJobId,
       'state': _smartFollowState,
       'state_version': _smartFollowVersion,
       'eligibility_mode': 'recognized_only_v1',
-      'target_media_id': embeddedDemo ? 'media_7f9a76e6c97690b61aedf6fd' : 'mock-media-usb-1',
+      'target_media_id': _acceptanceWorkflow?.targetMediaId ?? (embeddedDemo ? 'media_7f9a76e6c97690b61aedf6fd' : 'mock-media-usb-1'),
       'batch_size': _smartFollowBatchSize,
       'collect_window_ms': 2000,
-      'last_consumed_event_seq': _smartFollowRecognized,
-      'cutoff_event_seq': null,
+      'last_consumed_event_seq': _acceptanceWorkflow?.cutoff ?? _smartFollowRecognized,
+      'cutoff_event_seq': _acceptanceWorkflow?.cutoff,
       'recognized_count': _smartFollowRecognized,
       'eligible_count': _smartFollowEligible,
       'pending_count': _smartFollowEligible - _smartFollowSealed,
@@ -3376,12 +3512,14 @@ class MockBoxServer {
     };
   }
 
-  List<String> _smartFollowAllowedActions() => switch (_smartFollowState) {
-    'following' => const ['pause', 'finish_current_results', 'stop_following'],
-    'paused' => const ['resume', 'finish_current_results', 'stop_following'],
-    'waiting_for_target' || 'waiting_for_source' => const ['pause', 'stop_following'],
-    _ => const <String>[],
-  };
+  List<String> _smartFollowAllowedActions() =>
+      _acceptanceWorkflow?.allowedActions ??
+      switch (_smartFollowState) {
+        'following' => const ['pause', 'finish_current_results', 'stop_following'],
+        'paused' => const ['resume', 'finish_current_results', 'stop_following'],
+        'waiting_for_target' || 'waiting_for_source' => const ['pause', 'stop_following'],
+        _ => const <String>[],
+      };
 
   Map<String, dynamic> _smartFollowChildJobsPage(Map<String, String> query) {
     final start = int.tryParse(query['cursor'] ?? '0') ?? 0;
@@ -3444,8 +3582,14 @@ class MockBoxServer {
   /// （封批、子任务分页、识别任务 finished_count 同步、job_updated 广播），
   /// 因此不会出现"会话快照与任务进度撕裂"的情况——那正是推进器跳过这类任务
   /// 的原因。
-  void _driveSmartFollow() {
+  Future<void> _driveSmartFollow() async {
     if (_smartFollowSessionId == null) return;
+    if (_acceptanceWorkflow != null) {
+      // The acceptance state machine owns pause acknowledgements, independent
+      // analysis, file outcomes, persistence and job/event synchronization.
+      await _tickAcceptanceWorkflow();
+      return;
+    }
     final total = (_jobs[_smartFollowJobId]?['total_count'] as num?)?.toInt() ?? 0;
     if (_smartFollowState == 'following') {
       if (total > 0 && _smartFollowRecognized >= total) {
@@ -3463,6 +3607,12 @@ class MockBoxServer {
   }
 
   String? _advanceSmartFollow(Map<String, dynamic> body) {
+    if (_acceptanceWorkflow != null) {
+      final error = _acceptanceWorkflow.advance(body);
+      _syncAcceptanceCounters();
+      if (body['action'] == 'reset' && error == null) _smartFollowSessionId = null;
+      return error;
+    }
     final action = (body['action'] ?? '').toString();
     if (action.isEmpty) return 'action is required';
     if (body['from_action'] == true) {
@@ -3678,6 +3828,9 @@ class MockBoxServer {
       throw const FormatException('Unsupported mock state schema.');
     }
     final state = Map<String, dynamic>.from(decoded);
+    if (state['acceptance_profile'] != acceptanceProfile?.id) {
+      throw const FormatException('Mock state belongs to a different acceptance profile. Use a separate state file.');
+    }
     _projectSequence = (state['project_sequence'] as num?)?.toInt() ?? 0;
     _jobSequence = (state['job_sequence'] as num?)?.toInt() ?? 0;
     _currentCreatedProjectId = state['current_created_project_id']?.toString();
@@ -3776,6 +3929,11 @@ class MockBoxServer {
         }
       }
     }
+    final acceptance = state['acceptance_workflow'];
+    if (acceptance is Map && _acceptanceWorkflow != null) {
+      _acceptanceWorkflow.restore(acceptance);
+      _syncAcceptanceCounters();
+    }
   }
 
   void _restoreMapOfMaps(
@@ -3797,6 +3955,8 @@ class MockBoxServer {
     if (file == null) return;
     final snapshot = <String, dynamic>{
       'schema_version': 1,
+      'acceptance_profile': acceptanceProfile?.id,
+      if (_acceptanceWorkflow != null) 'acceptance_workflow': _acceptanceWorkflow.toJson(),
       'project_sequence': _projectSequence,
       'job_sequence': _jobSequence,
       'current_created_project_id': _currentCreatedProjectId,
@@ -3822,6 +3982,7 @@ class MockBoxServer {
             'keep_state': photo['keep_state'],
             'user_tags': photo['user_tags'],
             'version': photo['version'],
+            if (acceptanceProfile != null) 'analysis_state': photo['analysis_state'],
           },
       },
       'idempotent_responses': {

@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
@@ -92,37 +93,46 @@ class _SceneListView extends StatelessWidget {
 
   void _openGallery(BuildContext context, {SceneSummary? scene}) {
     final reviewContext = scene == null ? args.context : args.context.enterScene(scene.id, name: scene.name);
-    Navigator.of(context).pushNamed(
-      BirdRoutes.gallery,
-      arguments: GalleryArgs(
-        args.batchId,
-        batchName: scene == null ? args.batchName : '${args.batchName ?? args.batchId} · ${scene.name}',
-        totalCount: scene?.photoCount ?? args.totalCount,
-        initialQuery: PhotoQuery(sceneId: scene?.id),
-        reviewContext: reviewContext,
+    guardBirdNavigation(
+      context,
+      () => Navigator.of(context).pushNamed(
+        BirdRoutes.gallery,
+        arguments: GalleryArgs(
+          args.batchId,
+          batchName: scene == null ? args.batchName : '${args.batchName ?? args.batchId} · ${scene.name}',
+          totalCount: scene?.photoCount ?? args.totalCount,
+          initialQuery: PhotoQuery(sceneId: scene?.id),
+          reviewContext: reviewContext,
+        ),
       ),
     );
   }
 
   void _openGroups(BuildContext context, SceneSummary scene) {
     final reviewContext = args.context.enterScene(scene.id, name: scene.name);
-    Navigator.of(context).pushNamed(
-      BirdRoutes.groupReview,
-      arguments: GroupReviewArgs(
-        args.batchId,
-        sceneId: scene.id,
-        sceneName: scene.name,
-        reviewContext: reviewContext,
+    guardBirdNavigation(
+      context,
+      () => Navigator.of(context).pushNamed(
+        BirdRoutes.groupReview,
+        arguments: GroupReviewArgs(
+          args.batchId,
+          sceneId: scene.id,
+          sceneName: scene.name,
+          reviewContext: reviewContext,
+        ),
       ),
     );
   }
 
   void _showHelp(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (_) => const AlertDialog(
-        title: Text('什么是拍摄场景？'),
-        content: Text('拍鸟伴侣会根据拍摄时间和画面变化把照片整理到不同场景中。进入场景后，还可以继续挑选每组连拍照片。'),
+    guardBirdNavigation(
+      context,
+      () => showDialog<void>(
+        context: context,
+        builder: (_) => const AlertDialog(
+          title: Text('什么是拍摄场景？'),
+          content: Text('拍鸟伴侣会根据拍摄时间和画面变化把照片整理到不同场景中。进入场景后，还可以继续挑选每组连拍照片。'),
+        ),
       ),
     );
   }

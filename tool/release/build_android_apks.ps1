@@ -9,11 +9,17 @@
 
     # Optional fresh directory under the repository. Keeps previous delivery
     # evidence intact when building another dirty candidate of the same version.
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+
+    [ValidateSet('demo', 'repair-110', 'repair-14')]
+    [string]$DemoProfile = 'demo'
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+if ($Mode -ne 'EmbeddedDemo' -and $DemoProfile -ne 'demo') {
+    throw 'DemoProfile is available only in EmbeddedDemo mode.'
+}
 
 function Get-Sha256Hex([string]$Path) {
     $stream = [System.IO.File]::OpenRead($Path)
@@ -246,6 +252,9 @@ try {
         if ($NoPub) {
             $arguments += "--no-pub"
         }
+        if ($Mode -eq 'EmbeddedDemo' -and $DemoProfile -ne 'demo') {
+            $arguments += "--dart-define=BIRDBOX_DEMO_PROFILE=$DemoProfile"
+        }
         # Invoking flutter.bat directly can terminate the hosting PowerShell before this script
         # reaches the copy/manifest steps. `call` keeps control in this process on Windows.
         if ($flutterCommand.EndsWith(".bat", [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -327,6 +336,8 @@ if ($Mode -eq "EmbeddedDemo") {
     $manifest['environment'] = 'simulated'
     $manifest['signing_role'] = 'local_debug_certificate'
     $manifest['real_box_evidence'] = $false
+    $manifest['demo_profile'] = $DemoProfile
+    $manifest['sample_record_count'] = switch ($DemoProfile) { 'repair-110' { 110 }; 'repair-14' { 14 }; default { 60 } }
 }
 [IO.File]::WriteAllText((Join-Path $deliveryDirectory "source-files.sha256"), (($sourceIdentity.lines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
 $manifestPath = Join-Path $deliveryDirectory "build-manifest.json"

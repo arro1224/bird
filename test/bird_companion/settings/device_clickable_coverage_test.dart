@@ -36,9 +36,9 @@ void main() {
     expect(find.text('更换设备'), findsOneWidget);
     await _tapSettingsBack(tester);
 
-    await tester.tap(find.text('导出诊断结果'));
+    await tester.tap(find.text('导出手机诊断'));
     await tester.pumpAndSettle();
-    expect(find.text('系统与日志'), findsOneWidget);
+    expect(find.text('暂未能准备手机诊断，请重试。'), findsOneWidget, reason: 'isolated preview has no production diagnostic service');
   });
 
   testWidgets('system logs arrows open complete detail experiences', (

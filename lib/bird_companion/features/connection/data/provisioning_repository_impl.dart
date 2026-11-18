@@ -32,6 +32,7 @@ final class ProvisioningRepositoryImpl
         BleScanDiagnosticsRepository,
         BleProvisioningControl,
         DirectApHttpPreparation,
+        ProvisioningHttpAuthorizationReadiness,
         ProvisioningEndpointSnapshot,
         BleFailureDiagnostics,
         BleSessionReleaseGuard {
@@ -119,6 +120,17 @@ final class ProvisioningRepositoryImpl
   final DateTime Function() _clock;
   final DirectApAuthorizationStore _directApAuthorizationStore;
   final Map<String, SessionCredential> _directApUnsavedCredentials = {};
+
+  @override
+  Future<bool> hasHttpAuthorization(String deviceId) async {
+    final credential = _directApUnsavedCredentials[deviceId] ?? await _credentialStore.read(deviceId);
+    if (credential != null && credential.deviceId == deviceId && credential.isUsableAt(_clock())) return true;
+    final pending = await _directApAuthorizationStore.load(deviceId);
+    final client = pending?['client_id'];
+    final session = pending?['pairing_session_id'];
+    final expires = pending?['expires_at'];
+    return pending?['device_id'] == deviceId && client is String && isUuidV4(client) && session is String && session.isNotEmpty && expires is String && (DateTime.tryParse(expires)?.isAfter(_clock().toUtc()) ?? false);
+  }
 
   @override
   Future<void> cancelDirectApHttp(String deviceId) async {

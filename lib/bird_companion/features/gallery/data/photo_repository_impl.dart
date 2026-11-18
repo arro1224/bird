@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/models/batch_tag_action.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
+import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/scene_models.dart';
 import 'package:aves/bird_companion/features/gallery/data/photo_api.dart';
@@ -180,19 +181,20 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
       (_handledChanges[change] ??= {}).add(scope);
     }
     try {
-      await (_invalidations[scope] ??= Future<void>.microtask(() async {
-        _localQueryExecutor.invalidateBatch(batchId, cacheNamespace: scope.$1);
-        final keys = _reads.keys.where((key) => key.$1 == scope).toList();
-        for (final key in keys) {
-          _reads.remove(key)?.cancel();
-        }
-        final prefix = '$_candidatePrefix${scope.$1}:$batchId:';
-        for (final key in _cache.keysWithPrefix(prefix)) {
-          await _cache.remove(key);
-        }
-      }).whenComplete(() {
-        _invalidations.remove(scope);
-      }));
+      await (_invalidations[scope] ??=
+          Future<void>.microtask(() async {
+            _localQueryExecutor.invalidateBatch(batchId, cacheNamespace: scope.$1);
+            final keys = _reads.keys.where((key) => key.$1 == scope).toList();
+            for (final key in keys) {
+              _reads.remove(key)?.cancel();
+            }
+            final prefix = '$_candidatePrefix${scope.$1}:$batchId:';
+            for (final key in _cache.keysWithPrefix(prefix)) {
+              await _cache.remove(key);
+            }
+          }).whenComplete(() {
+            _invalidations.remove(scope);
+          }));
     } catch (_) {
       for (final change in unseen) {
         _handledChanges[change]?.remove(scope);
@@ -221,8 +223,19 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
   ]) async {
     cancellationToken?.throwIfCancelled();
     final key = '$_photoPrefix${_cacheNamespace()}:$batchId:${_queryKey(query)}';
-    final page = await _api.page(batchId, query);
+    final result = await _api.page(batchId, query);
     cancellationToken?.throwIfCancelled();
+    final page = PhotoPage(
+      items: result.items.map(_withCachedManualSpecies).toList(),
+      hasMore: result.hasMore,
+      nextCursor: result.nextCursor,
+      fromCache: result.fromCache,
+      cachedAt: result.cachedAt,
+      resultComplete: result.resultComplete,
+      cacheScope: result.cacheScope,
+      scannedCount: result.scannedCount,
+      matchedCount: result.matchedCount,
+    );
     onReceived?.call(page);
     cancellationToken?.throwIfCancelled();
     final timing = GalleryTiming.current;
@@ -237,6 +250,18 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
       timing.event('page_cache_written', {'request': timing.requests, 'duration_us': timing.elapsedUs - started});
     }
     return page;
+  }
+
+  PhotoSummary _withCachedManualSpecies(PhotoSummary photo) {
+    final raw = _cache.read<Map>('album:detail:${_cacheNamespace()}:${photo.id}');
+    final decisionJson = raw?['decision'];
+    if (decisionJson is! Map) return photo;
+    final decision = UserDecision.fromJson(Map<String, dynamic>.from(decisionJson));
+    if (photo.version != null && decision.version != null && photo.version! > decision.version!) {
+      final pending = _pending.readAll().any((operation) => operation.type == PendingOperationType.updateReview && operation.deviceId == _deviceId() && (operation.fileId ?? operation.payload['file_id']) == photo.id);
+      if (!pending) return photo;
+    }
+    return PhotoSummary.fromJson({...photo.toJson(), 'user_species_id': decision.userSpeciesId, 'user_species': decision.userSpecies});
   }
 
   @override
@@ -547,11 +572,9 @@ class _PhotoRead {
   void unsubscribe(Object id) => _subscribers.remove(id);
   void cancel() => _token.cancel();
 
-  Future<PhotoPage> resultOrCancellation(PhotoQueryCancellationToken? token) =>
-      token == null ? _result : Future.any([_result, _cancelledResult(token)]);
+  Future<PhotoPage> resultOrCancellation(PhotoQueryCancellationToken? token) => token == null ? _result : Future.any([_result, _cancelledResult(token)]);
 
-  static Future<PhotoPage> _cancelledResult(PhotoQueryCancellationToken token) =>
-      token.whenCancelled.then((_) => throw const PhotoQueryCancelled());
+  static Future<PhotoPage> _cancelledResult(PhotoQueryCancellationToken token) => token.whenCancelled.then((_) => throw const PhotoQueryCancelled());
 
   void _report(PhotoQueryProgress progress) {
     if (_token.isCancelled) return;

@@ -67,7 +67,7 @@ final class BirdBoxBleDiagnosticFileChannel implements MethodChannel.MethodCallH
                 || !sameJson(fullValue.optJSONObject("build"), summaryValue.optJSONObject("build"))) throw new IOException("invalid_file_input");
             final String token = UUID.randomUUID().toString();
             final SimpleDateFormat format = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ROOT); format.setTimeZone(TimeZone.getTimeZone("UTC"));
-            final String basename = "BirdBox_BLE_" + BirdBoxDiagnosticFileWriter.safeComponent(BuildConfig.VERSION_NAME) + "_" + BuildConfig.VERSION_CODE
+            final String basename = (fullValue.has("phone_diagnostics") ? "BirdBox_Phone_" : "BirdBox_BLE_") + BirdBoxDiagnosticFileWriter.safeComponent(BuildConfig.VERSION_NAME) + "_" + BuildConfig.VERSION_CODE
                 + "_" + BirdBoxDiagnosticFileWriter.safeComponent(Build.MODEL) + "_" + format.format(new Date()) + "_" + BirdBoxDiagnosticFileWriter.safeComponent(trace) + "_" + token.substring(0, 8);
             final BirdBoxDiagnosticFileWriter.Artifact artifact = BirdBoxDiagnosticFileWriter.write(directory, basename, full, summary, expected);
             synchronized (artifacts) { artifacts.put(token, artifact); while (artifacts.size() > 32) artifacts.remove(artifacts.keySet().iterator().next()); }
@@ -106,7 +106,7 @@ final class BirdBoxBleDiagnosticFileChannel implements MethodChannel.MethodCallH
                                 result.error("share_unavailable", "No App can handle this diagnostic file.", null);
                                 return;
                             }
-                            final Intent chooser = Intent.createChooser(share, "分享完整蓝牙诊断");
+                            final Intent chooser = Intent.createChooser(share, "分享完整诊断文件");
                             chooser.setClipData(share.getClipData());
                             chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                             activity.startActivity(chooser);

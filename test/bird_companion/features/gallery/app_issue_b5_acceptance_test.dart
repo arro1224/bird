@@ -51,7 +51,7 @@ void main() {
     _applyAndPublish(gallery, bus, firstSuccess);
     await Future<void>.delayed(Duration.zero);
 
-    _expectCounts(gallery, batches, pending: 37, kept: 17, discarded: 6);
+    _expectCounts(gallery, batches, pending: 38, kept: 17, discarded: 6);
     expect(_keepState(gallery, 'photo-1'), 'keep');
     expect(_keepState(gallery, 'photo-2'), 'pending');
 
@@ -66,7 +66,7 @@ void main() {
     _applyAndPublish(gallery, bus, retrySuccess);
     await Future<void>.delayed(Duration.zero);
 
-    _expectCounts(gallery, batches, pending: 36, kept: 17, discarded: 7);
+    _expectCounts(gallery, batches, pending: 38, kept: 17, discarded: 7);
     expect(_keepState(gallery, 'photo-2'), 'discard');
 
     final undo = [

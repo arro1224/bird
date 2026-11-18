@@ -19,6 +19,20 @@ public class BirdBoxDiagnosticFileWriterTest {
         assertEquals(a.payloadSha256,a.sha256);assertTrue(BirdBoxDiagnosticFileWriter.verify(a.file,a.sha256));
         assertEquals(1,Objects.requireNonNull(temporary.getRoot().listFiles()).length);
     }
+    @Test public void phoneDiagnosticPayloadUsesTheSameVerifiedFileBoundary() throws Exception {
+        String payload="{\"trace_id\":\"after-recovery\",\"phone_diagnostics\":{\"events\":[{\"error_code\":\"receiveTimeout\"}]}}";
+        BirdBoxDiagnosticFileWriter.Artifact artifact=write("BirdBox_Phone_1.14.11_176_test",payload);
+        assertEquals("application/json",artifact.mime);
+        assertEquals(payload,new String(Files.readAllBytes(artifact.file.toPath()),StandardCharsets.UTF_8));
+        assertTrue(BirdBoxDiagnosticFileWriter.verify(artifact.file,artifact.sha256));
+    }
+    @Test public void phoneAndBleFilesShareTheBoundedCacheQuota() throws Exception {
+        for(int i=0;i<BirdBoxDiagnosticFileWriter.MAX_CACHE_FILES;i++){
+            write((i%2==0?"BirdBox_Phone_":"BirdBox_BLE_")+i,"{}");
+        }
+        try{write("BirdBox_Phone_overflow","{}");fail();}catch(IOException e){assertEquals("diagnostic_cache_full",e.getMessage());}
+        assertEquals(32,Objects.requireNonNull(temporary.getRoot().listFiles()).length);
+    }
     @Test public void zipContainsSummaryFullUtf8AndReadmeWithDistinctPayloadDigest() throws Exception {
         String payload="{\"data\":\""+"鸟🐦".repeat(100000)+"\"}";
         BirdBoxDiagnosticFileWriter.Artifact a=write("BirdBox_BLE_zip",payload);

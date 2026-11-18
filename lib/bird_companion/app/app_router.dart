@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_shell.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
@@ -79,25 +80,26 @@ abstract final class BirdRoutes {
 
 /// Opens the canonical connection flow from any reconnect entry.
 void openReconnectConnection(BuildContext context) {
-  unawaited(() async {
-    final dependencies = BirdCompanionScope.maybeOf(context);
-    final verification = dependencies?.deviceSessionCubit.verifySavedSession();
-    final attemptId = dependencies?.deviceSessionCubit.activeAttemptId;
-    if (await verification == true) {
-      // 已连接时点击"重新连接"过去会静默返回，用户以为按钮失效；给一次明确反馈。
-      if (context.mounted) {
-        ScaffoldMessenger.maybeOf(context)
-          ?..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('连接正常，已刷新设备状态。')));
+  unawaited(
+    guardBirdNavigation<void>(context, () async {
+      final dependencies = BirdCompanionScope.maybeOf(context);
+      final verification = dependencies?.deviceSessionCubit.verifySavedSession();
+      final attemptId = dependencies?.deviceSessionCubit.activeAttemptId;
+      if (await verification == true) {
+        // 已连接时点击"重新连接"过去会静默返回，用户以为按钮失效；给一次明确反馈。
+        if (context.mounted) {
+          ScaffoldMessenger.maybeOf(context)
+            ?..hideCurrentSnackBar()
+            ..showSnackBar(const SnackBar(content: Text('连接正常，已刷新设备状态。')));
+        }
+        return;
       }
-      return;
-    }
-    if (!context.mounted) return;
-    if (dependencies != null && (dependencies.deviceSessionCubit.activeAttemptId != attemptId || dependencies.deviceSessionCubit.provisioningHandoffActive)) return;
-    // A pending authenticated event gate is retried on the same saved device.
-    if (dependencies?.deviceSessionCubit.state.verificationStage == 'events') return;
-    unawaited(
-      Navigator.of(
+      if (!context.mounted) return;
+      if (ModalRoute.of(context)?.isCurrent == false) return;
+      if (dependencies != null && (dependencies.deviceSessionCubit.activeAttemptId != attemptId || dependencies.deviceSessionCubit.provisioningHandoffActive)) return;
+      // A pending authenticated event gate is retried on the same saved device.
+      if (dependencies?.deviceSessionCubit.state.verificationStage == 'events') return;
+      await Navigator.of(
         context,
         rootNavigator: true,
       ).pushNamed(
@@ -105,9 +107,9 @@ void openReconnectConnection(BuildContext context) {
         arguments: const ConnectionArgs(
           entryMode: ConnectionEntryMode.addOrSwitch,
         ),
-      ),
-    );
-  }());
+      );
+    }),
+  );
 }
 
 abstract final class BirdAppRouter {

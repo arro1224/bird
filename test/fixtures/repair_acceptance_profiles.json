@@ -1,0 +1,30 @@
+{
+  "samples": [
+    {
+      "total": 110,
+      "high_confidence": 38,
+      "needs_review": 48,
+      "filtered": 24,
+      "verdict_counts": {
+        "high": 38,
+        "medium": 40,
+        "unknown": 8,
+        "blurry": 16,
+        "too_small": 8
+      }
+    },
+    {
+      "total": 14,
+      "high_confidence": 5,
+      "needs_review": 6,
+      "filtered": 3,
+      "verdict_counts": {
+        "high": 5,
+        "medium": 5,
+        "unknown": 1,
+        "blurry": 2,
+        "too_small": 1
+      }
+    }
+  ]
+}

@@ -58,6 +58,7 @@ class PhotoLocalFilterEngine {
     if (search.isNotEmpty) {
       final directValues = <String>[
         photo.filename,
+        if (photo.userSpecies != null) photo.userSpecies!,
         ...photo.userTags,
         for (final candidate in candidates) ..._candidateValues(candidate),
       ].map(_normalize);
@@ -68,7 +69,7 @@ class PhotoLocalFilterEngine {
     final species = _normalize(query.species);
     if (species.isNotEmpty) {
       final speciesTerms = <String>{species, ...speciesAliases};
-      if (!_candidatesMatchAliases(candidates, speciesTerms)) return false;
+      if (!_candidatesMatchAliases(candidates, speciesTerms) && !speciesTerms.any((term) => _normalize(photo.userSpecies).contains(term))) return false;
     }
 
     if (query.minScore != null && (photo.rating?.totalScore ?? -1) < query.minScore!) return false;
@@ -88,16 +89,16 @@ class PhotoLocalFilterEngine {
     switch (_normalize(query.recognitionState)) {
       case 'recognized':
       case 'matched':
-        if (candidates.isEmpty || photo.recognition?.isLowConfidence == true) return false;
+        if (!photo.isRecognized) return false;
         break;
       case 'needs_review':
       case 'uncertain':
       case 'pending':
-        if (photo.recognition?.isLowConfidence != true) return false;
+        if (!photo.needsRecognitionReview) return false;
         break;
       case 'unknown':
       case 'unrecognized':
-        if (candidates.isNotEmpty) return false;
+        if (!photo.needsRecognitionReview || (photo.recognition?.verdict != null ? photo.recognition!.verdict != 'unknown' : candidates.isNotEmpty)) return false;
         break;
     }
     return true;

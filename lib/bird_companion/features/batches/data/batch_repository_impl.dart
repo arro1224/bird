@@ -7,7 +7,7 @@ import 'package:aves/bird_companion/features/batches/domain/project_create_reque
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 
-class BatchRepositoryImpl implements BatchRepository {
+class BatchRepositoryImpl implements BatchRepository, BatchSummaryReader {
   BatchRepositoryImpl(this._api, [this._cache, String Function()? cacheNamespace]) : _cacheNamespace = cacheNamespace ?? (() => 'default');
   final BatchApi _api;
   final LocalCache? _cache;
@@ -18,9 +18,15 @@ class BatchRepositoryImpl implements BatchRepository {
 
   @override
   Future<BatchPage> page({String? state, String? sort, String? cursor}) async {
-    final key = 'album:batches:${_cacheNamespace()}:${state ?? ''}:${sort ?? ''}:${cursor ?? ''}';
+    final namespace = _cacheNamespace();
+    final key = 'album:batches:$namespace:${state ?? ''}:${sort ?? ''}:${cursor ?? ''}';
     try {
-      final page = await _api.page(state: state, sort: sort, cursor: cursor);
+      final result = await _api.page(state: state, sort: sort, cursor: cursor);
+      final page = BatchPage(
+        items: result.items.map((item) => item.copyWith(countsUpdatedAt: DateTime.now(), countsFromCache: false, countsDeviceId: namespace)).toList(),
+        hasMore: result.hasMore,
+        nextCursor: result.nextCursor,
+      );
       await _cache?.write(key, {
         'items': page.items.map((item) => item.toJson()).toList(),
         'has_more': page.hasMore,
@@ -31,7 +37,7 @@ class BatchRepositoryImpl implements BatchRepository {
       final raw = _cache?.read<Map>(key);
       if (raw == null) rethrow;
       return BatchPage(
-        items: (raw['items'] as List? ?? const []).whereType<Map>().map((item) => BatchSummary.fromJson(Map<String, dynamic>.from(item))).toList(),
+        items: (raw['items'] as List? ?? const []).whereType<Map>().map((item) => BatchSummary.fromJson(Map<String, dynamic>.from(item)).copyWith(countsFromCache: true)).toList(),
         hasMore: raw['has_more'] == true,
         nextCursor: raw['next_cursor']?.toString(),
       );
@@ -40,9 +46,10 @@ class BatchRepositoryImpl implements BatchRepository {
 
   @override
   Future<BatchSummary?> current() async {
-    final key = 'album:batches:${_cacheNamespace()}:current';
+    final namespace = _cacheNamespace();
+    final key = 'album:batches:$namespace:current';
     try {
-      final item = await _api.current();
+      final item = (await _api.current())?.copyWith(countsUpdatedAt: DateTime.now(), countsFromCache: false, countsDeviceId: namespace);
       if (item != null) {
         await _cache?.write(key, item.toJson());
       } else {
@@ -51,7 +58,7 @@ class BatchRepositoryImpl implements BatchRepository {
       return item;
     } on ApiException {
       final raw = _cache?.read<Map>(key);
-      return raw == null ? null : BatchSummary.fromJson(Map<String, dynamic>.from(raw));
+      return raw == null ? null : BatchSummary.fromJson(Map<String, dynamic>.from(raw)).copyWith(countsFromCache: true);
     }
   }
 
@@ -77,4 +84,38 @@ class BatchRepositoryImpl implements BatchRepository {
 
   @override
   Future<void> resume(String batchId) => _api.resume(batchId);
+
+  @override
+  Future<BatchSummary?> summary(String projectId) async {
+    final namespace = _cacheNamespace();
+    final key = 'album:batch-summary:$namespace:$projectId';
+    try {
+      BatchSummary? found = await _api.current();
+      if (_cacheNamespace() != namespace) return null;
+      if (found?.id != projectId) {
+        found = null;
+        String? cursor;
+        final visited = <String>{};
+        // No new box endpoint: boundedly locate historical projects using the
+        // existing paginated list. A miss never manufactures a zero summary.
+        for (var pageIndex = 0; pageIndex < 30; pageIndex++) {
+          final page = await _api.page(sort: 'created_at_desc', cursor: cursor);
+          if (_cacheNamespace() != namespace) return null;
+          found = page.items.where((item) => item.id == projectId).firstOrNull;
+          if (found != null || !page.hasMore || page.nextCursor == null || !visited.add(page.nextCursor!)) break;
+          cursor = page.nextCursor;
+        }
+      }
+      if (_cacheNamespace() != namespace) return null;
+      if (found == null) throw StateError('Requested project summary is unavailable');
+      final snapshot = found.copyWith(countsUpdatedAt: DateTime.now(), countsFromCache: false, countsDeviceId: namespace);
+      await _cache?.write(key, snapshot.toJson());
+      return snapshot;
+    } catch (_) {
+      if (_cacheNamespace() != namespace) return null;
+      final raw = _cache?.read<Map>(key);
+      if (raw == null) rethrow;
+      return BatchSummary.fromJson(Map<String, dynamic>.from(raw)).copyWith(countsFromCache: true);
+    }
+  }
 }

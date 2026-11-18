@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_job_recovery.dart';
 import 'package:flutter/material.dart';
@@ -17,7 +18,11 @@ class ActiveCopyJobsBanner extends StatelessWidget {
       final active = recovery.store.activeForDevice(device).where((job) => !recovery.isFollowChild(device, job.jobId));
       final recent = recovery.store.forDevice(device).where((job) => !recovery.isFollowChild(device, job.jobId));
       final latestId = recovery.latestHistoryId(device);
-      final jobs = active.isNotEmpty ? active : latestId == null ? recent.take(1) : recent.where((job) => job.jobId == latestId).take(1);
+      final jobs = active.isNotEmpty
+          ? active
+          : latestId == null
+          ? recent.take(1)
+          : recent.where((job) => job.jobId == latestId).take(1);
       if (jobs.isEmpty) return const SizedBox.shrink();
       return Card(
         key: const Key('active-copy-jobs-banner'),
@@ -29,7 +34,7 @@ class ActiveCopyJobsBanner extends StatelessWidget {
                 title: Text(job.state.isTerminal ? '查看最近普通复制结果' : '继续查看普通复制任务'),
                 subtitle: Text('任务 ${job.jobId}\n上次读取：${job.state.label}${recovery.canRead(device) ? '' : ' · 等待盒子连接'}'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).pushNamed(BirdRoutes.copyJobDetail, arguments: CopyJobDetailArgs(job.jobId, deviceId: device)),
+                onTap: () => guardBirdNavigation(context, () => Navigator.of(context).pushNamed(BirdRoutes.copyJobDetail, arguments: CopyJobDetailArgs(job.jobId, deviceId: device))),
               ),
           ],
         ),

@@ -77,6 +77,10 @@ class _BleDiagnosticExportDialogState extends State<BleDiagnosticExportDialog> {
           children: [
             SelectableText('诊断编号：${widget.export.traceId}'),
             Text('保留 ${widget.export.retainedScanCount} 次扫描、${widget.export.retainedEventCount} 条连接事件'),
+            if (widget.export.phoneEventCount != null) ...[
+              Text('手机请求与状态记录 ${widget.export.phoneEventCount} 条'),
+              const Text('来源为本机；盒子运行日志通过“导出设备日志”另行获取。'),
+            ],
             Text(widget.export.truncated ? '有记录裁剪、历史缺失或记录异常，详情已写入文件。文件包含此快照的全部保留记录。' : '文件包含此快照的全部本地保留记录。'),
             const SizedBox(height: 12),
             FilledButton(key: const Key('ble-share-full-file'), onPressed: _busy ? null : () => _fileAction(save: false), child: const Text('导出/分享完整诊断文件')),

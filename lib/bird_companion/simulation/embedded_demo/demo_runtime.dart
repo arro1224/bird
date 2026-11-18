@@ -27,9 +27,10 @@ class DemoRuntime {
   final ClientIdentityStore clientIdentity;
   Future<void>? _closing;
 
-  static Future<DemoRuntime> start() async {
+  static Future<DemoRuntime> start({RepairAcceptanceProfile? acceptanceProfile}) async {
+    final profile = acceptanceProfile ?? RepairAcceptanceProfile.parse(const String.fromEnvironment('BIRDBOX_DEMO_PROFILE', defaultValue: 'demo'));
     final documents = await getApplicationDocumentsDirectory();
-    final directory = Directory('${documents.path}/embedded_demo_box');
+    final directory = Directory('${documents.path}/embedded_demo_box${profile == null ? '' : '/acceptance/${profile.id}'}');
     await directory.create(recursive: true);
     final media = Directory('${directory.path}/media');
     await media.create(recursive: true);
@@ -39,7 +40,8 @@ class DemoRuntime {
     }
     B7SimulatedProvisioningRepository? provisioning;
     final server = MockBoxServer(
-      photoCount: 60,
+      photoCount: profile?.total ?? 60,
+      acceptanceProfile: profile,
       embeddedDemo: true,
       assetDirectory: media,
       deviceId: deviceId,
@@ -116,7 +118,7 @@ class DemoRuntime {
 }
 
 /// Loopback is available in flight mode and never depends on the phone Wi-Fi.
-class DemoConnectivityMonitor extends ConnectivityMonitor {
+class DemoConnectivityMonitor extends ConnectivityMonitor implements DiagnosticNetworkTypes {
   @override
   Stream<bool> get onNetworkChanged => const Stream.empty();
   @override
@@ -125,4 +127,6 @@ class DemoConnectivityMonitor extends ConnectivityMonitor {
   Future<bool> get hasNetwork async => true;
   @override
   Future<bool> get hasWifi async => true;
+  @override
+  Future<List<String>> get networkTypes async => const ['simulated_loopback'];
 }

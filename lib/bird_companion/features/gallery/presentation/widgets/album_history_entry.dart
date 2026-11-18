@@ -1,8 +1,9 @@
 import 'package:aves/bird_companion/app/app_router.dart';
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'package:flutter/material.dart';
 
 void openAlbumHistory(BuildContext context) {
-  Navigator.of(context).pushNamed(BirdRoutes.batches);
+  guardBirdNavigation(context, () => Navigator.of(context).pushNamed(BirdRoutes.batches));
 }
 
 class AlbumHistoryAppBarAction extends StatelessWidget {

@@ -146,7 +146,7 @@ void main() {
     expect(repository.requestedCursors, [null, 'same-cursor']);
   });
 
-  test('optimistic batch counts immediately leave an active review filter', () async {
+  test('manual keep changes preserve recognition membership in a review filter', () async {
     final bus = AppDataChangeBus();
     final repository = _PagedBatchRepository({
       null: BatchPage(
@@ -175,12 +175,11 @@ void main() {
       ),
     );
     await Future<void>.delayed(Duration.zero);
-    expect(cubit.state.items, isEmpty);
+    expect(cubit.state.items.single.reviewCount, 1);
 
-    // A manual reload still sees the server's stale pending=1 snapshot. The
-    // local filter must continue using the optimistic pending=0 count.
+    // Keeping a photo does not reclassify its recognition result.
     await cubit.load(filter: 'review');
-    expect(cubit.state.items, isEmpty);
+    expect(cubit.state.items.single.reviewCount, 1);
   });
 }
 

@@ -10,3 +10,8 @@ abstract interface class BatchRepository {
   Future<BatchOverview> overview();
   Future<void> resume(String batchId);
 }
+
+/// Optional source for retained gallery counters, with explicit cache age.
+abstract interface class BatchSummaryReader {
+  Future<BatchSummary?> summary(String projectId);
+}

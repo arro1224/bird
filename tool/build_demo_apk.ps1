@@ -1,7 +1,8 @@
 ﻿param(
     [ValidateSet('Debug', 'Release')][string]$BuildType = 'Release',
     [switch]$SkipTests,
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+    [ValidateSet('demo', 'repair-110', 'repair-14')][string]$DemoProfile = 'demo'
 )
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -22,7 +23,7 @@ try {
         & cmd.exe /d /c call $flutter test --no-pub test/bird_companion/simulation test/bird_companion/default_entrypoint_test.dart test/bird_companion/production_entrypoint_test.dart test/bird_companion/android_flavor_isolation_test.dart
         if ($LASTEXITCODE -ne 0) { throw 'Embedded demo or production-isolation tests failed.' }
     }
-    & (Join-Path $PSScriptRoot 'release\build_android_apks.ps1') -Mode EmbeddedDemo -BuildType $BuildType -OutputDirectory $OutputDirectory
+    & (Join-Path $PSScriptRoot 'release\build_android_apks.ps1') -Mode EmbeddedDemo -BuildType $BuildType -OutputDirectory $OutputDirectory -DemoProfile $DemoProfile
     $manifestPath = Join-Path (Join-Path $repositoryRoot $OutputDirectory) 'build-manifest.json'
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     foreach ($artifact in $manifest.artifacts) {

@@ -46,7 +46,7 @@ void main() {
       );
       await Future<void>.delayed(Duration.zero);
 
-      expect(cubit.state.current?.reviewCount, 9);
+      expect(cubit.state.current?.reviewCount, 10);
       expect(cubit.state.current?.keepCount, 5);
       expect(cubit.state.current?.discardCount, 1);
       expect(cubit.state.items.single, cubit.state.current);
@@ -112,7 +112,7 @@ void main() {
     cubit.reconcileReviewChanges(baseline, changes);
     await Future<void>.delayed(const Duration(milliseconds: 15));
 
-    expect(cubit.state.current?.reviewCount, 9);
+    expect(cubit.state.current?.reviewCount, 10);
     expect(cubit.state.current?.keepCount, 5);
     expect(cubit.state.current?.discardCount, 1);
     expect(repository.pageCalls, 1);
@@ -153,7 +153,7 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
 
-    expect(cubit.state.current?.reviewCount, 36);
+    expect(cubit.state.current?.reviewCount, 38);
     expect(cubit.state.current?.keepCount, 18);
     expect(cubit.state.current?.discardCount, 6);
 
@@ -161,17 +161,17 @@ void main() {
     // flash the counters back to that stale snapshot.
     await Future<void>.delayed(const Duration(milliseconds: 30));
     expect(repository.currentCalls, greaterThan(1));
-    expect(cubit.state.current?.reviewCount, 36);
+    expect(cubit.state.current?.reviewCount, 38);
     expect(cubit.state.current?.keepCount, 18);
 
-    repository.batch = _batch(36, 18, 6);
+    repository.batch = _batch(38, 18, 6);
     bus.publish(
       const {AppDataResource.batches},
       reason: 'box_summary_advanced',
     );
     await _waitUntil(() => repository.currentCalls > 4);
 
-    expect(cubit.state.current?.reviewCount, 36);
+    expect(cubit.state.current?.reviewCount, 38);
     expect(cubit.state.current?.keepCount, 18);
     expect(cubit.state.items.single, cubit.state.current);
   });
@@ -205,18 +205,18 @@ void main() {
     );
     await Future<void>.delayed(const Duration(milliseconds: 15));
 
-    expect(cubit.state.current?.reviewCount, 5);
+    expect(cubit.state.current?.reviewCount, 4);
     expect(cubit.state.current?.discardCount, 0);
     expect(repository.currentCalls, 1);
 
-    repository.batch = _batch(5, 2, 0);
+    repository.batch = _batch(4, 2, 0);
     bus.publish(
       const {AppDataResource.batches, AppDataResource.photos},
       reason: 'offline_changes_synced',
     );
     await _waitUntil(() => repository.currentCalls == 2);
 
-    expect(cubit.state.current?.reviewCount, 5);
+    expect(cubit.state.current?.reviewCount, 4);
     expect(cubit.state.current?.discardCount, 0);
   });
 }

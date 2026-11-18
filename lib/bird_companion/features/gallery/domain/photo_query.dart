@@ -140,6 +140,16 @@ class PhotoQuery {
 
   PhotoQuery next(String? nextCursor) => copyWith(cursor: nextCursor);
 
+  /// A quick category opens its complete batch-wide result, without inheriting
+  /// a search, confidence threshold, or mutually exclusive classification.
+  PhotoQuery forQuickCategory(String? category) => PhotoQuery(
+    sort: sort,
+    pageSize: pageSize,
+    recognitionState: const {'recognized', 'needs_review'}.contains(category) ? category : null,
+    analysisState: category == 'filtered' ? 'skipped' : null,
+    keepState: const {'pending', 'keep', 'discard', 'featured'}.contains(category) ? category : null,
+  );
+
   PhotoQuery copyWith({
     String? cursor,
     int? pageSize,
@@ -178,7 +188,7 @@ class PhotoQuery {
 
 String _keepStateLabel(String value) => switch (value.toLowerCase()) {
   'keep' => '已保留',
-  'pending' => '待确认',
+  'pending' => '未标记',
   'discard' => '已弃选',
   'featured' => '精选',
   _ => '其他',
@@ -188,6 +198,7 @@ String _analysisStateLabel(String value) => switch (value.toLowerCase()) {
   'pending' || 'queued' => '等待处理',
   'processing' || 'analyzing' => '正在处理',
   'done' || 'completed' => '已完成',
+  'skipped' => '已跳过',
   'failed' || 'error' => '处理失败',
   _ => '其他',
 };
@@ -200,8 +211,8 @@ String _clarityStateLabel(String value) => switch (value.toLowerCase()) {
 };
 
 String _recognitionStateLabel(String value) => switch (value.toLowerCase()) {
-  'recognized' || 'matched' => '已识别',
-  'uncertain' || 'pending' => '需要确认',
+  'recognized' || 'matched' => '识别度高',
+  'needs_review' || 'uncertain' || 'pending' => '待确认',
   'unknown' || 'unrecognized' => '暂未识别',
   _ => '其他',
 };

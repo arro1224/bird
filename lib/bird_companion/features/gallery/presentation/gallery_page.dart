@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
@@ -19,6 +20,7 @@ import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/core/widgets/page_back_button.dart';
 import 'package:aves/bird_companion/core/widgets/natural_backdrop.dart';
 import 'package:aves/bird_companion/features/batches/presentation/batch_list_cubit.dart';
+import 'package:aves/bird_companion/features/batches/domain/batch_repository.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
 import 'package:aves/bird_companion/features/device/presentation/widgets/device_status_sheet.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_entry_guard.dart';
@@ -62,6 +64,7 @@ class GalleryPage extends StatelessWidget {
     this.rootMode = false,
     this.reviewContext,
     this.timing,
+    this.batchSummary,
   });
   final String batchId;
   final String? batchName;
@@ -75,6 +78,7 @@ class GalleryPage extends StatelessWidget {
   final bool rootMode;
   final ReviewContext? reviewContext;
   final GalleryTiming? timing;
+  final BatchSummary? batchSummary;
 
   @override
   Widget build(BuildContext context) => MultiBlocProvider(
@@ -91,6 +95,7 @@ class GalleryPage extends StatelessWidget {
                 () => BirdCompanionScope.of(context).deviceSessionCubit.state.device?.id,
                 BirdCompanionScope.of(context).reviewCheckpointStore,
                 BirdCompanionScope.of(context).settingsStore,
+                BirdCompanionScope.of(context).batchRepository is BatchSummaryReader ? BirdCompanionScope.of(context).batchRepository as BatchSummaryReader : null,
               )
               ..seedReviewCounts(
                 pendingCount: pendingCount,
@@ -114,15 +119,49 @@ class GalleryPage extends StatelessWidget {
           )..load(),
         ),
     ],
-    child: _GalleryView(
-      batchId: batchId,
-      batchName: batchName,
-      createdAt: createdAt,
-      totalCount: totalCount,
-      rootMode: rootMode,
-      reviewContext: reviewContext,
+    child: _GallerySummaryBinding(
+      summary: batchSummary,
+      child: _GalleryView(
+        batchId: batchId,
+        batchName: batchName,
+        createdAt: createdAt,
+        totalCount: totalCount,
+        rootMode: rootMode,
+        reviewContext: reviewContext,
+      ),
     ),
   );
+}
+
+class _GallerySummaryBinding extends StatefulWidget {
+  const _GallerySummaryBinding({required this.summary, required this.child});
+  final BatchSummary? summary;
+  final Widget child;
+  @override
+  State<_GallerySummaryBinding> createState() => _GallerySummaryBindingState();
+}
+
+class _GallerySummaryBindingState extends State<_GallerySummaryBinding> {
+  void _apply() {
+    final summary = widget.summary;
+    if (summary?.countsDeviceId == null) return;
+    context.read<GalleryCubit>().applyBatchSummary(summary!, deviceId: summary.countsDeviceId);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _apply();
+  }
+
+  @override
+  void didUpdateWidget(_GallerySummaryBinding oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.summary != oldWidget.summary) _apply();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _GalleryView extends StatelessWidget {
@@ -143,8 +182,7 @@ class _GalleryView extends StatelessWidget {
 
   ReviewContext get _reviewContext => reviewContext ?? ReviewContext(batchId: batchId, batchName: batchName);
 
-  bool _compactAlbumToolbar(BuildContext context) =>
-      MediaQuery.sizeOf(context).width < 360 || MediaQuery.textScalerOf(context).scale(28) > 36;
+  bool _compactAlbumToolbar(BuildContext context) => MediaQuery.sizeOf(context).width < 360 || MediaQuery.textScalerOf(context).scale(28) > 36;
 
   bool _albumToolbarNeedsMenu(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
@@ -152,16 +190,22 @@ class _GalleryView extends StatelessWidget {
   }
 
   void _addOrSwitchAlbumDevice(BuildContext context) {
-    unawaited(Navigator.of(context, rootNavigator: true).pushNamed<void>(
-      BirdRoutes.connection,
-      arguments: const ConnectionArgs(entryMode: ConnectionEntryMode.addOrSwitch),
-    ));
+    unawaited(
+      guardBirdNavigation(
+        context,
+        () => Navigator.of(context, rootNavigator: true).pushNamed<void>(
+          BirdRoutes.connection,
+          arguments: const ConnectionArgs(entryMode: ConnectionEntryMode.addOrSwitch),
+        ),
+      ),
+    );
   }
 
-  Future<void> _openCurrentBatchCopy(BuildContext context) async {
+  Future<void> _openCurrentBatchCopy(BuildContext context) => guardBirdNavigation<void>(context, () async {
     final gallery = context.read<GalleryCubit>();
     if (!gallery.state.resultComplete) return;
     final dependencies = BirdCompanionScope.of(context);
+    final sourceDevice = dependencies.deviceSessionCubit.state.device;
     try {
       // Start both frozen-v1 reads together, then navigate only with their
       // authoritative result instead of the album tab's retained batch id.
@@ -172,6 +216,9 @@ class _GalleryView extends StatelessWidget {
       final currentProject = results[0] as BatchSummary?;
       final jobs = results[1] as JobPage;
       if (!context.mounted || !gallery.state.resultComplete) return;
+      if (ModalRoute.of(context)?.isCurrent == false) return;
+      final currentDevice = dependencies.deviceSessionCubit.state.device;
+      if (sourceDevice?.id != currentDevice?.id || sourceDevice?.baseUri != currentDevice?.baseUri) return;
 
       final decision = resolveCurrentCopyEntry(
         displayedBatchId: batchId,
@@ -198,7 +245,7 @@ class _GalleryView extends StatelessWidget {
       final message = UserMessageMapper.fromError(error);
       BirdFeedback.error(context, '${message.title}：${message.message}');
     }
-  }
+  });
 
   @override
   Widget build(BuildContext context) => BlocListener<SelectionCubit, SelectionState>(
@@ -234,11 +281,11 @@ class _GalleryView extends StatelessWidget {
                     : rootMode
                     ? Text(
                         '相册',
-                         maxLines: 1,
-                         overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.headlineLarge?.copyWith(
                           color: AppColors.brandDark,
-                           fontSize: _compactAlbumToolbar(context) ? 24 : 28,
+                          fontSize: _compactAlbumToolbar(context) ? 24 : 28,
                           fontWeight: FontWeight.w800,
                         ),
                       )
@@ -258,42 +305,42 @@ class _GalleryView extends StatelessWidget {
                 actions: selection.ids.isNotEmpty
                     ? [TextButton(onPressed: selection.submitting ? null : context.read<SelectionCubit>().clear, child: const Text('取消'))]
                     : [
-                         if (rootMode) _AlbumStatusAction(compact: _compactAlbumToolbar(context)),
+                        if (rootMode) _AlbumStatusAction(compact: _compactAlbumToolbar(context)),
                         if (rootMode) const AlbumHistoryAppBarAction(),
                         if (rootMode)
                           BlocSelector<GalleryCubit, GalleryState, bool>(
                             selector: (state) => state.resultComplete,
-                             builder: (context, complete) {
-                               final canCopy = complete && (totalCount == null || totalCount! > 0);
-                               if (_albumToolbarNeedsMenu(context)) {
-                                 return PopupMenuButton<bool>(
-                                   tooltip: '更多操作',
-                                   onSelected: (copy) {
-                                     if (copy) {
-                                       unawaited(_openCurrentBatchCopy(context));
-                                     } else {
-                                       _addOrSwitchAlbumDevice(context);
-                                     }
-                                   },
-                                   itemBuilder: (_) => [
-                                     PopupMenuItem(value: true, enabled: canCopy, child: const Text('复制当前拍摄')),
-                                     const PopupMenuItem(value: false, child: Text('新增或切换设备')),
-                                   ],
-                                 );
-                               }
-                               return IconButton(
-                                 key: const Key('album-copy-project-button'),
-                                 tooltip: '复制当前拍摄',
-                                 icon: const Icon(Icons.copy_all_outlined),
-                                 onPressed: canCopy ? () => _openCurrentBatchCopy(context) : null,
-                               );
-                             },
+                            builder: (context, complete) {
+                              final canCopy = complete && (totalCount == null || totalCount! > 0);
+                              if (_albumToolbarNeedsMenu(context)) {
+                                return PopupMenuButton<bool>(
+                                  tooltip: '更多操作',
+                                  onSelected: (copy) {
+                                    if (copy) {
+                                      unawaited(_openCurrentBatchCopy(context));
+                                    } else {
+                                      _addOrSwitchAlbumDevice(context);
+                                    }
+                                  },
+                                  itemBuilder: (_) => [
+                                    PopupMenuItem(value: true, enabled: canCopy, child: const Text('复制当前拍摄')),
+                                    const PopupMenuItem(value: false, child: Text('新增或切换设备')),
+                                  ],
+                                );
+                              }
+                              return IconButton(
+                                key: const Key('album-copy-project-button'),
+                                tooltip: '复制当前拍摄',
+                                icon: const Icon(Icons.copy_all_outlined),
+                                onPressed: canCopy ? () => _openCurrentBatchCopy(context) : null,
+                              );
+                            },
                           ),
-                         if (rootMode && !_albumToolbarNeedsMenu(context))
+                        if (rootMode && !_albumToolbarNeedsMenu(context))
                           Padding(
                             padding: const EdgeInsets.only(right: 12),
                             child: AlbumAddDeviceButton(
-                               onPressed: () => _addOrSwitchAlbumDevice(context),
+                              onPressed: () => _addOrSwitchAlbumDevice(context),
                             ),
                           ),
                         if (!rootMode)
@@ -306,15 +353,18 @@ class _GalleryView extends StatelessWidget {
                           IconButton(
                             tooltip: '筛选照片',
                             icon: const Icon(Icons.filter_alt_outlined),
-                            onPressed: () => showModalBottomSheet(
-                              context: context,
-                              useRootNavigator: true,
-                              isScrollControlled: true,
-                              showDragHandle: false,
-                              backgroundColor: Colors.transparent,
-                              builder: (_) => FilterSheet(
-                                initial: context.read<GalleryCubit>().state.query,
-                                onApply: (query) => context.read<GalleryCubit>().refresh(query: query),
+                            onPressed: () => guardBirdNavigation(
+                              context,
+                              () => showModalBottomSheet(
+                                context: context,
+                                useRootNavigator: true,
+                                isScrollControlled: true,
+                                showDragHandle: false,
+                                backgroundColor: Colors.transparent,
+                                builder: (_) => FilterSheet(
+                                  initial: context.read<GalleryCubit>().state.query,
+                                  onApply: (query) => context.read<GalleryCubit>().refresh(query: query),
+                                ),
                               ),
                             ),
                           ),
@@ -323,44 +373,56 @@ class _GalleryView extends StatelessWidget {
                             tooltip: '更多操作',
                             onSelected: (value) {
                               if (value == 'review') {
-                                Navigator.of(context).pushNamed(
-                                  BirdRoutes.groupReview,
-                                  arguments: GroupReviewArgs(
-                                    batchId,
-                                    reviewContext: _reviewContext,
+                                guardBirdNavigation(
+                                  context,
+                                  () => Navigator.of(context).pushNamed(
+                                    BirdRoutes.groupReview,
+                                    arguments: GroupReviewArgs(
+                                      batchId,
+                                      reviewContext: _reviewContext,
+                                    ),
                                   ),
                                 );
                               } else if (value == 'scenes') {
-                                Navigator.of(context).pushNamed(
-                                  BirdRoutes.scenes,
-                                  arguments: SceneListArgs(
-                                    batchId,
-                                    batchName: batchName,
-                                    totalCount: totalCount,
-                                    reviewContext: _reviewContext,
+                                guardBirdNavigation(
+                                  context,
+                                  () => Navigator.of(context).pushNamed(
+                                    BirdRoutes.scenes,
+                                    arguments: SceneListArgs(
+                                      batchId,
+                                      batchName: batchName,
+                                      totalCount: totalCount,
+                                      reviewContext: _reviewContext,
+                                    ),
                                   ),
                                 );
                               } else if (value == 'copy') {
                                 final state = context.read<GalleryCubit>().state;
                                 if (!state.resultComplete) return;
-                                Navigator.of(context).pushNamed(
-                                  BirdRoutes.copyConfirmation,
-                                  arguments: CopyConfirmationArgs(
-                                    batchId,
-                                    filter: state.query.toCopyFilterV1(),
+                                guardBirdNavigation(
+                                  context,
+                                  () => Navigator.of(context).pushNamed(
+                                    BirdRoutes.copyConfirmation,
+                                    arguments: CopyConfirmationArgs(
+                                      batchId,
+                                      filter: state.query.toCopyFilterV1(),
+                                    ),
                                   ),
                                 );
                               } else {
-                                showModalBottomSheet(
-                                  context: context,
-                                  useRootNavigator: true,
-                                  useSafeArea: true,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (_) => SortSheet(
-                                    value: context.read<GalleryCubit>().state.query.sort,
-                                    onChanged: (sort) => context.read<GalleryCubit>().refresh(
-                                      query: context.read<GalleryCubit>().state.query.copyWith(sort: sort, clearCursor: true),
+                                guardBirdNavigation(
+                                  context,
+                                  () => showModalBottomSheet(
+                                    context: context,
+                                    useRootNavigator: true,
+                                    useSafeArea: true,
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    builder: (_) => SortSheet(
+                                      value: context.read<GalleryCubit>().state.query.sort,
+                                      onChanged: (sort) => context.read<GalleryCubit>().refresh(
+                                        query: context.read<GalleryCubit>().state.query.copyWith(sort: sort, clearCursor: true),
+                                      ),
                                     ),
                                   ),
                                 );
@@ -447,9 +509,7 @@ class _GalleryView extends StatelessWidget {
                             if (state.query.activeLabels.isNotEmpty)
                               SliverToBoxAdapter(
                                 child: Padding(
-                                  padding: rootMode
-                                      ? const EdgeInsets.fromLTRB(12, 0, 12, 4)
-                                      : const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                                  padding: rootMode ? const EdgeInsets.fromLTRB(12, 0, 12, 4) : const EdgeInsets.fromLTRB(24, 0, 24, 8),
                                   child: ActiveFilterSummary(
                                     compact: rootMode,
                                     labels: state.query.activeLabels,
@@ -478,63 +538,65 @@ class _GalleryView extends StatelessWidget {
                                     onTap: () async {
                                       final selection = context.read<SelectionCubit>();
                                       if (selection.state.ids.isEmpty) {
-                                        final gallery = context.read<GalleryCubit>();
-                                        final photoIds = state.items.map((item) => item.id).toList(growable: false);
-                                        final photoContext = _reviewContext.openPhotos(
-                                          photoIds,
-                                          initialIndex: index,
-                                        );
-                                        final dependencies = BirdCompanionScope.of(context);
-                                        final batchCubit = rootMode ? context.read<BatchListCubit>() : null;
-                                        final batchBeforeReview = batchCubit?.state.current;
-                                        final reviewChanges = <ReviewDecisionChanged>[];
-                                        final reviewSubscription = rootMode
-                                            ? dependencies.dataChangeBus.changes
-                                                  .where(
-                                                    (change) => change is ReviewDecisionChanged && change.projectId == batchId,
-                                                  )
-                                                  .cast<ReviewDecisionChanged>()
-                                                  .listen(reviewChanges.add)
-                                            : null;
-                                        final deviceId = dependencies.deviceSessionCubit.state.device?.id.trim();
-                                        if (deviceId?.isNotEmpty == true) {
-                                          unawaited(
-                                            dependencies.reviewCheckpointStore.save(
-                                              ReviewCheckpoint.fromContext(
-                                                deviceId: deviceId!,
-                                                context: photoContext,
-                                                query: state.query,
+                                        await guardBirdNavigation<void>(context, () async {
+                                          final gallery = context.read<GalleryCubit>();
+                                          final photoIds = state.items.map((item) => item.id).toList(growable: false);
+                                          final photoContext = _reviewContext.openPhotos(
+                                            photoIds,
+                                            initialIndex: index,
+                                          );
+                                          final dependencies = BirdCompanionScope.of(context);
+                                          final batchCubit = rootMode ? context.read<BatchListCubit>() : null;
+                                          final batchBeforeReview = batchCubit?.state.current;
+                                          final reviewChanges = <ReviewDecisionChanged>[];
+                                          final reviewSubscription = rootMode
+                                              ? dependencies.dataChangeBus.changes
+                                                    .where(
+                                                      (change) => change is ReviewDecisionChanged && change.projectId == batchId,
+                                                    )
+                                                    .cast<ReviewDecisionChanged>()
+                                                    .listen(reviewChanges.add)
+                                              : null;
+                                          final deviceId = dependencies.deviceSessionCubit.state.device?.id.trim();
+                                          if (deviceId?.isNotEmpty == true) {
+                                            unawaited(
+                                              dependencies.reviewCheckpointStore.save(
+                                                ReviewCheckpoint.fromContext(
+                                                  deviceId: deviceId!,
+                                                  context: photoContext,
+                                                  query: state.query,
+                                                ),
                                               ),
-                                            ),
-                                          );
-                                        }
-                                        try {
-                                          await Navigator.of(context).pushNamed(
-                                            BirdRoutes.photoDetail,
-                                            arguments: PhotoDetailArgs.fromReview(
-                                              photoContext,
-                                              fileId: photo.id,
-                                              totalCount: totalCount,
-                                              hasMoreSequence: state.hasMore,
-                                              loadMoreSequence: () async {
-                                                await gallery.loadMore();
-                                                final current = gallery.state;
-                                                return PhotoSequencePage(
-                                                  ids: current.items.map((item) => item.id).toList(growable: false),
-                                                  hasMore: current.hasMore,
-                                                );
-                                              },
-                                            ),
-                                          );
-                                        } finally {
-                                          await reviewSubscription?.cancel();
-                                        }
-                                        if (batchCubit != null && batchBeforeReview != null && reviewChanges.isNotEmpty && !batchCubit.isClosed) {
-                                          batchCubit.reconcileReviewChanges(
-                                            batchBeforeReview,
-                                            reviewChanges,
-                                          );
-                                        }
+                                            );
+                                          }
+                                          try {
+                                            await Navigator.of(context).pushNamed(
+                                              BirdRoutes.photoDetail,
+                                              arguments: PhotoDetailArgs.fromReview(
+                                                photoContext,
+                                                fileId: photo.id,
+                                                totalCount: totalCount,
+                                                hasMoreSequence: state.hasMore,
+                                                loadMoreSequence: () async {
+                                                  await gallery.loadMore();
+                                                  final current = gallery.state;
+                                                  return PhotoSequencePage(
+                                                    ids: current.items.map((item) => item.id).toList(growable: false),
+                                                    hasMore: current.hasMore,
+                                                  );
+                                                },
+                                              ),
+                                            );
+                                          } finally {
+                                            await reviewSubscription?.cancel();
+                                          }
+                                          if (batchCubit != null && batchBeforeReview != null && reviewChanges.isNotEmpty && !batchCubit.isClosed) {
+                                            batchCubit.reconcileReviewChanges(
+                                              batchBeforeReview,
+                                              reviewChanges,
+                                            );
+                                          }
+                                        });
                                       } else {
                                         selection.toggle(photo.id);
                                       }
@@ -743,15 +805,18 @@ class _SelectionActionPanelState extends State<_SelectionActionPanel> {
           )
           .length;
       if (!mounted) return;
-      await Navigator.of(context).pushNamed<void>(
-        BirdRoutes.copyConfirmation,
-        arguments: CopyConfirmationArgs(
-          widget.batchId,
-          scope: 'selected_assets',
-          selectionId: snapshot.selectionId,
-          selectionPhotoCount: snapshot.assetCount,
-          selectionDiscardedCount: discardedCount,
-          filter: galleryState.query.toCopyFilterV1(),
+      await guardBirdNavigation(
+        context,
+        () => Navigator.of(context).pushNamed<void>(
+          BirdRoutes.copyConfirmation,
+          arguments: CopyConfirmationArgs(
+            widget.batchId,
+            scope: 'selected_assets',
+            selectionId: snapshot.selectionId,
+            selectionPhotoCount: snapshot.assetCount,
+            selectionDiscardedCount: discardedCount,
+            filter: galleryState.query.toCopyFilterV1(),
+          ),
         ),
       );
       if (!mounted) return;
@@ -825,6 +890,7 @@ class _GalleryHeader extends StatelessWidget {
                 onReconnect: () => openReconnectConnection(context),
                 onRefresh: () => context.read<GalleryCubit>().refresh(query: state.query),
               ),
+            _GalleryCountsNotice(state: state, offline: offline),
             if (rootMode) ...[
               _QuickFilters(
                 query: state.query,
@@ -832,6 +898,8 @@ class _GalleryHeader extends StatelessWidget {
                 pendingCount: state.pendingCount,
                 keepCount: state.keepCount,
                 discardCount: state.discardCount,
+                recognizedCount: state.recognizedCount,
+                filteredCount: state.filteredCount,
                 offline: offline,
               ),
               _AlbumBatchHeading(
@@ -853,7 +921,7 @@ class _GalleryHeader extends StatelessWidget {
                   onRefresh: () => context.read<GalleryCubit>().refresh(query: state.query),
                 ),
             ] else ...[
-              _QuickFilters(query: state.query),
+              _QuickFilters(query: state.query, pendingCount: state.pendingCount, keepCount: state.keepCount, discardCount: state.discardCount, recognizedCount: state.recognizedCount, filteredCount: state.filteredCount, offline: offline),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -868,16 +936,19 @@ class _GalleryHeader extends StatelessWidget {
                   ),
                   IconButton(
                     tooltip: '调整排序',
-                    onPressed: () => showModalBottomSheet(
-                      context: context,
-                      useRootNavigator: true,
-                      useSafeArea: true,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (_) => SortSheet(
-                        value: state.query.sort,
-                        onChanged: (sort) => context.read<GalleryCubit>().refresh(
-                          query: state.query.copyWith(sort: sort, clearCursor: true),
+                    onPressed: () => guardBirdNavigation(
+                      context,
+                      () => showModalBottomSheet(
+                        context: context,
+                        useRootNavigator: true,
+                        useSafeArea: true,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (_) => SortSheet(
+                          value: state.query.sort,
+                          onChanged: (sort) => context.read<GalleryCubit>().refresh(
+                            query: state.query.copyWith(sort: sort, clearCursor: true),
+                          ),
                         ),
                       ),
                     ),
@@ -899,12 +970,15 @@ class _GalleryHeader extends StatelessWidget {
       photoIds,
       initialIndex: photoIds.indexOf(fileId),
     );
-    Navigator.of(context).pushNamed(
-      BirdRoutes.photoDetail,
-      arguments: PhotoDetailArgs.fromReview(
-        photoContext,
-        fileId: fileId,
-        totalCount: photoIds.length,
+    guardBirdNavigation(
+      context,
+      () => Navigator.of(context).pushNamed(
+        BirdRoutes.photoDetail,
+        arguments: PhotoDetailArgs.fromReview(
+          photoContext,
+          fileId: fileId,
+          totalCount: photoIds.length,
+        ),
       ),
     );
   }
@@ -952,7 +1026,11 @@ class _AlbumStatusAction extends StatelessWidget {
             final battery = status?.batteryPercent;
             return _button(
               context,
-              label: reading ? '读取中' : battery == null ? '电量未知' : '$battery%',
+              label: reading
+                  ? '读取中'
+                  : battery == null
+                  ? '电量未知'
+                  : '$battery%',
               description: reading ? '盒子已连接，正在读取状态' : '盒子已连接，${battery == null ? '电量未知' : '电量 $battery%'}',
               icon: reading ? Icons.hourglass_top_rounded : Icons.wifi_rounded,
               showBattery: !reading,
@@ -1026,7 +1104,10 @@ class _AlbumStatusAction extends StatelessWidget {
                           Flexible(
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
-                              child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+                              child: Text(
+                                label,
+                                style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700),
+                              ),
                             ),
                           ),
                     ],
@@ -1043,30 +1124,34 @@ class _AlbumStatusAction extends StatelessWidget {
   void _openStatus(BuildContext context, DeviceStatus status, DeviceSessionState session, DeviceSessionCubit sessionCubit) {
     final navigator = Navigator.of(context);
     final navigation = BirdShellNavigation.maybeOf(context);
-    unawaited(showDeviceStatusSheet(
-      context,
-      status: status,
-      session: session,
-      sessionCubit: sessionCubit,
-      onReconnect: () {
-        navigator.pop();
-        if (context.mounted) openReconnectConnection(context);
-      },
-      onOpenDetails: () {
-        navigator.pop();
-        if (navigation != null) {
-          navigation.openTabRoute(2, BirdRoutes.settingsDeviceDetails);
-        } else {
-          unawaited(navigator.pushNamed<void>(BirdRoutes.settingsDeviceDetails));
-        }
-      },
-      onOpenTask: status.currentJob == null || navigation == null
-          ? null
-          : () {
-              navigator.pop();
-              navigation.selectTab(1);
-            },
-    ));
+    unawaited(
+      showDeviceStatusSheet(
+        context,
+        status: status,
+        session: session,
+        sessionCubit: sessionCubit,
+        onReconnect: () {
+          navigator.pop();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) openReconnectConnection(context);
+          });
+        },
+        onOpenDetails: () {
+          navigator.pop();
+          if (navigation != null) {
+            navigation.openTabRoute(2, BirdRoutes.settingsDeviceDetails);
+          } else {
+            unawaited(navigator.pushNamed<void>(BirdRoutes.settingsDeviceDetails));
+          }
+        },
+        onOpenTask: status.currentJob == null || navigation == null
+            ? null
+            : () {
+                navigator.pop();
+                navigation.selectTab(1);
+              },
+      ),
+    );
   }
 }
 
@@ -1100,7 +1185,12 @@ class _AlbumDeviceWarning extends StatelessWidget {
             children: [
               const Icon(Icons.error_outline_rounded, size: 18, color: AppColors.danger),
               const SizedBox(width: 8),
-              Expanded(child: Text(message, style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700))),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700),
+                ),
+              ),
             ],
           ),
         ),
@@ -1209,12 +1299,33 @@ class _PendingSyncNotice extends StatelessWidget {
   }
 }
 
+class _GalleryCountsNotice extends StatelessWidget {
+  const _GalleryCountsNotice({required this.state, required this.offline});
+  final GalleryState state;
+  final bool offline;
+  @override
+  Widget build(BuildContext context) {
+    final time = state.countsUpdatedAt?.toLocal();
+    final stamp = time == null ? '时间未记录' : '${time.month}/${time.day} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (state.countsStatus == GalleryCountsStatus.loading) const Text('正在更新统计…', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+        if (state.countsStatus == GalleryCountsStatus.unread) const Text('统计暂不可用', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+        if ((offline || state.countsStatus == GalleryCountsStatus.stale) && state.pendingCount != null) Text('上次统计：$stamp${offline ? ' · 当前离线' : ' · 待更新'}', style: const TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+      ],
+    );
+  }
+}
+
 class _QuickFilters extends StatelessWidget {
   const _QuickFilters({
     required this.query,
     this.pendingCount,
     this.keepCount,
     this.discardCount,
+    this.recognizedCount,
+    this.filteredCount,
     this.offline = false,
     this.pinFilterAction = false,
   });
@@ -1223,6 +1334,7 @@ class _QuickFilters extends StatelessWidget {
   final int? pendingCount;
   final int? keepCount;
   final int? discardCount;
+  final int? recognizedCount, filteredCount;
   final bool offline;
   final bool pinFilterAction;
 
@@ -1230,12 +1342,14 @@ class _QuickFilters extends StatelessWidget {
   Widget build(BuildContext context) {
     final values = <(String, String?, int?, Color?, IconData?)>[
       ('全部', null, null, null, null),
-      ('待确认', 'pending', offline ? null : pendingCount, offline ? null : AppColors.pending, offline ? null : Icons.circle),
-      ('已保留', 'keep', offline ? null : keepCount, offline ? null : AppColors.brand, offline ? null : Icons.circle),
-      ('已弃选', 'discard', offline ? null : discardCount, null, null),
+      ('识别度高', 'recognized', recognizedCount, AppColors.brand, null),
+      ('待确认', 'needs_review', pendingCount, AppColors.pending, Icons.circle),
+      ('已跳过', 'filtered', filteredCount, null, null),
+      ('已保留', 'keep', keepCount, AppColors.brand, Icons.circle),
+      ('已弃选', 'discard', discardCount, AppColors.danger, Icons.circle),
       if (!offline) ('精选', 'featured', null, AppColors.amber, Icons.star_rounded),
     ];
-    final selected = query.recommendedOnly ? '__ai__' : query.keepState;
+    final selected = query.recommendedOnly ? '__ai__' : query.recognitionState ?? (query.analysisState == 'skipped' ? 'filtered' : query.keepState);
     final chips = SingleChildScrollView(
       key: pinFilterAction ? const ValueKey('album-quick-filters') : null,
       scrollDirection: Axis.horizontal,
@@ -1246,17 +1360,14 @@ class _QuickFilters extends StatelessWidget {
             return Padding(
               padding: EdgeInsets.only(right: pinFilterAction ? 6 : 8),
               child: ChoiceChip(
+                key: ValueKey('gallery-category-${entry.$2 ?? 'all'}'),
                 selected: active,
                 showCheckmark: false,
                 materialTapTargetSize: MaterialTapTargetSize.padded,
                 visualDensity: VisualDensity.standard,
-                padding: pinFilterAction
-                    ? const EdgeInsets.symmetric(horizontal: 3, vertical: 2)
-                    : const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                padding: pinFilterAction ? const EdgeInsets.symmetric(horizontal: 3, vertical: 2) : const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
                 labelPadding: pinFilterAction ? const EdgeInsets.symmetric(horizontal: 5) : null,
-                avatarBoxConstraints: pinFilterAction
-                    ? BoxConstraints.tightFor(width: entry.$5 == Icons.star_rounded ? 18 : 13, height: 18)
-                    : null,
+                avatarBoxConstraints: pinFilterAction ? BoxConstraints.tightFor(width: entry.$5 == Icons.star_rounded ? 18 : 13, height: 18) : null,
                 labelStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: active ? AppColors.cream : AppColors.ink,
                   fontSize: 13,
@@ -1313,15 +1424,18 @@ class _QuickFilters extends StatelessWidget {
 
   void _openFilters(BuildContext context) {
     final cubit = context.read<GalleryCubit>();
-    showModalBottomSheet(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      showDragHandle: false,
-      backgroundColor: Colors.transparent,
-      builder: (_) => FilterSheet(
-        initial: cubit.state.query,
-        onApply: (query) => cubit.refresh(query: query),
+    guardBirdNavigation(
+      context,
+      () => showModalBottomSheet(
+        context: context,
+        useRootNavigator: true,
+        isScrollControlled: true,
+        showDragHandle: false,
+        backgroundColor: Colors.transparent,
+        builder: (_) => FilterSheet(
+          initial: cubit.state.query,
+          onApply: (query) => cubit.refresh(query: query),
+        ),
       ),
     );
   }
@@ -1329,29 +1443,18 @@ class _QuickFilters extends StatelessWidget {
 
 Future<void> _showGallerySearch(BuildContext context) async {
   final cubit = context.read<GalleryCubit>();
-  final value = await showDialog<String>(
-    context: context,
-    builder: (_) => GallerySearchDialog(initialValue: cubit.state.query.search ?? ''),
+  final value = await guardBirdNavigation(
+    context,
+    () => showDialog<String>(
+      context: context,
+      builder: (_) => GallerySearchDialog(initialValue: cubit.state.query.search ?? ''),
+    ),
   );
   if (value == null || !context.mounted) return;
   await cubit.refresh(query: cubit.state.query.copyWith(search: value, clearCursor: true));
 }
 
-PhotoQuery _quickQuery(PhotoQuery source, String? value) => PhotoQuery(
-  sort: source.sort,
-  search: source.search,
-  species: source.species,
-  minScore: source.minScore,
-  minConfidence: source.minConfidence,
-  tags: source.tags,
-  keepState: value == '__ai__' ? null : value,
-  analysisState: source.analysisState,
-  clarityState: source.clarityState,
-  recognitionState: source.recognitionState,
-  recommendedOnly: value == '__ai__',
-  groupId: source.groupId,
-  sceneId: source.sceneId,
-);
+PhotoQuery _quickQuery(PhotoQuery source, String? value) => source.forQuickCategory(value);
 
 String _sortLabel(String sort) => switch (sort) {
   'score_desc' => '照片质量从高到低',
@@ -1394,9 +1497,13 @@ class _GalleryEmptyState extends StatelessWidget {
         const SizedBox(height: 12),
         Text(
           filtering
-              ? waitingForFirstPage ? '正在读取照片列表…' : '正在筛选照片…'
+              ? waitingForFirstPage
+                    ? '正在读取照片列表…'
+                    : '正在筛选照片…'
               : incomplete
-              ? fromCache ? '已缓存照片中没有符合条件的结果' : '筛选未完成'
+              ? fromCache
+                    ? '已缓存照片中没有符合条件的结果'
+                    : '筛选未完成'
               : '没有符合条件的照片',
         ),
         const SizedBox(height: 8),
@@ -1405,8 +1512,7 @@ class _GalleryEmptyState extends StatelessWidget {
             spacing: 8,
             alignment: WrapAlignment.center,
             children: [
-              if (onRetry != null)
-                OutlinedButton(onPressed: onRetry, child: Text(fromCache ? '刷新' : '重新筛选')),
+              if (onRetry != null) OutlinedButton(onPressed: onRetry, child: Text(fromCache ? '刷新' : '重新筛选')),
               OutlinedButton(onPressed: onReset, child: const Text('清除筛选')),
             ],
           ),
@@ -1544,20 +1650,23 @@ Future<void> _requestBatchAction(
   String action,
 ) async {
   if (action == 'discard') {
-    final approved = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
-        title: Text('确认弃选 ${ids.length} 张照片？'),
-        content: const Text('照片不会立即从存储卡删除，但会被标记为弃选，并影响后续复制和导出范围。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            child: const Text('确认弃选'),
-          ),
-        ],
+    final approved = await guardBirdNavigation(
+      context,
+      () => showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
+          title: Text('确认弃选 ${ids.length} 张照片？'),
+          content: const Text('照片不会立即从存储卡删除，但会被标记为弃选，并影响后续复制和导出范围。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('取消')),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+              child: const Text('确认弃选'),
+            ),
+          ],
+        ),
       ),
     );
     if (approved != true || !context.mounted) return;
@@ -1586,9 +1695,12 @@ Future<void> _showTagDialog(BuildContext context, String batchId, List<String> i
     return photos;
   }
 
-  final change = await showDialog<BatchTagChange>(
-    context: context,
-    builder: (_) => remove ? BatchRemoveTagsDialog(loadPhotos: loadPhotos) : BatchAddTagsDialog(loadPhotos: loadPhotos),
+  final change = await guardBirdNavigation(
+    context,
+    () => showDialog<BatchTagChange>(
+      context: context,
+      builder: (_) => remove ? BatchRemoveTagsDialog(loadPhotos: loadPhotos) : BatchAddTagsDialog(loadPhotos: loadPhotos),
+    ),
   );
   if (change == null || change.groups.isEmpty || !context.mounted) return;
   final selection = context.read<SelectionCubit>();

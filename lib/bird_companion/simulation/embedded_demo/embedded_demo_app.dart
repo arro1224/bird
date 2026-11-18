@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
@@ -96,7 +97,7 @@ class _BirdEmbeddedDemoAppState extends State<BirdEmbeddedDemoApp> {
             children: [
               const Text('内置盒子演示', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
-              const Text('已内置 60 张示例照片、相机存储卡和 USB 目标盘。照片审阅、导入、分析、复制、设备及设置沿用现有 App 页面，任务会自动推进。'),
+              Text('已内置 ${widget.runtime.server.photoCount} 张${widget.runtime.server.acceptanceProfile == null ? '示例' : '返修验收'}照片、相机存储卡和 USB 目标盘。照片审阅、导入、分析、复制、设备及设置沿用现有 App 页面，任务会自动推进。'),
               const SizedBox(height: 8),
               const Text('盒子状态、识别结果、文件复制和网络切换为模拟效果。无需真实盒子、电脑或联网；审阅记录和任务历史保存在本机。'),
               const SizedBox(height: 12),
@@ -128,46 +129,49 @@ class _BirdEmbeddedDemoAppState extends State<BirdEmbeddedDemoApp> {
   @override
   Widget build(BuildContext context) => BirdCompanionScope(
     dependencies: widget.runtime.dependencies,
-    child: MaterialApp(
-      navigatorKey: _navigator,
-      scaffoldMessengerKey: BirdFeedback.messengerKey,
-      navigatorObservers: [BirdFeedbackNavigatorObserver()],
-      title: '拍鸟伴侣 · 演示版',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
-      home: BirdAppShell(initialIndex: 0, onGenerateRoute: _route),
-      onGenerateRoute: _route,
-      builder: (context, child) => Column(
-        children: [
-          Material(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            child: SafeArea(
-              bottom: false,
-              child: SizedBox(
-                height: 36,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 14, right: 4),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.science_outlined, size: 16),
-                      const SizedBox(width: 6),
-                      const Expanded(child: Text('演示版 · 内置模拟盒子', style: TextStyle(fontSize: 12))),
-                      TextButton(
-                        onPressed: _showTools,
-                        child: const Text('演示工具', style: TextStyle(fontSize: 12)),
-                      ),
-                    ],
+    child: PhoneDiagnosticLifecycle(
+      recorder: widget.runtime.dependencies.phoneDiagnostics,
+      child: MaterialApp(
+        navigatorKey: _navigator,
+        scaffoldMessengerKey: BirdFeedback.messengerKey,
+        navigatorObservers: [BirdFeedbackNavigatorObserver(), PhoneDiagnosticNavigationObserver(widget.runtime.dependencies.phoneDiagnostics)],
+        title: '拍鸟伴侣 · 演示版',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: ThemeMode.system,
+        home: BirdAppShell(initialIndex: 0, onGenerateRoute: _route),
+        onGenerateRoute: _route,
+        builder: (context, child) => Column(
+          children: [
+            Material(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              child: SafeArea(
+                bottom: false,
+                child: SizedBox(
+                  height: 36,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 14, right: 4),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.science_outlined, size: 16),
+                        const SizedBox(width: 6),
+                        Expanded(child: Text(widget.runtime.server.acceptanceProfile == null ? '演示版 · 内置模拟盒子' : '模拟验收 · ${widget.runtime.server.photoCount} 张', style: const TextStyle(fontSize: 12))),
+                        TextButton(
+                          onPressed: _showTools,
+                          child: const Text('演示工具', style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          Expanded(
-            child: MediaQuery.removePadding(context: context, removeTop: true, child: child ?? const SizedBox.shrink()),
-          ),
-        ],
+            Expanded(
+              child: MediaQuery.removePadding(context: context, removeTop: true, child: child ?? const SizedBox.shrink()),
+            ),
+          ],
+        ),
       ),
     ),
   );

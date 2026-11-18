@@ -77,9 +77,10 @@ void main() {
     expect(find.text('导出诊断包'), findsNWidgets(2));
     expect(find.byKey(const Key('logs-export-package')), findsOneWidget);
     expect(find.textContaining('无法连接盒子'), findsNothing);
-    expect(find.text('2.1.0'), findsOneWidget);
-    expect(find.text('1.2.4'), findsOneWidget);
-    expect(find.text('BirdAI 3.0.2'), findsOneWidget);
+    expect(find.text('2.1.0'), findsNothing);
+    expect(find.text('1.2.4'), findsNothing);
+    expect(find.text('BirdAI 3.0.2'), findsNothing);
+    expect(find.text('未读取'), findsNWidgets(2));
   });
 
   testWidgets('help search filters the approved FAQ list', (tester) async {

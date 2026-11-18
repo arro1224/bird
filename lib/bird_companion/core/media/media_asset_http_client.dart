@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:aves/bird_companion/core/diagnostics/http_request_diagnostics.dart';
 import 'dart:typed_data';
 
 import 'package:aves/bird_companion/core/media/media_asset_models.dart';
@@ -22,7 +23,7 @@ class MediaAssetHttpResponse {
 
 /// Signed URLs remain public; unsigned active-box URLs may use its credential.
 class MediaAssetHttpClient {
-  MediaAssetHttpClient({Dio? dio, this.headersForUri})
+  MediaAssetHttpClient({Dio? dio, this.headersForUri, HttpRequestDiagnostics? diagnostics})
     : _dio =
           dio ??
           Dio(
@@ -32,7 +33,9 @@ class MediaAssetHttpClient {
               sendTimeout: const Duration(seconds: 15),
             ),
           ),
-      _ownsDio = dio == null;
+      _ownsDio = dio == null {
+    if (diagnostics != null) _dio.interceptors.add(diagnostics);
+  }
 
   final Dio _dio;
   final bool _ownsDio;
@@ -49,6 +52,7 @@ class MediaAssetHttpClient {
         uri,
         cancelToken: cancelToken,
         options: Options(
+          extra: {'bird_signed_asset': sessionHeaders.isEmpty},
           responseType: ResponseType.bytes,
           validateStatus: (_) => true,
           followRedirects: sessionHeaders.isEmpty,

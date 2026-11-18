@@ -31,7 +31,7 @@ void main() {
       ),
     ]);
 
-    expect(cubit.state.pendingCount, 37);
+    expect(cubit.state.pendingCount, 38);
     expect(cubit.state.keepCount, 17);
     expect(cubit.state.discardCount, 6);
     expect(_stateOf(cubit, 'photo-1'), 'keep');
@@ -72,7 +72,7 @@ void main() {
       after: KeepState.pending,
     );
     cubit.applyReviewTransitions(const [pendingTransition]);
-    expect(cubit.state.pendingCount, 4);
+    expect(cubit.state.pendingCount, 3);
     expect(cubit.state.keepCount, 1);
 
     cubit.applyReviewTransitions([pendingTransition.reversed()]);
@@ -112,7 +112,7 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
 
-    expect(cubit.state.pendingCount, 37);
+    expect(cubit.state.pendingCount, 38);
     expect(cubit.state.keepCount, 17);
     expect(repository.pageCalls, 1);
   });

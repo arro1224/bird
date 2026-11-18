@@ -81,7 +81,7 @@ class _FilterSheetState extends State<FilterSheet> {
                       _FilterSection(
                         icon: Icons.layers_outlined,
                         title: '保留状态',
-                        child: _ChoiceWrap<String?>(value: _keep, options: const [(null, '全部'), ('keep', '保留'), ('pending', '待确认'), ('discard', '弃选'), ('featured', '精选')], onChanged: (value) => setState(() => _keep = value)),
+                        child: _ChoiceWrap<String?>(value: _keep, options: const [(null, '全部'), ('keep', '保留'), ('pending', '未标记'), ('discard', '弃选'), ('featured', '精选')], onChanged: (value) => setState(() => _keep = value)),
                       ),
                       _FilterSection(
                         icon: Icons.image_outlined,
@@ -91,7 +91,14 @@ class _FilterSheetState extends State<FilterSheet> {
                       _FilterSection(
                         icon: Icons.flutter_dash_outlined,
                         title: '鸟种识别',
-                        child: _ChoiceWrap<String?>(value: _recognition, options: const [(null, '全部'), ('recognized', '已识别'), ('needs_review', '待人工确认'), ('unknown', '无法确定')], onChanged: (value) => setState(() => _recognition = value)),
+                        child: _ChoiceWrap<String?>(
+                          value: _analysis == 'skipped' ? 'filtered' : _recognition,
+                          options: const [(null, '全部'), ('recognized', '识别度高'), ('needs_review', '待确认'), ('unknown', '无法确定'), ('filtered', '已跳过')],
+                          onChanged: (value) => setState(() {
+                            _recognition = value == 'filtered' ? null : value;
+                            if (value != null || _analysis == 'skipped') _analysis = value == 'filtered' ? 'skipped' : null;
+                          }),
+                        ),
                       ),
                       _FilterSection(
                         icon: Icons.verified_outlined,
@@ -130,6 +137,7 @@ class _FilterSheetState extends State<FilterSheet> {
                             initialValue: _analysis,
                             decoration: const InputDecoration(labelText: '识别进度'),
                             items: const [
+                              DropdownMenuItem(value: 'skipped', child: Text('已跳过')),
                               DropdownMenuItem(value: 'completed', child: Text('识别完成')),
                               DropdownMenuItem(value: 'processing', child: Text('正在识别')),
                               DropdownMenuItem(value: 'low_confidence', child: Text('识别结果不确定')),

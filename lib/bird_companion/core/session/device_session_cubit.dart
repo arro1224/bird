@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:aves/bird_companion/core/diagnostics/http_request_diagnostics.dart';
 
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
@@ -28,9 +29,10 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     this.retryDelay = const Duration(seconds: 1),
     Stream<void>? transportChanges,
     Stream<void>? connectionFailures,
+    Stream<ApiConnectionFailure>? connectionFailureDetails,
     this.probeReachability,
   }) : super(const DeviceSessionState()) {
-    _requestFailureSubscription = connectionFailures?.listen((_) => reportUnreachable());
+    _requestFailureSubscription = connectionFailureDetails != null ? connectionFailureDetails.listen(reportUnreachable) : connectionFailures?.listen((_) => reportUnreachable());
     _networkSubscription = _connectivityMonitor.onNetworkChanged.listen((available) {
       if (isClosed || provisioningHandoffActive) return;
       // v10 返修问题 8：Wi-Fi 断开不能让首页/设备页继续显示"已连接"。
@@ -90,7 +92,14 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     });
     _authenticationSubscription = sessionCoordinator?.authenticationFailures.listen((failure) {
       if (isClosed || sessionCoordinator.isCurrentAuthenticationFailure(failure) == false) return;
-      _activeAttempt?.record('connection_authentication_invalidated', {'final_trigger': 'authentication_failure'});
+      final attempt = _activeAttempt;
+      if (attempt != null) {
+        attempt.record('connection_authentication_invalidated', {'final_trigger': 'authentication_failure'});
+      } else {
+        try {
+          diagnostic?.call({'event': 'connection_authentication_invalidated', ...diagnosticContext, 'final_trigger': 'authentication_failure'});
+        } catch (_) {}
+      }
       _invalidateConnection();
       emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: '设备授权已失效，请重新配对。'));
     });
@@ -120,11 +129,12 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   final Future<bool> Function(Uri baseUri, CancelToken cancelToken)? probeReachability;
   static const _reachabilityBudget = Duration(seconds: 3);
   CancelToken? _reachabilityProbe;
+  String? _reachabilityCheckId;
   static const _eventUnavailableMessage = '实时事件连接暂不可用，页面会在刷新时读取最新状态。';
   late final StreamSubscription<bool> _networkSubscription;
   late final StreamSubscription<EventConnectionState> _eventSubscription;
   StreamSubscription<void>? _transportSubscription;
-  StreamSubscription<void>? _requestFailureSubscription;
+  StreamSubscription? _requestFailureSubscription;
   StreamSubscription<SessionAuthenticationFailure>? _authenticationSubscription;
   StreamSubscription<SessionAddressChange>? _addressSubscription;
   bool _legacyHandoffActive = false;
@@ -149,6 +159,28 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   }
 
   String? get activeAttemptId => _activeAttempt?.id ?? _intentId;
+  Map<String, Object?> get diagnosticContext => {
+    'generation': _connectionGeneration,
+    'attempt_id': activeAttemptId,
+    'phase': _activeAttempt?.stage ?? state.verificationStage,
+    'device_id': state.device?.id,
+    'connection_state': state.phase.name,
+  };
+  @override
+  void onChange(Change<DeviceSessionState> change) {
+    super.onChange(change);
+    try {
+      diagnostic?.call({
+        'event': 'connection_state_changed',
+        ...diagnosticContext,
+        'previous_state': change.currentState.phase.name,
+        'next_state': change.nextState.phase.name,
+        'device_id': change.nextState.device?.id,
+        'attempt_id': change.nextState.attemptId ?? activeAttemptId,
+      });
+    } catch (_) {}
+  }
+
   bool get provisioningHandoffActive => _legacyHandoffActive || _handoffOwners.isNotEmpty || _networkIntentPending;
   set provisioningHandoffActive(bool value) {
     if (value && !_legacyHandoffActive) _invalidateConnection();
@@ -195,8 +227,14 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   }
 
   void _cancelReachabilityProbe() {
+    if (_reachabilityProbe != null) {
+      try {
+        diagnostic?.call({'event': 'business_failure_probe_cancelled', 'reachability_check_id': _reachabilityCheckId, ...diagnosticContext});
+      } catch (_) {}
+    }
     _reachabilityProbe?.cancel('Device session changed');
     _reachabilityProbe = null;
+    _reachabilityCheckId = null;
   }
 
   ConnectionAttempt _beginAttempt(String intent, {String? attemptId, String? deviceId, String? operationId, CancelToken? token}) {
@@ -303,6 +341,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   }
 
   Future<bool> _restoreSavedSession(ConnectionAttempt attempt, {required Duration timeout, String? expectedDeviceId}) async {
+    attempt.record('connection_budget', {'deadline_ms': timeout.inMilliseconds});
     final timer = Timer(timeout, () {
       if (attempt.isCurrent() && !attempt.committed) {
         attempt.record('connection_deadline', {'timeout_ms': timeout.inMilliseconds, 'final_trigger': 'deadline'});
@@ -414,34 +453,50 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   void reportUnreachable([Object? error]) {
     final device = state.device;
     final probe = probeReachability;
-    if (isClosed || provisioningHandoffActive || !state.isConnected ||
-        device == null || probe == null || _reachabilityProbe != null) {
+    if (isClosed || provisioningHandoffActive || !state.isConnected || device == null || probe == null) {
+      return;
+    }
+    final failure = error is ApiConnectionFailure ? error : null;
+    if (_reachabilityProbe != null) {
+      try {
+        diagnostic?.call({'event': 'business_failure_probe_coalesced', 'cause_request_id': failure?.requestId, 'reachability_check_id': _reachabilityCheckId, ...diagnosticContext});
+      } catch (_) {}
       return;
     }
     final token = _reachabilityProbe = CancelToken();
-    unawaited(_checkReachability(device, probe, token));
+    final checkId = _reachabilityCheckId = SecureRequestIdFactory().create();
+    try {
+      diagnostic?.call({'event': 'business_failure_probe_started', 'cause_request_id': failure?.requestId, 'reachability_check_id': checkId, ...diagnosticContext});
+    } catch (_) {}
+    unawaited(_checkReachability(device, probe, token, failure, checkId));
   }
 
   Future<void> _checkReachability(
     DeviceConnection device,
     Future<bool> Function(Uri, CancelToken) probe,
     CancelToken token,
+    ApiConnectionFailure? failure,
+    String checkId,
   ) async {
     final clock = Stopwatch()..start();
     try {
       final reachable = await probe(device.baseUri, token).timeout(_reachabilityBudget, onTimeout: () => false);
-      if (isClosed || provisioningHandoffActive || !state.isConnected ||
-          !identical(_reachabilityProbe, token) || state.device?.id != device.id ||
-          state.device?.baseUri != device.baseUri) {
+      if (isClosed || provisioningHandoffActive || !state.isConnected || !identical(_reachabilityProbe, token) || state.device?.id != device.id || state.device?.baseUri != device.baseUri) {
         return;
       }
       try {
         diagnostic?.call({
           'event': 'business_failure_reachability_checked',
+          'reachability_check_id': checkId,
+          'cause_request_id': failure?.requestId,
+          'probe_request_id': HttpRequestDiagnostics.requestId(token.requestOptions),
+          'route': failure?.route,
+          'error_class': failure?.errorType,
           'device_id': device.id,
           'generation': _connectionGeneration,
           'elapsed_ms': clock.elapsedMilliseconds,
           'outcome': reachable ? 'reachable' : 'unreachable',
+          'timeout_ms': _reachabilityBudget.inMilliseconds,
         });
       } catch (_) {
         // Diagnostics must not affect the connection decision.
@@ -451,9 +506,21 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       // An unexpected or cancelled probe is not proof of a network failure.
       return;
     } finally {
-      if (identical(_reachabilityProbe, token)) _reachabilityProbe = null;
+      if (identical(_reachabilityProbe, token)) {
+        _reachabilityProbe = null;
+        _reachabilityCheckId = null;
+      }
       token.cancel('Reachability probe finished');
     }
+    try {
+      diagnostic?.call({
+        'event': 'business_failure_recovery_started',
+        'reachability_check_id': checkId,
+        'cause_request_id': failure?.requestId,
+        'probe_request_id': HttpRequestDiagnostics.requestId(token.requestOptions),
+        ...diagnosticContext,
+      });
+    } catch (_) {}
     emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '盒子连接暂时不可用，正在恢复…'));
     unawaited(verifySavedSession(intent: 'page_reported_unreachable'));
   }

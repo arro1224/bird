@@ -56,7 +56,7 @@ class PhotoTile extends StatelessWidget {
       KeepState.discard => AppColors.danger,
       KeepState.featured => AppColors.featured,
     };
-    final needsReview = keepState == KeepState.pending || photo.analysisState == AnalysisState.lowConfidence || photo.recognition?.isLowConfidence == true;
+    final needsReview = photo.needsRecognitionReview;
 
     return LayoutBuilder(
       builder: (context, constraints) {

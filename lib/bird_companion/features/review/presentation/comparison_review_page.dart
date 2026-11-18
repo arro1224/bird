@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
@@ -71,11 +72,14 @@ class _ComparisonReviewPageState extends State<ComparisonReviewPage> {
             _activeGroup?.groupName ?? _activeGroupId,
           ),
           helpTooltip: '对比说明',
-          onHelp: () => showDialog<void>(
-            context: context,
-            builder: (_) => const AlertDialog(
-              title: Text('如何对比？'),
-              content: Text('点击左右照片选中目标，可保留任意一张或同时保留两张。精选只作用于当前选中照片，不会取消另一张已有的保留状态。'),
+          onHelp: () => guardBirdNavigation(
+            context,
+            () => showDialog<void>(
+              context: context,
+              builder: (_) => const AlertDialog(
+                title: Text('如何对比？'),
+                content: Text('点击左右照片选中目标，可保留任意一张或同时保留两张。精选只作用于当前选中照片，不会取消另一张已有的保留状态。'),
+              ),
             ),
           ),
         ),

@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
@@ -102,11 +103,14 @@ class _GroupReviewViewState extends State<_GroupReviewView> {
       title: '连拍照片挑选',
       subtitle: widget.sceneName ?? '从每组连拍照片中挑出满意的照片',
       helpTooltip: '连拍照片说明',
-      onHelp: () => showDialog<void>(
-        context: context,
-        builder: (_) => const AlertDialog(
-          title: Text('为什么照片会分组？'),
-          content: Text('短时间内连续拍摄的照片会放在一起。系统会根据鸟是否清楚、画面是否完整等因素，把更值得查看的照片排在前面。'),
+      onHelp: () => guardBirdNavigation(
+        context,
+        () => showDialog<void>(
+          context: context,
+          builder: (_) => const AlertDialog(
+            title: Text('为什么照片会分组？'),
+            content: Text('短时间内连续拍摄的照片会放在一起。系统会根据鸟是否清楚、画面是否完整等因素，把更值得查看的照片排在前面。'),
+          ),
         ),
       ),
     ),
@@ -342,11 +346,14 @@ class _GroupContent extends StatelessWidget {
                             photos: photos.map((photo) => photo.id).toList(growable: false),
                             initialIndex: selectedIndex,
                           );
-                          Navigator.of(context).pushNamed(
-                            BirdRoutes.photoDetail,
-                            arguments: PhotoDetailArgs.fromReview(
-                              detailContext,
-                              fileId: representative.id,
+                          guardBirdNavigation(
+                            context,
+                            () => Navigator.of(context).pushNamed(
+                              BirdRoutes.photoDetail,
+                              arguments: PhotoDetailArgs.fromReview(
+                                detailContext,
+                                fileId: representative.id,
+                              ),
                             ),
                           );
                         },
@@ -417,12 +424,15 @@ class _GroupContent extends StatelessWidget {
                           photos: rankedIds.take(2).toList(growable: false),
                         )
                       : comparisonGroups[comparisonGroupIndex];
-                  Navigator.of(context).pushNamed(
-                    BirdRoutes.comparisonReview,
-                    arguments: ComparisonReviewArgs.fromReview(
-                      comparisonContext,
-                      groups: comparisonGroups,
-                      initialGroupIndex: comparisonGroupIndex,
+                  guardBirdNavigation(
+                    context,
+                    () => Navigator.of(context).pushNamed(
+                      BirdRoutes.comparisonReview,
+                      arguments: ComparisonReviewArgs.fromReview(
+                        comparisonContext,
+                        groups: comparisonGroups,
+                        initialGroupIndex: comparisonGroupIndex,
+                      ),
                     ),
                   );
                 },
@@ -453,24 +463,27 @@ class _GroupContent extends StatelessWidget {
       await cubit.markFile(group, id, state);
       return;
     }
-    final approved = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('确认整组修改？'),
-        content: Text(
-          '将把本组 ${group.memberFileIds.length} 张照片全部设为'
-          '“${_keepStateActionLabel(state)}”。',
+    final approved = await guardBirdNavigation(
+      context,
+      () => showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('确认整组修改？'),
+          content: Text(
+            '将把本组 ${group.memberFileIds.length} 张照片全部设为'
+            '“${_keepStateActionLabel(state)}”。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('确认修改'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('确认修改'),
-          ),
-        ],
       ),
     );
     if (approved == true && context.mounted) {
@@ -480,7 +493,7 @@ class _GroupContent extends StatelessWidget {
 }
 
 String _keepStateActionLabel(KeepState state) => switch (state) {
-  KeepState.pending => '待确认',
+  KeepState.pending => '未标记',
   KeepState.keep => '保留',
   KeepState.discard => '弃选',
   KeepState.featured => '精选',

@@ -53,6 +53,13 @@ class EventClient {
            ));
 
   final Duration pingInterval;
+  void Function(Map<String, dynamic>)? diagnostic;
+  void _record(String event, [Map<String, dynamic> fields = const {}]) {
+    try {
+      diagnostic?.call({'event': event, 'ws_generation': _connectionGeneration, 'ws_state': _currentState.name, ...fields});
+    } catch (_) {}
+  }
+
   final ReconnectPolicy _reconnectPolicy;
   final EventChannelConnector _connector;
   static const _closeTimeout = Duration(seconds: 2);
@@ -82,6 +89,7 @@ class EventClient {
   void _emitState(EventConnectionState value) {
     if (_currentState == value) return;
     _currentState = value;
+    _record('websocket_state_changed');
     _connectionStates.add(value);
   }
 
@@ -140,6 +148,7 @@ class EventClient {
       );
     } catch (error) {
       if (generation != _connectionGeneration || _manualDisconnect) return;
+      _record('websocket_connect_failed', {'error_class': error.runtimeType.toString(), 'error_code': 'ws_connect_failed'});
       final statusCode = _authenticationStatus(error);
       if (statusCode != null) {
         _blockForAuthentication(statusCode, generation);
@@ -155,6 +164,7 @@ class EventClient {
     int generation,
   ) {
     if (generation != _connectionGeneration || !identical(channel, _channel)) return;
+    _record('websocket_failed', {'error_class': error.runtimeType.toString(), 'error_code': 'ws_stream_failed'});
     final statusCode = _authenticationStatus(error);
     if (statusCode != null) {
       _blockForAuthentication(statusCode, generation);
@@ -166,6 +176,7 @@ class EventClient {
   void _handleClosed(WebSocketChannel channel, int generation) {
     if (generation != _connectionGeneration || !identical(channel, _channel)) return;
     final closeCode = channel.closeCode;
+    _record('websocket_closed', {'close_code': closeCode});
     if (closeCode == 4401 || closeCode == 4403) {
       _blockForAuthentication(closeCode == 4401 ? 401 : 403, generation);
     } else {
@@ -215,11 +226,19 @@ class EventClient {
   }
 
   void _scheduleReconnect(int generation) {
-    if (generation != _connectionGeneration || _manualDisconnect || _endpoint == null || _attempt >= _reconnectPolicy.maxAttempts) {
+    if (generation != _connectionGeneration || _manualDisconnect || _endpoint == null) return;
+    // A broken socket can report both an error and completion. Keep the first
+    // pending retry instead of consuming the budget and delaying it twice.
+    if (_retryTimer?.isActive == true) {
+      _record('websocket_retry_coalesced', {'attempt': _attempt});
+      return;
+    }
+    if (_attempt >= _reconnectPolicy.maxAttempts) {
       _emitState(EventConnectionState.disconnected);
       return;
     }
     final delay = _reconnectPolicy.delayFor(_attempt++);
+    _record('websocket_retry_wait', {'attempt': _attempt, 'retry_delay_ms': delay.inMilliseconds});
     _emitState(EventConnectionState.reconnecting);
     _retryTimer?.cancel();
     _retryTimer = Timer(

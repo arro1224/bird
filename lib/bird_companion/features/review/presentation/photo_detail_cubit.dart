@@ -202,6 +202,38 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
     }
   }
 
+  Future<void> restoreAiSpecies() async {
+    final detail = state.detail;
+    final current = detail?.decision;
+    final repository = _repository;
+    if (isClosed || state.saving || state.conflict || current == null || (current.userSpecies?.trim().isNotEmpty != true && current.userSpeciesId?.isNotEmpty != true)) return;
+    if (repository is! AiSpeciesRestorer) {
+      _emitIfOpen(state.copyWith(message: '当前来源暂不支持恢复 AI 鸟种', messageIsError: true));
+      return;
+    }
+    _emitIfOpen(state.copyWith(saving: true));
+    try {
+      final receipt = await (repository as AiSpeciesRestorer).restoreAiSpecies(current, projectId: projectId);
+      if (receipt.conflict) {
+        final latest = await _refreshedDetail(current.fileId);
+        _emitIfOpen(state.copyWith(detail: latest, saving: false, conflict: true, pendingConflictDecision: current, clearUndo: true, message: '盒子内容已变化，已重新读取；请核对最新内容后再操作。', messageIsError: true));
+        return;
+      }
+      final accepted = receipt.authoritativeDecision ?? UserDecision(fileId: current.fileId, keepState: current.keepState, userScore: current.userScore, userTags: current.userTags, version: current.version);
+      _emitIfOpen(
+        state.copyWith(
+          detail: await _detailAfterSave(receipt, accepted),
+          saving: false,
+          message: receipt.queued ? receipt.message : '已恢复 AI 鸟种，其他审阅信息保持不变',
+          messageIsError: false,
+          undoEntry: ReviewUndoEntry(before: current, after: accepted),
+        ),
+      );
+    } catch (error) {
+      _emitIfOpen(state.copyWith(saving: false, message: '恢复未完成，请刷新后重试', messageIsError: true, error: error));
+    }
+  }
+
   Future<void> useRemote(String fileId) async {
     if (isClosed || state.saving) return;
     _emitIfOpen(state.copyWith(saving: true));
@@ -326,7 +358,7 @@ class PhotoDetailCubit extends Cubit<PhotoDetailState> {
     final photo = detail.photo;
     return ReviewDetail(
       photo: PhotoDetail(
-        summary: photo.summary.copyWith(keepState: decision.keepState.wireValue),
+        summary: PhotoSummary.fromJson({...photo.summary.toJson(), 'keep_state': decision.keepState.wireValue, 'user_species_id': decision.userSpeciesId, 'user_species': decision.userSpecies}),
         subjects: photo.subjects,
         tags: photo.tags,
         exif: photo.exif,

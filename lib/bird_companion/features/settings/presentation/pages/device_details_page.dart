@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
@@ -13,6 +14,7 @@ import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_scaffold.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
 import 'package:flutter/material.dart';
+import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
 
 class DeviceDetailsPage extends StatefulWidget {
   const DeviceDetailsPage({super.key, required this.controller});
@@ -98,6 +100,7 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> {
                         spacing: AppSpacing.xxs,
                         runSpacing: AppSpacing.xs,
                         children: [
+                          const PhoneDiagnosticExportButton(key: Key('details-export-phone-diagnostics'), compact: true),
                           TextButton.icon(
                             key: const Key('device-reconnect'),
                             onPressed: () => openReconnectConnection(context),
@@ -113,9 +116,12 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> {
                             label: const Text('重新连接'),
                           ),
                           TextButton.icon(
-                            onPressed: () => Navigator.of(context).push<void>(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const SystemLogsPage(),
+                            onPressed: () => guardBirdNavigation(
+                              context,
+                              () => Navigator.of(context).push<void>(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const SystemLogsPage(),
+                                ),
                               ),
                             ),
                             icon: const Icon(Icons.description_outlined),

@@ -1,4 +1,6 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'dart:async';
+import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
 
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
@@ -320,7 +322,7 @@ class AboutBirdAppPage extends StatelessWidget {
               ),
               SizedBox(height: AppSpacing.sm),
               Text('拍鸟伴侣', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-              Text('版本 2.1.0 · 设备协议 BirdBox v1', style: TextStyle(color: AppColors.mutedInk)),
+              AppBuildIdentityLabel(),
               SizedBox(height: AppSpacing.md),
               BirdSettingsRow(title: '产品定位', trailing: Text('拍鸟盒子移动控制端')),
               BirdSettingsRow(title: '设备支持', trailing: Text('拍鸟伴侣 K7')),
@@ -363,8 +365,11 @@ class AboutBirdAppPage extends StatelessWidget {
     ),
   );
 
-  static void _open(BuildContext context, Widget page) => Navigator.of(context).push<void>(
-    MaterialPageRoute<void>(builder: (_) => page),
+  static void _open(BuildContext context, Widget page) => guardBirdNavigation(
+    context,
+    () => Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => page),
+    ),
   );
 }
 

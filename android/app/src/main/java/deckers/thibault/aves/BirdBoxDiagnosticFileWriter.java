@@ -27,7 +27,7 @@ final class BirdBoxDiagnosticFileWriter {
         return safe.length() == 0 ? "unknown" : safe.toString();
     }
     static Artifact write(File directory, String basename, String full, String summary, String expectedPayloadSha) throws IOException {
-        if (full == null || summary == null || basename == null || !basename.startsWith("BirdBox_BLE_") || !basename.equals(safeFilename(basename))) throw new IOException("invalid_file_input");
+        if (full == null || summary == null || basename == null || !(basename.startsWith("BirdBox_BLE_") || basename.startsWith("BirdBox_Phone_")) || !basename.equals(safeFilename(basename))) throw new IOException("invalid_file_input");
         // Check char count before materializing UTF-8. Byte limit is authoritative.
         if (full.length() > MAX_JSON_BYTES || summary.length() > 16384) throw new IOException("diagnostic_too_large");
         final byte[] fullBytes = full.getBytes(StandardCharsets.UTF_8), summaryBytes = summary.getBytes(StandardCharsets.UTF_8);
@@ -41,7 +41,7 @@ final class BirdBoxDiagnosticFileWriter {
             try (ZipOutputStream stream = new ZipOutputStream(buffer, StandardCharsets.UTF_8)) {
                 zipEntry(stream, "summary.json", summaryBytes);
                 zipEntry(stream, "full_trace.json", fullBytes);
-                zipEntry(stream, "README.txt", ("BirdBox BLE diagnostic snapshot\nAll locally retained records at the snapshot cutoff are in full_trace.json.\nSee retention for dropped/unknown history; a short summary is not the full trace.\nfull_trace.json SHA-256: " + payloadSha + "\nThe shared ZIP SHA-256 is shown by the App and is not embedded in itself.\n").getBytes(StandardCharsets.UTF_8));
+                zipEntry(stream, "README.txt", ("BirdBox diagnostic snapshot\nAll locally retained records at the snapshot cutoff are in full_trace.json.\nPhone records are in phone_diagnostics; box logs are a separate source.\nSee retention for dropped/unknown history; a short summary is not the full trace.\nfull_trace.json SHA-256: " + payloadSha + "\nThe shared ZIP SHA-256 is shown by the App and is not embedded in itself.\n").getBytes(StandardCharsets.UTF_8));
             }
             output = buffer.toByteArray();
         } else { output = fullBytes; }
@@ -75,7 +75,7 @@ final class BirdBoxDiagnosticFileWriter {
     }
     private static String hex(byte[] bytes) { final StringBuilder result = new StringBuilder(); for (byte b : bytes) result.append(String.format(Locale.ROOT, "%02x", b & 255)); return result.toString(); }
     static void reserveCache(File directory, long incoming, long now) throws IOException {
-        final File[] files = directory.listFiles(f -> f.isFile() && f.getName().startsWith("BirdBox_BLE_") && (f.getName().endsWith(".json") || f.getName().endsWith(".zip") || f.getName().endsWith(".partial")));
+        final File[] files = directory.listFiles(f -> f.isFile() && (f.getName().startsWith("BirdBox_BLE_") || f.getName().startsWith("BirdBox_Phone_")) && (f.getName().endsWith(".json") || f.getName().endsWith(".zip") || f.getName().endsWith(".partial")));
         if (files == null) throw new IOException("diagnostic_storage_failed");
         Arrays.sort(files, Comparator.comparingLong(File::lastModified));
         long bytes = 0; int count = files.length;

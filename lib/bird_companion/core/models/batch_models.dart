@@ -19,6 +19,11 @@ class BatchSummary extends Equatable {
     this.sceneCount = 0,
     this.burstGroupCount = 0,
     this.cover,
+    this.recognizedCount,
+    this.filteredCount,
+    this.countsUpdatedAt,
+    this.countsFromCache = false,
+    this.countsDeviceId,
   });
 
   final String id;
@@ -37,6 +42,10 @@ class BatchSummary extends Equatable {
   final int sceneCount;
   final int burstGroupCount;
   final PreviewRef? cover;
+  final int? recognizedCount, filteredCount;
+  final DateTime? countsUpdatedAt;
+  final bool countsFromCache;
+  final String? countsDeviceId;
 
   factory BatchSummary.fromJson(Map<String, dynamic> json) => BatchSummary(
     id: ProtocolValidation.requiredId(json, 'project_id'),
@@ -68,6 +77,11 @@ class BatchSummary extends Equatable {
     sceneCount: (json['scene_count'] as num?)?.toInt() ?? 0,
     burstGroupCount: (json['burst_group_count'] as num?)?.toInt() ?? 0,
     cover: json['cover'] is Map ? PreviewRef.fromJson(Map<String, dynamic>.from(json['cover'] as Map)) : null,
+    recognizedCount: ProtocolValidation.optionalNonNegativeInt(json, 'recognized_count'),
+    filteredCount: ProtocolValidation.optionalNonNegativeInt(json, 'filtered_count'),
+    countsUpdatedAt: ProtocolValidation.optionalDateTime(json, '_app_counts_updated_at'),
+    countsFromCache: json['_app_counts_from_cache'] == true,
+    countsDeviceId: json['_app_counts_device_id'] as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -88,6 +102,11 @@ class BatchSummary extends Equatable {
     'scene_count': sceneCount,
     'burst_group_count': burstGroupCount,
     if (cover != null) 'cover': cover!.toJson(),
+    if (recognizedCount != null) 'recognized_count': recognizedCount,
+    if (filteredCount != null) 'filtered_count': filteredCount,
+    if (countsUpdatedAt != null) '_app_counts_updated_at': countsUpdatedAt!.toUtc().toIso8601String(),
+    if (countsFromCache) '_app_counts_from_cache': true,
+    if (countsDeviceId != null) '_app_counts_device_id': countsDeviceId,
   };
 
   BatchSummary copyWith({
@@ -96,6 +115,9 @@ class BatchSummary extends Equatable {
     int? discardCount,
     String? state,
     String? activeJobId,
+    DateTime? countsUpdatedAt,
+    bool? countsFromCache,
+    String? countsDeviceId,
   }) => BatchSummary(
     id: id,
     name: name,
@@ -112,10 +134,36 @@ class BatchSummary extends Equatable {
     sceneCount: sceneCount,
     burstGroupCount: burstGroupCount,
     cover: cover,
+    recognizedCount: recognizedCount,
+    filteredCount: filteredCount,
+    countsUpdatedAt: countsUpdatedAt ?? this.countsUpdatedAt,
+    countsFromCache: countsFromCache ?? this.countsFromCache,
+    countsDeviceId: countsDeviceId ?? this.countsDeviceId,
   );
 
   @override
-  List<Object?> get props => [id, name, createdAt, totalFiles, analyzedCount, reviewCount, keepCount, discardCount, pendingCopyCount, copyState, state, activeJobId, sceneCount, burstGroupCount, cover];
+  List<Object?> get props => [
+    id,
+    name,
+    createdAt,
+    totalFiles,
+    analyzedCount,
+    reviewCount,
+    keepCount,
+    discardCount,
+    pendingCopyCount,
+    copyState,
+    state,
+    activeJobId,
+    sceneCount,
+    burstGroupCount,
+    cover,
+    recognizedCount,
+    filteredCount,
+    countsUpdatedAt,
+    countsFromCache,
+    countsDeviceId,
+  ];
 }
 
 String? _optionalString(Object? value) {

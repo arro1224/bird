@@ -10,6 +10,18 @@ import 'package:aves/bird_companion/features/settings/data/settings_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('review default retains explicit scene/search scope and never replaces a filtered route', () async {
+    final store = _MemorySettingsStore(const BirdSettingsSnapshot(defaultPhotoFilter: 'pendingReview', birdPhotosOnly: true));
+    final cubit = GalleryCubit(_EmptyPhotoRepository(), 'project-1', null, null, null, null, null, null, store);
+    addTearDown(cubit.close);
+    await cubit.restoreAndRefresh(const PhotoQuery(sceneId: 'scene-1', search: 'egret'), restoreSavedView: false);
+    expect(cubit.state.query.sceneId, 'scene-1');
+    expect(cubit.state.query.search, 'egret');
+    expect(cubit.state.query.recognitionState, 'needs_review');
+    await cubit.restoreAndRefresh(const PhotoQuery(analysisState: 'skipped'), restoreSavedView: false);
+    expect(cubit.state.query.analysisState, 'skipped');
+    expect(cubit.state.query.recognitionState, null);
+  });
   test('album view cache is isolated by device namespace and project id', () {
     expect(
       albumViewCacheKey(
@@ -41,7 +53,8 @@ void main() {
 
     expect(resolved.sort, 'recommended_desc');
     expect(resolved.search, 'egret');
-    expect(resolved.keepState, 'pending');
+    expect(resolved.keepState, null);
+    expect(resolved.recognitionState, 'needs_review');
   });
 
   test('gallery-local sort changes do not overwrite the global default', () async {
@@ -190,8 +203,8 @@ void main() {
     expect(cubit.state.gridColumns, 5);
     expect(cubit.state.showRatingOverlay, isFalse);
     expect(cubit.state.query.sort, 'score_desc');
-    expect(cubit.state.query.keepState, 'pending');
-    expect(cubit.state.query.recognitionState, 'recognized');
+    expect(cubit.state.query.keepState, null);
+    expect(cubit.state.query.recognitionState, 'needs_review');
 
     store.snapshot = const BirdSettingsSnapshot(
       gridColumns: 4,

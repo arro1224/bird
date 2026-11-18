@@ -124,15 +124,23 @@ class _HistoryItem extends StatelessWidget {
     final lower = original.toLowerCase();
     final action = switch (lower) {
       String text when text.contains('featured') => '设为精选',
-      String text when text.contains('pending') => '标记为待确认',
+      String text when text.contains('pending') => '设为未标记',
       String text when text.contains('discard') => '标记为弃选',
       String text when text.contains('keep') => '标记为保留',
       _ => null,
     };
     if (action != null && (lower.contains('bulk') || original.contains('批量操作'))) return '批量$action';
     return original
+        .replaceAll(RegExp(r'\buser_species_id\b'), '人工鸟种编号')
+        .replaceAll(RegExp(r'\buser_species\b'), '人工鸟种')
+        .replaceAll(RegExp(r'\buser_score\b'), '人工评分')
+        .replaceAll(RegExp(r'\buser_tags\b'), '标签')
+        .replaceAll(RegExp(r'\bkeep_state\b'), '保留状态')
+        .replaceAll(RegExp(r'\bupdated_at\b'), '修改时间')
+        .replaceAll(RegExp(r'\bversion\b'), '版本')
+        .replaceAll(RegExp(r'\bnull\b'), '已清除')
         .replaceAll(RegExp(r'\bfeatured\b', caseSensitive: false), '精选')
-        .replaceAll(RegExp(r'\bpending\b', caseSensitive: false), '待确认')
+        .replaceAll(RegExp(r'\bpending\b', caseSensitive: false), '未标记')
         .replaceAll(RegExp(r'\bdiscard\b', caseSensitive: false), '弃选')
         .replaceAll(RegExp(r'\bkeep\b', caseSensitive: false), '保留');
   }

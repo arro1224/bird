@@ -155,7 +155,7 @@ class SpeciesCandidate extends Equatable {
     name: json.stringOrNull('name') ?? json.stringOrNull('species_name') ?? '未知鸟种',
     speciesId: json.stringOrNull('species_id') ?? json.stringOrNull('id'),
     englishName: json.stringOrNull('english_name'),
-    latinName: json.stringOrNull('latin_name'),
+    latinName: json.stringOrNull('latin_name') ?? json.stringOrNull('scientific_name'),
     confidence: ProtocolValidation.unitInterval(json, 'confidence'),
   );
 
@@ -172,26 +172,34 @@ class SpeciesCandidate extends Equatable {
 }
 
 class RecognitionResult extends Equatable {
-  const RecognitionResult({required this.candidates, this.isLowConfidence = false, this.modelVersion});
+  const RecognitionResult({required this.candidates, this.isLowConfidence = false, this.modelVersion, this.verdict, this.top1Class, this.isOriginalVerified = true});
 
   final List<SpeciesCandidate> candidates;
   final bool isLowConfidence;
   final String? modelVersion;
+  final String? verdict, top1Class;
+  final bool isOriginalVerified;
 
   factory RecognitionResult.fromJson(Map<String, dynamic> json) => RecognitionResult(
     candidates: json.listOrEmpty('species_topn').whereType<Map>().map((value) => SpeciesCandidate.fromJson(Map<String, dynamic>.from(value))).toList(),
     isLowConfidence: json.boolOrNull('review_flag') ?? json.boolOrNull('low_confidence') ?? false,
     modelVersion: json.stringOrNull('model_version'),
+    verdict: json.stringOrNull('verdict'),
+    top1Class: json.stringOrNull('top1_class'),
+    isOriginalVerified: json['_app_original_verified'] != false,
   );
 
   Map<String, dynamic> toJson() => {
     'species_topn': candidates.map((candidate) => candidate.toJson()).toList(),
     'low_confidence': isLowConfidence,
     if (modelVersion != null) 'model_version': modelVersion,
+    if (verdict != null) 'verdict': verdict,
+    if (top1Class != null) 'top1_class': top1Class,
+    if (!isOriginalVerified) '_app_original_verified': false,
   };
 
   @override
-  List<Object?> get props => [candidates, isLowConfidence, modelVersion];
+  List<Object?> get props => [candidates, isLowConfidence, modelVersion, verdict, top1Class, isOriginalVerified];
 }
 
 class RatingResult extends Equatable {
@@ -267,6 +275,8 @@ class PhotoSummary extends Equatable {
     this.userTags = const [],
     this.capturedAt,
     this.version,
+    this.userSpeciesId,
+    this.userSpecies,
   });
 
   final String id;
@@ -284,6 +294,26 @@ class PhotoSummary extends Equatable {
   final bool isRecommended;
   final List<String> userTags;
   final int? version;
+  final String? userSpeciesId, userSpecies;
+  bool get hasManualSpecies => userSpecies?.trim().isNotEmpty == true;
+  String? get displaySpecies => hasManualSpecies ? userSpecies : recognition?.candidates.firstOrNull?.name;
+
+  bool get hasCompletedRecognition => analysisState == AnalysisState.completed || analysisState == AnalysisState.lowConfidence;
+  bool get isRecognized {
+    if (!hasCompletedRecognition) return false;
+    final value = recognition;
+    if (value?.isOriginalVerified == false) return false;
+    if (value?.verdict != null) return value!.verdict == 'high' && value.top1Class?.trim().isNotEmpty == true;
+    return value?.candidates.isNotEmpty == true && value?.isLowConfidence != true;
+  }
+
+  bool get needsRecognitionReview {
+    if (!hasCompletedRecognition) return false;
+    final value = recognition;
+    if (value?.isOriginalVerified == false) return false;
+    if (value?.verdict != null) return value!.verdict == 'medium' || value.verdict == 'unknown';
+    return value == null || value.isLowConfidence || value.candidates.isEmpty;
+  }
 
   /// Device timestamp used by the gallery's "newest first" ordering.
   final DateTime? capturedAt;
@@ -305,6 +335,8 @@ class PhotoSummary extends Equatable {
     userTags: json.listOrEmpty('user_tags').map((value) => value.toString()).toList(),
     capturedAt: json.containsKey('captured_at') ? ProtocolValidation.optionalDateTime(json, 'captured_at') : ProtocolValidation.optionalDateTime(json, 'capturedAt'),
     version: ProtocolValidation.optionalNonNegativeInt(json, 'version'),
+    userSpeciesId: json.stringOrNull('user_species_id'),
+    userSpecies: json.stringOrNull('user_species'),
   );
 
   Map<String, dynamic> toJson() => {
@@ -324,6 +356,8 @@ class PhotoSummary extends Equatable {
     'user_tags': userTags,
     if (capturedAt != null) 'captured_at': capturedAt!.toIso8601String(),
     if (version != null) 'version': version,
+    if (userSpeciesId != null) 'user_species_id': userSpeciesId,
+    if (userSpecies != null) 'user_species': userSpecies,
   };
 
   /// Returns a local view of this photo after a review decision is saved.
@@ -347,6 +381,8 @@ class PhotoSummary extends Equatable {
     userTags: userTags,
     capturedAt: capturedAt,
     version: version,
+    userSpeciesId: userSpeciesId,
+    userSpecies: userSpecies,
   );
 
   @override
@@ -367,6 +403,8 @@ class PhotoSummary extends Equatable {
     userTags,
     capturedAt,
     version,
+    userSpeciesId,
+    userSpecies,
   ];
 }
 

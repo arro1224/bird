@@ -194,8 +194,17 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
     if (!mounted || _checkingExisting || _entered || _handoff?.state.active == true) return;
     final pending = dependencies.pendingVerifiedBleEndpoint(info);
     if (pending == null) return;
+    final initialPhase = _provisioningCubit.state.phase;
     setState(() => _checkingExisting = true);
     try {
+      // A verified BLE identity and an existing Wi-Fi endpoint do not authorize
+      // this phone. Keep the pairing screen unless local credentials are ready.
+      if (initialPhase == ProvisioningPhase.trusted) {
+        final repository = widget.repository;
+        final authorized = repository is ProvisioningHttpAuthorizationReadiness && await (repository as ProvisioningHttpAuthorizationReadiness).hasHttpAuthorization(info.deviceId);
+        if (!authorized && _provisioningCubit.state.phase != ProvisioningPhase.methodSelection) return;
+      }
+      if (!mounted || _entered || !identical(_provisioningCubit.state.deviceInfo, info) || !{ProvisioningPhase.trusted, ProvisioningPhase.methodSelection}.contains(_provisioningCubit.state.phase)) return;
       dependencies.deviceSessionCubit.beginNetworkIntent(pending.attemptId!);
       await _handoff?.begin(pending);
     } catch (error) {
@@ -203,6 +212,11 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
       // Being authorized does not imply WLAN is reachable. Keep normal choices.
     } finally {
       if (mounted) setState(() => _checkingExisting = false);
+      // Authorization may finish while the read above is pending. Do not lose
+      // that state transition, and never resume a subsequently selected device.
+      if (mounted && initialPhase != ProvisioningPhase.methodSelection && _provisioningCubit.state.phase == ProvisioningPhase.methodSelection && identical(_provisioningCubit.state.deviceInfo, info) && _handoff?.state.active != true) {
+        unawaited(_resumeExistingEndpoint(dependencies, info));
+      }
     }
   }
 

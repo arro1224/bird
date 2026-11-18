@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
@@ -144,11 +145,10 @@ class _ViewState extends State<_View> {
   void _applyExisting(ReviewDetail detail) {
     if (identical(_appliedDetail, detail)) return;
     final decision = detail.decision;
-    final candidates = detail.photo.summary.recognition?.candidates ?? const [];
     _keep = decision?.keepState ?? KeepState.pending;
     _speciesId = decision?.userSpeciesId;
-    _species.text = decision?.userSpecies ?? (candidates.isEmpty ? '' : candidates.first.name);
-    _score.text = decision?.userScore?.toString() ?? detail.photo.summary.rating?.totalScore.toString() ?? '';
+    _species.text = decision?.userSpecies ?? '';
+    _score.text = decision?.userScore?.toString() ?? '';
     _userTags = detail.userTags;
     _appliedDetail = detail;
   }
@@ -195,7 +195,7 @@ class _ViewState extends State<_View> {
               const PopupMenuItem(
                 value: 'pending',
                 height: 52,
-                child: _DetailMenuItem(icon: Icons.help_outline_rounded, label: '标记待确认'),
+                child: _DetailMenuItem(icon: Icons.help_outline_rounded, label: '设为未标记'),
               ),
               const PopupMenuItem(
                 value: 'history',
@@ -295,6 +295,13 @@ class _ViewState extends State<_View> {
                           currentSpeciesId: _speciesId,
                           currentSpecies: _species.text,
                         ),
+                        if (detail.decision?.userSpecies?.trim().isNotEmpty == true || detail.decision?.userSpeciesId?.isNotEmpty == true)
+                          TextButton.icon(
+                            key: const ValueKey('restore-ai-species'),
+                            onPressed: state.saving || state.conflict ? null : () => context.read<PhotoDetailCubit>().restoreAiSpecies(),
+                            icon: const Icon(Icons.restore),
+                            label: const Text('恢复 AI 鸟种'),
+                          ),
                         const SizedBox(height: 10),
                         RatingReasonPanel(
                           value: detail.photo.summary.rating,
@@ -323,7 +330,7 @@ class _ViewState extends State<_View> {
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
-                            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => VersionHistoryPage(items: detail.history))),
+                            onPressed: () => guardBirdNavigation(context, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => VersionHistoryPage(items: detail.history)))),
                             icon: const Icon(Icons.history_rounded),
                             label: const Text('查看修改记录'),
                           ),
@@ -356,7 +363,7 @@ class _ViewState extends State<_View> {
       return;
     }
     if (value == 'history') {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => VersionHistoryPage(items: detail.history)));
+      guardBirdNavigation(context, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => VersionHistoryPage(items: detail.history))));
       return;
     }
     if (value == 'featured') {
@@ -473,30 +480,36 @@ class _ViewState extends State<_View> {
   );
 
   Future<void> _editTags(BuildContext context, ReviewDetail detail) async {
-    final tags = await showModalBottomSheet<List<String>>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => TagEditorSheet(existingTags: detail.userTags),
+    final tags = await guardBirdNavigation(
+      context,
+      () => showModalBottomSheet<List<String>>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => TagEditorSheet(existingTags: detail.userTags),
+      ),
     );
     if (tags == null || !context.mounted) return;
     await context.read<PhotoDetailCubit>().addTags(detail.photo.summary.id, tags);
   }
 
   Future<void> _openEditor(BuildContext context, ReviewDetail detail) async {
-    final result = await Navigator.of(context).push<ReviewEditResult>(
-      MaterialPageRoute(
-        builder: (_) => ReviewEditPage(
-          keepState: _keep,
-          species: _species.text,
-          score: _score.text,
-          tags: _userTags.join(', '),
-          initialCandidates: detail.photo.summary.recognition?.candidates ?? const [],
-          previewUri: detail.photo.summary.preview.previewUri,
-          photo: detail.photo.summary,
-          mediaAssetLoader: widget.media.loader,
-          mediaAssetCoordinator: widget.media.coordinator,
-          deviceNamespace: widget.media.deviceNamespace,
-          allowNetworkFallback: widget.media.allowNetworkFallback,
+    final result = await guardBirdNavigation(
+      context,
+      () => Navigator.of(context).push<ReviewEditResult>(
+        MaterialPageRoute(
+          builder: (_) => ReviewEditPage(
+            keepState: _keep,
+            species: _species.text,
+            score: _score.text,
+            tags: _userTags.join(', '),
+            initialCandidates: detail.photo.summary.recognition?.candidates ?? const [],
+            previewUri: detail.photo.summary.preview.previewUri,
+            photo: detail.photo.summary,
+            mediaAssetLoader: widget.media.loader,
+            mediaAssetCoordinator: widget.media.coordinator,
+            deviceNamespace: widget.media.deviceNamespace,
+            allowNetworkFallback: widget.media.allowNetworkFallback,
+          ),
         ),
       ),
     );
@@ -542,7 +555,8 @@ class _RecognitionSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final summary = detail.photo.summary;
-    final candidate = summary.recognition?.candidates.firstOrNull;
+    final candidate = summary.recognition?.isOriginalVerified == false ? null : summary.recognition?.candidates.firstOrNull;
+    final hasManual = species.isNotEmpty || detail.decision?.userSpeciesId?.isNotEmpty == true;
     final confidence = candidate?.confidence;
     final score = summary.rating?.totalScore;
     final quality = score == null
@@ -565,7 +579,11 @@ class _RecognitionSummary extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      species.isEmpty ? '待确认鸟种' : species,
+                      species.isEmpty
+                          ? hasManual
+                                ? '已设置人工鸟种'
+                                : candidate?.name ?? '待确认鸟种'
+                          : species,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: AppColors.brandDark, fontWeight: FontWeight.w900),
@@ -578,10 +596,14 @@ class _RecognitionSummary extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                confidence == null ? '识别度：等待确认' : '识别度：${UserFacingText.recognitionPercent(confidence)}',
+                hasManual
+                    ? '人工修正 · 无模型置信度'
+                    : confidence == null
+                    ? 'AI 识别度：等待确认'
+                    : 'AI 识别度：${UserFacingText.recognitionPercent(confidence)}',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
-              if (confidence != null) ...[
+              if (confidence != null && !hasManual) ...[
                 const SizedBox(height: 10),
                 LinearProgressIndicator(value: confidence, minHeight: 7, borderRadius: BorderRadius.circular(99)),
               ],

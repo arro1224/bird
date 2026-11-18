@@ -186,6 +186,7 @@ class _AlbumHomeView extends StatelessWidget {
           return GalleryPage(
             key: ValueKey('album-${batch.id}'),
             batchId: batch.id,
+            batchSummary: batch,
             batchName: batch.name,
             createdAt: batch.createdAt,
             totalCount: batch.totalFiles,

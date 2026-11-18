@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
@@ -150,14 +151,20 @@ class _HelpCenterPageState extends State<HelpCenterPage> {
   }
 
   void _open(Widget page) {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => page),
+    guardBirdNavigation(
+      context,
+      () => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => page),
+      ),
     );
   }
 
   void _openSystemLogs() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const SystemLogsPage()),
+    guardBirdNavigation(
+      context,
+      () => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => const SystemLogsPage()),
+      ),
     );
   }
 }

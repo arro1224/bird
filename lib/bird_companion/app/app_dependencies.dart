@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:aves/bird_companion/core/diagnostics/app_build_identity.dart';
+import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_recorder.dart';
 import 'package:aves/bird_companion/features/connection/data/connection_attempt_recorder.dart';
 import 'package:flutter/services.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_cancellation.dart';
@@ -120,6 +122,7 @@ class BirdCompanionDependencies {
     required this.bleScanDiagnosticStore,
     required this.bleConnectionDiagnosticStore,
     required this.connectionAttempts,
+    required this.phoneDiagnostics,
   }) {
     // R3：WebSocket 只当唤醒信号，仓储收到后重读会话（不拿 payload 数字改状态）。
     // 断线期间漏掉的通知由页面/前台的显式 refresh 补齐，不依赖这条订阅。
@@ -180,10 +183,13 @@ class BirdCompanionDependencies {
   final BleScanDiagnosticStore bleScanDiagnosticStore;
   final BleConnectionDiagnosticStore bleConnectionDiagnosticStore;
   final bleDiagnosticFilePlatform = const MethodChannelBirdBoxBleDiagnosticFilePlatform();
-  late final bleDiagnosticSnapshotService = BleDiagnosticSnapshotService(bleScanDiagnosticStore, bleConnectionDiagnosticStore, bleDiagnosticFilePlatform);
+  final appBuildIdentity = AppBuildIdentity();
+  final PhoneDiagnosticRecorder phoneDiagnostics;
+  late final bleDiagnosticSnapshotService = BleDiagnosticSnapshotService(bleScanDiagnosticStore, bleConnectionDiagnosticStore, bleDiagnosticFilePlatform, phoneSnapshot: phoneDiagnostics.snapshot, buildIdentity: appBuildIdentity.read);
   final ConnectionAttemptRecorder connectionAttempts;
   StreamSubscription<EventConnectionState>? _sessionTrace;
   StreamSubscription? _deviceTrace;
+  StreamSubscription<void>? _networkTrace;
   String? _traceDeviceId;
 
   static Future<BirdCompanionDependencies> create({
@@ -272,7 +278,8 @@ class BirdCompanionDependencies {
       (photo) => reviewRepository.acceptSyncedPhoto(photo),
       photoRepository.acceptSyncedBatchTags,
     );
-    final connectionAttempts = ConnectionAttemptRecorder(cache, bleConnectionDiagnosticStore);
+    final phoneDiagnostics = PhoneDiagnosticRecorder(cache);
+    final connectionAttempts = ConnectionAttemptRecorder(cache, bleConnectionDiagnosticStore, mirror: phoneDiagnostics.record);
     deviceSessionCubit = DeviceSessionCubit(
       connectionRepository,
       connectivityMonitor,
@@ -282,11 +289,17 @@ class BirdCompanionDependencies {
       diagnostic: connectionAttempts.record,
       transportChanges: connectivityMonitor.onTransportChanged,
       connectionFailures: apiClient.connectionFailures,
+      connectionFailureDetails: apiClient.connectionFailureDetails,
       probeReachability: apiClient.probeReachability,
       onConnectionRecovered: () async {
         await birdSyncService.synchronize();
       },
     );
+    phoneDiagnostics.context = () => deviceSessionCubit.diagnosticContext;
+    apiClient.httpDiagnostics
+      ..record = phoneDiagnostics.record
+      ..context = () => {...phoneDiagnostics.currentContext, 'session_generation': apiClient.sessionGeneration};
+    eventClient.diagnostic = phoneDiagnostics.record;
     final mediaAssetCache = MediaAssetCache(
       etagStore: LocalCacheMediaAssetEtagStore(cache),
     );
@@ -296,7 +309,7 @@ class BirdCompanionDependencies {
       cacheInvalidator: mediaAssetCache,
     );
     final mediaAssetService = MediaAssetService(
-      httpClient: MediaAssetHttpClient(headersForUri: apiClient.mediaHeaders),
+      httpClient: MediaAssetHttpClient(headersForUri: apiClient.mediaHeaders, diagnostics: apiClient.httpDiagnostics),
       cache: mediaAssetCache,
       coordinator: mediaAssetCoordinator,
     );
@@ -356,8 +369,21 @@ class BirdCompanionDependencies {
       bleScanDiagnosticStore: bleScanDiagnosticStore,
       bleConnectionDiagnosticStore: bleConnectionDiagnosticStore,
       connectionAttempts: connectionAttempts,
+      phoneDiagnostics: phoneDiagnostics,
     );
     dependencies.birdSyncService.start();
+    unawaited(dependencies.appBuildIdentity.read().then((build) => phoneDiagnostics.record({'event': 'phone_build_identified', ...build})));
+    Future<void> recordNetworkType() async {
+      try {
+        final types = await connectivityMonitor.diagnosticNetworkTypes.timeout(const Duration(seconds: 2));
+        phoneDiagnostics.record({'event': 'network_type_observed', 'network_type': types.join(',')});
+      } catch (_) {
+        phoneDiagnostics.record({'event': 'network_type_observed', 'network_type': 'unknown'});
+      }
+    }
+
+    dependencies._networkTrace = connectivityMonitor.onTransportChanged.listen((_) => unawaited(recordNetworkType()));
+    unawaited(recordNetworkType());
     unawaited(dependencies.copyJobRecovery.recover());
     dependencies._sessionTrace = eventClient.connectionStates.listen((state) => dependencies.connectionAttempts.record({'event': 'session_ws_state', 'device_id': sessionCoordinator.activeDeviceId, 'ws_state': state.name}));
     dependencies._deviceTrace = deviceSessionCubit.stream.listen((state) {
@@ -537,6 +563,7 @@ class BirdCompanionDependencies {
     activeCopyJobs.dispose();
     unawaited(_sessionTrace?.cancel());
     unawaited(_deviceTrace?.cancel());
+    unawaited(_networkTrace?.cancel());
     recognitionRepository.dispose();
     smartFollowRepository.dispose();
     unawaited(provisioningRepository.dispose());
@@ -550,9 +577,7 @@ class BirdCompanionDependencies {
     unawaited(refreshCoordinator.dispose());
     unawaited(dataChangeBus.dispose());
     unawaited(pendingOperationStore.dispose());
-    unawaited(bleScanDiagnosticStore.dispose());
-    unawaited(bleConnectionDiagnosticStore.dispose());
-    unawaited(cache.close());
+    unawaited(Future.wait([phoneDiagnostics.dispose(), bleScanDiagnosticStore.dispose(), bleConnectionDiagnosticStore.dispose()]).whenComplete(cache.close));
   }
 }
 

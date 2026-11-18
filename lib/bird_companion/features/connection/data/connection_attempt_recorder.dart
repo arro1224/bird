@@ -8,7 +8,8 @@ import 'package:aves/bird_companion/features/connection/domain/request_id_factor
 /// One user intent spans scan, pairing, network, HTTP, WS and routing. Storage
 /// uses the existing bounded journal, including its durable drop accounting.
 final class ConnectionAttemptRecorder {
-  ConnectionAttemptRecorder(this.store, this.events);
+  ConnectionAttemptRecorder(this.store, this.events, {this.mirror});
+  final void Function(Map<String, dynamic>)? mirror;
   final DiagnosticStorage store;
   final BleConnectionDiagnosticStore events;
   static const key = 'connection:diagnostic-attempt:v1';
@@ -76,12 +77,23 @@ final class ConnectionAttemptRecorder {
         'wifi_available',
         'transport_generation',
         'retry_delay_ms',
+        'cause_request_id',
+        'probe_request_id',
+        'deadline_ms',
+        'previous_state',
+        'next_state',
+        'connection_state',
       }.contains(entry.key)) {
         safe[entry.key] = entry.value;
       }
     }
     final endpoint = Uri.tryParse(event['base_uri'] as String? ?? '');
     if (endpoint != null && endpoint.host.isNotEmpty) safe['endpoint'] = '${endpoint.scheme}://${endpoint.host}:${endpoint.port}';
+    try {
+      mirror?.call(safe);
+    } catch (_) {
+      /* Do not affect recovery. */
+    }
     unawaited(
       events
           .record(

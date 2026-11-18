@@ -10,6 +10,7 @@ import 'package:aves/bird_companion/features/connection/domain/provisioning_repo
 import 'package:aves/bird_companion/features/connection/presentation/connection_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
 import 'package:flutter/material.dart';
+import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
 
 class BirdCompanionApp extends StatelessWidget {
   const BirdCompanionApp({super.key, required this.dependencies});
@@ -20,24 +21,27 @@ class BirdCompanionApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return BirdCompanionScope(
       dependencies: dependencies,
-      child: MaterialApp(
-        scaffoldMessengerKey: BirdFeedback.messengerKey,
-        navigatorObservers: [BirdFeedbackNavigatorObserver()],
-        title: '拍鸟伴侣',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        themeMode: ThemeMode.system,
-        home: birdStartupHome(
-          dependencies.deviceSessionCubit.state,
-          provisioningRepository: dependencies.provisioningRepository,
-          onProvisioningCompleted: dependencies.completeProvisioning,
-          pendingDirectAp: dependencies.cache.read<Map>(DirectApHandoffCubit.pendingKey) != null,
-        ),
-        onGenerateRoute: (settings) => BirdAppRouter.onGenerateRoute(
-          settings,
-          provisioningRepository: dependencies.provisioningRepository,
-          onProvisioningCompleted: dependencies.completeProvisioning,
+      child: PhoneDiagnosticLifecycle(
+        recorder: dependencies.phoneDiagnostics,
+        child: MaterialApp(
+          scaffoldMessengerKey: BirdFeedback.messengerKey,
+          navigatorObservers: [BirdFeedbackNavigatorObserver(), PhoneDiagnosticNavigationObserver(dependencies.phoneDiagnostics)],
+          title: '拍鸟伴侣',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: ThemeMode.system,
+          home: birdStartupHome(
+            dependencies.deviceSessionCubit.state,
+            provisioningRepository: dependencies.provisioningRepository,
+            onProvisioningCompleted: dependencies.completeProvisioning,
+            pendingDirectAp: dependencies.cache.read<Map>(DirectApHandoffCubit.pendingKey) != null,
+          ),
+          onGenerateRoute: (settings) => BirdAppRouter.onGenerateRoute(
+            settings,
+            provisioningRepository: dependencies.provisioningRepository,
+            onProvisioningCompleted: dependencies.completeProvisioning,
+          ),
         ),
       ),
     );

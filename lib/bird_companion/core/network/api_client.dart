@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:aves/bird_companion/core/diagnostics/http_request_diagnostics.dart';
 
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
@@ -63,11 +64,17 @@ class ApiClient {
               receiveTimeout: const Duration(seconds: 30),
               sendTimeout: const Duration(seconds: 15),
             ),
-          );
+          ) {
+    for (final client in {_dio, _publicDio, _assetDio}) {
+      client.interceptors.add(httpDiagnostics);
+    }
+  }
 
   final Dio _dio;
   final Dio _publicDio;
   final Dio _assetDio;
+  final httpDiagnostics = HttpRequestDiagnostics();
+  final _connectionFailureDetails = StreamController<ApiConnectionFailure>.broadcast(sync: true);
   final _authenticationFailures = StreamController<int>.broadcast();
   // Handle the failure in its current session, rather than queueing a signal
   // that could arrive after the user has switched to another box.
@@ -75,6 +82,7 @@ class ApiClient {
   int _requestSequence = 0;
 
   Uri? get baseUri => _baseUri;
+  int get sessionGeneration => _sessionGeneration;
 
   /// Credentials only apply to unsigned media endpoints on the active box.
   Map<String, String> mediaHeaders(Uri uri) {
@@ -88,6 +96,7 @@ class ApiClient {
 
   Stream<int> get authenticationFailures => _authenticationFailures.stream;
   Stream<void> get connectionFailures => _connectionFailures.stream;
+  Stream<ApiConnectionFailure> get connectionFailureDetails => _connectionFailureDetails.stream;
 
   /// Check reachability independently of the business route. An HTTP response
   /// proves reachability, not device identity, authorization or readiness.
@@ -138,6 +147,9 @@ class ApiClient {
     if (!baseUri.hasScheme || baseUri.host.isEmpty) {
       throw ArgumentError.value(baseUri, 'baseUri', '必须是完整的盒子服务地址，例如 http://192.168.4.1:8080。');
     }
+    // Address changes supersede in-flight requests even if a caller reuses
+    // the token, including an A -> B -> A address round trip.
+    if (_baseUri != baseUri) _sessionGeneration++;
     _baseUri = baseUri;
     _dio.options.baseUrl = baseUri.toString().replaceFirst(RegExp(r'/$'), '');
     _dio.options.headers = {
@@ -241,9 +253,18 @@ class ApiClient {
     } on DioException catch (error) {
       final exception = ApiException.fromDio(error);
       if (reportAuthenticationFailure && requestBase != null && requestBase == _baseUri && sessionGeneration == _sessionGeneration && exception.isTransportFailure && !_connectionFailures.isClosed) {
+        if (!_connectionFailureDetails.isClosed) {
+          _connectionFailureDetails.add(
+            ApiConnectionFailure(
+              requestId: HttpRequestDiagnostics.requestId(error.requestOptions),
+              route: HttpRequestDiagnostics.safeRoute(error.requestOptions.uri),
+              errorType: error.type.name,
+            ),
+          );
+        }
         _connectionFailures.add(null);
       }
-      if (reportAuthenticationFailure && sessionGeneration == _sessionGeneration && (exception.statusCode == 401 || exception.statusCode == 403)) {
+      if (reportAuthenticationFailure && requestBase != null && requestBase == _baseUri && sessionGeneration == _sessionGeneration && !_authenticationFailures.isClosed && (exception.statusCode == 401 || exception.statusCode == 403)) {
         _authenticationFailures.add(exception.statusCode!);
       }
       throw exception;
@@ -256,7 +277,7 @@ class ApiClient {
     try {
       final response = await _assetDio.getUri<List<int>>(
         uri,
-        options: Options(responseType: ResponseType.bytes),
+        options: Options(responseType: ResponseType.bytes, extra: const {'bird_signed_asset': true}),
       );
       final data = response.data;
       if (data == null || data.isEmpty) {
@@ -331,6 +352,7 @@ class ApiClient {
   String _newRequestId() => 'app-${DateTime.now().microsecondsSinceEpoch}-${_requestSequence++}';
 
   Future<void> dispose() async {
+    await _connectionFailureDetails.close();
     await _connectionFailures.close();
     await _authenticationFailures.close();
     _dio.close(force: true);

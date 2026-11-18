@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
@@ -16,31 +17,39 @@ Future<void> showDeviceStatusSheet(
   required VoidCallback onReconnect,
   required VoidCallback onOpenDetails,
   VoidCallback? onOpenTask,
-}) => showModalBottomSheet<void>(
-  context: context,
-  isScrollControlled: true,
-  useSafeArea: true,
-  showDragHandle: true,
-  builder: (context) {
-    final sheet = DeviceStatusSheet(
-      status: status,
-      session: session,
-      onReconnect: onReconnect,
-      onOpenDetails: onOpenDetails,
-      onOpenTask: onOpenTask,
-    );
-    if (sessionCubit == null) return sheet;
-    return BlocListener<DeviceSessionCubit, DeviceSessionState>(
-      bloc: sessionCubit,
-      listenWhen: (_, current) =>
-          !current.isConnected || current.device?.id != status.connection.id || current.device?.baseUri != status.connection.baseUri,
-      listener: (context, _) {
-        if (ModalRoute.of(context)?.isCurrent == true) Navigator.of(context).pop();
-      },
-      child: sheet,
-    );
-  },
-);
+}) => guardBirdNavigation<void>(context, () {
+  var leaving = false;
+  void leave(VoidCallback action) {
+    if (leaving) return;
+    leaving = true;
+    action();
+  }
+
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: true,
+    builder: (context) {
+      final sheet = DeviceStatusSheet(
+        status: status,
+        session: session,
+        onReconnect: () => leave(onReconnect),
+        onOpenDetails: () => leave(onOpenDetails),
+        onOpenTask: onOpenTask == null ? null : () => leave(onOpenTask),
+      );
+      if (sessionCubit == null) return sheet;
+      return BlocListener<DeviceSessionCubit, DeviceSessionState>(
+        bloc: sessionCubit,
+        listenWhen: (_, current) => !current.isConnected || current.device?.id != status.connection.id || current.device?.baseUri != status.connection.baseUri,
+        listener: (context, _) {
+          if (ModalRoute.of(context)?.isCurrent == true) Navigator.of(context).pop();
+        },
+        child: sheet,
+      );
+    },
+  );
+});
 
 class DeviceStatusSheet extends StatelessWidget {
   const DeviceStatusSheet({

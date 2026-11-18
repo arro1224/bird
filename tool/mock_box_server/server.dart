@@ -27,6 +27,7 @@ Future<void> main(List<String> arguments) async {
     autoSmartFollow: options.autoSmartFollow,
     stateFile: options.stateFile,
     embeddedDemo: options.embeddedDemo,
+    acceptanceProfile: options.acceptanceProfile,
   );
   final uri = await server.start(
     address: InternetAddress(options.host),
@@ -36,7 +37,8 @@ Future<void> main(List<String> arguments) async {
   stdout.writeln('K7 mock box is running.');
   stdout.writeln('Host URL: $uri');
   stdout.writeln('Android emulator URL: http://10.0.2.2:${uri.port}');
-  stdout.writeln('Photos: ${options.photoCount}');
+  stdout.writeln('Photos: ${server.photoCount}');
+  stdout.writeln('Acceptance profile: ${options.acceptanceProfile?.id ?? 'disabled'}');
   stdout.writeln('Device ID: ${options.deviceId} (${options.deviceId.length} chars)');
   stdout.writeln('Authentication: ${options.requireAuthentication ? 'required' : 'disabled'}');
   stdout.writeln('Progressive media: ${options.progressiveMedia ? 'enabled' : 'disabled'}');
@@ -74,6 +76,7 @@ class _Options {
     required this.autoSmartFollow,
     required this.stateFile,
     required this.embeddedDemo,
+    required this.acceptanceProfile,
   });
 
   final String host;
@@ -88,6 +91,7 @@ class _Options {
   final bool autoSmartFollow;
   final File? stateFile;
   final bool embeddedDemo;
+  final RepairAcceptanceProfile? acceptanceProfile;
 
   factory _Options.parse(List<String> arguments) {
     var host = '0.0.0.0';
@@ -100,6 +104,8 @@ class _Options {
     var emitAssetReadyEvents = true;
     var workflowAutoAdvance = true;
     var embeddedDemo = false;
+    RepairAcceptanceProfile? acceptanceProfile;
+    var explicitPhotoCount = false;
     var autoSmartFollow = false;
     File? stateFile;
     for (final argument in arguments) {
@@ -107,6 +113,7 @@ class _Options {
         embeddedDemo = true;
       } else if (argument == '--quick') {
         photoCount = 60;
+        explicitPhotoCount = true;
       } else if (argument == '--quiet') {
         quiet = true;
       } else if (argument == '--auth') {
@@ -128,6 +135,9 @@ class _Options {
         port = int.parse(argument.substring('--port='.length));
       } else if (argument.startsWith('--photos=')) {
         photoCount = int.parse(argument.substring('--photos='.length));
+        explicitPhotoCount = true;
+      } else if (argument.startsWith('--acceptance-profile=')) {
+        acceptanceProfile = RepairAcceptanceProfile.parse(argument.substring('--acceptance-profile='.length));
       } else if (argument.startsWith('--device-id=')) {
         deviceId = argument.substring('--device-id='.length).trim();
         if (deviceId.isEmpty) {
@@ -160,7 +170,7 @@ class _Options {
       } else if (argument == '--help' || argument == '-h') {
         stdout.writeln(
           'Usage: dart run tool/mock_box_server/server.dart '
-          '[--embedded-demo] [--quick] [--auth] [--progressive-media] [--no-asset-events] '
+          '[--embedded-demo] [--acceptance-profile=repair-110|repair-14] [--quick] [--auth] [--progressive-media] [--no-asset-events] '
           '[--no-workflow-advance] [--auto-smart-follow] [--photos=1200] [--host=0.0.0.0] '
           '[--port=8787] [--device-id=id] [--quiet] [--state-file=path]',
         );
@@ -169,10 +179,13 @@ class _Options {
         throw FormatException('Unknown option: $argument');
       }
     }
+    if (acceptanceProfile != null && explicitPhotoCount && photoCount != acceptanceProfile.total) {
+      throw const FormatException('Acceptance profile photo count is fixed; omit --photos and --quick.');
+    }
     return _Options(
       host: host,
       port: port,
-      photoCount: photoCount,
+      photoCount: acceptanceProfile?.total ?? photoCount,
       quiet: quiet,
       requireAuthentication: requireAuthentication,
       deviceId: deviceId,
@@ -182,6 +195,7 @@ class _Options {
       autoSmartFollow: autoSmartFollow,
       stateFile: stateFile,
       embeddedDemo: embeddedDemo,
+      acceptanceProfile: acceptanceProfile,
     );
   }
 }

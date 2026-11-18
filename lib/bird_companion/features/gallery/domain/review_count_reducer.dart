@@ -28,7 +28,8 @@ GalleryReviewCounts applyReviewStateTransitions(
   GalleryReviewCounts source,
   Iterable<ReviewStateTransition> transitions,
 ) {
-  var pending = source.pending;
+  // Recognition uncertainty is independent of the user's keep/discard choice.
+  final pending = source.pending;
   var kept = source.kept;
   var discarded = source.discarded;
 
@@ -39,7 +40,6 @@ GalleryReviewCounts applyReviewStateTransitions(
 
     switch (before) {
       case _ReviewCountBucket.pending:
-        pending = _decrement(pending);
         break;
       case _ReviewCountBucket.kept:
         kept = _decrement(kept);
@@ -50,7 +50,6 @@ GalleryReviewCounts applyReviewStateTransitions(
     }
     switch (after) {
       case _ReviewCountBucket.pending:
-        pending += 1;
         break;
       case _ReviewCountBucket.kept:
         kept += 1;

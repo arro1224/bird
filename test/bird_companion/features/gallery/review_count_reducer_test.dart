@@ -3,7 +3,7 @@ import 'package:aves/bird_companion/features/gallery/domain/review_count_reducer
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('moves confirmed photos between pending, retained and discarded buckets', () {
+  test('keep choices update retained/discarded counts independently of recognition review', () {
     const source = GalleryReviewCounts(
       pending: 38,
       kept: 16,
@@ -26,7 +26,7 @@ void main() {
     expect(
       updated,
       const GalleryReviewCounts(
-        pending: 36,
+        pending: 38,
         kept: 18,
         discarded: 6,
       ),
@@ -72,7 +72,7 @@ void main() {
     expect(
       changed,
       const GalleryReviewCounts(
-        pending: 0,
+        pending: 1,
         kept: 1,
         discarded: 1,
       ),

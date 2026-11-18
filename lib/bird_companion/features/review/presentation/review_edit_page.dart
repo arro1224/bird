@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
@@ -103,7 +104,7 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
               },
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search_rounded),
-                hintText: '搜索鸟种名称',
+                hintText: '选择候选或输入人工鸟种，可留空',
                 suffixIcon: _searching ? const Padding(padding: EdgeInsets.all(14), child: CircularProgressIndicator(strokeWidth: 2)) : null,
               ),
             ),
@@ -245,20 +246,23 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
 
   Future<void> _addTag() async {
     var draft = '';
-    final value = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('添加标签'),
-        content: TextField(
-          autofocus: true,
-          decoration: const InputDecoration(hintText: '例如：湿地'),
-          onChanged: (value) => draft = value,
-          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+    final value = await guardBirdNavigation(
+      context,
+      () => showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('添加标签'),
+          content: TextField(
+            autofocus: true,
+            decoration: const InputDecoration(hintText: '例如：湿地'),
+            onChanged: (value) => draft = value,
+            onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, draft.trim()), child: const Text('添加')),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, draft.trim()), child: const Text('添加')),
-        ],
       ),
     );
     if (value == null || value.isEmpty || !mounted) return;
@@ -331,10 +335,10 @@ class _CurrentResultCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(species.isEmpty ? '待确认鸟种' : species, style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
+                Text(species.isEmpty ? candidate?.name ?? '待确认鸟种' : species, style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
                 if (candidate != null) ...[
                   const SizedBox(height: AppSpacing.xs),
-                  Text('识别度：${UserFacingText.recognitionPercent(candidate!.confidence)}', style: const TextStyle(color: AppColors.inkMuted)),
+                  Text('AI 候选概率：${UserFacingText.recognitionPercent(candidate!.confidence)}', style: const TextStyle(color: AppColors.inkMuted)),
                 ],
                 const SizedBox(height: AppSpacing.sm),
                 const Chip(label: Text('当前结果')),
@@ -370,7 +374,7 @@ class _CandidateTile extends StatelessWidget {
     leading: Icon(selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded, color: AppColors.brand),
     title: Text(candidate.name),
     subtitle: Text(
-      '识别度：${UserFacingText.recognitionPercent(candidate.confidence)}',
+      '${candidate.latinName?.isNotEmpty == true ? '${candidate.latinName}\n' : ''}AI 候选概率：${UserFacingText.recognitionPercent(candidate.confidence)}',
       style: TextStyle(color: selected ? AppColors.brand : AppColors.inkMuted, fontWeight: FontWeight.w700),
     ),
     onTap: onTap,

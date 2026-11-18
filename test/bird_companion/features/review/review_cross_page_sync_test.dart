@@ -44,15 +44,17 @@ void main() {
     expect((merged['rating'] as Map)['total_score'], 4.6);
     expect((merged['rating'] as Map)['quality_score'], 7.8);
     final recognition = merged['recognition'] as Map;
-    expect(recognition['low_confidence'], isFalse);
+    expect(recognition['low_confidence'], isTrue);
     expect(
       ((recognition['species_topn'] as List).first as Map)['species_id'],
-      'new-species',
+      'old',
     );
     expect(
       ((recognition['species_topn'] as List).first as Map)['name'],
-      '东方大苇莺',
+      '旧鸟种',
     );
+    expect(merged['user_species_id'], 'new-species');
+    expect(merged['user_species'], '东方大苇莺');
   });
 
   test('详情或对比保存后仍在栈中的连拍页会重新读取状态', () async {

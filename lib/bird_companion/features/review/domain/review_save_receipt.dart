@@ -30,6 +30,10 @@ abstract interface class AuthoritativeReviewWriter {
   });
 }
 
+abstract interface class AiSpeciesRestorer {
+  Future<ReviewSaveReceipt> restoreAiSpecies(UserDecision current, {String? projectId});
+}
+
 /// Receives a frozen PhotoResponse after an offline decision replay succeeds.
 abstract interface class SyncedReviewReceiptConsumer {
   Future<void> acceptSyncedPhoto(PhotoSummary photo);

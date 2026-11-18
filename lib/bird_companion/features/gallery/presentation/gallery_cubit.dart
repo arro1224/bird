@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
+import 'package:aves/bird_companion/core/models/batch_models.dart';
+import 'package:aves/bird_companion/features/batches/domain/batch_repository.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/features/gallery/domain/gallery_timing.dart';
@@ -23,7 +25,10 @@ PhotoQuery resolveInitialPhotoQuery({
   required bool restoreSavedView,
   String? preferredSort,
 }) {
-  final restored = !restoreSavedView || savedView == null ? fallback : PhotoQuery.fromJson(Map<String, dynamic>.from(savedView));
+  var restored = !restoreSavedView || savedView == null ? fallback : PhotoQuery.fromJson(Map<String, dynamic>.from(savedView));
+  if (restoreSavedView && savedView != null && savedView['view_schema_version'] != 2 && restored.keepState == 'pending') {
+    restored = PhotoQuery.fromJson({...restored.toJson(), 'keep_state': null, 'analysis_state': null, 'recognition_state': 'needs_review'});
+  }
   return preferredSort == null ? restored : restored.copyWith(sort: preferredSort, clearCursor: true);
 }
 
@@ -35,6 +40,8 @@ String albumViewCacheKey({
   final namespace = normalized == null || normalized.isEmpty ? 'unbound' : normalized;
   return 'album:view:$namespace:$projectId';
 }
+
+enum GalleryCountsStatus { unread, loading, fresh, stale }
 
 class GalleryState {
   const GalleryState({
@@ -50,6 +57,11 @@ class GalleryState {
     this.pendingCount,
     this.keepCount,
     this.discardCount,
+    this.recognizedCount,
+    this.filteredCount,
+    this.countsStatus = GalleryCountsStatus.unread,
+    this.countsUpdatedAt,
+    this.countsNeedVersionCheck = false,
     this.error,
     this.gridColumns = 3,
     this.showRatingOverlay = true,
@@ -70,6 +82,10 @@ class GalleryState {
   final int? pendingCount;
   final int? keepCount;
   final int? discardCount;
+  final int? recognizedCount, filteredCount;
+  final GalleryCountsStatus countsStatus;
+  final DateTime? countsUpdatedAt;
+  final bool countsNeedVersionCheck;
   final Object? error;
   final int gridColumns;
   final bool showRatingOverlay;
@@ -91,6 +107,12 @@ class GalleryState {
     int? pendingCount,
     int? keepCount,
     int? discardCount,
+    int? recognizedCount,
+    int? filteredCount,
+    GalleryCountsStatus? countsStatus,
+    DateTime? countsUpdatedAt,
+    bool? countsNeedVersionCheck,
+    bool replaceCounts = false,
     Object? error,
     bool clearError = false,
     int? gridColumns,
@@ -110,9 +132,14 @@ class GalleryState {
     pendingOperationCount: pendingOperationCount ?? this.pendingOperationCount,
     conflictOperationCount: conflictOperationCount ?? this.conflictOperationCount,
     conflictFileIds: conflictFileIds ?? this.conflictFileIds,
-    pendingCount: pendingCount ?? this.pendingCount,
-    keepCount: keepCount ?? this.keepCount,
-    discardCount: discardCount ?? this.discardCount,
+    pendingCount: replaceCounts ? pendingCount : pendingCount ?? this.pendingCount,
+    keepCount: replaceCounts ? keepCount : keepCount ?? this.keepCount,
+    discardCount: replaceCounts ? discardCount : discardCount ?? this.discardCount,
+    recognizedCount: replaceCounts ? recognizedCount : recognizedCount ?? this.recognizedCount,
+    filteredCount: replaceCounts ? filteredCount : filteredCount ?? this.filteredCount,
+    countsStatus: countsStatus ?? this.countsStatus,
+    countsUpdatedAt: countsUpdatedAt ?? this.countsUpdatedAt,
+    countsNeedVersionCheck: countsNeedVersionCheck ?? this.countsNeedVersionCheck,
     error: clearError ? null : error ?? this.error,
     gridColumns: gridColumns ?? this.gridColumns,
     showRatingOverlay: showRatingOverlay ?? this.showRatingOverlay,
@@ -149,6 +176,7 @@ class GalleryCubit extends Cubit<GalleryState> {
     this._activeDeviceId,
     this._checkpointStore,
     this._settingsStore,
+    this._batchSummaries,
   ]) : super(
          GalleryState(
            gridColumns: _settingsGridColumns(_settingsStore),
@@ -159,7 +187,7 @@ class GalleryCubit extends Cubit<GalleryState> {
     _refreshSubscription = refreshCoordinator?.changes.listen((_) => _queueBackgroundRefresh());
     _dataSubscription = dataChanges?.changes
         .where(
-          (change) => change.affects(AppDataResource.photos) || change.affects(AppDataResource.cache) || change.affects(AppDataResource.photoPreferences),
+          (change) => change.affects(AppDataResource.photos) || change.affects(AppDataResource.batches) || change.affects(AppDataResource.cache) || change.affects(AppDataResource.photoPreferences),
         )
         .listen(_handleDataChange);
   }
@@ -170,6 +198,10 @@ class GalleryCubit extends Cubit<GalleryState> {
   final String? Function()? _activeDeviceId;
   final ReviewCheckpointStore? _checkpointStore;
   final SettingsStore? _settingsStore;
+  final BatchSummaryReader? _batchSummaries;
+  Future<void>? _summaryRefresh;
+  bool _summaryRefreshQueued = false;
+  int _summaryEpoch = 0;
   StreamSubscription<int>? _refreshSubscription;
   StreamSubscription<AppDataChange>? _dataSubscription;
   Timer? _searchDebounce;
@@ -215,7 +247,7 @@ class GalleryCubit extends Cubit<GalleryState> {
   }
 
   /// Seeds the batch summary counters carried by the route into retained
-  /// gallery state. Subsequent photo refreshes deliberately preserve them.
+  /// gallery state. Route values remain stale until a fresh summary arrives.
   void seedReviewCounts({
     int? pendingCount,
     int? keepCount,
@@ -229,8 +261,77 @@ class GalleryCubit extends Cubit<GalleryState> {
         pendingCount: pendingCount == null ? null : _nonNegative(pendingCount),
         keepCount: keepCount == null ? null : _nonNegative(keepCount),
         discardCount: discardCount == null ? null : _nonNegative(discardCount),
+        countsStatus: GalleryCountsStatus.stale,
+        countsNeedVersionCheck: true,
       ),
     );
+  }
+
+  void applyBatchSummary(BatchSummary summary, {required String? deviceId}) {
+    if (_closing || isClosed || summary.id != batchId || deviceId != _currentDevice || summary.countsDeviceId != null && summary.countsDeviceId != deviceId) return;
+    final previousTime = state.countsUpdatedAt;
+    if (previousTime != null && (summary.countsUpdatedAt == null || summary.countsUpdatedAt!.isBefore(previousTime))) return;
+    final hasPending = _operationCounts().pending > 0;
+    emit(
+      state.copyWith(
+        pendingCount: summary.pendingReviewCount,
+        recognizedCount: summary.recognizedCount,
+        filteredCount: summary.filteredCount,
+        keepCount: hasPending ? state.keepCount ?? summary.keepCount : summary.keepCount,
+        discardCount: hasPending ? state.discardCount ?? summary.discardCount : summary.discardCount,
+        replaceCounts: true,
+        countsUpdatedAt: summary.countsUpdatedAt,
+        countsStatus: summary.countsFromCache || hasPending ? GalleryCountsStatus.stale : GalleryCountsStatus.fresh,
+        countsNeedVersionCheck: summary.recognizedCount == null || summary.filteredCount == null,
+      ),
+    );
+  }
+
+  Future<void> refreshSummary({bool force = false}) {
+    final source = _batchSummaries;
+    if (source == null || _closing || isClosed) return Future.value();
+    final running = _summaryRefresh;
+    if (running != null) {
+      if (!force) return running;
+      _summaryEpoch++;
+      _summaryRefreshQueued = true;
+      return () async {
+        await running;
+        final next = _summaryRefresh;
+        if (next != null && !identical(next, running)) await next;
+      }();
+    }
+    final updated = state.countsUpdatedAt;
+    if (!force && updated != null && DateTime.now().difference(updated) < const Duration(seconds: 10) && state.countsStatus == GalleryCountsStatus.fresh) return Future.value();
+    final epoch = ++_summaryEpoch;
+    final device = _boundDevice;
+    final startedAt = DateTime.now();
+    emit(state.copyWith(countsStatus: GalleryCountsStatus.loading));
+    final task = () async {
+      try {
+        final summary = await source.summary(batchId).timeout(const Duration(seconds: 10));
+        if (_closing || isClosed || epoch != _summaryEpoch || device != _currentDevice) return;
+        if (state.countsUpdatedAt?.isAfter(startedAt) == true) return;
+        if (summary == null) throw StateError('No current project summary');
+        applyBatchSummary(summary, deviceId: device);
+      } catch (_) {
+        if (!_closing && !isClosed && epoch == _summaryEpoch && device == _currentDevice) {
+          emit(state.copyWith(countsStatus: state.pendingCount == null ? GalleryCountsStatus.unread : GalleryCountsStatus.stale));
+        }
+      }
+    }();
+    _summaryRefresh = task;
+    unawaited(
+      task.whenComplete(() {
+        if (!identical(_summaryRefresh, task)) return;
+        _summaryRefresh = null;
+        if (_summaryRefreshQueued && !_closing) {
+          _summaryRefreshQueued = false;
+          unawaited(refreshSummary(force: true));
+        }
+      }),
+    );
+    return task;
   }
 
   void search(String value) {
@@ -248,6 +349,7 @@ class GalleryCubit extends Cubit<GalleryState> {
   Future<void> refresh({PhotoQuery? query, GalleryTiming? timing}) {
     if (_closing || isClosed) return Future.value();
     _bindCurrentDevice();
+    unawaited(refreshSummary(force: query == null));
     final q = (query ?? state.query).copyWith(clearCursor: true);
     final key = jsonEncode(q.toJson());
     final running = _runningRefresh;
@@ -262,12 +364,14 @@ class GalleryCubit extends Cubit<GalleryState> {
     final task = _executeRefresh(q, device, timing);
     _runningQueryKey = key;
     _runningRefresh = task;
-    unawaited(task.whenComplete(() {
-      if (!identical(_runningRefresh, task)) return;
-      _runningRefresh = null;
-      _runningQueryKey = null;
-      _scheduleBackgroundRefresh();
-    }));
+    unawaited(
+      task.whenComplete(() {
+        if (!identical(_runningRefresh, task)) return;
+        _runningRefresh = null;
+        _runningQueryKey = null;
+        _scheduleBackgroundRefresh();
+      }),
+    );
     return task;
   }
 
@@ -348,7 +452,7 @@ class GalleryCubit extends Cubit<GalleryState> {
           conflictFileIds: operationCounts.conflictFileIds,
         ),
       );
-      await _cache?.write(albumViewCacheKey(deviceNamespace: device, projectId: batchId), q.toJson());
+      await _cache?.write(albumViewCacheKey(deviceNamespace: device, projectId: batchId), {...q.toJson(), 'view_schema_version': 2});
       if (_isCurrent(generation, device) && device != null && device.isNotEmpty) {
         try {
           await _checkpointStore?.updateQuery(
@@ -415,8 +519,9 @@ class GalleryCubit extends Cubit<GalleryState> {
 
   /// Applies one confirmed transition set to both photos and header counters.
   void applyReviewTransitions(
-    Iterable<ReviewStateTransition> transitions,
-  ) {
+    Iterable<ReviewStateTransition> transitions, {
+    bool updateCounters = true,
+  }) {
     if (isClosed) return;
     final byId = <String, ReviewStateTransition>{};
     for (final transition in transitions) {
@@ -453,7 +558,11 @@ class GalleryCubit extends Cubit<GalleryState> {
     final removedCount = patched.length - visible.length;
     final matchedCount = removedCount == 0 ? state.matchedCount : (state.matchedCount - removedCount).clamp(0, state.matchedCount).toInt();
     final currentCounts = state.reviewCounts;
-    final updatedCounts = currentCounts == null ? null : applyReviewStateTransitions(currentCounts, byId.values);
+    final updatedCounts = currentCounts == null
+        ? null
+        : updateCounters
+        ? applyReviewStateTransitions(currentCounts, byId.values)
+        : currentCounts;
     if (!changed && updatedCounts == currentCounts) return;
     emit(
       state.copyWith(
@@ -492,13 +601,15 @@ class GalleryCubit extends Cubit<GalleryState> {
     if (invalidateGeneration) _requestGeneration++;
   }
 
-  bool _isCurrent(int generation, String? device) =>
-      !_closing && !isClosed && generation == _requestGeneration && device == _currentDevice;
+  bool _isCurrent(int generation, String? device) => !_closing && !isClosed && generation == _requestGeneration && device == _currentDevice;
 
   bool _bindCurrentDevice() {
     final device = _currentDevice;
     if (device == _boundDevice) return false;
     _boundDevice = device;
+    _summaryEpoch++;
+    _summaryRefresh = null;
+    _summaryRefreshQueued = false;
     _cancelActiveQuery(invalidateGeneration: true);
     _searchDebounce?.cancel();
     _searchDebounce = null;
@@ -508,12 +619,14 @@ class GalleryCubit extends Cubit<GalleryState> {
     _reconnectQueued = false;
     _lastCompleteRefresh = null;
     _visibleTiming = null;
-    emit(GalleryState(
-      query: state.query.copyWith(clearCursor: true),
-      hasMore: false,
-      gridColumns: state.gridColumns,
-      showRatingOverlay: state.showRatingOverlay,
-    ));
+    emit(
+      GalleryState(
+        query: state.query.copyWith(clearCursor: true),
+        hasMore: false,
+        gridColumns: state.gridColumns,
+        showRatingOverlay: state.showRatingOverlay,
+      ),
+    );
     return true;
   }
 
@@ -521,18 +634,26 @@ class GalleryCubit extends Cubit<GalleryState> {
     if (_closing || isClosed) return;
     if (change is RecognitionFactsChanged && (change.projectId != batchId || change.deviceId != _currentDevice)) return;
     if (change is AnalysisCompleted && (change.projectId != batchId || change.deviceId != _currentDevice)) return;
-    if (change is ReviewDecisionChanged &&
-        ((_currentDevice != null && change.deviceId != _currentDevice) || (change.projectId != null && change.projectId != batchId))) {
+    if (change is ReviewDecisionChanged && ((_currentDevice != null && change.deviceId != _currentDevice) || (change.projectId != null && change.projectId != batchId))) {
       return;
     }
     if (change.affects(AppDataResource.photoPreferences)) {
       _applyPhotoPreferences();
       return;
     }
+    if (change is! ReviewDecisionChanged && change is! BatchReviewDecisionChanged) {
+      emit(state.copyWith(countsStatus: state.pendingCount == null ? GalleryCountsStatus.unread : GalleryCountsStatus.stale));
+    }
     if (change is BatchReviewDecisionChanged) {
-      // The originating gallery already applied this aggregate atomically.
-      // The event exists to update retained batch summaries without causing a
-      // second photo reload on every batch action.
+      if (change.projectId != batchId || _currentDevice != null && change.deviceId != _currentDevice) return;
+      // The origin already applied its counter delta. Other retained galleries
+      // patch visible rows but read totals from the box, without double deltas.
+      applyReviewTransitions(change.transitions, updateCounters: false);
+      if (!change.queued) {
+        unawaited(refreshSummary(force: true));
+      } else {
+        emit(state.copyWith(countsStatus: GalleryCountsStatus.stale));
+      }
       return;
     }
     if (change is ReviewDecisionChanged && change.projectId == batchId) {
@@ -632,9 +753,7 @@ class GalleryCubit extends Cubit<GalleryState> {
     emit(state.copyWith(loading: true));
     try {
       final repository = _repo;
-      final p = repository is PhotoQueryExecutionRepository
-          ? await (repository as PhotoQueryExecutionRepository).pageWithProgress(batchId, state.query, cancellationToken: token)
-          : await repository.page(batchId, state.query);
+      final p = repository is PhotoQueryExecutionRepository ? await (repository as PhotoQueryExecutionRepository).pageWithProgress(batchId, state.query, cancellationToken: token) : await repository.page(batchId, state.query);
       if (!_isCurrent(generation, device)) return;
       final ids = state.items.map((item) => item.id).toSet();
       final merged = [...state.items, ...p.items.where((item) => ids.add(item.id))];
@@ -732,6 +851,7 @@ class GalleryCubit extends Cubit<GalleryState> {
   @override
   Future<void> close() async {
     _closing = true;
+    _summaryEpoch++;
     _requestGeneration++;
     _cancelActiveQuery();
     _searchDebounce?.cancel();
@@ -749,7 +869,7 @@ bool _settingsShowRatingOverlay(SettingsStore? store) => store?.read().showRatin
 int _nonNegative(int value) => value < 0 ? 0 : value;
 
 PhotoQuery _applyDefaultFilter(PhotoQuery query, String preference) => switch (preference) {
-  'pendingReview' when query.keepState == null => query.copyWith(keepState: 'pending'),
+  'pendingReview' when query.recognitionState == null && query.keepState == null && query.analysisState == null => query.copyWith(recognitionState: 'needs_review'),
   'recommended' when !query.recommendedOnly => query.copyWith(recommendedOnly: true),
   'highScore' when query.minScore == null => query.copyWith(minScore: 4),
   _ => query,
@@ -763,7 +883,7 @@ PhotoQuery _applyPhotoDefaults(
     query,
     settings.defaultPhotoFilter,
   );
-  if (!settings.birdPhotosOnly || filtered.recognitionState != null) {
+  if (!settings.birdPhotosOnly || filtered.recognitionState != null || filtered.analysisState == 'skipped') {
     return filtered;
   }
   return filtered.copyWith(recognitionState: 'recognized');

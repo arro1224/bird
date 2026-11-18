@@ -5,12 +5,15 @@ import 'package:aves/bird_companion/features/connection/data/platform/birdbox_bl
 import 'package:aves/bird_companion/features/connection/domain/ble_diagnostic_export.dart';
 
 final class BleDiagnosticSnapshotService {
-  const BleDiagnosticSnapshotService(this.scans, this.connections, this.files);
+  const BleDiagnosticSnapshotService(this.scans, this.connections, this.files, {this.phoneSnapshot, this.buildIdentity});
+  final Future<Map<String, dynamic>> Function()? phoneSnapshot;
+  final Future<Map<String, dynamic>> Function()? buildIdentity;
   final BleScanDiagnosticStore scans;
   final BleConnectionDiagnosticStore connections;
   final BirdBoxBleDiagnosticFilePlatform files;
 
-  Future<BleDiagnosticExport> capture(String scanId, {bool includeRetainedHistory = false}) async {
+  Future<BleDiagnosticExport> capture(String scanId, {bool includeRetainedHistory = false, bool includePhone = false}) async {
+    final phone = includePhone ? phoneSnapshot?.call() : null;
     // Enqueue both barriers synchronously: later writes belong to a later export.
     final snapshots = await Future.wait([scans.snapshot(), connections.snapshot()]);
     final scanSnapshot = snapshots[0], connectionSnapshot = snapshots[1];
@@ -41,11 +44,11 @@ final class BleDiagnosticSnapshotService {
     };
     Map<String, dynamic>? build;
     try {
-      build = await files.buildIdentity();
+      build = await (buildIdentity?.call() ?? files.buildIdentity());
     } catch (_) {
       /* Recorded build fields remain usable offline. */
     }
-    return BleDiagnosticExport(traceId: flowId, scans: selectedScans, events: events, generatedAt: DateTime.now(), retention: retention, exporterBuild: build);
+    return BleDiagnosticExport(traceId: flowId, scans: selectedScans, events: events, generatedAt: DateTime.now(), retention: retention, exporterBuild: build, phoneDiagnostics: await phone);
   }
 
   static int _compare(Map<String, dynamic> a, Map<String, dynamic> b) {

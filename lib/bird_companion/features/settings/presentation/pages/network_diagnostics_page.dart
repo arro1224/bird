@@ -1,4 +1,6 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'dart:async';
+import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
@@ -7,7 +9,6 @@ import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/features/settings/presentation/bird_settings_asset_catalog.dart';
-import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/help_center_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_card.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
@@ -207,15 +208,15 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
                   onTap: _showHotspotDetails,
                 ),
                 BirdSettingsRow(
-                  title: '导出诊断结果',
-                  subtitle: '保存或分享网络诊断结果',
+                  title: '导出手机诊断',
+                  subtitle: '保存手机请求与连接记录，断联时也可导出',
                   showDivider: false,
                   leading: const Icon(
                     Icons.download_outlined,
                     color: AppColors.forestPrimary,
                   ),
                   trailing: const BirdChevron(),
-                  onTap: _openSystemLogs,
+                  onTap: () => showPhoneDiagnostics(context),
                 ),
               ],
             ),
@@ -291,20 +292,20 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
   }
 
   void _openDeviceManagement() {
-    Navigator.of(context).pushNamed(
-      _dependencies == null ? BirdRoutes.settingsDeviceManagement : BirdRoutes.settingsNetwork,
-    );
-  }
-
-  void _openSystemLogs() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const SystemLogsPage()),
+    guardBirdNavigation(
+      context,
+      () => Navigator.of(context).pushNamed(
+        _dependencies == null ? BirdRoutes.settingsDeviceManagement : BirdRoutes.settingsNetwork,
+      ),
     );
   }
 
   void _openHelpCenter() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const HelpCenterPage()),
+    guardBirdNavigation(
+      context,
+      () => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => const HelpCenterPage()),
+      ),
     );
   }
 

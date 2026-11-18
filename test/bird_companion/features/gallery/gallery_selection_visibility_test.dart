@@ -7,6 +7,7 @@ import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/media/media_asset_coordinator.dart';
 import 'package:aves/bird_companion/core/media/media_asset_service.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
+import 'package:aves/bird_companion/core/models/batch_models.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
@@ -18,6 +19,7 @@ import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/features/device/domain/device_repository.dart';
 import 'package:aves/bird_companion/features/device/presentation/widgets/device_status_sheet.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
+import 'package:aves/bird_companion/features/batches/domain/batch_repository.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_cubit.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_page.dart';
@@ -33,6 +35,64 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('分类快捷入口清除互斥条件，统计更新保留滚动和选中集合', (tester) async {
+    final dependencies = _Dependencies(49, connected: true);
+    addTearDown(dependencies.deviceSessionCubit.close);
+    addTearDown(dependencies.refreshCoordinator.dispose);
+    addTearDown(dependencies.dataChangeBus.dispose);
+    addTearDown(dependencies.pendingOperationStore.dispose);
+    await _pumpAlbum(
+      tester,
+      dependencies,
+      initialQuery: const PhotoQuery(recognitionState: 'recognized', analysisState: 'completed', minConfidence: .99, search: 'old search', keepState: 'keep'),
+    );
+    final gallery = tester.element(find.byKey(const ValueKey('album-filter-button'))).read<GalleryCubit>();
+    final reviewChip = find.byKey(const ValueKey('gallery-category-needs_review'));
+    await tester.ensureVisible(reviewChip);
+    await tester.tap(reviewChip);
+    await tester.pumpAndSettle();
+    expect(gallery.state.query.recognitionState, 'needs_review');
+    expect(gallery.state.query.analysisState, null);
+    expect(gallery.state.query.keepState, null);
+    expect(gallery.state.query.search, null);
+    expect(gallery.state.query.minConfidence, null);
+    final photo = find.byKey(const ValueKey('photo-0'));
+    await tester.longPress(photo);
+    await tester.pumpAndSettle();
+    final selected = tester.element(photo).read<SelectionCubit>();
+    expect(selected.state.ids, {'photo-0'});
+    final photoScroll = find.byKey(const PageStorageKey<String>('photo-gallery-scroll-project-1'));
+    await tester.drag(photoScroll, const Offset(0, -350));
+    await tester.pumpAndSettle();
+    final position = tester.state<ScrollableState>(find.descendant(of: photoScroll, matching: find.byType(Scrollable)).first).position;
+    final offset = position.pixels;
+    gallery.applyBatchSummary(
+      BatchSummary(
+        id: 'project-1',
+        name: 'test',
+        createdAt: DateTime.utc(2026, 11, 18),
+        totalFiles: 49,
+        analyzedCount: 14,
+        reviewCount: 6,
+        recognizedCount: 5,
+        filteredCount: 3,
+        keepCount: 1,
+        discardCount: 0,
+        pendingCopyCount: 0,
+        copyState: 'idle',
+        countsUpdatedAt: DateTime.now(),
+        countsDeviceId: 'box-a',
+      ),
+      deviceId: 'box-a',
+    );
+    await tester.pumpAndSettle();
+    expect(position.pixels, closeTo(offset, 1));
+    expect(selected.state.ids, {'photo-0'});
+    expect(gallery.state.pendingCount, 6);
+    expect(gallery.state.query.recognitionState, 'needs_review');
+    expect(tester.takeException(), null);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   testWidgets('设备弹层、断线缓存、冲突与重连入口在相册首页协同工作', (tester) async {
     final dependencies = _Dependencies(4, connected: true);
     final reading = Completer<void>();
@@ -69,7 +129,11 @@ void main() {
     await tester.pumpAndSettle();
     final sheet = find.byType(DeviceStatusSheet);
     final details = find.text('查看设备详情');
-    await tester.scrollUntilVisible(details, 180, scrollable: find.descendant(of: sheet, matching: find.byType(Scrollable)));
+    await tester.scrollUntilVisible(
+      details,
+      180,
+      scrollable: find.descendant(of: sheet, matching: find.byType(Scrollable)),
+    );
     await tester.pumpAndSettle();
     await tester.tap(details);
     await tester.pumpAndSettle();
@@ -99,16 +163,18 @@ void main() {
     expect(photo, findsOneWidget);
     expect(tester.widget<IconButton>(find.byKey(const Key('album-copy-project-button'))).onPressed, isNull);
 
-    await dependencies.pendingOperationStore.save(PendingOperation(
-      id: 'conflict',
-      type: PendingOperationType.updateReview,
-      deviceId: _Dependencies._box.id,
-      projectId: 'project-1',
-      fileId: 'photo-0',
-      payload: const {},
-      createdAt: DateTime(2026, 11, 17),
-      status: PendingOperationStatus.conflict,
-    ));
+    await dependencies.pendingOperationStore.save(
+      PendingOperation(
+        id: 'conflict',
+        type: PendingOperationType.updateReview,
+        deviceId: _Dependencies._box.id,
+        projectId: 'project-1',
+        fileId: 'photo-0',
+        payload: const {},
+        createdAt: DateTime(2026, 11, 17),
+        status: PendingOperationStatus.conflict,
+      ),
+    );
     unawaited(gallery.refresh());
     await tester.pumpAndSettle();
     expect(notice, findsOneWidget);
@@ -266,14 +332,14 @@ void main() {
     await tester.pumpAndSettle();
     final sheet = find.byType(FilterSheet);
     final options = find.descendant(of: sheet, matching: find.byType(Scrollable));
-    final recognized = find.descendant(of: sheet, matching: find.text('已识别'));
+    final recognized = find.descendant(of: sheet, matching: find.text('识别度高'));
     await tester.scrollUntilVisible(recognized, 150, scrollable: options);
     await tester.pumpAndSettle();
     await tester.tap(recognized);
     await tester.pump();
     await tester.tap(find.text('应用筛选'));
     await tester.pumpAndSettle();
-    expect(find.text('识别结果：已识别'), findsOneWidget);
+    expect(find.text('识别结果：识别度高'), findsOneWidget);
     expect(gallery.state.query.toCopyFilterV1()?['recognition_state'], 'recognized');
     final clear = find.byKey(const ValueKey('active-filter-clear'));
     await tester.ensureVisible(clear);
@@ -285,9 +351,7 @@ void main() {
     final photoScroll = find.byKey(const PageStorageKey<String>('photo-gallery-scroll-project-1'));
     await tester.drag(photoScroll, const Offset(0, -430));
     await tester.pumpAndSettle();
-    final scrollPosition = tester
-        .state<ScrollableState>(find.descendant(of: photoScroll, matching: find.byType(Scrollable)).first)
-        .position;
+    final scrollPosition = tester.state<ScrollableState>(find.descendant(of: photoScroll, matching: find.byType(Scrollable)).first).position;
     final savedOffset = scrollPosition.pixels;
     expect(savedOffset, greaterThan(100));
     await tester.tap(find.byKey(const Key('album-history-appbar-button')));
@@ -356,16 +420,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('已添加 2 张照片的标签'), findsOneWidget);
     expect(photos.operations, [
-      {'operation': 'add_tags', 'ids': ['photo-0'], 'tags': ['晨拍'], 'version': 3},
-      {'operation': 'add_tags', 'ids': ['photo-1'], 'tags': ['水鸟', '晨拍'], 'version': 3},
+      {
+        'operation': 'add_tags',
+        'ids': ['photo-0'],
+        'tags': ['晨拍'],
+        'version': 3,
+      },
+      {
+        'operation': 'add_tags',
+        'ids': ['photo-1'],
+        'tags': ['水鸟', '晨拍'],
+        'version': 3,
+      },
     ]);
     expect(photos.tagsFor('photo-1'), ['湿地', '水鸟', '晨拍']);
 
     await tester.tap(find.text('撤销'));
     await tester.pumpAndSettle();
     expect(photos.operations.skip(2), [
-      {'operation': 'remove_tags', 'ids': ['photo-0'], 'tags': ['晨拍'], 'version': 4},
-      {'operation': 'remove_tags', 'ids': ['photo-1'], 'tags': ['水鸟', '晨拍'], 'version': 4},
+      {
+        'operation': 'remove_tags',
+        'ids': ['photo-0'],
+        'tags': ['晨拍'],
+        'version': 4,
+      },
+      {
+        'operation': 'remove_tags',
+        'ids': ['photo-1'],
+        'tags': ['水鸟', '晨拍'],
+        'version': 4,
+      },
     ]);
     expect(photos.tagsFor('photo-0'), ['湿地', '水鸟']);
     expect(photos.tagsFor('photo-1'), ['湿地']);
@@ -594,10 +678,7 @@ Future<void> _pumpAlbum(WidgetTester tester, _Dependencies dependencies, {PhotoQ
 }
 
 class _Dependencies implements BirdCompanionDependencies {
-  _Dependencies(int count, {bool connected = false})
-    : photoRepository = _Photos(count),
-      deviceSessionCubit = _Session(connected ? _box : null),
-      deviceRepository = _Device(connected ? _box : null);
+  _Dependencies(int count, {bool connected = false}) : photoRepository = _Photos(count), deviceSessionCubit = _Session(connected ? _box : null), deviceRepository = _Device(connected ? _box : null);
 
   static final _box = DeviceConnection(
     id: 'box-a',
@@ -608,6 +689,8 @@ class _Dependencies implements BirdCompanionDependencies {
 
   @override
   final _Photos photoRepository;
+  @override
+  final BatchRepository batchRepository = _UnusedBatches();
   @override
   late final ReviewRepository reviewRepository = _TagReviews(photoRepository);
   @override
@@ -634,6 +717,8 @@ class _Dependencies implements BirdCompanionDependencies {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+class _UnusedBatches extends Fake implements BatchRepository {}
 
 class _Session extends Cubit<DeviceSessionState> implements DeviceSessionCubit {
   _Session(DeviceConnection? connection)

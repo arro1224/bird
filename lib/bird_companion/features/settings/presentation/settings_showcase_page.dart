@@ -1,4 +1,6 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'dart:async';
+import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
@@ -108,6 +110,7 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
                 ),
                 sliver: SliverList.list(
                   children: [
+                    if (BirdCompanionScope.maybeOf(context) != null) const PhoneDiagnosticExportButton(key: Key('device-export-phone-diagnostics')),
                     _buildCurrentWork(context),
                     const SizedBox(height: AppSpacing.sm),
                     _buildSection(
@@ -380,7 +383,7 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     context,
   ).showSnackBar(SnackBar(content: Text(message)));
 
-  Future<void> _open(_SettingsPage page) async {
+  Future<void> _open(_SettingsPage page) => guardBirdNavigation<void>(context, () async {
     final shell = BirdShellNavigation.maybeOf(context);
     shell?.setBottomNavigationVisible(false);
     try {
@@ -392,7 +395,7 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     } finally {
       if (mounted) shell?.setBottomNavigationVisible(true);
     }
-  }
+  });
 
   Widget _buildPage(BuildContext context, _SettingsPage page) => switch (page) {
     _SettingsPage.deviceManagement => _buildDeviceManagementPage(context),
@@ -422,9 +425,12 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     }
     return DeviceManagementPage(
       controller: _controller,
-      onOpenDetails: () => Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => DeviceDetailsPage(controller: _controller),
+      onOpenDetails: () => guardBirdNavigation(
+        context,
+        () => Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => DeviceDetailsPage(controller: _controller),
+          ),
         ),
       ),
     );

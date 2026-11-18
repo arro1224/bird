@@ -1,4 +1,7 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'dart:async';
+import 'package:aves/bird_companion/core/diagnostics/app_build_identity.dart';
+import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
@@ -23,7 +26,8 @@ class SystemLogsPage extends StatefulWidget {
 class _SystemLogsPageState extends State<SystemLogsPage> {
   BirdCompanionDependencies? _dependencies;
   DeviceStatus? _status;
-  final String _appVersion = '2.1.0';
+  Map<String, dynamic>? _buildIdentity;
+  String get _appVersion => AppBuildIdentity.version(_buildIdentity);
   String? _downloadedPath;
   var _initialized = false;
   var _loading = false;
@@ -35,6 +39,11 @@ class _SystemLogsPageState extends State<SystemLogsPage> {
     if (_initialized) return;
     _initialized = true;
     _dependencies = context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>()?.dependencies;
+    unawaited(
+      (_dependencies?.appBuildIdentity ?? AppBuildIdentity()).read().then((build) {
+        if (mounted) setState(() => _buildIdentity = build);
+      }),
+    );
     if (_dependencies != null) unawaited(_loadStatus());
   }
 
@@ -111,14 +120,14 @@ class _SystemLogsPageState extends State<SystemLogsPage> {
                 Icons.memory_rounded,
                 '固件版本',
                 '设备固件版本',
-                value: status?.softwareVersion ?? '1.2.4',
+                value: status?.softwareVersion ?? '未读取',
                 onTap: _showVersionDetails,
               ),
               _LogRow(
                 Icons.psychology_outlined,
                 '模型版本',
                 'AI 模型版本',
-                value: status?.modelVersion ?? 'BirdAI 3.0.2',
+                value: status?.modelVersion ?? '未读取',
                 onTap: _showVersionDetails,
                 showDivider: false,
               ),
@@ -138,8 +147,8 @@ class _SystemLogsPageState extends State<SystemLogsPage> {
               _LogRow(
                 Icons.archive_outlined,
                 '导出诊断包',
-                '导出包含日志与诊断信息的压缩包',
-                onTap: _exporting ? null : _exportLogs,
+                '导出手机请求与连接记录，断联时也可使用',
+                onTap: () => showPhoneDiagnostics(context),
               ),
               _LogRow(
                 Icons.warning_amber_rounded,
@@ -242,7 +251,7 @@ class _SystemLogsPageState extends State<SystemLogsPage> {
             label: _exporting ? '正在生成诊断包' : '导出诊断包',
             icon: Icons.archive_outlined,
             height: 44,
-            onPressed: _exporting ? null : _exportLogs,
+            onPressed: () => showPhoneDiagnostics(context),
           ),
         ],
       ),
@@ -257,8 +266,11 @@ class _SystemLogsPageState extends State<SystemLogsPage> {
   }
 
   void _openPage(Widget page) {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => page),
+    guardBirdNavigation(
+      context,
+      () => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => page),
+      ),
     );
   }
 
@@ -271,18 +283,17 @@ class _SystemLogsPageState extends State<SystemLogsPage> {
           BirdSettingsValueRow(label: '应用版本', value: _appVersion),
           BirdSettingsValueRow(
             label: '固件版本',
-            value: _status?.softwareVersion ?? '1.2.4',
+            value: _status?.softwareVersion ?? '未读取',
           ),
           BirdSettingsValueRow(
             label: 'AI 模型',
-            value: _status?.modelVersion ?? 'BirdAI 3.0.2',
+            value: _status?.modelVersion ?? '未读取',
           ),
           const BirdSettingsValueRow(label: '设备协议', value: 'BirdBox v1'),
-          const BirdSettingsValueRow(
-            label: '更新时间',
-            value: '2025-07-16',
-            showDivider: false,
-          ),
+          const SizedBox(height: 12),
+          SelectableText('构建编号：${_buildIdentity?['build_id'] ?? '未提供'}'),
+          SelectableText('源码提交：${_buildIdentity?['git_commit'] ?? '未提供'}'),
+          SelectableText('安装包 SHA256：${_buildIdentity?['apk_sha256'] ?? '未提供'}'),
         ],
       ),
     ),

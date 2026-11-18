@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'package:aves/bird_companion/features/recognition/recognition_widgets.dart';
 import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_task_tile.dart';
 import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_entry_section.dart';
@@ -77,9 +78,11 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
     final repository = BirdCompanionScope.of(context).smartFollowRepository;
     if (_followDiscoveryGeneration == repository.deviceGeneration) return;
     _followDiscoveryGeneration = repository.deviceGeneration;
-    unawaited(repository.discoverSessions().catchError((Object _) {
-      // Do not block the whole tasks screen on an optional history request.
-    }));
+    unawaited(
+      repository.discoverSessions().catchError((Object _) {
+        // Do not block the whole tasks screen on an optional history request.
+      }),
+    );
   }
 
   @override
@@ -186,16 +189,18 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
     final repository = deps.smartFollowRepository;
     return ListenableBuilder(
       listenable: repository,
-      builder: (context, _) => Column(children: [
-        for (final session in repository.knownSessions.where((session) => !session.isFinished))
-          SmartFollowTaskTile(
-            key: ValueKey('home-follow-${session.sessionId}'),
-            repository: repository,
-            recognitionJobId: session.recognitionJobId,
-            onOpenRun: (id) => Navigator.of(context).pushNamed<void>(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(id, recognitionJobId: session.recognitionJobId)),
-          ),
-        ActiveCopyJobsBanner(recovery: deps.copyJobRecovery),
-      ]),
+      builder: (context, _) => Column(
+        children: [
+          for (final session in repository.knownSessions.where((session) => !session.isFinished))
+            SmartFollowTaskTile(
+              key: ValueKey('home-follow-${session.sessionId}'),
+              repository: repository,
+              recognitionJobId: session.recognitionJobId,
+              onOpenRun: (id) => Navigator.of(context).pushNamed<void>(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(id, recognitionJobId: session.recognitionJobId)),
+            ),
+          ActiveCopyJobsBanner(recovery: deps.copyJobRecovery),
+        ],
+      ),
     );
   }
 
@@ -213,7 +218,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
     }
   }
 
-  Future<void> _startTask(TaskType type) async {
+  Future<void> _startTask(TaskType type) => guardBirdNavigation<void>(context, () async {
     final controller = _controller!;
     try {
       if (!controller.canSubmitTaskWrites) {
@@ -316,7 +321,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
     } catch (error) {
       if (mounted) _showError(context, error);
     }
-  }
+  });
 
   void _openSdCard() {
     final controller = _controller!;
@@ -361,16 +366,18 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
                                       taskId: jobId,
                                       incrementalPanel: ListenableBuilder(
                                         listenable: controller,
-                                        builder: (_, _) => Column(children: [
-                                          const Text('导入与索引 → 生成缩略图与预览 → AI 分析；符合条件的结果会自动分批复制。'),
-                                          for (final task in controller.tasks.where((task) => task.type == TaskType.aiAnalysis && task.sourceBatchId == controller.taskByIdOrNull(jobId)?.sourceBatchId))
-                                            SmartFollowTaskTile(
-                                              key: ValueKey('import-follow-${task.id}'),
-                                              repository: BirdCompanionScope.of(context).smartFollowRepository,
-                                              recognitionJobId: task.id,
-                                              onOpenRun: (id) => Navigator.of(context).pushNamed<void>(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(id, recognitionJobId: task.id)),
-                                            ),
-                                        ]),
+                                        builder: (_, _) => Column(
+                                          children: [
+                                            const Text('导入与索引 → 生成缩略图与预览 → AI 分析；符合条件的结果会自动分批复制。'),
+                                            for (final task in controller.tasks.where((task) => task.type == TaskType.aiAnalysis && task.sourceBatchId == controller.taskByIdOrNull(jobId)?.sourceBatchId))
+                                              SmartFollowTaskTile(
+                                                key: ValueKey('import-follow-${task.id}'),
+                                                repository: BirdCompanionScope.of(context).smartFollowRepository,
+                                                recognitionJobId: task.id,
+                                                onOpenRun: (id) => Navigator.of(context).pushNamed<void>(BirdRoutes.smartFollowRun, arguments: SmartFollowRunArgs(id, recognitionJobId: task.id)),
+                                              ),
+                                          ],
+                                        ),
                                       ),
                                       allowDemoCompletion: false,
                                       onControl: _control,
@@ -467,57 +474,57 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
         break;
     }
     await Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => TaskDetailPage(
-            controller: controller,
-            taskId: taskId,
-            incrementalPanel: refreshedTask.type == TaskType.aiAnalysis
-                ? Column(
-                    children: [
-                      SmartFollowTaskTile(
-                        repository: BirdCompanionScope.of(context).smartFollowRepository,
-                        recognitionJobId: taskId,
-                        recognitionProcessed: refreshedTask.processed,
-                        recognitionTotal: refreshedTask.total,
-                        onOpenRun: (sessionId) => unawaited(
-                          Navigator.of(context).pushNamed<void>(
-                            BirdRoutes.smartFollowRun,
-                            arguments: SmartFollowRunArgs(
-                              sessionId,
-                              recognitionJobId: taskId,
-                              recognitionProcessed: refreshedTask.processed,
-                              recognitionTotal: refreshedTask.total,
-                            ),
+      MaterialPageRoute<void>(
+        builder: (_) => TaskDetailPage(
+          controller: controller,
+          taskId: taskId,
+          incrementalPanel: refreshedTask.type == TaskType.aiAnalysis
+              ? Column(
+                  children: [
+                    SmartFollowTaskTile(
+                      repository: BirdCompanionScope.of(context).smartFollowRepository,
+                      recognitionJobId: taskId,
+                      recognitionProcessed: refreshedTask.processed,
+                      recognitionTotal: refreshedTask.total,
+                      onOpenRun: (sessionId) => unawaited(
+                        Navigator.of(context).pushNamed<void>(
+                          BirdRoutes.smartFollowRun,
+                          arguments: SmartFollowRunArgs(
+                            sessionId,
+                            recognitionJobId: taskId,
+                            recognitionProcessed: refreshedTask.processed,
+                            recognitionTotal: refreshedTask.total,
                           ),
                         ),
                       ),
-                      if (sourceProjectId != null)
-                        SmartFollowEntrySection(
-                          batchId: sourceProjectId,
-                          recognitionJobId: taskId,
-                          onModeChanged: (_) {},
-                          onSnapshot: () => unawaited(Navigator.of(context).pushNamed<void>(BirdRoutes.copyConfirmation, arguments: CopyConfirmationArgs(sourceProjectId, scope: 'recognized_assets'))),
-                          onOpenRecognition: () => controller.refreshJobDetail(taskId),
-                        ),
-                    ],
-                  )
-                : null,
-            allowDemoCompletion: false,
-            onControl: _control,
-            onExportLog: _exportTaskLog,
-            onShowResult: switch ((refreshedTask.type, refreshedTask.state)) {
-              (TaskType.aiAnalysis, TaskRunState.completed) when sourceProjectId != null => () => widget.onOpenGallery(GalleryArgs(sourceProjectId)),
-              (TaskType.copy, TaskRunState.completed) => () => unawaited(
-                _openReport(taskId, sourceProjectId),
-              ),
-              (TaskType.sync, TaskRunState.completed) => () => unawaited(
-                _showSyncJobSummary(refreshedTask),
-              ),
-              _ => null,
-            },
-          ),
+                    ),
+                    if (sourceProjectId != null)
+                      SmartFollowEntrySection(
+                        batchId: sourceProjectId,
+                        recognitionJobId: taskId,
+                        onModeChanged: (_) {},
+                        onSnapshot: () => unawaited(Navigator.of(context).pushNamed<void>(BirdRoutes.copyConfirmation, arguments: CopyConfirmationArgs(sourceProjectId, scope: 'recognized_assets'))),
+                        onOpenRecognition: () => controller.refreshJobDetail(taskId),
+                      ),
+                  ],
+                )
+              : null,
+          allowDemoCompletion: false,
+          onControl: _control,
+          onExportLog: _exportTaskLog,
+          onShowResult: switch ((refreshedTask.type, refreshedTask.state)) {
+            (TaskType.aiAnalysis, TaskRunState.completed) when sourceProjectId != null => () => widget.onOpenGallery(GalleryArgs(sourceProjectId)),
+            (TaskType.copy, TaskRunState.completed) => () => unawaited(
+              _openReport(taskId, sourceProjectId),
+            ),
+            (TaskType.sync, TaskRunState.completed) => () => unawaited(
+              _showSyncJobSummary(refreshedTask),
+            ),
+            _ => null,
+          },
         ),
-      );
+      ),
+    );
   }
 
   Future<void> _showSyncJobSummary(TaskSummary task) => showModalBottomSheet<void>(

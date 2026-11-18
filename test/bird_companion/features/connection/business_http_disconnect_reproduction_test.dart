@@ -10,29 +10,35 @@ import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/core/session/session_refresh_coordinator.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
+import 'package:aves/bird_companion/features/connection/domain/request_id_factory.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// Run with the loopback-only Python delay fixture. Neither Wi-Fi disconnect
+// Run with test/support/serve_disconnect_reproduction.py. Neither Wi-Fi disconnect
 // nor DioException is injected: Dio must time out an actual HTTP request.
 void main() {
   final address = Platform.environment['BIRDBOX_DISCONNECT_FIXTURE'];
-  test('repeated real HTTP business timeouts no longer downgrade a reachable box', () async {
-    final uri = Uri.parse(address!);
-    expect(uri.host, '127.0.0.1');
-    final current = _Experiment(uri);
-    addTearDown(current.dispose);
-    await current.initialize();
-    await Future.wait([
-      current.runSlow('current-1', '2e1d9387-56f8-4108-9089-28aba4715670'),
-      current.runHealthyControls(),
-    ]);
-    await current.runSlow('current-2', '2e1d9387-56f8-4108-9089-28aba4715672');
-    expect(current.repository.reconnects, 0);
-    expect(current.probeOutcomes, ['reachable', 'reachable']);
-    expect(current.phases, everyElement(DeviceSessionPhase.connected));
-  }, timeout: const Timeout(Duration(seconds: 55)), skip: address == null ? 'Start serve_disconnect_reproduction.py on loopback first.' : false);
+  test(
+    'repeated real HTTP business timeouts no longer downgrade a reachable box',
+    () async {
+      final uri = Uri.parse(address!);
+      expect(uri.host, '127.0.0.1');
+      final current = _Experiment(uri);
+      addTearDown(current.dispose);
+      await current.initialize();
+      await Future.wait([
+        current.runSlow('current-1', '2e1d9387-56f8-4108-9089-28aba4715670'),
+        current.runHealthyControls(),
+      ]);
+      await current.runSlow('current-2', '2e1d9387-56f8-4108-9089-28aba4715672');
+      expect(current.repository.reconnects, 0);
+      expect(current.probeOutcomes, ['reachable', 'reachable']);
+      expect(current.phases, everyElement(DeviceSessionPhase.connected));
+    },
+    timeout: const Timeout(Duration(seconds: 55)),
+    skip: address == null ? 'Start serve_disconnect_reproduction.py on loopback first.' : false,
+  );
 
   test('a refused socket and failed independent probe enter recovery and reconnect on return', () async {
     final reserved = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -64,11 +70,17 @@ class _Experiment {
     client.configure(uri);
     client.setSession(accessToken: 'isolated-fixture-only');
     repository = _ProbeRepository(client, uri);
-    cubit = DeviceSessionCubit(repository, _Online(), events, refresh,
+    cubit = DeviceSessionCubit(
+      repository,
+      _Online(),
+      events,
+      refresh,
       connectionFailures: client.connectionFailures,
+      connectionFailureDetails: client.connectionFailureDetails,
       probeReachability: client.probeReachability,
       diagnostic: (event) {
         if (event['event'] == 'business_failure_reachability_checked') {
+          probeChecks.add(event);
           probeOutcomes.add(event['outcome'] as String);
           probes.add(null);
         }
@@ -88,18 +100,17 @@ class _Experiment {
   late final StreamSubscription<DeviceSessionState> subscription;
   final phases = <DeviceSessionPhase>[];
   final probeOutcomes = <String>[];
+  final probeChecks = <Map<String, dynamic>>[];
   final probes = StreamController<void>.broadcast();
 
   Future<void> initialize() => cubit.setConnectedFromStatus(repository.status);
 
   Future<void> runHealthyControls() async {
     final watch = Stopwatch()..start();
-    await client.get('/api/v1/smart-follow-sessions/field-status-delay',
-      headers: {'X-Request-Id': '2e1d9387-56f8-4108-9089-28aba4715673'});
+    await client.get('/api/v1/smart-follow-sessions/field-status-delay', headers: {'X-Request-Id': '2e1d9387-56f8-4108-9089-28aba4715673'});
     expect(cubit.state.phase, DeviceSessionPhase.connected);
     debugPrint('CONTROL 6.2 s response: connected at ${watch.elapsedMilliseconds} ms');
-    await expectLater(client.get('/api/v1/smart-follow-sessions/http-503'),
-      throwsA(isA<ApiException>().having((error) => error.statusCode, 'HTTP status', 503)));
+    await expectLater(client.get('/api/v1/smart-follow-sessions/http-503'), throwsA(isA<ApiException>().having((error) => error.statusCode, 'HTTP status', 503)));
     expect(cubit.state.phase, DeviceSessionPhase.connected);
     debugPrint('CONTROL HTTP 503: connected');
   }
@@ -109,20 +120,31 @@ class _Experiment {
     final watch = Stopwatch()..start();
     final checked = probes.stream.first.timeout(const Duration(seconds: 22));
     final pending = client.get('/api/v1/smart-follow-sessions/slow', headers: {'X-Request-Id': id});
-    final failed = expectLater(pending, throwsA(isA<ApiException>().having(
-      (error) => (error.cause as DioException).type, 'transport error', DioExceptionType.receiveTimeout,
-    )));
+    final failed = expectLater(
+      pending,
+      throwsA(
+        isA<ApiException>().having(
+          (error) => (error.cause as DioException).type,
+          'transport error',
+          DioExceptionType.receiveTimeout,
+        ),
+      ),
+    );
     // A separate status GET succeeds over the same address while the delayed
     // request is pending, proving this experiment is not a network outage.
     expect((await client.get('/api/v1/device/status'))['healthy'], true);
     await failed;
     final timedOutAt = watch.elapsedMilliseconds;
     await checked;
+    expect(probeChecks.last['cause_request_id'], id);
+    expect(isUuidV4(probeChecks.last['probe_request_id'] as String), true);
     expect(phases.skip(before), isNot(contains(DeviceSessionPhase.reconnecting)));
     expect(cubit.state.isConnected, true);
-    debugPrint('HTTP $label id=$id timeout_ms=$timedOutAt '
+    debugPrint(
+      'HTTP $label id=$id timeout_ms=$timedOutAt '
       'phases=${phases.skip(before).map((phase) => phase.name).join(",")} '
-      'end_ms=${watch.elapsedMilliseconds}');
+      'end_ms=${watch.elapsedMilliseconds}',
+    );
   }
 
   Future<void> dispose() async {
@@ -144,13 +166,14 @@ class _Online extends ConnectivityMonitor {
 
 // Test double for discovery/credentials/WS only. Probe HTTP remains real.
 class _ProbeRepository implements ConnectionRepository {
-  _ProbeRepository(this.client, Uri uri) : device = DeviceConnection(
-    id: 'bbx-82f41c9e7a3d4b68a1501e21e536c649',
-    name: 'loopback-test',
-    baseUri: uri,
-    networkMode: NetworkMode.infrastructureSta,
-    isPaired: true,
-  );
+  _ProbeRepository(this.client, Uri uri)
+    : device = DeviceConnection(
+        id: 'bbx-82f41c9e7a3d4b68a1501e21e536c649',
+        name: 'loopback-test',
+        baseUri: uri,
+        networkMode: NetworkMode.infrastructureSta,
+        isPaired: true,
+      );
   final ApiClient client;
   final DeviceConnection device;
   int reconnects = 0;

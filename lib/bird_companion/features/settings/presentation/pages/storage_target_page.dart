@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
@@ -51,9 +52,7 @@ class _StorageTargetPageState extends State<StorageTargetPage> with WidgetsBindi
     if (dependencies == null) return;
     _listening = true;
     // v10 问题 5：设备拓扑/任务终态/会话恢复都触发自动刷新，不再靠手动检测。
-    _dataSubscription = dependencies.dataChangeBus.changes
-        .where((change) => change.affects(AppDataResource.device) || change.affects(AppDataResource.jobs))
-        .listen((_) => _load());
+    _dataSubscription = dependencies.dataChangeBus.changes.where((change) => change.affects(AppDataResource.device) || change.affects(AppDataResource.jobs)).listen((_) => _load());
     _sessionSubscription = dependencies.copyJobRecovery.sessionRefreshes.listen((_) => _load());
   }
 
@@ -197,24 +196,27 @@ class _StorageTargetPageState extends State<StorageTargetPage> with WidgetsBindi
 
   /// RC3 安全移除（§4.5）：确认后请求盒子校验，安全则提示可拔出（保持期 60s）。
   Future<void> _safeRemoveDevice(StorageDeviceSummary device) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('安全移除设备'),
-        content: Text(
-          '盒子会先确认没有任务在写入「${device.presentationName}」，'
-          '确认安全后即可拔出。要继续吗？',
+    final confirmed = await guardBirdNavigation(
+      context,
+      () => showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('安全移除设备'),
+          content: Text(
+            '盒子会先确认没有任务在写入「${device.presentationName}」，'
+            '确认安全后即可拔出。要继续吗？',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('再想想'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('安全移除'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('再想想'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('安全移除'),
-          ),
-        ],
       ),
     );
     if (confirmed != true || !mounted) return;
@@ -243,29 +245,32 @@ class _StorageTargetPageState extends State<StorageTargetPage> with WidgetsBindi
 
   Future<void> _renameDevice(StorageDeviceSummary device) async {
     final controller = TextEditingController(text: device.userAlias ?? device.label);
-    final alias = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('给设备命名'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 24,
-          decoration: const InputDecoration(
-            labelText: '用户别名',
-            hintText: '例如：U 盘 Ee',
+    final alias = await guardBirdNavigation(
+      context,
+      () => showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('给设备命名'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 24,
+            decoration: const InputDecoration(
+              labelText: '用户别名',
+              hintText: '例如：U 盘 Ee',
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
       ),
     );
     if (alias == null || alias.isEmpty || !mounted) return;
