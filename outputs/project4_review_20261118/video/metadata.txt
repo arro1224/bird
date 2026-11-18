@@ -1,0 +1,17 @@
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '5.mp4':
+  Metadata:
+    minor_version   : 512;512
+    major_brand     : isom;isom
+    compatible_brands: isomiso2avc1mp41;isomiso2avc1mp41
+    copyright       :
+    copyright-eng   :
+    wxMeta          : {"WXVer":671108923}
+    encoder         : Lavf58.20.100
+  Duration: 00:07:07.86, start: 0.000000, bitrate: 855 kb/s
+  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt470bg/bt470bg/smpte170m, progressive), 432x960, 800 kb/s, 30 fps, 30 tbr, 90k tbn (default)
+    Metadata:
+      handler_name    : VideoHandler
+  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, mono, fltp, 47 kb/s (default)
+    Metadata:
+      handler_name    : SoundHandler
+At least one output file must be specified
