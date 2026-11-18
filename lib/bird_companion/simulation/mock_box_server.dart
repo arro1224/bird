@@ -3507,8 +3507,16 @@ class MockBoxServer {
       case 'complete_children':
         for (final child in _smartFollowChildren) {
           if (child['state'] != 'completed') {
+            final assets = (child['asset_count'] as num?)?.toInt() ?? 0;
             child['state'] = 'completed';
-            _smartFollowCopied += (child['asset_count'] as num?)?.toInt() ?? 0;
+            // 子批次自己的计数也要回填：真实盒子完成一批就写这一批的
+            // copied/skipped/failed。只累加总计会让「查看复制详情」里每批都显示
+            // 「已复制 0」，而父级却显示已复制 60（2026-11-18 真机实测）。
+            child['copied_file_count'] = assets;
+            child['skipped_file_count'] = 0;
+            child['failed_file_count'] = 0;
+            child['finished_at'] = _clock().toUtc().toIso8601String();
+            _smartFollowCopied += assets;
           }
         }
         if (_smartFollowState == 'draining') {

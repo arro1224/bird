@@ -218,5 +218,16 @@ void main() {
     expect(session.recognizedCount, 14);
     expect(session.eligibleCount, 14);
     expect(session.copiedAssetCount, 14);
+
+    // 每个子批次也要有自己的已复制数，否则「查看复制详情」里每批都显示「已复制 0」，
+    // 而父级却显示已复制 14（2026-11-18 真机实测）。
+    final children = await api.childJobs(sessionId);
+    expect(children.items, hasLength(2));
+    expect(
+      children.items.every((child) => child.copiedFileCount == child.assetCount),
+      isTrue,
+      reason: '子批次完成后必须回填本批的已复制文件数',
+    );
+    expect(children.items.fold<int>(0, (sum, child) => sum + child.copiedFileCount), 14);
   });
 }
