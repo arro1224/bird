@@ -116,7 +116,9 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   /// loadMore 拉到的页；刷新第一页时不能把它们一起清掉。
   final Map<String, BirdJobStatus> _pagedJobs = {};
   String? _jobsDeviceId;
-  final Set<String> _analysisRequestedProjects = {};
+  /// 仅在「分析任务创建请求在途」时去重；是否已存在分析任务一律以盒子返回的
+  /// 权威任务列表为准（见 [_createAnalysis]），避免陈旧标记把级联永久挡死。
+  final Set<String> _analysisInFlight = {};
   final Map<String, Future<String>> _analysisRequests = {};
   final StreamController<String> _analysisCompleted = StreamController<String>.broadcast();
   final StreamController<String> _copyCompleted = StreamController<String>.broadcast();
@@ -431,7 +433,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   Future<String> _submitManualAnalysis(String projectId, Map<String, dynamic>? smartFollow) async {
     if (smartFollow != null) throw StateError('跟随复制必须使用已确认的创建入口。');
     setBusyState(acting: true, clearError: true);
-    _analysisRequestedProjects.add(projectId);
+    _analysisInFlight.add(projectId);
     try {
       final job = await _jobRepository.createAnalysis(
         projectId,
@@ -441,10 +443,10 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       _mergeJob(job);
       return job.id;
     } catch (caught) {
-      _analysisRequestedProjects.remove(projectId);
       setBusyState(error: caught);
       rethrow;
     } finally {
+      _analysisInFlight.remove(projectId);
       setBusyState(acting: false);
     }
   }
@@ -515,9 +517,17 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       _mergeJob(job);
       return job;
     } catch (caught) {
+      // 盒子重启或项目被删后，本地缓存里的任务会 404；剔掉它，避免幽灵任务继续
+      // 出现在任务列表里，也被当成“该项目已有分析任务”而挡掉级联。
+      if (caught is ApiException && caught.statusCode == 404) _forgetJob(jobId);
       setBusyState(error: caught);
       rethrow;
     }
+  }
+
+  void _forgetJob(String jobId) {
+    _jobs.remove(jobId);
+    _pagedJobs.remove(jobId);
   }
 
   Future<JobReport> report(String jobId) => _jobRepository.report(jobId);
@@ -609,11 +619,6 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
 
   Future<void> _createAnalysisForCompletedImports() async {
     for (final job in List<BirdJobStatus>.of(_jobs.values)) {
-      if (job.type == BirdJobType.analysis && job.sourceProjectId != null) {
-        _analysisRequestedProjects.add(job.sourceProjectId!);
-      }
-    }
-    for (final job in List<BirdJobStatus>.of(_jobs.values)) {
       if (job.type == BirdJobType.import && job.state == BirdJobState.completed) {
         await _createAnalysis(job.sourceProjectId);
       }
@@ -623,19 +628,31 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   Future<void> _createAnalysis(String? projectId) async {
     if (_disposed || projectId == null || projectId.trim().isEmpty) return;
     _guardProductionId(projectId, 'project_id');
-    if (!_analysisRequestedProjects.add(projectId)) return;
+    // 去重只看盒子返回的权威任务：该项目只要已有分析任务（任何状态）就不再建。
+    //
+    // 旧实现用一个只增不减的 `_analysisRequestedProjects` 集合去重，盒子重启后
+    // project_id 会被回收复用（project-0001 指向了新批次），残留在集合里的陈迹
+    // 会让后续导入的级联永远被挡掉——表现为「导入 100% 但 AI 分析不启动」。
+    if (_jobs.values.any((job) => job.type == BirdJobType.analysis && job.sourceProjectId == projectId)) return;
+    if (!_analysisInFlight.add(projectId)) return;
     try {
       if (smartFollowCreation?.hasPending(projectId) == true && smartFollowCreation?.hasCreationRecord(projectId) != true) return;
-      if (recognitionRepository?.analysisOption(projectId) != null || smartFollowCreation?.hasStaged(projectId) == true || smartFollowCreation?.hasCreationRecord(projectId) == true) {
-        final service = smartFollowCreation, configuration = smartFollowConfiguration;
-        if (service == null || configuration == null || (!service.hasStaged(projectId) && !service.hasCreationRecord(projectId))) throw StateError('导入已完成，请重新确认设备与跟随复制策略。');
-        final session = service.hasCreationRecord(projectId) ? await service.recover(projectId) : await service.startStaged(projectId, configuration(projectId));
+      final service = smartFollowCreation;
+      final configuration = smartFollowConfiguration;
+      final hasStaged = service?.hasStaged(projectId) == true;
+      final hasRecord = service?.hasCreationRecord(projectId) == true;
+      final hasFollowIntent = recognitionRepository?.analysisOption(projectId) != null || hasStaged || hasRecord;
+      if (hasFollowIntent && service != null && configuration != null && (hasStaged || hasRecord)) {
+        final session = hasRecord ? await service.recover(projectId) : await service.startStaged(projectId, configuration(projectId));
         if (_disposed) return;
         await recognitionRepository?.rememberAnalysisOption(projectId, null);
         final job = await _jobRepository.detail(session.recognitionJobId);
         if (!_disposed) _mergeJob(job);
         return;
       }
+      // 有跟随意图却已没有可用的暂存/记录（盒子重启、项目被删后的残留配置）：
+      // 清掉陈旧选项退回普通分析，别让一条死配置把演示卡住。
+      if (hasFollowIntent) await recognitionRepository?.rememberAnalysisOption(projectId, null);
       final job = await _jobRepository.createAnalysis(
         projectId,
         const AnalysisJobRequest(),
@@ -645,8 +662,9 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       _currentJobId = job.id;
       _mergeJob(job);
     } catch (caught) {
-      _analysisRequestedProjects.remove(projectId);
       if (!_disposed) setBusyState(error: caught);
+    } finally {
+      _analysisInFlight.remove(projectId);
     }
   }
 

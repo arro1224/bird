@@ -69,7 +69,13 @@ class DirectApHandoffPanel extends StatelessWidget {
             },
           ),
           const SizedBox(height: AppSpacing.sm),
-          BirdButton(label: '我已连接，继续验证', onPressed: !state.canContinue ? null : () => unawaited(cubit.continueVerification())),
+          // 终态失败后「我已连接，继续验证」会一直置灰（授权已消费，重试不可能成功），
+          // 只有一个不显眼的 TextButton 能退出去，现场很容易卡在这一页。
+          // 失败时把主按钮换成明确的「返回并重新配对」。
+          if (state.phase == DirectApHandoffPhase.failure || state.phase == DirectApHandoffPhase.directApJoinTimeout)
+            BirdButton(label: '返回并重新配对', onPressed: onBack)
+          else
+            BirdButton(label: '我已连接，继续验证', onPressed: !state.canContinue ? null : () => unawaited(cubit.continueVerification())),
           TextButton(onPressed: onBack, child: const Text('返回连接方式')),
           if (dependencies != null)
             TextButton(

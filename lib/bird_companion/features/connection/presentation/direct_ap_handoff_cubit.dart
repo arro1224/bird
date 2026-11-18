@@ -338,7 +338,7 @@ String directApErrorMessage(Object error) {
       error is ProvisioningException &&
           {ProvisioningErrorCode.authorizationRequired, ProvisioningErrorCode.pairingSessionExpired, ProvisioningErrorCode.pairingSessionUsed, ProvisioningErrorCode.pairingSessionInvalid}.contains(error.code) ||
       error is ApiException && {401, 403}.contains(error.statusCode)) {
-    return '盒子可达，但授权已失效。请重新安全授权，无需重新启动热点。';
+    return '盒子可达，但授权已失效（授权记录在兑换前已被消费，无法自动重试）。请点「返回并重新配对」重新安全授权，无需重新启动热点。';
   }
   return '盒子验证未通过，已停止自动重试。请查看连接诊断或返回。';
 }

@@ -27,6 +27,11 @@ class TaskPageFrame extends StatelessWidget {
               ),
               Expanded(
                 child: SingleChildScrollView(
+                  // 任务页内容会随状态重建（例如「建立批次」页里勾选跟随复制、
+                  // 选目标设备/同名文件策略后 setState）。没有 PageStorageKey 时
+                  // 子树重建会把滚动位置重置到顶部，用户刚滑到底部点完选项就被
+                  // 弹回顶部，找不到底部主按钮（2026-11-18 真机实测）。
+                  key: const PageStorageKey<String>('task-page-frame-scroll'),
                   padding: EdgeInsets.fromLTRB(24, subtitle == null ? 14 : 1, 24, 28),
                   child: child,
                 ),

@@ -82,7 +82,21 @@ abstract final class TaskHomeCapabilityResolver {
 
     final projectId = currentProject?.id.trim();
     final hasProject = projectId != null && projectId.isNotEmpty;
-    final hasPhotos = hasProject && currentProject!.totalFiles > 0;
+    // 批次摘要的 total_files 由盒子在导入完成时回填，实际观测到它会滞后或缺失
+    // （2026-11-18 真机：导入 60/60 完成，但摘要仍是 0，导致「复制照片」被误判为
+    // 「当前批次没有可处理照片」）。只要该项目有已完成的导入任务且张数 > 0，
+    // 就可以确定批次里有照片，用它兜底摘要。
+    final importedCount = hasProject
+        ? jobs
+              .where(
+                (job) =>
+                    job.type == BirdJobType.import &&
+                    job.state == BirdJobState.completed &&
+                    _belongsToProject(job, projectId),
+              )
+              .fold<int>(0, (best, job) => job.totalCount > best ? job.totalCount : best)
+        : 0;
+    final hasPhotos = hasProject && (currentProject!.totalFiles > 0 || importedCount > 0);
 
     // 复制与全量备份都是「目标写任务」：同一时间只能有一个（协议 §16）。
     // 分析任务不阻止复制（§3.1），导入也不阻止；只有另一个目标写任务互斥。
