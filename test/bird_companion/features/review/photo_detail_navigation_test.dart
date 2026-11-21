@@ -13,6 +13,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('详情的清晰度与图库一致，综合评级单独显示', (tester) async {
+    final repository = _ReviewRepository()
+      ..clarity = ClarityState.blurred
+      ..rating = const RatingResult(totalScore: 2.68);
+    await tester.pumpWidget(_app(repository, const PhotoDetailPage(fileId: 'p1')));
+    await tester.pumpAndSettle();
+    expect(find.text('清晰度：模糊'), findsOneWidget);
+    expect(find.text('综合评级：一般'), findsOneWidget);
+    expect(find.text('照片质量：一般'), findsNothing);
+  });
   testWidgets('真实详情页恢复 AI 鸟种入口限制重入并保留其他人工字段', (tester) async {
     final repository = _ManualSpeciesRepository();
     await tester.pumpWidget(_app(repository, const PhotoDetailPage(fileId: 'p1')));
@@ -327,6 +337,8 @@ class _ReviewRepository implements ReviewRepository {
   final List<String> loadedIds = [];
   final List<UserDecision> savedDecisions = [];
   List<String> userTags = [];
+  ClarityState clarity = ClarityState.unknown;
+  RatingResult? rating;
 
   @override
   Future<ReviewDetail> detail(String fileId) async {
@@ -339,6 +351,8 @@ class _ReviewRepository implements ReviewRepository {
           format: 'JPEG',
           preview: const PreviewRef(),
           analysisState: AnalysisState.completed,
+          clarityState: clarity,
+          rating: rating,
           userTags: userTags,
         ),
         tags: const [BirdTag(id: 'system-wetland', name: '系统湿地', source: 'system', editable: false)],

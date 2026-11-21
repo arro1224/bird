@@ -39,9 +39,6 @@ void main() {
     expect(find.text('A002.JPG'), findsOneWidget);
     expect(find.textContaining('已复制'), findsAtLeastNWidgets(2));
     expect(tester.takeException(), isNull);
-    await tester.pump(const Duration(seconds: 2));
-    await tester.runAsync(() => Future<void>.delayed(const Duration(seconds: 60)));
-    // Leave a short observable final page, then release the real HTTP client.
     await tester.pumpWidget(const SizedBox.shrink());
     repository.dispose();
     await client.dispose();

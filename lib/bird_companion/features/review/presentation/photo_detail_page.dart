@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
+import 'package:aves/bird_companion/core/models/photo_models.dart' show ClarityState;
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/models/tag_input.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
@@ -559,6 +560,12 @@ class _RecognitionSummary extends StatelessWidget {
     final hasManual = species.isNotEmpty || detail.decision?.userSpeciesId?.isNotEmpty == true;
     final confidence = candidate?.confidence;
     final score = summary.rating?.totalScore;
+    final clarity = switch (summary.clarityState) {
+      ClarityState.clear => '清晰',
+      ClarityState.average => '一般',
+      ClarityState.blurred => '模糊',
+      ClarityState.unknown => '暂无数据',
+    };
     final quality = score == null
         ? '待评估'
         : score >= 4.5
@@ -608,7 +615,8 @@ class _RecognitionSummary extends StatelessWidget {
                 LinearProgressIndicator(value: confidence, minHeight: 7, borderRadius: BorderRadius.circular(99)),
               ],
               const SizedBox(height: 14),
-              Text('照片质量：$quality', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppColors.brand)),
+              Text('清晰度：$clarity', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppColors.brand)),
+              Text('综合评级：$quality', style: Theme.of(context).textTheme.bodyMedium),
             ],
           ),
         ),

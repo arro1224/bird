@@ -9,8 +9,13 @@ plugins {
 
 val configuredDartTarget = providers.gradleProperty("target").orElse("lib/main.dart").get().replace('\\', '/')
 // Flutter runs integration tests through a generated listener in a temp folder.
+// Inspect its test import: a listener by itself does not imply the Demo flavor.
+val integrationTestListener = configuredDartTarget.contains("/flutter_test_listener.") &&
+    configuredDartTarget.endsWith("/listener.dart")
+val embeddedDemoTestImport = Regex("""(?m)^import 'file:[^']*/integration_test/embedded_demo_app_test\.dart' as test;\s*$""")
 val embeddedDemoIntegrationTest = configuredDartTarget.endsWith("integration_test/embedded_demo_app_test.dart") ||
-    (configuredDartTarget.contains("/flutter_test_listener.") && configuredDartTarget.endsWith("/listener.dart"))
+    (integrationTestListener && rootProject.projectDir.parentFile.resolve(configuredDartTarget)
+        .takeIf { it.isFile }?.useLines { lines -> lines.any { embeddedDemoTestImport.matches(it) } } == true)
 val embeddedDemoTarget = configuredDartTarget.endsWith("main_bird_demo.dart") || embeddedDemoIntegrationTest
 if (embeddedDemoIntegrationTest && gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }) {
     throw GradleException("Embedded integration tests are Debug-only; Release demos use lib/main_bird_demo.dart.")
