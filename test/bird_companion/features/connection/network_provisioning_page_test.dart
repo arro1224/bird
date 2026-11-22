@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
+import 'package:aves/bird_companion/features/connection/data/platform/phone_wifi_platform.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
@@ -137,12 +138,16 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    expect(find.text('使用手机安全共享 Wi-Fi'), findsOneWidget);
+    expect(find.text('连接手机当前 Wi-Fi'), findsOneWidget);
+    expect(find.textContaining('首次连接请填写密码'), findsOneWidget);
     expect(find.text('扫描 Wi-Fi 二维码'), findsOneWidget);
     expect(find.text('选择或手动输入网络'), findsOneWidget);
     expect(find.text('推荐'), findsOneWidget);
+    // DPP is not offered this round: the card is gone, not merely disabled.
+    expect(find.text('使用手机安全共享 Wi-Fi'), findsNothing);
+    expect(find.textContaining('安全共享'), findsNothing);
     expect(
-      tester.getTopLeft(find.text('使用手机安全共享 Wi-Fi')).dy,
+      tester.getTopLeft(find.text('连接手机当前 Wi-Fi')).dy,
       lessThan(tester.getTopLeft(find.text('扫描 Wi-Fi 二维码')).dy),
     );
     expect(
@@ -183,12 +188,12 @@ void main() {
     expect(find.text('-42 dBm'), findsOneWidget);
   });
 
-  testWidgets('DPP stays disabled unless phone and box capabilities are both available', (tester) async {
+  testWidgets('DPP is not offered as a Wi-Fi provisioning method this round', (tester) async {
     final repository = FakeProvisioningRepository(
       dppAvailability: const DppAvailability(
         boxSupported: true,
         apiLevelSupported: true,
-        easyConnectSupported: false,
+        easyConnectSupported: true,
         activityAvailable: true,
         sessionReady: true,
       ),
@@ -199,13 +204,12 @@ void main() {
     await tester.pumpWidget(_pageHarness(cubit));
     await tester.pumpAndSettle();
 
-    expect(find.text('当前手机或盒子暂不支持安全共享'), findsOneWidget);
-    expect(find.text('推荐'), findsNothing);
-    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
-    await tester.pump();
-    expect(repository.calls, isNot(contains('startDppProvisioning')));
+    // Even when the phone and the box could support DPP, task 2 keeps it out of the entry list.
+    expect(find.text('使用手机安全共享 Wi-Fi'), findsNothing);
+    expect(find.text('连接手机当前 Wi-Fi'), findsOneWidget);
     expect(find.text('扫描 Wi-Fi 二维码'), findsOneWidget);
     expect(find.text('选择或手动输入网络'), findsOneWidget);
+    expect(repository.calls, isNot(contains('startDppProvisioning')));
   });
 
   test('Wi-Fi QR credentials use wifi_qr without entering Cubit state', () async {
@@ -250,7 +254,8 @@ void main() {
     await tester.pumpWidget(_pageHarness(cubit));
 
     await tester.pumpAndSettle();
-    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
+    unawaited(cubit.startDppProvisioning());
+    await tester.pump();
     await tester.pump();
 
     expect(find.text('手机暂不支持 DPP 配网'), findsOneWidget);
@@ -283,7 +288,8 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
+    unawaited(cubit.startDppProvisioning());
+    await tester.pump();
     await tester.pump();
 
     expect(repository.calls, contains('startDppProvisioning'));
@@ -311,7 +317,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('已恢复可用网络'), findsOneWidget);
+    expect(find.text('旧网络未能恢复'), findsOneWidget);
     expect(find.text('盒子已加入 Wi-Fi'), findsNothing);
     expect(find.text('完成'), findsNothing);
     expect(find.textContaining('must-never-render'), findsNothing);
@@ -343,8 +349,8 @@ void main() {
     await tester.pumpWidget(_pageHarness(cubit));
 
     await tester.pumpAndSettle();
-    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
-    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
+    unawaited(cubit.startDppProvisioning());
+    unawaited(cubit.startDppProvisioning());
 
     expect(repository.startDppCalls, 1);
 
@@ -376,7 +382,8 @@ void main() {
     await tester.pumpWidget(_pageHarness(cubit));
 
     await tester.pumpAndSettle();
-    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
+    unawaited(cubit.startDppProvisioning());
+    await tester.pump();
     await tester.pump();
 
     expect(find.text('重新尝试安全共享'), findsOneWidget);
@@ -407,7 +414,8 @@ void main() {
     await tester.pumpWidget(_pageHarness(cubit));
 
     await tester.pumpAndSettle();
-    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
+    unawaited(cubit.startDppProvisioning());
+    await tester.pump();
     await tester.pump();
 
     expect(find.text('重新尝试安全共享'), findsOneWidget);
@@ -428,7 +436,8 @@ void main() {
     await tester.pumpWidget(_pageHarness(cubit));
 
     await tester.pumpAndSettle();
-    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
+    unawaited(cubit.startDppProvisioning());
+    await tester.pump();
     await tester.pump();
 
     expect(find.text('重新尝试安全共享'), findsNothing);
@@ -448,7 +457,8 @@ void main() {
     await tester.pumpWidget(_pageHarness(cubit));
 
     await tester.pumpAndSettle();
-    await tester.tap(find.text('使用手机安全共享 Wi-Fi'));
+    unawaited(cubit.startDppProvisioning());
+    await tester.pump();
     await tester.pump();
 
     expect(find.text('操作未完成'), findsOneWidget);
@@ -457,12 +467,325 @@ void main() {
     expect(find.text('重新尝试安全共享'), findsNothing);
     expect(find.textContaining(privateDiagnostic), findsNothing);
   });
+
+  testWidgets('phone Wi-Fi entry pre-fills the current name and still requires the password', (tester) async {
+    final repository = FakeProvisioningRepository();
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(_pageHarness(cubit, phoneWifi: const _FakePhoneWifi(ssid: 'Home-5G')));
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连接手机当前 Wi-Fi'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('wifi-ssid'))).controller?.text,
+      'Home-5G',
+    );
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('wifi-password'))).obscureText,
+      isTrue,
+    );
+    expect(find.byKey(const ValueKey('wifi-prefill-hint')), findsNothing);
+    // A pre-filled name must never turn into an automatic submission.
+    expect(repository.calls, isNot(contains('setStaConfig')));
+  });
+
+  testWidgets('missing phone Wi-Fi name explains itself instead of pretending to pre-fill', (tester) async {
+    final repository = FakeProvisioningRepository();
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      _pageHarness(
+        cubit,
+        phoneWifi: const _FakePhoneWifi(failure: PhoneWifiReadFailure.permissionDenied),
+        requestLocationPermission: () async => false,
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连接手机当前 Wi-Fi'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('wifi-prefill-hint')), findsOneWidget);
+    expect(find.textContaining('未授予定位权限'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('wifi-ssid'))).controller?.text,
+      isEmpty,
+    );
+    expect(repository.calls, isNot(contains('setStaConfig')));
+  });
+
+  for (final entry in <(ProvisioningNetworkMode, String, String)>[
+    (ProvisioningNetworkMode.infrastructureSta, '已恢复之前可用的 Wi-Fi', '不需要重新输入密码'),
+    (ProvisioningNetworkMode.directAp, '旧网络未能恢复', '重新开启直连热点'),
+    (ProvisioningNetworkMode.none, '恢复旧网络失败', '没有可恢复的旧网络'),
+  ]) {
+    testWidgets('recovery outcome is distinguishable: ${entry.$1.name}', (tester) async {
+      final deviceInfo = _deviceInfo();
+      final repository = FakeProvisioningRepository(
+        startDppResult: const CommandAccepted(
+          operationId: 'op_recovery_case',
+          desiredMode: ProvisioningNetworkMode.infrastructureSta,
+          provisioningMethod: ProvisioningMethod.androidDpp,
+        ),
+      );
+      final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(deviceInfo);
+      addTearDown(cubit.close);
+      addTearDown(repository.dispose);
+      await tester.pumpWidget(_pageHarness(cubit));
+
+      await tester.pumpAndSettle();
+      unawaited(cubit.startDppProvisioning());
+      await tester.pump();
+
+      repository.emitEvent(
+        ProvisioningEvent(
+          type: ProvisioningEventType.networkRecovered,
+          requestId: 'request-recovery-case',
+          deviceId: deviceInfo.deviceId,
+          payload: NetworkRecovered(
+            operationId: 'op_recovery_case',
+            activeMode: ProvisioningNetworkMode.infrastructureSta,
+            operationState: NetworkOperationState.idle,
+            recoveredMode: entry.$1,
+            recoveryReason: 'previous_sta_connect_failed',
+            ssid: 'Synthetic-AP',
+            security: WifiSecurity.wpa2Personal,
+            passphrase: 'must-never-render',
+            gatewayIpv4: '192.0.2.1',
+            prefixLength: 24,
+            baseUri: Uri.parse('http://192.0.2.1'),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text(entry.$2), findsOneWidget);
+      expect(find.textContaining(entry.$3), findsOneWidget);
+      // A fallback or a failed restore is never presented as a successful provisioning.
+      expect(find.text('完成'), findsNothing);
+      expect(find.text('盒子已加入 Wi-Fi'), findsNothing);
+      expect(find.textContaining('must-never-render'), findsNothing);
+    });
+  }
+
+  testWidgets('a failed Wi-Fi join is labelled as a join failure, not a Bluetooth problem', (tester) async {
+    final repository = FakeProvisioningRepository(
+      setStaConfigError: const ProvisioningException(
+        code: ProvisioningErrorCode.staDhcpFailed,
+        retryable: true,
+      ),
+    );
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(_pageHarness(cubit));
+
+    await tester.pumpAndSettle();
+    await cubit.submitStaConfiguration(
+      StaNetworkConfiguration(
+        provisioningMethod: ProvisioningMethod.bleManual,
+        selectionMethod: WifiSelectionMethod.manual,
+        ssid: 'Studio',
+        security: WifiSecurity.wpa2Personal,
+        password: 'synthetic-pass',
+        hidden: false,
+        networkKind: StaNetworkKind.router,
+      ),
+    );
+    await tester.pump();
+
+    expect(cubit.state.failureOrigin, NetworkProvisioningFailureOrigin.wifiJoin);
+    expect(find.text('加入 Wi-Fi 失败'), findsOneWidget);
+    expect(find.textContaining('不需要重新配对'), findsOneWidget);
+    expect(find.textContaining('synthetic-pass'), findsNothing);
+    // Retrying stays possible without returning to the first step.
+    expect(find.text('扫描 Wi-Fi 二维码'), findsOneWidget);
+    expect(find.text('选择或手动输入网络'), findsOneWidget);
+  });
+
+  testWidgets('granting location on demand turns the missing name into a prefill', (tester) async {
+    final repository = FakeProvisioningRepository();
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    final reader = _GrantablePhoneWifi();
+    var requested = 0;
+    await tester.pumpWidget(
+      _pageHarness(
+        cubit,
+        phoneWifi: reader,
+        requestLocationPermission: () async {
+          requested++;
+          reader.granted = true;
+          return true;
+        },
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连接手机当前 Wi-Fi'));
+    await tester.pumpAndSettle();
+
+    expect(requested, 1);
+    expect(reader.reads, 2, reason: '授权后必须重读一次');
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('wifi-ssid'))).controller?.text,
+      'Home-5G',
+    );
+    expect(find.byKey(const ValueKey('wifi-prefill-hint')), findsNothing);
+  });
+
+  testWidgets('a denied location request is asked once and keeps the manual fallback', (tester) async {
+    final repository = FakeProvisioningRepository();
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    final reader = _GrantablePhoneWifi();
+    var requested = 0;
+    await tester.pumpWidget(
+      _pageHarness(
+        cubit,
+        phoneWifi: reader,
+        requestLocationPermission: () async {
+          requested++;
+          return false;
+        },
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连接手机当前 Wi-Fi'));
+    await tester.pumpAndSettle();
+
+    // One prompt, no retry loop, and the field stays usable.
+    expect(requested, 1);
+    expect(reader.reads, 1);
+    expect(find.byKey(const ValueKey('wifi-prefill-hint')), findsOneWidget);
+    expect(repository.calls, isNot(contains('setStaConfig')));
+  });
+
+  testWidgets('an approximate-only location grant also triggers one upgrade request', (tester) async {
+    final repository = FakeProvisioningRepository();
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    final reader = _GrantablePhoneWifi(deniedAs: PhoneWifiReadFailure.approximateLocation);
+    var requested = 0;
+    await tester.pumpWidget(
+      _pageHarness(
+        cubit,
+        phoneWifi: reader,
+        requestLocationPermission: () async {
+          requested++;
+          reader.granted = true;
+          return true;
+        },
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连接手机当前 Wi-Fi'));
+    await tester.pumpAndSettle();
+
+    // Android 12+ only upgrades "approximate" to "precise" when the permission is requested again.
+    expect(requested, 1);
+    expect(reader.reads, 2);
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('wifi-ssid'))).controller?.text,
+      'Home-5G',
+    );
+  });
+
+  testWidgets('an approximate-only location grant explains itself when the user declines the upgrade', (tester) async {
+    final repository = FakeProvisioningRepository();
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+    final reader = _GrantablePhoneWifi(deniedAs: PhoneWifiReadFailure.approximateLocation);
+    await tester.pumpWidget(
+      _pageHarness(cubit, phoneWifi: reader, requestLocationPermission: () async => false),
+    );
+
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连接手机当前 Wi-Fi'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('wifi-prefill-hint')), findsOneWidget);
+    expect(find.textContaining('大致位置'), findsOneWidget);
+  });
+
+  test('a confirmed Wi-Fi QR submits exactly one provisioning command', () async {
+    final repository = FakeProvisioningRepository(
+      setStaConfigResult: const CommandAccepted(
+        operationId: 'op_qr_once',
+        desiredMode: ProvisioningNetworkMode.infrastructureSta,
+        provisioningMethod: ProvisioningMethod.wifiQr,
+      ),
+    );
+    final cubit = NetworkProvisioningCubit(repository)..openWifiProvisioning(_deviceInfo());
+    addTearDown(cubit.close);
+    addTearDown(repository.dispose);
+
+    const credentials = WifiQrCredentials(
+      ssid: 'Studio',
+      security: WifiSecurity.wpa2Personal,
+      password: 'synthetic-pass',
+    );
+    // A double confirm (double tap, late frame) must not send a second set_sta_config.
+    await Future.wait([
+      cubit.submitWifiQrCredentials(credentials),
+      cubit.submitWifiQrCredentials(credentials),
+    ]);
+
+    expect(repository.calls.where((call) => call == 'setStaConfig'), hasLength(1));
+    expect(cubit.state.phase, NetworkProvisioningPhase.configuringSta);
+  });
+}
+
+/// Phone platform double whose permission can be granted between two reads.
+final class _GrantablePhoneWifi implements PhoneWifiPlatform {
+  _GrantablePhoneWifi({this.deniedAs = PhoneWifiReadFailure.permissionDenied});
+
+  final PhoneWifiReadFailure deniedAs;
+  var granted = false;
+  var reads = 0;
+
+  @override
+  Future<PhoneWifiSsid> currentSsid() async {
+    reads++;
+    return granted ? const PhoneWifiSsid.readable('Home-5G') : PhoneWifiSsid.unreadable(deniedAs);
+  }
+
+  @override
+  Future<String?> pickQrImage() async => null;
+}
+
+/// Phone platform double: the prefill hint and the picked image path are what task 2 adds.
+final class _FakePhoneWifi implements PhoneWifiPlatform {
+  const _FakePhoneWifi({this.ssid, this.failure});
+
+  final String? ssid;
+  final PhoneWifiReadFailure? failure;
+
+  @override
+  Future<PhoneWifiSsid> currentSsid() async => ssid != null
+      ? PhoneWifiSsid.readable(ssid!)
+      : PhoneWifiSsid.unreadable(failure ?? PhoneWifiReadFailure.unavailable);
+
+  @override
+  Future<String?> pickQrImage() async => null;
 }
 
 Widget _pageHarness(
   NetworkProvisioningCubit cubit, {
   ValueChanged<Uri>? onCompleted,
   VoidCallback? onBack,
+  PhoneWifiPlatform? phoneWifi,
+  Future<bool> Function()? requestLocationPermission,
 }) => MaterialApp(
   theme: AppTheme.light(),
   home: Scaffold(
@@ -471,6 +794,8 @@ Widget _pageHarness(
       child: NetworkProvisioningPage(
         onBack: onBack ?? cubit.backToMethodSelection,
         onCompleted: onCompleted,
+        phoneWifi: phoneWifi,
+        requestLocationPermission: requestLocationPermission,
       ),
     ),
   ),

@@ -160,7 +160,8 @@ void main() {
   );
   const wifiMethodPagePath = 'lib/bird_companion/features/connection/presentation/pages/network_provisioning_page.dart';
   for (final entry in const [
-    '使用手机安全共享 Wi-Fi',
+    '连接手机当前 Wi-Fi',
+    '首次连接请填写密码',
     '扫描 Wi-Fi 二维码',
     '选择或手动输入网络',
   ]) {
@@ -174,8 +175,64 @@ void main() {
   _requireContains(
     failures,
     wifiMethodPagePath,
-    'WifiQrScannerPage()',
+    'WifiQrScannerPage(',
     'the Wi-Fi QR entry must open the dedicated scanner',
+  );
+  const wifiQrScannerPath = 'lib/bird_companion/features/connection/presentation/pages/wifi_qr_scanner_page.dart';
+  for (final entry in const [
+    '从相册选择',
+    'pickQrImage()',
+    'evaluateWifiQrCodes',
+  ]) {
+    _requireContains(
+      failures,
+      wifiQrScannerPath,
+      entry,
+      'the gallery QR import (D1) is missing: $entry',
+    );
+  }
+  _requireContains(
+    failures,
+    'lib/bird_companion/features/connection/domain/wifi_qr_import.dart',
+    'evaluateWifiQrCodes',
+    'camera and gallery must share one QR evaluation',
+  );
+  _requireContains(
+    failures,
+    'lib/bird_companion/features/connection/domain/wifi_qr_import.dart',
+    'WifiQrImportFailure.multipleCodes',
+    'several QR codes in one frame or photo must be rejected, not reduced to the first',
+  );
+  _requireContains(
+    failures,
+    'lib/bird_companion/features/connection/data/platform/phone_wifi_platform.dart',
+    "'currentSsid'",
+    'the phone Wi-Fi prefill must read the real current SSID',
+  );
+  _requireContains(
+    failures,
+    'lib/bird_companion/features/connection/presentation/network_provisioning_cubit.dart',
+    'NetworkProvisioningFailureOrigin.wifiJoin',
+    'a failed Wi-Fi join must be distinguishable from other provisioning failures',
+  );
+  // Task 2: the phone Wi-Fi name can only be read with location access on Android 12+.
+  _requireContains(
+    failures,
+    'android/app/src/main/AndroidManifest.xml',
+    'android:name="android.permission.ACCESS_FINE_LOCATION" />',
+    'task-2 prefill requires ACCESS_FINE_LOCATION without a maxSdkVersion cap',
+  );
+  _forbid(
+    failures,
+    'android/app/src/main/AndroidManifest.xml',
+    'ACCESS_FINE_LOCATION" android:maxSdkVersion',
+    'capping ACCESS_FINE_LOCATION silently disables the phone Wi-Fi prefill on Android 12+',
+  );
+  _requireContains(
+    failures,
+    wifiMethodPagePath,
+    'requestLocationPermission',
+    'the phone Wi-Fi entry must be able to request the location access it needs',
   );
   _requireContains(
     failures,

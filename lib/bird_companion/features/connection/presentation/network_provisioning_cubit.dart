@@ -30,6 +30,13 @@ enum NetworkProvisioningPhase {
   failure,
 }
 
+/// Which attempt produced [NetworkProvisioningPhase.failure].
+///
+/// A failed attempt to join the target Wi-Fi must not be presented as a Bluetooth or
+/// direct-AP problem: the page labels it "加入失败" and reassures the user that the box
+/// keeps its last working network.
+enum NetworkProvisioningFailureOrigin { wifiJoin }
+
 final class NetworkProvisioningState {
   const NetworkProvisioningState({
     this.phase = NetworkProvisioningPhase.idle,
@@ -47,6 +54,7 @@ final class NetworkProvisioningState {
     this.error,
     this.canCancel = false,
     this.directApSsid,
+    this.failureOrigin,
   });
 
   final NetworkProvisioningPhase phase;
@@ -64,6 +72,8 @@ final class NetworkProvisioningState {
   final Object? error;
   final bool canCancel;
   final String? directApSsid;
+  /// Set only when the failure came from joining the target Wi-Fi.
+  final NetworkProvisioningFailureOrigin? failureOrigin;
 
   NetworkProvisioningState copyWith({
     NetworkProvisioningPhase? phase,
@@ -81,6 +91,7 @@ final class NetworkProvisioningState {
     Object? error,
     bool? canCancel,
     String? directApSsid,
+    NetworkProvisioningFailureOrigin? failureOrigin,
     bool clearOperation = false,
     bool clearOperationState = false,
     bool clearNetworks = false,
@@ -106,6 +117,7 @@ final class NetworkProvisioningState {
     error: clearError ? null : error ?? this.error,
     canCancel: canCancel ?? this.canCancel,
     directApSsid: directApSsid ?? this.directApSsid,
+    failureOrigin: failureOrigin ?? this.failureOrigin,
   );
 }
 
@@ -603,6 +615,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
         state.copyWith(
           phase: NetworkProvisioningPhase.failure,
           error: _safePresentationError(error),
+          failureOrigin: NetworkProvisioningFailureOrigin.wifiJoin,
           clearOperation: true,
           canCancel: false,
         ),
@@ -737,6 +750,9 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
             phase: NetworkProvisioningPhase.failure,
             operationState: payload.operationState,
             error: const NetworkOperationFailedException(),
+            failureOrigin: state.phase == NetworkProvisioningPhase.configuringSta
+                ? NetworkProvisioningFailureOrigin.wifiJoin
+                : null,
             canCancel: false,
           ),
         );

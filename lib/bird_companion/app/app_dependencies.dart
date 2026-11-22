@@ -49,6 +49,7 @@ import 'package:aves/bird_companion/features/connection/data/mdns_device_discove
 import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
 import 'package:aves/bird_companion/features/connection/data/platform/birdbox_dpp_platform.dart';
 import 'package:aves/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart';
+import 'package:aves/bird_companion/features/connection/data/platform/phone_wifi_platform.dart';
 import 'package:aves/bird_companion/features/connection/data/provisioning_repository_impl.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_repository.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
@@ -183,6 +184,8 @@ class BirdCompanionDependencies {
   final BleScanDiagnosticStore bleScanDiagnosticStore;
   final BleConnectionDiagnosticStore bleConnectionDiagnosticStore;
   final bleDiagnosticFilePlatform = const MethodChannelBirdBoxBleDiagnosticFilePlatform();
+  /// Task-2 additions: phone Wi-Fi name prefill and gallery QR import. UI hints only.
+  final phoneWifi = const MethodChannelPhoneWifiPlatform();
   final appBuildIdentity = AppBuildIdentity();
   final PhoneDiagnosticRecorder phoneDiagnostics;
   late final bleDiagnosticSnapshotService = BleDiagnosticSnapshotService(bleScanDiagnosticStore, bleConnectionDiagnosticStore, bleDiagnosticFilePlatform, phoneSnapshot: phoneDiagnostics.snapshot, buildIdentity: appBuildIdentity.read);

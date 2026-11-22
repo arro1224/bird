@@ -4,6 +4,11 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.location.LocationManager;
+import android.net.Uri;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
@@ -20,6 +25,11 @@ import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -33,7 +43,10 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
     private static final String METHOD_CHANNEL = "bird_companion/birdbox_wifi/methods";
     private static final String NETWORK_EVENTS_CHANNEL = "bird_companion/birdbox_wifi/network_events";
     private static final int PERMISSION_REQUEST = 0xB172;
+    private static final int PICK_IMAGE_REQUEST = 0xB173;
     private static final int JOIN_TIMEOUT_MS = 30000;
+    /** Local-only guard: a QR photo is a few megabytes at most and is deleted after parsing. */
+    private static final long MAX_PICKED_IMAGE_BYTES = 32L * 1024L * 1024L;
 
     private final Activity activity;
     private final ConnectivityManager connectivityManager;
@@ -44,6 +57,7 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
 
     @Nullable private EventChannel.EventSink networkEventsSink;
     @Nullable private MethodChannel.Result pendingPermissionResult;
+    @Nullable private MethodChannel.Result pendingPickResult;
     @Nullable private MethodChannel.Result pendingJoinResult;
     @Nullable private ConnectivityManager.NetworkCallback networkCallback;
     @Nullable private Network requestedNetwork;
@@ -117,6 +131,12 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
                 releaseNetwork(true);
                 result.success(null);
                 return;
+            case "currentSsid":
+                currentSsid(result);
+                return;
+            case "pickWifiQrImage":
+                pickWifiQrImage(result);
+                return;
             case "dispose":
                 dispose();
                 result.success(null);
@@ -154,6 +174,195 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
             result.success(grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED);
         }
         return true;
+    }
+
+    /**
+     * Read-only hint used to pre-fill the provisioning form. The SSID is returned to the page
+     * only and is never cached, logged or forwarded to diagnostics; when it cannot be read the
+     * caller gets an explicit reason instead of an empty string.
+     */
+    private void currentSsid(@NonNull MethodChannel.Result result) {
+        final Map<String, Object> response = new LinkedHashMap<>();
+        response.put("ssid", null);
+        response.put("reason", null);
+        // Android still gates SSID visibility on location permission; NEARBY_WIFI_DEVICES is not enough.
+        if (ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // Android 12+ lets the user grant only an approximate location, which is not enough to read the SSID.
+            final boolean approximate = ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+            response.put("reason", approximate ? "permission_approximate" : "permission_denied");
+            result.success(response);
+            return;
+        }
+        if (!isLocationEnabled()) {
+            response.put("reason", "location_disabled");
+            result.success(response);
+            return;
+        }
+        try {
+            final WifiManager manager = (WifiManager) activity.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            final WifiInfo info = manager == null ? null : manager.getConnectionInfo();
+            final String ssid = normalizeSsid(info == null ? null : info.getSSID());
+            if (ssid == null) {
+                response.put("reason", "unavailable");
+            } else {
+                response.put("ssid", ssid);
+            }
+        } catch (SecurityException error) {
+            response.put("reason", "permission_denied");
+        } catch (RuntimeException error) {
+            response.put("reason", "unavailable");
+        }
+        result.success(response);
+    }
+
+    @Nullable
+    private static String normalizeSsid(@Nullable String raw) {
+        if (raw == null) return null;
+        String value = raw.trim();
+        if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+            value = value.substring(1, value.length() - 1);
+        }
+        if (value.isEmpty() || "0x".equalsIgnoreCase(value) || "<unknown ssid>".equalsIgnoreCase(value)) return null;
+        return value;
+    }
+
+    private boolean isLocationEnabled() {
+        try {
+            final LocationManager manager = (LocationManager) activity.getSystemService(Context.LOCATION_SERVICE);
+            if (manager == null) return true;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return manager.isLocationEnabled();
+            return Settings.Secure.getInt(activity.getContentResolver(), Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF) != Settings.Secure.LOCATION_MODE_OFF;
+        } catch (RuntimeException error) {
+            // Diagnostics must not fail when the setting is unreadable.
+            return true;
+        }
+    }
+
+    /** Opens the system image picker so a standard Wi-Fi QR photo can be imported (D1). */
+    private void pickWifiQrImage(@NonNull MethodChannel.Result result) {
+        if (pendingPickResult != null) {
+            result.error("invalid_state", "An image picker is already active.", null);
+            return;
+        }
+        final Intent selected = resolveImagePickerIntent();
+        if (selected == null) {
+            result.error("picker_unavailable", "No system image picker is available.", null);
+            return;
+        }
+        pendingPickResult = result;
+        try {
+            activity.startActivityForResult(selected, PICK_IMAGE_REQUEST);
+        } catch (RuntimeException error) {
+            pendingPickResult = null;
+            result.error("picker_unavailable", "The system image picker could not be opened.", null);
+        }
+    }
+
+    @Nullable
+    private Intent resolveImagePickerIntent() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            final Intent photoPicker = new Intent(MediaStore.ACTION_PICK_IMAGES);
+            photoPicker.setType("image/*");
+            photoPicker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            if (photoPicker.resolveActivity(activity.getPackageManager()) != null) return photoPicker;
+        }
+        final Intent documents = new Intent(Intent.ACTION_GET_CONTENT);
+        documents.addCategory(Intent.CATEGORY_OPENABLE);
+        documents.setType("image/*");
+        documents.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        return documents.resolveActivity(activity.getPackageManager()) == null ? null : documents;
+    }
+
+    boolean onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        if (requestCode != PICK_IMAGE_REQUEST) return false;
+        final MethodChannel.Result result = pendingPickResult;
+        pendingPickResult = null;
+        if (result == null) return true;
+        final Uri picked = resultCode == Activity.RESULT_OK && data != null ? data.getData() : null;
+        if (picked == null) {
+            // Cancelling the picker is a normal outcome: the page keeps its state and can retry.
+            result.success(null);
+            return true;
+        }
+        copyPickedImage(picked, result);
+        return true;
+    }
+
+    private void copyPickedImage(@NonNull Uri uri, @NonNull MethodChannel.Result result) {
+        final Thread worker = new Thread(() -> {
+            File target = null;
+            String path = null;
+            String failure = null;
+            try {
+                final File directory = new File(activity.getCacheDir(), "wifi_qr_import");
+                if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("cache directory unavailable");
+                deleteChildren(directory);
+                target = new File(directory, "qr-" + System.nanoTime() + guessImageExtension(uri));
+                long total = 0L;
+                final InputStream input = activity.getContentResolver().openInputStream(uri);
+                if (input == null) throw new IOException("selected image cannot be opened");
+                try (InputStream source = input; OutputStream sink = new FileOutputStream(target)) {
+                    final byte[] buffer = new byte[16 * 1024];
+                    int read;
+                    while ((read = source.read(buffer)) > 0) {
+                        total += read;
+                        if (total > MAX_PICKED_IMAGE_BYTES) throw new IOException("selected image is too large");
+                        sink.write(buffer, 0, read);
+                    }
+                }
+                if (total == 0L) throw new IOException("selected image is empty");
+                path = target.getAbsolutePath();
+            } catch (IOException | SecurityException error) {
+                failure = "The selected image could not be read.";
+            }
+            final String resolvedPath = path;
+            final String failureReason = failure;
+            if (failureReason != null && target != null) target.delete();
+            mainHandler.post(() -> {
+                if (failureReason != null) {
+                    result.error("picker_read_failed", failureReason, null);
+                } else {
+                    result.success(resolvedPath);
+                }
+            });
+        }, "birdbox-wifi-qr-import");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    @NonNull
+    private String guessImageExtension(@NonNull Uri uri) {
+        final String type;
+        try {
+            type = activity.getContentResolver().getType(uri);
+        } catch (RuntimeException error) {
+            return ".img";
+        }
+        if (type == null) return ".img";
+        switch (type) {
+            case "image/jpeg":
+                return ".jpg";
+            case "image/png":
+                return ".png";
+            case "image/webp":
+                return ".webp";
+            case "image/gif":
+                return ".gif";
+            case "image/heic":
+            case "image/heif":
+                return ".heic";
+            default:
+                return ".img";
+        }
+    }
+
+    private static void deleteChildren(@NonNull File directory) {
+        final File[] children = directory.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            // Only copies written by this channel live in the directory.
+            if (child.isFile()) child.delete();
+        }
     }
 
     private void joinDirectAp(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
@@ -402,6 +611,10 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
         if (pendingPermissionResult != null) {
             pendingPermissionResult.error("invalid_state", "Wi-Fi bridge was disposed.", null);
             pendingPermissionResult = null;
+        }
+        if (pendingPickResult != null) {
+            pendingPickResult.error("invalid_state", "Wi-Fi bridge was disposed.", null);
+            pendingPickResult = null;
         }
         channel.setMethodCallHandler(null);
         networkEventsChannel.setStreamHandler(null);

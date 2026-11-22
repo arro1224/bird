@@ -71,6 +71,7 @@ public final class MainActivity extends FlutterActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (birdBoxBleDiagnosticFileChannel != null && birdBoxBleDiagnosticFileChannel.onActivityResult(requestCode, resultCode, data)) return;
+        if (birdBoxWifiChannel != null && birdBoxWifiChannel.onActivityResult(requestCode, resultCode, data)) return;
         final boolean handledByDpp = birdBoxDppChannel != null
                 && birdBoxDppChannel.onActivityResult(requestCode, resultCode);
         if (!handledByDpp) {

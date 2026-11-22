@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
@@ -8,9 +9,19 @@ class StaNetworkForm extends StatefulWidget {
     super.key,
     required this.onSubmit,
     this.selectedNetwork,
+    this.initialSsid,
+    this.initialHint,
   });
 
   final WifiScanNetwork? selectedNetwork;
+
+  /// Name pre-filled from the phone's current Wi-Fi. A hint only: the field stays editable
+  /// and the password is always supplied by the user.
+  final String? initialSsid;
+
+  /// Explains why [initialSsid] is absent, so an empty field is never unexplained.
+  final String? initialHint;
+
   final ValueChanged<StaNetworkConfiguration> onSubmit;
 
   @override
@@ -29,7 +40,7 @@ class _StaNetworkFormState extends State<StaNetworkForm> {
   @override
   void initState() {
     super.initState();
-    _ssidController = TextEditingController(text: widget.selectedNetwork?.ssid);
+    _ssidController = TextEditingController(text: widget.selectedNetwork?.ssid ?? widget.initialSsid);
     _security = widget.selectedNetwork?.security ?? WifiSecurity.wpa2Personal;
   }
 
@@ -77,6 +88,23 @@ class _StaNetworkFormState extends State<StaNetworkForm> {
         style: Theme.of(context).textTheme.headlineSmall,
       ),
       const SizedBox(height: AppSpacing.md),
+      if (widget.selectedNetwork == null && widget.initialHint != null) ...[
+        Row(
+          key: const ValueKey('wifi-prefill-hint'),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.inkMuted),
+            const SizedBox(width: AppSpacing.xs),
+            Expanded(
+              child: Text(
+                widget.initialHint!,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.inkMuted),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+      ],
       TextField(
         key: const ValueKey('wifi-ssid'),
         controller: _ssidController,
