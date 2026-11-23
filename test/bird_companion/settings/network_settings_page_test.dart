@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
+import 'package:dio/dio.dart';
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/network_settings_page.dart';
@@ -49,7 +52,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('盒子直连已就绪'), findsOneWidget);
+    expect(find.text('盒子直连模式'), findsOneWidget);
     expect(find.text('停止盒子直连'), findsOneWidget);
 
     await tester.tap(find.text('停止盒子直连'));
@@ -63,11 +66,123 @@ void main() {
     expect(find.text('正在停止盒子直连'), findsOneWidget);
 
     repository.emitDisconnect();
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    expect(find.text('需要重新连接蓝牙'), findsOneWidget);
-    expect(find.text('重新连接并恢复状态'), findsOneWidget);
+    expect(find.byKey(const Key('network-settings-direct-ap')), findsOneWidget);
+    expect(find.text('蓝牙控制已断开'), findsOneWidget);
+    expect(find.text('恢复当前盒子蓝牙控制'), findsOneWidget);
+    expect(find.text('停止盒子直连'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('ten taps recover control once in place without HTTP verification', (tester) async {
+    final repository = _ControlRepository();
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: NetworkSettingsPage(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    repository.emitDisconnect();
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 10; i++) {
+      await tester.tap(find.text('恢复当前盒子蓝牙控制'));
+    }
+    await tester.pump();
+    expect(repository.recoveries, 1);
+    expect(find.text('正在恢复蓝牙控制…'), findsOneWidget);
+    repository.result.complete(_deviceInfo);
+    await tester.pumpAndSettle();
+    expect(find.byType(NetworkSettingsPage), findsOneWidget);
+    expect(find.text('蓝牙控制已连接'), findsOneWidget);
+    expect(find.text('业务连接待验证；蓝牙控制与 Wi-Fi 业务状态分别显示。'), findsOneWidget);
+    expect(repository.verifications, 0);
+    expect(repository.calls.where((c) => c == 'getNetworkStatus'), hasLength(2));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('cancel and page exit ignore late BLE recovery, allowing retry', (tester) async {
+    final repository = _ControlRepository();
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: NetworkSettingsPage(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    repository.emitDisconnect();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('恢复当前盒子蓝牙控制'));
+    await tester.pump();
+    final old = repository.result;
+    await tester.tap(find.text('取消蓝牙恢复'));
+    await tester.pump();
+    expect(repository.token?.isCancelled, true);
+    old.complete(_deviceInfo);
+    await tester.pumpAndSettle();
+    expect(find.text('蓝牙控制已断开'), findsOneWidget);
+    repository.result = Completer<ProvisioningDeviceInfo>();
+    await tester.tap(find.text('恢复当前盒子蓝牙控制'));
+    await tester.pump();
+    expect(repository.recoveries, 2);
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(repository.token?.isCancelled, true);
+    repository.result.complete(_deviceInfo);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(repository.calls.where((c) => c == 'getNetworkStatus'), hasLength(1));
+  });
+
+  testWidgets('BLE recovery failure stays on settings and can retry', (tester) async {
+    final repository = _ControlRepository();
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: NetworkSettingsPage(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    repository.emitDisconnect();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('恢复当前盒子蓝牙控制'));
+    await tester.pump();
+    repository.result.completeError(StateError('fake transport failure'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('蓝牙控制恢复未完成'), findsOneWidget);
+    repository.result = Completer<ProvisioningDeviceInfo>();
+    await tester.tap(find.text('恢复当前盒子蓝牙控制'));
+    await tester.pump();
+    repository.result.complete(_deviceInfo);
+    await tester.pumpAndSettle();
+    expect(repository.recoveries, 2);
+    expect(find.text('蓝牙控制已连接'), findsOneWidget);
+    expect(repository.verifications, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+}
+
+class _ControlRepository extends FakeProvisioningRepository implements BleControlRecovery, ProvisioningNetworkStatusVerifier {
+  _ControlRepository() : super(deviceInfo: _deviceInfo, networkStatus: _directApStatus);
+  Completer<ProvisioningDeviceInfo> result = Completer();
+  CancelToken? token;
+  int recoveries = 0, verifications = 0;
+  @override
+  Future<ProvisioningDeviceInfo> recoverBleControl(String deviceId, CancelToken cancelToken) {
+    expect(deviceId, _deviceInfo.deviceId);
+    recoveries++;
+    token = cancelToken;
+    return result.future;
+  }
+
+  @override
+  Future<void> verifyNetworkStatus(ProvisioningNetworkStatus status) async {
+    verifications++;
+    throw StateError('HTTP unavailable');
+  }
 }
 
 const _deviceInfo = ProvisioningDeviceInfo(

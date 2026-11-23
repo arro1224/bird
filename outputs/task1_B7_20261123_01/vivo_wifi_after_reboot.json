@@ -1,0 +1,13 @@
+{
+  "captured_at_utc": "2026-11-23T10:19:38.237983+00:00",
+  "user_action": "user manually rebooted and unlocked vivo",
+  "wifi_requested": "1",
+  "states": [
+    "Wi-Fi is enabled",
+    "curState=DeviceActiveState",
+    "curState=ConnectedState",
+    "curState=CompletedState"
+  ],
+  "wlan0_present": true,
+  "keyguard_showing": false
+}

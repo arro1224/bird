@@ -1,0 +1,20 @@
+{
+  "business_usb_forwarding": false,
+  "recorded_at_utc": "2026-11-23T11:13:49.6556724Z",
+  "known_test_vm_forward_ports_removed": [
+    65459,
+    62271
+  ],
+  "stay_on_while_plugged_in": "0",
+  "other_forwards_not_removed": true,
+  "restoration_method": "actual installed base.apk independently hash verified after wrapper exit137",
+  "installed_apk_sha256": "684e38a5aaa8e66276492e5b9cb839581ba4a7a47c21cb175da40122d5b81a2e",
+  "ble_evidence": "restoration_verified",
+  "bluetooth_on": "1",
+  "installed_candidate": "B6 normal bird Debug",
+  "wifi_on": "1",
+  "final_ui_evidence": "final_restored_album",
+  "phone_app_state_cleared_by_test_runner": true,
+  "full_previous_local_app_state_restored": false,
+  "app_reauthenticated_to_simulator": true
+}

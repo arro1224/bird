@@ -1,0 +1,44 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart
+00:00 +0: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: T1 B3 local AP session restore local-only AP is prepared before HTTP even when internet monitor says none
+00:00 +1: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: T1 B3 local AP session restore late AP preparation after cancellation cannot start HTTP or commit
+00:00 +2: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: T1 B3 local AP session restore native loss burst schedules one selected-device recovery
+00:00 +3: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: T1 B3 local AP session restore STA startup does not request a direct AP network
+00:00 +4: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: Wi-Fi 断开：connected 立即转为 reconnecting 并保留设备身份
+00:00 +5: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: Wi-Fi 断开但移动数据仍在：transport 变化立即进入 reconnecting
+00:00 +6: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: Wi-Fi 恢复：reconnecting 状态自动验证并回到 connected
+00:00 +7: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: 断网时未连接的会话不进入 reconnecting
+00:00 +8: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: 独立探测失败后，子页面 reportUnreachable 才触发全局恢复
+00:00 +9: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: a restored Wi-Fi transport cancels an old socket and ignores its late result
+00:00 +10: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: manual restart replaces a pending automatic attempt while ordinary requests coalesce
+00:00 +11: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an out-of-order Wi-Fi query cannot undo a newer recovered network
+00:00 +12: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: concurrent page failures share one probe, and a healthy result keeps the session
+00:00 +13: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: late negative probe cannot demote a replacement session
+00:00 +14: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +15: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +16: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +17: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +18: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +19: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +20: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +21: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +22: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +23: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +24: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +25: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +26: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:00 +27: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:01 +28: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:01 +29: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:01 +30: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:01 +31: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:01 +32: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:01 +33: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:01 +34: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:01 +35: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:01 +36: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:01 +37: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:01 +38: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:01 +39: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: an unanswered health probe is bounded and enters recovery
+00:03 +40: D:/Androidstudio2/project/4/test/bird_companion/features/connection/session_network_state_test.dart: 配网交接期间 reportUnreachable 不打断交接
+00:03 +41: All tests passed!

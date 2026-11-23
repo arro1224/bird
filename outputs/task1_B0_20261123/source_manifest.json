@@ -1,0 +1,4486 @@
+{
+  "captured_at": "2026-11-23T13:27:17.549823+08:00",
+  "head": "28aeae2a0ba5edf4c19dca584117345d26762e05",
+  "scope": [
+    "lib/",
+    "android/",
+    "test/",
+    "integration_test/",
+    "tool/",
+    "docs/contracts/"
+  ],
+  "fingerprint_kind": "working-file bytes, not Git blob IDs",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 2068,
+      "sha256": "eb380e41432482c478748341a4a80d384c469ab677daab10383749da9a0960d6"
+    },
+    {
+      "path": "analysis_options.yaml",
+      "bytes": 1494,
+      "sha256": "f520999474b803444525849e66cbb908e58854c05eadc25926cd5cda5873b487"
+    },
+    {
+      "path": "android/.gitignore",
+      "bytes": 362,
+      "sha256": "3612068cec5cf557fef459586e7082f5a54be3c1ceff4d207436b169a7c9a893"
+    },
+    {
+      "path": "android/app/build.gradle.kts",
+      "bytes": 9577,
+      "sha256": "6f9809852c505db20506b02c38b132fc11594b4f0f589d8fb85fe2170583a450"
+    },
+    {
+      "path": "android/app/src/androidTest/java/deckers/thibault/aves/BirdBoxBleChannelTest.java",
+      "bytes": 1330,
+      "sha256": "f7fecee04c6e191930c509456bdfb34457284c05e259732a653117f62f83448c"
+    },
+    {
+      "path": "android/app/src/androidTest/java/deckers/thibault/aves/BirdBoxBleDiagnosticFileProviderTest.java",
+      "bytes": 1580,
+      "sha256": "ca7a5f93f9e4818ca3b2e11cda82e39fa41690d822e58fb22d49d463eac416e4"
+    },
+    {
+      "path": "android/app/src/androidTest/java/deckers/thibault/aves/BirdBoxDppChannelTest.java",
+      "bytes": 1875,
+      "sha256": "42ebee90832a45496e2c65f01a8ea2fc8a5260b07437b43e58fb4c224c42b465"
+    },
+    {
+      "path": "android/app/src/androidTest/java/deckers/thibault/aves/BirdBoxWifiChannelTest.java",
+      "bytes": 1121,
+      "sha256": "5ef86ffa2376adc9c7b3bd16a8d8ce9077759c7eab9c1c3f02a83cc67c6a75b5"
+    },
+    {
+      "path": "android/app/src/bird/AndroidManifest.xml",
+      "bytes": 367,
+      "sha256": "63948cedfa7e917dfb13f346ee34e8b2f2e3366b2eefc0bbd85d9c24414a9695"
+    },
+    {
+      "path": "android/app/src/bird/res/values/strings.xml",
+      "bytes": 118,
+      "sha256": "38a2f9b25cb0e4542cc55009ace28c7b9256700443e4b47739c033542d94478d"
+    },
+    {
+      "path": "android/app/src/birdDemo/AndroidManifest.xml",
+      "bytes": 276,
+      "sha256": "cab76abf15ac405a327362b0295005d1e5098b0dac0468466b9eb9fe665456a5"
+    },
+    {
+      "path": "android/app/src/birdScanA/AndroidManifest.xml",
+      "bytes": 265,
+      "sha256": "d4714f6aa766357e0ebd2e72b1c1ae776a3c643f028450c481931014613ff566"
+    },
+    {
+      "path": "android/app/src/birdScanB/AndroidManifest.xml",
+      "bytes": 616,
+      "sha256": "6fa0c4e235c6f595b4cc31c7a5cdf07ec1eef00fc768dcecb3dac61297e35c0e"
+    },
+    {
+      "path": "android/app/src/birdSim/AndroidManifest.xml",
+      "bytes": 275,
+      "sha256": "ffb857b7b1e0fcc250830261286459ffedf6d64a8113bafa18b3c2af083bab07"
+    },
+    {
+      "path": "android/app/src/main/AndroidManifest.xml",
+      "bytes": 3772,
+      "sha256": "edb9b63560d577eedae2724219b5eea6285be977fe81e3bacf9bc9520770cd99"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "bytes": 178327,
+      "sha256": "06ceffaa338923064ad2df348ef2db7d821303a05d8b203aecca6c42e0c9a623"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleDiagnosticFileChannel.java",
+      "bytes": 12732,
+      "sha256": "b2d649deff50d944c58ead0713a96e3835a3dee06d5724e6053ab16786cf9cae"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBlePlatform.java",
+      "bytes": 1406,
+      "sha256": "6c36b056bbb5c1cf943ae729198fb759cde1bf14541e93b2343c4b6bc5dd8bee"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBlePlugin.java",
+      "bytes": 2377,
+      "sha256": "08fe8d8354d13987492fa39f4921d2f9f90ee82cf9a2ecf378884068ae097f89"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxConditionalBondFallbackPolicy.java",
+      "bytes": 5946,
+      "sha256": "6478da5b12ea20025a9ca973dd72c7e70b2eee335f72ae7522f53c61a97231da"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxDiagnosticFileWriter.java",
+      "bytes": 6782,
+      "sha256": "6752355aba41379682bfb44a09438f1addf77ccfe60f46d6d96d1d0f93c7cde3"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxDppChannel.java",
+      "bytes": 8370,
+      "sha256": "5f4f14d401a2fa9ed9398e2f468aee7b6848fc58bb477da8278e29aa84bbafa8"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxPairingCoordinator.java",
+      "bytes": 6516,
+      "sha256": "0d0e252e5a547335a194dd0fc261a997ebff01586b592eab2ecf993100213d62"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxScanCompatibility.java",
+      "bytes": 655,
+      "sha256": "d16c7d87dd9f28f28b792bb3964f78a63c8a53acbc54b63eb53b2edb2385e6c1"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxScanRecordRedactor.java",
+      "bytes": 2461,
+      "sha256": "86aaa7f7242c48c52b9a3a85312bf67d476e3275ff550bb2d6a22d7b026751dc"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxScanStrategyController.java",
+      "bytes": 4869,
+      "sha256": "9d6e8c7772a7133e12487c760c3cf058e1968c86daac66688724c38b25bade17"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxScanTiming.java",
+      "bytes": 767,
+      "sha256": "ca25e7abdd55ae5b932cc99ecc139d3b352d8ad5bbf1276b06a7c57826f57a89"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxSecurityWriteAttemptContext.java",
+      "bytes": 12631,
+      "sha256": "a0e0c3fb00df2d05f0d7fab7dac32bca7603f59754f71761eecbcb5988074850"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxSecurityWriteStateMachine.java",
+      "bytes": 10406,
+      "sha256": "91260b46d7606e78916d9ad6a180212a6bb8b556ef02b3c01066765295a1e6bd"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "bytes": 27540,
+      "sha256": "11760455a078bc8bb09d9a0daf6ad3e1e6c28f4831704c25f300c70fd0f1d2d6"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/MainActivity.java",
+      "bytes": 15614,
+      "sha256": "21d54995b1e60a1fc485aebaddcef3f98e877d052506f2fe2777383f79adf7dd"
+    },
+    {
+      "path": "android/app/src/main/res/values/styles.xml",
+      "bytes": 379,
+      "sha256": "100de265b5061226561f3bfaa9c1f1c85ce82690bb8426a2b821a1b9ac10e5b9"
+    },
+    {
+      "path": "android/app/src/main/res/xml/ble_diagnostic_file_paths.xml",
+      "bytes": 122,
+      "sha256": "1dd339004d8b16d83c77e246ff16cbae2fb70f0417db29236c69736e53040860"
+    },
+    {
+      "path": "android/app/src/test/java/deckers/thibault/aves/BirdBoxBleBridgeTest.java",
+      "bytes": 81379,
+      "sha256": "ba6c1d8a43eb0f29a96b71948ac5fdad9b6b11794648edbb4b503c9abc7e7a7b"
+    },
+    {
+      "path": "android/app/src/test/java/deckers/thibault/aves/BirdBoxBleDiagnosticFileChannelTest.java",
+      "bytes": 9991,
+      "sha256": "413ed2c0da8975d0e0cb3fa418743e7e3a04a3fcd55502666294acbcc607e234"
+    },
+    {
+      "path": "android/app/src/test/java/deckers/thibault/aves/BirdBoxConditionalBondFallbackPolicyTest.java",
+      "bytes": 10636,
+      "sha256": "b3f99743e9eddce52b645ed8811f375795a2fc68e7d85cc0194f95bc2cfcbbc3"
+    },
+    {
+      "path": "android/app/src/test/java/deckers/thibault/aves/BirdBoxDiagnosticFileWriterTest.java",
+      "bytes": 5111,
+      "sha256": "23e0f3316e5f8d52da32cfebf44c712fcd38e8b1108149d077e2146f140d7f74"
+    },
+    {
+      "path": "android/app/src/test/java/deckers/thibault/aves/BirdBoxPairingCoordinatorTest.java",
+      "bytes": 11698,
+      "sha256": "03fb2fdcc5fe7a850aa0fcfd9d892f7a904a729a6a122acdfb79d36567a0adfe"
+    },
+    {
+      "path": "android/app/src/test/java/deckers/thibault/aves/BirdBoxScanCompatibilityTest.java",
+      "bytes": 1107,
+      "sha256": "43fe0ee8a5d5cd634f18525cff2e5a08ea8a4a1ea61cc6205d5eeba64de5556a"
+    },
+    {
+      "path": "android/app/src/test/java/deckers/thibault/aves/BirdBoxScanRecordRedactorTest.java",
+      "bytes": 1206,
+      "sha256": "c4794667e40885b8d277b4800da54e67d2900a025e548f152d2614e5f8c4e01a"
+    },
+    {
+      "path": "android/app/src/test/java/deckers/thibault/aves/BirdBoxScanStrategyControllerTest.java",
+      "bytes": 4876,
+      "sha256": "9155dcf12e1d5322adf12acbcd26f7a3569dbc287e5c337b660f2c7ffba3316d"
+    },
+    {
+      "path": "android/app/src/test/java/deckers/thibault/aves/BirdBoxScanTimingTest.java",
+      "bytes": 1015,
+      "sha256": "d0b91502e389b2f302aac5cddc5fd0d4093f094f610deac9c027a0eefc810676"
+    },
+    {
+      "path": "android/app/src/test/java/deckers/thibault/aves/BirdBoxSecurityWriteAttemptContextTest.java",
+      "bytes": 9895,
+      "sha256": "92e42ad03fb5a53965c3e034fdecd5b494619bd66490b2caa8035ae3918df389"
+    },
+    {
+      "path": "android/app/src/test/java/deckers/thibault/aves/BirdBoxSecurityWriteRecoveryIntegrationTest.java",
+      "bytes": 6047,
+      "sha256": "067a6e7f408b6438e1ad7b3d79c304eb9fa3780261cb5b550e7f6b2cd5ace087"
+    },
+    {
+      "path": "android/app/src/test/java/deckers/thibault/aves/BirdBoxSecurityWriteStateMachineTest.java",
+      "bytes": 8936,
+      "sha256": "21012fcef39860ee2294488f6f9ce0caf2544c9f90bf42c597cd67a81b1f2580"
+    },
+    {
+      "path": "android/build.gradle.kts",
+      "bytes": 814,
+      "sha256": "23c9a9934a876ad7e606c81c22c491da48d8431895dea786f77cb5b8d47e4741"
+    },
+    {
+      "path": "android/gradle.properties",
+      "bytes": 362,
+      "sha256": "1679100ed38ab1e88b7919ff404de72997e32846a99c90496255666fd0fbfd6a"
+    },
+    {
+      "path": "android/gradle/gradle-daemon-jvm.properties",
+      "bytes": 1176,
+      "sha256": "0e3c38f25af6e34f376baa7c658d414bdb3218c99c76a62d5e775c6e72442380"
+    },
+    {
+      "path": "android/gradle/wrapper/gradle-wrapper.jar",
+      "bytes": 53636,
+      "sha256": "16caeaf66d57a0d1d2087fef6a97efa62de8da69afa5b908f40db35afc4342da"
+    },
+    {
+      "path": "android/gradle/wrapper/gradle-wrapper.properties",
+      "bytes": 238,
+      "sha256": "a52a46194ae7f3d11f0f65081d7e43206fe0700ea7b8880b6bc22de5429b9b11"
+    },
+    {
+      "path": "android/gradlew",
+      "bytes": 5131,
+      "sha256": "4ab3ff211f4bfc2d61062a4c28c7f78dd29891e51bc34ad4e64bfe99a40478ef"
+    },
+    {
+      "path": "android/gradlew.bat",
+      "bytes": 2404,
+      "sha256": "c13c6e91b9a517783976de213d46398c661ea9e17651376d7301e839eaedcc62"
+    },
+    {
+      "path": "android/key.properties.example",
+      "bytes": 543,
+      "sha256": "8842bea5e254676fa294391fd7af3e365bc2fd82f58953623601d7b0858896d0"
+    },
+    {
+      "path": "android/settings.gradle.kts",
+      "bytes": 1341,
+      "sha256": "a74530462fa4652429327c4e81d9fda285113ef2ba32920d29cb2d6e003260b2"
+    },
+    {
+      "path": "android/virtualBirdBox/build.gradle.kts",
+      "bytes": 1707,
+      "sha256": "d3616bf660385106324cc424c95b77b3572faeb3c8a45b5b3507e8366d0c54ce"
+    },
+    {
+      "path": "android/virtualBirdBox/src/main/AndroidManifest.xml",
+      "bytes": 1264,
+      "sha256": "9be35f19302bafada341d3c4f637ea46e68a02b0d33a0474d18e0c170fe07735"
+    },
+    {
+      "path": "android/virtualBirdBox/src/main/java/deckers/thibault/aves/virtualbirdbox/Ble11ScenarioState.java",
+      "bytes": 5212,
+      "sha256": "66dc89d546fed7e5660446cda6e55722828b3b0e3f1ab0cc2110c5c7653aa41d"
+    },
+    {
+      "path": "android/virtualBirdBox/src/main/java/deckers/thibault/aves/virtualbirdbox/Rc4BleFrameCodec.java",
+      "bytes": 5746,
+      "sha256": "41771f5c53cdb561ea0ad19ca3a120d62911a292cb91db749d5423c09a6dfb2b"
+    },
+    {
+      "path": "android/virtualBirdBox/src/main/java/deckers/thibault/aves/virtualbirdbox/VirtualBirdBoxActivity.java",
+      "bytes": 9205,
+      "sha256": "8403f791c59495470e305db8dba0218bf84807040c1c5655eca37094167c831d"
+    },
+    {
+      "path": "android/virtualBirdBox/src/main/java/deckers/thibault/aves/virtualbirdbox/VirtualBirdBoxPeripheral.java",
+      "bytes": 32270,
+      "sha256": "2596b16768428dbaf058773dec2190d95a77c8d5a2f6db46a9cd305f8c07fd39"
+    },
+    {
+      "path": "android/virtualBirdBox/src/main/java/deckers/thibault/aves/virtualbirdbox/VirtualBirdBoxProtocol.java",
+      "bytes": 13984,
+      "sha256": "8c13130ba233ec6522f65a594c2b0ee5b33869514dc8c23c857011676ab19267"
+    },
+    {
+      "path": "android/virtualBirdBox/src/main/java/deckers/thibault/aves/virtualbirdbox/VirtualRequestLedger.java",
+      "bytes": 1138,
+      "sha256": "935103687bfc10987b8d91416e31b714d8ee1bd29ee828007d8e1fa56d8e60ab"
+    },
+    {
+      "path": "android/virtualBirdBox/src/test/java/deckers/thibault/aves/virtualbirdbox/Ble11ScenarioStateTest.java",
+      "bytes": 4308,
+      "sha256": "5bace1e1b6fe4a7a01150728665e93162178c60b6bfa25023238cd226b7ec068"
+    },
+    {
+      "path": "android/virtualBirdBox/src/test/java/deckers/thibault/aves/virtualbirdbox/Rc4BleFrameCodecTest.java",
+      "bytes": 2115,
+      "sha256": "1edb94417fcbd0c7a68a1663c5edfabff690c4b40a8a10acd790ff3e00e8a44f"
+    },
+    {
+      "path": "android/virtualBirdBox/src/test/java/deckers/thibault/aves/virtualbirdbox/VirtualBirdBoxPeripheralTest.java",
+      "bytes": 11397,
+      "sha256": "d7ec9e02d2c6fd180985b5850f9357b162c66fdc535bc43f9c4ba533fb61d606"
+    },
+    {
+      "path": "android/virtualBirdBox/src/test/java/deckers/thibault/aves/virtualbirdbox/VirtualBirdBoxProtocolTest.java",
+      "bytes": 8994,
+      "sha256": "ac7ae5bfb263d7d50a3cf19f103bedff26ba5eae2736217376d94c1eac8270af"
+    },
+    {
+      "path": "android/virtualBirdBox/src/test/java/deckers/thibault/aves/virtualbirdbox/VirtualRequestLedgerTest.java",
+      "bytes": 1673,
+      "sha256": "0714ed5b1221d31b5bb078ea783f741e245869f0c28a498383f3cd4c99c434b9"
+    },
+    {
+      "path": "docs/contracts/A7-K7-INTEROP-AND-SECURITY-AUDIT-2026-08-26.md",
+      "bytes": 5237,
+      "sha256": "c67a3538ddd5d568428266b2118884f12e07e55781c5c2e2ad156081db35a9f3"
+    },
+    {
+      "path": "docs/contracts/B0-FREEZE-2026-08-06.md",
+      "bytes": 1669,
+      "sha256": "262c014c91b6f9a4c26045f7ee59ce708d817a0284f87e0a23740dfa02840850"
+    },
+    {
+      "path": "docs/contracts/README.md",
+      "bytes": 2991,
+      "sha256": "44e253b65125b5c74c5f8cd6df2c56b12b9f062000b7a8cbfa6583fc6b00be99"
+    },
+    {
+      "path": "docs/contracts/birdbox-network-v1.0-rc4-app-profile.md",
+      "bytes": 3999,
+      "sha256": "77a79307a1548899b50595e593382149fceca5aa305864af92427ebb1711c887"
+    },
+    {
+      "path": "docs/contracts/birdbox-v1-baseline.json",
+      "bytes": 1580,
+      "sha256": "a5ecf1879e2a61991358619cfa2ab6d99db081a49fb72b58c1282ffae5396597"
+    },
+    {
+      "path": "docs/contracts/birdbox-v1-freeze.json",
+      "bytes": 1482,
+      "sha256": "4afb10000380b1184d1701214c18b7ec4def4dccdbcf189fda647a4dccd3e2dc"
+    },
+    {
+      "path": "docs/contracts/birdbox-v1.openapi.yaml",
+      "bytes": 45511,
+      "sha256": "44f8a04a6daf94e2b41533ec0303fcc2249c749e1f1eecae69123e33c725d76f"
+    },
+    {
+      "path": "docs/contracts/ble-pairing-preflight-1019-dart-native-contract.md",
+      "bytes": 17244,
+      "sha256": "9de4834cc20969cd7a10ccc035ec9b702c4ba897ad8d06f0284957ee8f4a57f6"
+    },
+    {
+      "path": "docs/contracts/proposals/API-PROPOSAL-20260816-01-PROGRESSIVE-MEDIA.md",
+      "bytes": 11200,
+      "sha256": "021065b1b45f71204b97251d364439316e5497099f0b72857f9a3d7d56f9ad6f"
+    },
+    {
+      "path": "docs/contracts/proposals/TEMPLATE.md",
+      "bytes": 969,
+      "sha256": "b9c850b505467b91c66dc0e84802dbae396e17f83319d199701a479c2d5386fd"
+    },
+    {
+      "path": "docs/contracts/proposals/progressive-media/fixtures/asset-failed.error.json",
+      "bytes": 193,
+      "sha256": "5d2dbf3c0798c01325c885c48e814bf4fc8ae795171b79121c97540803d73be4"
+    },
+    {
+      "path": "docs/contracts/proposals/progressive-media/fixtures/asset-not-ready.error.json",
+      "bytes": 214,
+      "sha256": "bb8b9b71467a305fa7429b29102249672d57507bc23ed97e09b52e880ed226f2"
+    },
+    {
+      "path": "docs/contracts/proposals/progressive-media/fixtures/asset-ready-event.response.json",
+      "bytes": 383,
+      "sha256": "8ab8634e171ae5a2ce1d01b2272d66fdce63edde56b09b2ff80690ba1b83c44b"
+    },
+    {
+      "path": "docs/contracts/proposals/progressive-media/fixtures/file-not-found.error.json",
+      "bytes": 143,
+      "sha256": "c480e27bd9711141d19a7e54e3a313128520ad9ff72915a6d627a32d97792441"
+    },
+    {
+      "path": "docs/contracts/proposals/progressive-media/fixtures/photo-progressive.response.json",
+      "bytes": 376,
+      "sha256": "34e794cafd8c8aaf1c2541fcb86f2ae2820ddc7ebdbffabc500b9005b23f329c"
+    },
+    {
+      "path": "docs/contracts/proposals/progressive-media/schemas/asset-ready-event.schema.json",
+      "bytes": 1614,
+      "sha256": "c46277fdd3a7a81e554ce475fef1e8a3888fd4897378c74df966277f595ba81d"
+    },
+    {
+      "path": "docs/contracts/proposals/progressive-media/schemas/photo-media-status.schema.json",
+      "bytes": 894,
+      "sha256": "0e13066822b50e32b6551a4ed2b02083154f11c0ddf4004ec2596abd2645f9d3"
+    },
+    {
+      "path": "docs/contracts/schemas/bird-job-status.schema.json",
+      "bytes": 3234,
+      "sha256": "6b3b2c1e80e6ccebe2fe2da8823d7b3c7034df2809a05a65e2b0779c1ba29e00"
+    },
+    {
+      "path": "docs/contracts/schemas/ble-command-envelope.schema.json",
+      "bytes": 822,
+      "sha256": "4897d54cf7c6a8fe0325271bc336d94286955402be5efdada2b6b7791dfaa98a"
+    },
+    {
+      "path": "docs/contracts/schemas/ble-device-info.schema.json",
+      "bytes": 2127,
+      "sha256": "927f1de91ab2773b16fae11f9484cda94d40743228b9f43f55ca22d5f72ac28c"
+    },
+    {
+      "path": "docs/contracts/schemas/ble-network-status.schema.json",
+      "bytes": 3206,
+      "sha256": "af21c4e557c1bcfbeff1e0f94ed7372cc3532175dc210d8e5e3fd5ff2bcee87d"
+    },
+    {
+      "path": "docs/contracts/schemas/device-status.schema.json",
+      "bytes": 3751,
+      "sha256": "f27111d5b5f21e48a3a0c0440f585f6a7f4880c36298aa19b22d1079011f7e48"
+    },
+    {
+      "path": "docs/contracts/schemas/error-response.schema.json",
+      "bytes": 616,
+      "sha256": "44164207e1e82a738bbdcea408554592a7a2dc83b851a9b084c45956adae5fc1"
+    },
+    {
+      "path": "docs/contracts/schemas/event-envelope.schema.json",
+      "bytes": 1710,
+      "sha256": "a66734ea4169005dc41fd434b8c910ed3b18b361baa93daf0241e2d8c3ffa661"
+    },
+    {
+      "path": "docs/contracts/schemas/health.schema.json",
+      "bytes": 621,
+      "sha256": "04d727be193e813f446649c4a5c5f1cef9f65b6026f785eef1807dda290fbe7b"
+    },
+    {
+      "path": "docs/contracts/schemas/pairing-token.schema.json",
+      "bytes": 614,
+      "sha256": "27e1656d57ca75d470730ad9f909e1d40a4ebbee44cf8e7c5fb819b85a39a838"
+    },
+    {
+      "path": "docs/contracts/schemas/photo.schema.json",
+      "bytes": 6486,
+      "sha256": "956e99cef368ebef773f8b01e34ce6eecc93487571c808d88ebca0737f1b35a7"
+    },
+    {
+      "path": "docs/contracts/schemas/project.schema.json",
+      "bytes": 2045,
+      "sha256": "d76615ca68c8362f9fcd294508825e2106a8083a7e21f0c12df2ad6acddae671"
+    },
+    {
+      "path": "docs/contracts/schemas/user-decision-patch.schema.json",
+      "bytes": 1599,
+      "sha256": "0589b45d983b0c890073241947654d47d9acffe1eecf17b5182650c73d106961"
+    },
+    {
+      "path": "integration_test/ble1019_existing_peripheral_test.dart",
+      "bytes": 5797,
+      "sha256": "45b154c360d22114f5024fb4dde303576c147a2445143228b930b75796597092"
+    },
+    {
+      "path": "integration_test/ble11_dual_avd_test.dart",
+      "bytes": 6738,
+      "sha256": "63c776852cc603f2828b005e88223ca0b3ed8222a35408c9c8a52cfd0bb8b943"
+    },
+    {
+      "path": "integration_test/ble22_phone_test.dart",
+      "bytes": 4484,
+      "sha256": "321a3dcce78ea5f5a6bdf21735344dd106b3f05b05a7415ced5b67a7e96d71a4"
+    },
+    {
+      "path": "integration_test/continuous_python_pages_test.dart",
+      "bytes": 2680,
+      "sha256": "2016e5445703edb6f86aaea81264a168b93eea277b579047b3599b83d567cad5"
+    },
+    {
+      "path": "integration_test/embedded_demo_app_test.dart",
+      "bytes": 3654,
+      "sha256": "2bfe38d36cca325f312251b10a32170fbd7b577a98df64bd6d637540439462f9"
+    },
+    {
+      "path": "integration_test/task2_provisioning_test.dart",
+      "bytes": 9456,
+      "sha256": "ca5b73e8bf4fbaa01a79944c13f26130e180c7eac67dd2d1fc6f62ad0ae5ef18"
+    },
+    {
+      "path": "integration_test/task2_qr_fixtures.dart",
+      "bytes": 8545,
+      "sha256": "84052f8934fd4d548fe136379c6b8d018d83f250791f17e4702e76347616d5ab"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "bytes": 32963,
+      "sha256": "a139041c590dc7d4b38d405bdb04533a59867235276970214e6880f82acf20f9"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "bytes": 32347,
+      "sha256": "c24933bf5ab4e19ae8504bce421f148be05f45fa495d2bbdc4c94bbc4919aef7"
+    },
+    {
+      "path": "lib/bird_companion/app/app_shell.dart",
+      "bytes": 12146,
+      "sha256": "5df0654ccfc0338a1ac58da7b125c8605c4ad4973875bdd018cc6cc40300fbe0"
+    },
+    {
+      "path": "lib/bird_companion/app/bird_companion_app.dart",
+      "bytes": 3602,
+      "sha256": "b7d4d8dc0884f93bc2b13e585d9347ebfd04f77abb7f140c278e7bdd06d0b26e"
+    },
+    {
+      "path": "lib/bird_companion/app/bird_demo_shell.dart",
+      "bytes": 12653,
+      "sha256": "b5e3f1d3638ce7d68f1fa4a156bba742d9c6c21b8db0ef5790805dd2f56936ca"
+    },
+    {
+      "path": "lib/bird_companion/app/bird_route_args.dart",
+      "bytes": 9405,
+      "sha256": "605095ae5fe8a97927796039af3ba41cdb7199b31c955f3cb76bfb208fc25910"
+    },
+    {
+      "path": "lib/bird_companion/app/integrated_bird_bootstrap.dart",
+      "bytes": 4846,
+      "sha256": "5fd7c3a939a69a30fd6d03e08e343effec9957f755bb7510fa75a5dedb82a725"
+    },
+    {
+      "path": "lib/bird_companion/app/theme/app_colors.dart",
+      "bytes": 2111,
+      "sha256": "cc36f950b6fa912d4f7017b6ab9dbdfc1dbea26fc9276136ecbc872a5b6b5356"
+    },
+    {
+      "path": "lib/bird_companion/app/theme/app_shadows.dart",
+      "bytes": 819,
+      "sha256": "1a623ccf1226c3dc5772906932759c30ba73f45fec5598089d77d6091cd6075a"
+    },
+    {
+      "path": "lib/bird_companion/app/theme/app_spacing.dart",
+      "bytes": 1212,
+      "sha256": "22210a2bbc572f6480e885ca05f7f8efcffc1f7df3ad0f3f51c58fdb8db12237"
+    },
+    {
+      "path": "lib/bird_companion/app/theme/app_theme.dart",
+      "bytes": 11810,
+      "sha256": "d6940cf796034a848d8ca2d9977855491c123256c0939d84f55c51ade39581bb"
+    },
+    {
+      "path": "lib/bird_companion/app/theme/app_typography.dart",
+      "bytes": 1878,
+      "sha256": "194ea881fd715711d12a70a877333db3ab1bad86294bc4674787c146b44f8f2e"
+    },
+    {
+      "path": "lib/bird_companion/app/theme/bird_asset_catalog.dart",
+      "bytes": 7759,
+      "sha256": "38ca6b5cc738a9f0b56cf6408eeded3f0cb9fd77d9da1d5a006e32646db7a004"
+    },
+    {
+      "path": "lib/bird_companion/app/theme/bird_ui.dart",
+      "bytes": 13890,
+      "sha256": "902570ca7b8d16319e7932e8693a703146b00d9128439652a6e03a80a737cafe"
+    },
+    {
+      "path": "lib/bird_companion/core/data/app_data_change_bus.dart",
+      "bytes": 3441,
+      "sha256": "94871602bcc4bfd4f912b1c6bb67a80c679efe0763a64666c1eb89c15256ace7"
+    },
+    {
+      "path": "lib/bird_companion/core/diagnostics/app_build_identity.dart",
+      "bytes": 1292,
+      "sha256": "2ffed656e61bfa9e983712dc270fed6570783929af4c72974cc0dd6693f20b67"
+    },
+    {
+      "path": "lib/bird_companion/core/diagnostics/http_request_diagnostics.dart",
+      "bytes": 6259,
+      "sha256": "77613e860926a774da1557797edca13a6312761c9d47c42e79c786803774b8cc"
+    },
+    {
+      "path": "lib/bird_companion/core/diagnostics/phone_diagnostic_recorder.dart",
+      "bytes": 7782,
+      "sha256": "a80f770932a9ca71cd26b8d5cb176ee3d6f814cf759e23f8c9f889021277e821"
+    },
+    {
+      "path": "lib/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart",
+      "bytes": 6215,
+      "sha256": "d88acc19c50bb5cc9a5bd546392f15ee99da725dac6c5a8cab1312692c330bd6"
+    },
+    {
+      "path": "lib/bird_companion/core/errors/user_message_mapper.dart",
+      "bytes": 31065,
+      "sha256": "a9f44dbb3614fc1fc8a1cbe773bd942c1253a64c603e4c30f7591d6ff81ee9ea"
+    },
+    {
+      "path": "lib/bird_companion/core/files/log_download_service.dart",
+      "bytes": 2229,
+      "sha256": "5c03d77e07959367cafe57f37f650222a548ad973488d8790b15ab49937f5399"
+    },
+    {
+      "path": "lib/bird_companion/core/files/media_cache_identity.dart",
+      "bytes": 928,
+      "sha256": "6664871f5b0a33b2491c0d2c7a43c769f4d2ef9603e64ae5e33b40c74d0dd519"
+    },
+    {
+      "path": "lib/bird_companion/core/media/media_asset_cache.dart",
+      "bytes": 4838,
+      "sha256": "34e2e7352cb1a446a2ad43b936ea348a82cee7971627d6029cf7355fc18d7389"
+    },
+    {
+      "path": "lib/bird_companion/core/media/media_asset_coordinator.dart",
+      "bytes": 8253,
+      "sha256": "28e22f81f488b6dfb6f73976e2aa3e4b99389c7ed4cb7d8beffa4449abca4a53"
+    },
+    {
+      "path": "lib/bird_companion/core/media/media_asset_event.dart",
+      "bytes": 2061,
+      "sha256": "15b18948aba429ca382be970d9fd9fa52dfcf762e411aef6f2380de50e81bb39"
+    },
+    {
+      "path": "lib/bird_companion/core/media/media_asset_http_client.dart",
+      "bytes": 6825,
+      "sha256": "cddaea077084b2b2d5f62341d9298de8455dce47febd758ae7813a4d016947a3"
+    },
+    {
+      "path": "lib/bird_companion/core/media/media_asset_models.dart",
+      "bytes": 4971,
+      "sha256": "23f2d0eeb0be2981325feefe4d9c62fb9f1898fc27c1a5deeef7efba559a1705"
+    },
+    {
+      "path": "lib/bird_companion/core/media/media_asset_service.dart",
+      "bytes": 5895,
+      "sha256": "a8e853f19f90b72b8429093f306ef6114aa0a6ef904dfb5694b8684410e05ebe"
+    },
+    {
+      "path": "lib/bird_companion/core/media/progressive_media_image.dart",
+      "bytes": 9565,
+      "sha256": "1ed5b747418e7ff76f54e85cee22156dd6d096faccb3b25eaa9ab88f2917d1d1"
+    },
+    {
+      "path": "lib/bird_companion/core/media/progressive_photo_image.dart",
+      "bytes": 7221,
+      "sha256": "d0dc2b03fa452348cb1eed48f691920e856b8c69e185a4b17caea08d686606f8"
+    },
+    {
+      "path": "lib/bird_companion/core/models/batch_models.dart",
+      "bytes": 5996,
+      "sha256": "7349729c0c7f838558cdeb367bb5612c802ea0dbc3c1d1806e8e0daafc4fbdd0"
+    },
+    {
+      "path": "lib/bird_companion/core/models/batch_tag_action.dart",
+      "bytes": 1120,
+      "sha256": "ef08ae11a2ccde06d8c0f0e289e133f55a01f71619815a5df890aae389ea9547"
+    },
+    {
+      "path": "lib/bird_companion/core/models/device_models.dart",
+      "bytes": 7256,
+      "sha256": "b894a24ad0287bf377f473028231b09291834d2ab1969e22e90ff02cfe034c64"
+    },
+    {
+      "path": "lib/bird_companion/core/models/job_models.dart",
+      "bytes": 9648,
+      "sha256": "5990565b515e6ef299e4e1c44ee2b30c918d0b22630c87d3abf62cd8df08af5f"
+    },
+    {
+      "path": "lib/bird_companion/core/models/json_value.dart",
+      "bytes": 1043,
+      "sha256": "e6a3d74773127778a32997782d9bc62c878adf2720518cb77e344276939e2d13"
+    },
+    {
+      "path": "lib/bird_companion/core/models/photo_models.dart",
+      "bytes": 15656,
+      "sha256": "5e9719c5ef79d0c3aed31d53163abf44bddd5f300e0f7767798d0cf9cf8047ae"
+    },
+    {
+      "path": "lib/bird_companion/core/models/protocol_validation.dart",
+      "bytes": 2177,
+      "sha256": "52e801fc6739780d34c411aa3a5aa57d75b1d8af473a734d86fc3186779cb3a1"
+    },
+    {
+      "path": "lib/bird_companion/core/models/review_models.dart",
+      "bytes": 11062,
+      "sha256": "f3c898cc1568cef3578ba046bc1ea67464ab9ecca0385456f064c55425ebe4e3"
+    },
+    {
+      "path": "lib/bird_companion/core/models/scene_models.dart",
+      "bytes": 1850,
+      "sha256": "56fb5e654200c98cfbfc0e0195c66ce69e45f2b91718c4a3ec21459cbe840b94"
+    },
+    {
+      "path": "lib/bird_companion/core/models/tag_input.dart",
+      "bytes": 555,
+      "sha256": "c7348c1f55f76e7ad76d3e45d4969c48c564425049ec0fb1250b7859dc880b28"
+    },
+    {
+      "path": "lib/bird_companion/core/network/api_client.dart",
+      "bytes": 13291,
+      "sha256": "863a6ff6c4d65e4a4eaa9bc75bad4448c664abd888d43e69c01a3545aa16000b"
+    },
+    {
+      "path": "lib/bird_companion/core/network/api_endpoints.dart",
+      "bytes": 6200,
+      "sha256": "be4311d087c4b4e9d44d407c6e8b3defe86784a112c955f19d54d11e3283aff1"
+    },
+    {
+      "path": "lib/bird_companion/core/network/api_exception.dart",
+      "bytes": 2507,
+      "sha256": "04fa44b75d958843f854615ffee172b53d388dbf38c9f29b0643e85ae497d7d7"
+    },
+    {
+      "path": "lib/bird_companion/core/network/connectivity_monitor.dart",
+      "bytes": 1350,
+      "sha256": "e749a2c44a69ae559e206b579c4326be450ea982880362929fef3135ab024e3d"
+    },
+    {
+      "path": "lib/bird_companion/core/network/event_client.dart",
+      "bytes": 12250,
+      "sha256": "4ce43efbbeca5bd2c8eef60c522b02c5090814b18770a8d7a3d6433ccba01bb0"
+    },
+    {
+      "path": "lib/bird_companion/core/network/reconnect_policy.dart",
+      "bytes": 478,
+      "sha256": "f779102f355a5994bf1ab10ff68bd425e0c86d9eab8c94a797cb8f5efc5b84f8"
+    },
+    {
+      "path": "lib/bird_companion/core/presentation/user_facing_text.dart",
+      "bytes": 767,
+      "sha256": "56e8195f1035e6271b1933fda53a4ecc179d5a33a8de6c298047ab328c72f018"
+    },
+    {
+      "path": "lib/bird_companion/core/session/client_identity_store.dart",
+      "bytes": 1936,
+      "sha256": "62348603e122f647b4c793474c3a7b3eba3e415e8ae333db9ea2219c3d9608b3"
+    },
+    {
+      "path": "lib/bird_companion/core/session/device_session.dart",
+      "bytes": 1488,
+      "sha256": "97cb24b6b1a773c15e6d45792e5de33912f2c341459b8730c3dc812847107234"
+    },
+    {
+      "path": "lib/bird_companion/core/session/device_session_cubit.dart",
+      "bytes": 26832,
+      "sha256": "c87494a1de148280587b79fd3e42cefc527273a9f52779ce5160b436d72d6f51"
+    },
+    {
+      "path": "lib/bird_companion/core/session/secure_session_store.dart",
+      "bytes": 2948,
+      "sha256": "7356aaae70173d15e021e24265d3b6c87105c1072034e278cd69c58465c66636"
+    },
+    {
+      "path": "lib/bird_companion/core/session/session_coordinator.dart",
+      "bytes": 8601,
+      "sha256": "25e883c65b17ca5aea44b40faf104b7469ba39bf49b168952e5b44b4bccbb934"
+    },
+    {
+      "path": "lib/bird_companion/core/session/session_credential.dart",
+      "bytes": 2310,
+      "sha256": "5941b6d61586a341b3223ef1449e0208cf7228b3a0568fe9c65b89fea7e68cfb"
+    },
+    {
+      "path": "lib/bird_companion/core/session/session_refresh_coordinator.dart",
+      "bytes": 346,
+      "sha256": "c8b3f0dc616f269f80e218b39166b420ee346a9994911fe6db4a9c88821dbbfb"
+    },
+    {
+      "path": "lib/bird_companion/core/storage/cache_metrics_service.dart",
+      "bytes": 784,
+      "sha256": "ce54bee08392d909d0d2c524747d06d9d258abefee9cc7268c5623af2140bb7b"
+    },
+    {
+      "path": "lib/bird_companion/core/storage/cache_schema_migrator.dart",
+      "bytes": 5701,
+      "sha256": "ce9c6234fecbbdd5d69a71d6b9913182979a684f491d86420a17ebeb1dc73340"
+    },
+    {
+      "path": "lib/bird_companion/core/storage/diagnostic_storage.dart",
+      "bytes": 157,
+      "sha256": "4e91a3e3c93693b1bae2d1cde597fc33955d7b22d569988bb3fffcce5ef8dd9c"
+    },
+    {
+      "path": "lib/bird_companion/core/storage/local_cache.dart",
+      "bytes": 1898,
+      "sha256": "447dc1c6c0cc7d9ababf29d8d2ccef5497f0fff907c61a8b313b4afb2efc2edc"
+    },
+    {
+      "path": "lib/bird_companion/core/storage/pending_operation_store.dart",
+      "bytes": 3009,
+      "sha256": "6460f2856db8d5cdca93f46082dabf5db245ce26490dfd355b0d51c5dbb63f4a"
+    },
+    {
+      "path": "lib/bird_companion/core/sync/bird_sync_service.dart",
+      "bytes": 10209,
+      "sha256": "7732cd9cf0c7eb96ac2d775159ea0be1f625017ce9344d50ceb8a67185cce069"
+    },
+    {
+      "path": "lib/bird_companion/core/sync/conflict_resolver.dart",
+      "bytes": 695,
+      "sha256": "0fe17a1187d214e966aba0913c5550364e95b9d574ddc0cd583cf93b3fd6a825"
+    },
+    {
+      "path": "lib/bird_companion/core/sync/pending_operation.dart",
+      "bytes": 3815,
+      "sha256": "27f4b34725a8f8902ae0183f1c75f7198ccf34a731858fcfb1cb5572e38b360c"
+    },
+    {
+      "path": "lib/bird_companion/core/sync/sync_coordinator.dart",
+      "bytes": 4296,
+      "sha256": "02ea3892c27b6128bb23796c93101a261f2ba5aac6f547f293a44f9c2c2122cd"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/async_content.dart",
+      "bytes": 1323,
+      "sha256": "ab2c704202bd0fd718005f4db1d003fcade09fa98d006059a2d9e98f364a9b8e"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/bird_error_boundary.dart",
+      "bytes": 939,
+      "sha256": "117a894b050d3645839a2d80511ef9d2169385d462191c6b9e032bafb8dba13c"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/bird_feedback.dart",
+      "bytes": 3344,
+      "sha256": "34d460827857536d7ec569843ef407d365994dbc8e4b1e138cbfcc0804160dfd"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/bird_navigation.dart",
+      "bytes": 5392,
+      "sha256": "c42ad863c2242862928e5c21d04c122dac4d701eb5c9cf5cbc0169149ddf8923"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/disconnected_banner.dart",
+      "bytes": 1761,
+      "sha256": "24eeae93c6409a27e952f8c667d9d8f6552ba67675af42dbafccfef2effb247e"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/empty_state.dart",
+      "bytes": 1637,
+      "sha256": "79a66dcfa860e8ac708c4b44d69f1d8a0c44d5aad8f2fc873969f1b2da546693"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/error_notice.dart",
+      "bytes": 1707,
+      "sha256": "2d82edc84b40e3258f8f7d3d8cd5a774e04b8874594652451568cde6fb85fbc5"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/existing_user_tags.dart",
+      "bytes": 726,
+      "sha256": "03a8c986097bed79a1a6ab2f54fb9c059d8e49e3b813adb20ff6f770f51d4cdc"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/lazy_indexed_stack.dart",
+      "bytes": 1290,
+      "sha256": "0df6af728c66fd0a36d68d4f73cccde4bb52344c01edbc2403cea7fe22e5c9f2"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/natural_backdrop.dart",
+      "bytes": 3653,
+      "sha256": "6ff71b4798dff630e43959b51c38fe0706611ee0e587c2fd6aac81b3c13e78ab"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/navigation_guard.dart",
+      "bytes": 792,
+      "sha256": "8a591a85fee3ad8e1362fb94644b9c4c53879e251497a4e538179835dabe5087"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/page_back_button.dart",
+      "bytes": 822,
+      "sha256": "9c509eceea910d13bc707882dfa2662182a5023d8d241bab450296395483c6ea"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/progress_summary.dart",
+      "bytes": 1432,
+      "sha256": "289062516051ec2540f2395ba7a184c226f62711cfd843e171ec0496de0337c4"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/status_badge.dart",
+      "bytes": 1827,
+      "sha256": "2c753c8f6c8f9d442cfe174b542fa39182b1e16850883eb57ed3b5251721c440"
+    },
+    {
+      "path": "lib/bird_companion/core/widgets/tab_back_dispatch.dart",
+      "bytes": 382,
+      "sha256": "b2d3e9839b35e7e9982cd8b29595a8c7a4900a4b1d6b121260d85a5eec8a9506"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/data/batch_api.dart",
+      "bytes": 1663,
+      "sha256": "bae8c929c06a7ce207b9535b739a210538e7964364f98100f1e16ed200036307"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/data/batch_repository_impl.dart",
+      "bytes": 5252,
+      "sha256": "15aebd26c4ab076903f14b1ca5048e8e0dee4c622f828598e99e245c16a548fa"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/domain/batch_history_filter.dart",
+      "bytes": 2891,
+      "sha256": "cdb04f9a64ade74a6f975255f9da941d876f2d84355e584b750c26184229e055"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/domain/batch_overview.dart",
+      "bytes": 312,
+      "sha256": "2244402a43edcd74fab23119dac568c268d8c138b78d7985d0bd3556e31be737"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/domain/batch_page.dart",
+      "bytes": 263,
+      "sha256": "368d6d01507eaafa5a923166bbee616202b2aa20014fceffa89f6fad4e087f7b"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/domain/batch_repository.dart",
+      "bytes": 801,
+      "sha256": "e4e7ea33dca9ed6f21970569e79a652e040294b7dd0f10181f71f3c9263e0f31"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/domain/project_create_request.dart",
+      "bytes": 275,
+      "sha256": "1dde6024e526e63d9d71933d579cc4602141967ef8985b1354421f5a251f1f00"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/presentation/batch_list_cubit.dart",
+      "bytes": 17500,
+      "sha256": "d48f3f74a332d4767b16e364d28a9ba1c096ea257a6c79b2a6312d05475d44cd"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/presentation/batch_list_page.dart",
+      "bytes": 14369,
+      "sha256": "e802b3af0fba43dd88c35cb38b82606db3447a195b071410602b5b53e5cc17a2"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/presentation/widgets/batch_filter_bar.dart",
+      "bytes": 2273,
+      "sha256": "ab63fb53c7c4140300ca97ae1dc9c095531282cb5e8af0ff701af40429d880a8"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/presentation/widgets/batch_list_tile.dart",
+      "bytes": 4654,
+      "sha256": "76b45fb4cd3b6d52b75dd9b58d83a6ff05255008fc6fe37af588b89c21005661"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/presentation/widgets/batch_resume_dialog.dart",
+      "bytes": 697,
+      "sha256": "6c8bb306572a933c114209086ea84e4ed97429b5b3003bda03e535d2525cc044"
+    },
+    {
+      "path": "lib/bird_companion/features/batches/presentation/widgets/current_batch_card.dart",
+      "bytes": 5802,
+      "sha256": "e281834b848de6503bc07bf97108aa6d2ee821a57ea30fd42102d896f94f30d5"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/birdbox_ble_data_source.dart",
+      "bytes": 1628,
+      "sha256": "eda61ff33217bacba792bcf3b0fd223e0ef959889e1b0a4cbd40eca1592959cc"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/ble_connection_diagnostic_store.dart",
+      "bytes": 2177,
+      "sha256": "b51813e4824e9c5e0ee460659cc14910b196786f1e14f4c381e8fc974c7a08a2"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/ble_critical_event_policy.dart",
+      "bytes": 4775,
+      "sha256": "145b569267dff3d321997c28ba9b8a2a92c651ff72fd08de557244ae7d39eb7d"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/ble_diagnostic_journal.dart",
+      "bytes": 13983,
+      "sha256": "0263d90e2be75776ca4441de07c85889e7ccd9b82192b9999b7d23ed2f120c8a"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/ble_diagnostic_snapshot_service.dart",
+      "bytes": 4204,
+      "sha256": "ce18aae995e4dbee1c41becea4511690218dd19eb8816e3a18835e4e44b6440b"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/ble_fragment_codec.dart",
+      "bytes": 9701,
+      "sha256": "5015249bfe7dc72a16af10d4654e46e4fd116cb5ce5990b204ef52e982c4a710"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/ble_message_codec.dart",
+      "bytes": 5620,
+      "sha256": "068d34d8c040c638c5c1014c88eee9d033203226033c8b2afbe53d57b0e37656"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/ble_protocol_constants.dart",
+      "bytes": 3483,
+      "sha256": "28353e39972b0d263ca6ef8ab91ff382d329534832b863be2a2b99579d35b24d"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/ble_scan_diagnostic_store.dart",
+      "bytes": 1795,
+      "sha256": "98e4ef6c259f61d3bfb7ddaaa33202b20178d86d0d4f89c16c3dae8a97980391"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/pairing_preflight_codec.dart",
+      "bytes": 7708,
+      "sha256": "03a6052c24d81ae30f2f92e7879b5f13c2e77d10d91f2c0689c3bb68c77b0dc7"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/pairing_preflight_platform.dart",
+      "bytes": 5698,
+      "sha256": "0acbacf91148d306388cb9af0a05cdd7f46b9003f483f90235d5cfaf2146bc50"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "bytes": 137213,
+      "sha256": "215ca718463884262fd3acfa7c1679a8c3aca6d2d46756d50fef6f72badd18eb"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/connection_api.dart",
+      "bytes": 5457,
+      "sha256": "5dab0a1967a681ee2b1359d7d2550d0d4196bce515745b38619b818c961af82e"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/connection_attempt_recorder.dart",
+      "bytes": 4217,
+      "sha256": "5ee23690f87ede0549e1afcb229676ec00c4a7bc6411de21cb20f74b5e9812dd"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/connection_repository_impl.dart",
+      "bytes": 8189,
+      "sha256": "cb0fe2b8392213ab66dbf42e78a869854646fb0137d5a44c6ae3d897e63119c5"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/device_discovery_source.dart",
+      "bytes": 1025,
+      "sha256": "0f056da54f6474b480f424cdd13bfb44fa958f48d178d1ab6328581066d16100"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/direct_ap_pending_store.dart",
+      "bytes": 1628,
+      "sha256": "f32bc09cc5e07222ded1b78d06110fe68781f0abd7776287f618dc096bec68c4"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/health_api.dart",
+      "bytes": 5450,
+      "sha256": "90dfae1f3c7aa5e13024cbfff924fbd83e96f66bb930a72a345f08dac8d7a0f5"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/mdns_device_discovery_source.dart",
+      "bytes": 2976,
+      "sha256": "0893be59b5e1ba7bec980aefcaf6a45995ec38d7a8019af918fbadeb7609b022"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/pairing_api.dart",
+      "bytes": 4510,
+      "sha256": "4ebbb19d5a1d3bd3c1da6fa2bfcb8a99dae0fbecca2c441df92eee46601d0e80"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/platform/birdbox_ble_diagnostic_file_platform.dart",
+      "bytes": 2954,
+      "sha256": "527d10d3973facf0630f5fb7f19be18a37f16f82994585b04ac868b5fa39fc51"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/platform/birdbox_dpp_platform.dart",
+      "bytes": 4641,
+      "sha256": "564cfbf1219a96213c12048ceb4a68759121017500058b30bd08d74af833462c"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart",
+      "bytes": 6671,
+      "sha256": "cefa1ebcd040ff408e31f54ce396fd50318869f515e5b9c8cfd84ca35448d0a3"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/platform/phone_wifi_platform.dart",
+      "bytes": 4625,
+      "sha256": "34781123f44cead76f75cf6ee2576d4741a94efb274c386ee3c020c732bd9881"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "bytes": 46715,
+      "sha256": "0a4930555c3ecb10ce3caa861a8bf3fde0c26a92dd6375a3547ded4c9390e443"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/ble_attempt_failure.dart",
+      "bytes": 5570,
+      "sha256": "b33869117af578d7109d765395e5cfaf7ac4cd22aa9506f724733dc91afaa3ea"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/ble_connection_diagnostics.dart",
+      "bytes": 23635,
+      "sha256": "c70c89d838aa79fa69ccb964abfdab9c99e9060310001088ad5baec2df7b1119"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/ble_diagnostic_export.dart",
+      "bytes": 13975,
+      "sha256": "974053cff77ac87ef455738d907147e4f7e7a390756c58d427e1b37294dd8685"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/ble_pairing_evidence.dart",
+      "bytes": 1289,
+      "sha256": "55b502cd8035ab4462aa4468030bf39c3b048f6cda073ab68b427924635b987f"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/ble_pairing_progress.dart",
+      "bytes": 1447,
+      "sha256": "6abf68b53736510f4d177f28b4c3a6658e34465230314c7208ba7b460c874810"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/ble_scan_diagnostics.dart",
+      "bytes": 25450,
+      "sha256": "6d9cfa31f96323f0d96162a67475d7df1130c13de1bf39e3c63fada4318be5c1"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/connection_address.dart",
+      "bytes": 1900,
+      "sha256": "841ae96e72ca74f5e3bf5873a45b2212ba7605e42ff7e48f8ab9f640547359d3"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/connection_attempt.dart",
+      "bytes": 2879,
+      "sha256": "1b24ca7d8c21dd12c002a0c476bd3d5b2713d990dc16e91780f4fbeeda532420"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/connection_cancellation.dart",
+      "bytes": 176,
+      "sha256": "7fdaa5840a219d4d075d1e98ac9aecde16ac4f6c96188492a46d38bf51b1bf4f"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/connection_repository.dart",
+      "bytes": 713,
+      "sha256": "7724ed51f246bb5e4974db2fd2253efdf409250263076ec81eb1a265f98a9be9"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/pairing_preflight_models.dart",
+      "bytes": 9192,
+      "sha256": "4b9cb18e509212f3fde18c0410d28dbe7c0b0d73e7e962db213e6a9388791dff"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/provisioning_error.dart",
+      "bytes": 12845,
+      "sha256": "890a43744a8a6a1dabd4264cadf16d84b4b05df7c535220f5d50d0d57e8e5cd7"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/provisioning_models.dart",
+      "bytes": 47041,
+      "sha256": "f756cfb670eaf6713113b27b95e8369b55624d0886f1f35d8508023add064edc"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/provisioning_repository.dart",
+      "bytes": 3329,
+      "sha256": "9205ee95e010dc8b2d3df8d86597ec06f8029c7fb114cc2e2c7c91ffcf0d03c4"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/request_id_factory.dart",
+      "bytes": 860,
+      "sha256": "c5ae1a40830c09688a868e1ee3fd4b60e2551fc91f8fba4c0bad5dd83b69ef71"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/wifi_qr_credentials.dart",
+      "bytes": 1229,
+      "sha256": "188d078588dee4aa14a17a513dcebd866cc2dd888e3a96ba5b53da5ee269f7a8"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/wifi_qr_import.dart",
+      "bytes": 2376,
+      "sha256": "f0ba8c825330154784623ec2a69d87159cf6dfd4e838bb6b8cebdb3f526bb88c"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/wifi_qr_parser.dart",
+      "bytes": 4891,
+      "sha256": "2e49fd14ba18a4ce153b321e22f5ef2dd3e79ddd26b066681a62559098663b6d"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart",
+      "bytes": 17956,
+      "sha256": "ad4da04ee3152e5bac5b5e6123a7d25c693189dfed453c731b75bfc5bf7bd589"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_cubit.dart",
+      "bytes": 9796,
+      "sha256": "d9de01e9d4ef6651c818242a2e94f5a45f101fff0003e41f1242c847dad3bfcd"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_page.dart",
+      "bytes": 56834,
+      "sha256": "fe1082d0d8867300fdab3104184e34f05a5c35cc49d740385cdf1f1a684d72ea"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart",
+      "bytes": 16843,
+      "sha256": "ee78274890ad61822dfbf95466899fe1f898181cbaebe0ca0c0eb3ef64f3f124"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/network_provisioning_cubit.dart",
+      "bytes": 42899,
+      "sha256": "b6bd8f2c6820392f2c9043b92d033e7d7c202f7ce197230f43a0211c25bf26c2"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/pages/b7_simulated_demo_page.dart",
+      "bytes": 1581,
+      "sha256": "71d73a4f50c94f3b39a1261cf7609f7454e3ce7d1bf800d79a541a07fc42b284"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/pages/connection_method_page.dart",
+      "bytes": 3975,
+      "sha256": "55dea6b91205654cc6dd284c686649e6ba16d1ecb71914e00b1db825955cc848"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/pages/direct_ap_handoff_panel.dart",
+      "bytes": 5482,
+      "sha256": "697e6340afa75b55ac450cecd0fba539fbbea147b110b14e3ebd71afc0c27677"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/pages/network_provisioning_page.dart",
+      "bytes": 28685,
+      "sha256": "3af2c86bc3350ba8aac83f57b01abad53607752b6751ef3be178cc987a3454c6"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/pages/wifi_qr_scanner_page.dart",
+      "bytes": 11986,
+      "sha256": "379d9b51000ae68e0b7d5dacff7d85dd9f662b32531084e2350825d50c5c9bbf"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "bytes": 23344,
+      "sha256": "0c8ede1ee90729c659a8e70c448762594bf3a38ecb2d8d54ef39f8306a251d54"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/qr_connection_scanner_page.dart",
+      "bytes": 19169,
+      "sha256": "41e78c3fb3ce9e6c2c2e0ce10b0ac0563b0a56ad27fe8f2ac4ebee38be41a8d6"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/qr_connection_uri.dart",
+      "bytes": 1159,
+      "sha256": "0a4258ac6eae9af73a46934d2b101c3122c69126d0da4d72f3477b261981ebe4"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/ble_diagnostic_export_dialog.dart",
+      "bytes": 6614,
+      "sha256": "ee73ed3710d6df51137a06f46117ae98622e649c64c905efa5e16ed80b4917a4"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/connection_background.dart",
+      "bytes": 1162,
+      "sha256": "80a86ae01f6c3bcfef5db54a41d82744db9a5fc602fda6e519f41f0e7dae9853"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/connection_empty_view.dart",
+      "bytes": 5061,
+      "sha256": "eb5ce68f931dbb303c3c78a641065d5e074330fe9e0482aef4d1a546a7a0b199"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/connection_failure_view.dart",
+      "bytes": 7127,
+      "sha256": "850168b5e786c0d8a67cc9809e4040257ddbf388cc676e34cf4ca646fdf463d4"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/connection_progress_view.dart",
+      "bytes": 6433,
+      "sha256": "7eebdb9819d969684910a842b28fc821793fe13fa3eedc2def963d885f34dc56"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/connection_success_view.dart",
+      "bytes": 4671,
+      "sha256": "9d7f8494195125c3dd0f1cbdf4f298afb01cdfdecdf64411b6ff84f94b46a8a3"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/discovered_device_card.dart",
+      "bytes": 3905,
+      "sha256": "00baed653c1eb94134395ba53d9198f9dba330722f482bf44a6094e873b1a336"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/k7_device_artwork.dart",
+      "bytes": 486,
+      "sha256": "55f77668ed6ee98381eb61db6c24c67666f12b830bf254dcac00cb91b6b7440c"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/manual_address_form.dart",
+      "bytes": 2653,
+      "sha256": "2873aa758a8c796adbecdd48232b517918cda178a169040d55c8b18e302222a2"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart",
+      "bytes": 4760,
+      "sha256": "aa02980abba636f85240fe9c89c02d41fd49fa09b4ec31af9e00f274d4506b67"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/provisioning_method_card.dart",
+      "bytes": 3828,
+      "sha256": "1ef7a6280a6e0ad267d319b4df7b55351407666e15321d766904135bbd4a0d09"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/sta_network_form.dart",
+      "bytes": 6868,
+      "sha256": "54340e920da11f88a91a45eb4241c26ae84434fdf1f4286a3caddafd37d52363"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/data/active_copy_job_store.dart",
+      "bytes": 4773,
+      "sha256": "1e43bc8a774f4e09375b940900eb367bfe59c7546c074d6f5b427607bb4c1f66"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/data/copy_api.dart",
+      "bytes": 18018,
+      "sha256": "9a8cfcaedfb36299a2bf4bd3d387ee5b31148a439ba929d79c4221f287f2457f"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/data/copy_repository_impl.dart",
+      "bytes": 3579,
+      "sha256": "2e95edc47e7c3ff7f9f44d0dd2dec3e3817f05006a5906aea18a344202de4748"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/data/copy_request_diagnostics.dart",
+      "bytes": 3245,
+      "sha256": "346f0255b049f867ca2ec7ebd7effee8e5a6cf2ab7802254c12ba5c96e52ac9e"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/data/mock_copy_repository.dart",
+      "bytes": 36257,
+      "sha256": "1b5885e5b126489555c634b6094354bc4ff629e01025a9552e2555aaa06db8d0"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/domain/copy_device_policy.dart",
+      "bytes": 2420,
+      "sha256": "bfb694d000efc5eee809503828889b73549fcb18796d44bcb207cb5dc89408a8"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/domain/copy_entry_guard.dart",
+      "bytes": 2396,
+      "sha256": "a0294657dc6dbad23ea6b599e31374300742ed9431a8291b9e0307c79810e25b"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/domain/copy_job_models.dart",
+      "bytes": 33933,
+      "sha256": "13a28c9a7ac485b11424c8270d9e3141923e8d1e24510e37aed530c9b7f168e9"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/domain/copy_job_presentation.dart",
+      "bytes": 9574,
+      "sha256": "88bb09c96fe5a8171c08f6101557ae23b5fbf07805ff5e38dc963eb09824aaf2"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/domain/copy_job_repository.dart",
+      "bytes": 2142,
+      "sha256": "ad40babb6e23c066bf828707fd9e68c201003f73f712556d60310360261a2c96"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/domain/copy_models.dart",
+      "bytes": 24963,
+      "sha256": "594c9e35cac4cfb86b9b8c60bed851ed0861b92e04f04808401da4e377cf6891"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/domain/copy_plan_integrity.dart",
+      "bytes": 8316,
+      "sha256": "c893e58bd538c53b06d6ecf9c0751595103b7f7fffd5f3841d24fb13ec2a9af7"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/domain/copy_repository.dart",
+      "bytes": 1910,
+      "sha256": "ad5624a0d6859710caa0be4bb4b3898326515fcca648370b170851393e7f328c"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/domain/copy_timeline.dart",
+      "bytes": 5776,
+      "sha256": "b14f0fb4c365377da0802952ae4b3d987478626e76842e95ffb98ca5f20d89dd"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/presentation/copy_config_cubit.dart",
+      "bytes": 58139,
+      "sha256": "99b86276aefcf68710983612cb1db3c5d55a223caf159b5da82cfd721d561831"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/presentation/copy_confirmation_page.dart",
+      "bytes": 53845,
+      "sha256": "2fb83c74d69284f626aec5de4cfcd7ed9d312b88de058a49c59509bc0d3b257a"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/presentation/copy_job_detail_cubit.dart",
+      "bytes": 29858,
+      "sha256": "18e10664529095603bcdee2866bb50d5b1399f21d61bfafcb2af73e921ffcd1c"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/presentation/copy_job_list_page.dart",
+      "bytes": 14953,
+      "sha256": "28dcd20c816c7560ad376642499e66926d63069d9f33b608da1357ce78707e4e"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/presentation/copy_job_recovery.dart",
+      "bytes": 6715,
+      "sha256": "4dc78b40c396e2fca948ca35f0558e1af39dc9c7ca0be97aedf39ac0baa3c622"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/presentation/copy_metadata_page.dart",
+      "bytes": 13405,
+      "sha256": "b93cc754aac9125be35ed4a2eb80def256db0aa1441c0b290daa7c695aa076d4"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/presentation/pages/copy_job_detail_page.dart",
+      "bytes": 43548,
+      "sha256": "1cdec226ada5bb3dd9a2ec476c5f2b02b8ba0ed01d457b0054c74421086c53c6"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/presentation/widgets/active_copy_jobs_banner.dart",
+      "bytes": 2206,
+      "sha256": "000c0a1e9e6e94b25a2843c4449b90838d87175fda6538dc2d95d37ca517a30d"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/presentation/widgets/copy_job_timeline.dart",
+      "bytes": 5190,
+      "sha256": "d12a593132d9d53f7d3b5ddbf20140b0e722351726cdb8963fc539063472a02c"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/presentation/widgets/copy_preview_items_sheet.dart",
+      "bytes": 12361,
+      "sha256": "532c227b8239399772d4e778f94f32094663cb1370af43fbaea960d694af67ed"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/presentation/widgets/copy_scope_card.dart",
+      "bytes": 3827,
+      "sha256": "68ac960ebe2039c361e1bf39bc3a77a696df01941cbf09ee945241c4a3a3b8ee"
+    },
+    {
+      "path": "lib/bird_companion/features/copy/presentation/widgets/storage_device_card.dart",
+      "bytes": 10463,
+      "sha256": "acdefe59156eeb7c9e34962123fe6773934d6c2664aef237e2655ce5e447ba9e"
+    },
+    {
+      "path": "lib/bird_companion/features/device/data/device_repository_impl.dart",
+      "bytes": 2354,
+      "sha256": "7abd78bc910105225f11c10cee51c3c9ba71a0348d367c4f0e536a5a4a89e7c6"
+    },
+    {
+      "path": "lib/bird_companion/features/device/data/device_status_api.dart",
+      "bytes": 785,
+      "sha256": "18d6498b2cfba484509ad9b5d8c2e6cf8d5ca548799c4f5047ce932895b012a5"
+    },
+    {
+      "path": "lib/bird_companion/features/device/domain/device_repository.dart",
+      "bytes": 318,
+      "sha256": "3c61981044091bd2aad26cfc1d2c3b5c878bb6e28a7180e3cac86488fb950fe5"
+    },
+    {
+      "path": "lib/bird_companion/features/device/presentation/device_error_detail_page.dart",
+      "bytes": 3402,
+      "sha256": "1f690532dddb1f066fd6cba8f21e5fb13a3d0195522e7d2fadd33821ebac7b69"
+    },
+    {
+      "path": "lib/bird_companion/features/device/presentation/device_status_cubit.dart",
+      "bytes": 6018,
+      "sha256": "5c7f80ef1e056338e0ca94727126e2d2f39dc0fe85280be4a7066da372f71254"
+    },
+    {
+      "path": "lib/bird_companion/features/device/presentation/widgets/current_job_card.dart",
+      "bytes": 3140,
+      "sha256": "d88647db7c78ab93b7dcf46c77e423d1779445f374bd2271d2e8f3e03a36ab7b"
+    },
+    {
+      "path": "lib/bird_companion/features/device/presentation/widgets/device_alert_banner.dart",
+      "bytes": 1752,
+      "sha256": "80995c0769a3c421caa52e8166cec8e406cfbf0a233f53453f3c156aca1884d7"
+    },
+    {
+      "path": "lib/bird_companion/features/device/presentation/widgets/device_metrics_grid.dart",
+      "bytes": 2771,
+      "sha256": "83986b3e4669bab1d346e9c6b1afa3fc729b1da5f3e003bbfac8a428a8e2a220"
+    },
+    {
+      "path": "lib/bird_companion/features/device/presentation/widgets/device_status_pills.dart",
+      "bytes": 4761,
+      "sha256": "a9b4ea7c74a570d83f492fe0e1ce5115de4cd6b870edce5be49122cd039ac1c9"
+    },
+    {
+      "path": "lib/bird_companion/features/device/presentation/widgets/device_status_sheet.dart",
+      "bytes": 12048,
+      "sha256": "3d7d9a929ec53640dd8adc01b1779dab4d1f47ea0f3369543fb0a2378858464a"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/data/photo_api.dart",
+      "bytes": 4752,
+      "sha256": "fce7fee5f9fa0c846883aee90d6f2fc28238f3822df3b914c24c79b07e11eca7"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/data/photo_local_query_executor.dart",
+      "bytes": 14797,
+      "sha256": "1a485d5e1e29d1eb20cc0bf7c29a435a244201702f258bffa6bb31b26ab35bdf"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/data/photo_repository_impl.dart",
+      "bytes": 23937,
+      "sha256": "97c69071bb39922d567e1c76302b06997d1c687326d630699433ba7c8f799311"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/domain/batch_tag_change.dart",
+      "bytes": 1434,
+      "sha256": "8594fdcab458e22bf708a8d49dfd3fb6e4edb953dd2e79bc8f485dfe21682ef0"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/domain/gallery_timing.dart",
+      "bytes": 1943,
+      "sha256": "46d39eb9ede04a1b7632f9d495a4a3d77805d913714632910bb00749098d14f7"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/domain/photo_local_filter_engine.dart",
+      "bytes": 6863,
+      "sha256": "9d1e61d2e08552b33e0d44c8ce3095c9114519d213c0cd038d1000343b0f6281"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/domain/photo_query.dart",
+      "bytes": 8509,
+      "sha256": "bb8f458fe0161a7651637026e65aaf04e5209decb363504d695277f1bdf58d3e"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/domain/photo_query_plan.dart",
+      "bytes": 1193,
+      "sha256": "6e13b7c468524896313b85afacf65ca6ca4790b740463ed57f2de08efe0cba18"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/domain/photo_repository.dart",
+      "bytes": 3180,
+      "sha256": "444e517733779314b618ee5de48fa7f7cf2bf4b7bfc42d9627a8244f76cf4f36"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/domain/photo_version_batch_coordinator.dart",
+      "bytes": 2609,
+      "sha256": "e6837eabc774db9288e61b6c1745ac55c05ed30240cee6531aec753dae6d8cf1"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/domain/review_count_reducer.dart",
+      "bytes": 2376,
+      "sha256": "aeb7d81b29b9b4fc20c224a2e22b852e3a5660edd5a025468d1c32fa7bc54b8c"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/album_home_page.dart",
+      "bytes": 10901,
+      "sha256": "d694e2a934b73e3685237b350eb8d2cd3419de25c6234ac0df33898aa53b176f"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/album_materialization_cubit.dart",
+      "bytes": 6287,
+      "sha256": "4c25012b016018de388cf82a333b2dcd652e052fd0a388160990d331c75655de"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/gallery_cubit.dart",
+      "bytes": 34774,
+      "sha256": "803e930e378b60d6ed8611a832646d082892af57e18d93413ba8c90203d65de2"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/gallery_page.dart",
+      "bytes": 80995,
+      "sha256": "45063de195a8166cf15269c3dd3049da32b89d4c3521a6884d04e757be376871"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/scene_list_cubit.dart",
+      "bytes": 883,
+      "sha256": "f2a1ae9b3362156d3f661e4bd4b2cb4f191ed2a86a488ebefc58c6741dd38028"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/scene_list_page.dart",
+      "bytes": 10212,
+      "sha256": "b4640830ce0e9d09e4c08e71ed404398511c5e5c01718c92eb9a937dbb3c46d1"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/selection_cubit.dart",
+      "bytes": 3434,
+      "sha256": "ee6e2e43dee27d9cf8b1f25ac2cc219df5770130e0afa74273173e297b711ab1"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/active_filter_summary.dart",
+      "bytes": 5870,
+      "sha256": "3abd3e617178731936979c6cec3f111eb266172fd73404f797609c618f0bd156"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/album_add_device_button.dart",
+      "bytes": 948,
+      "sha256": "1644c8d5f987c8de200e17ec10731216ea30842aee0a685aefaf9ae7334169a0"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/album_history_entry.dart",
+      "bytes": 1694,
+      "sha256": "539fbdbec85487e7809ec4446e986962e24cf0dd2a5259ada96ab1eada1233ce"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/analysis_placeholder.dart",
+      "bytes": 760,
+      "sha256": "23e69068f6e7a0132c274ebf053c0802dda48ad12427741f7769a57016eed4a3"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/batch_add_tags_dialog.dart",
+      "bytes": 3752,
+      "sha256": "a1abcfaa18781b75e07e1e35188fa7c04d05c58c5db52966de7047c56cb63c3e"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/batch_remove_tags_dialog.dart",
+      "bytes": 3618,
+      "sha256": "6fe3dfe2b3d4f35b5af9fda176bac0b8ae9f9d27cb489ea8d79507ff3c67e87c"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/filter_sheet.dart",
+      "bytes": 12796,
+      "sha256": "069b9e176275547a1076f7e6eb557a2c2a9adbb3c31530bb5e0be546fad1c8f0"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/gallery_candidate_notice.dart",
+      "bytes": 5443,
+      "sha256": "6ff8167f73eaa555620517af31302beaf38858910d673ba0b816214f28a049ff"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/gallery_search_dialog.dart",
+      "bytes": 1221,
+      "sha256": "634f5b3424219bd7e695e6620519c86e39d729b92353a14c18ab5559936683ed"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/photo_masonry_grid.dart",
+      "bytes": 1355,
+      "sha256": "d24646986bf3f469bf1dcc3038a2d58027978d888cd507276a672d7923acc924"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/photo_tile.dart",
+      "bytes": 12686,
+      "sha256": "a7c3f3460a949131a9e5e15b80756c90ad5ff50d6b26d6518e29cb8fc8f5ba04"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/selection_action_bar.dart",
+      "bytes": 13449,
+      "sha256": "1f2640d648b9efcb1c457894b3c54ec8c2963f5a64ce5988372e9120a1758c1b"
+    },
+    {
+      "path": "lib/bird_companion/features/gallery/presentation/widgets/sort_sheet.dart",
+      "bytes": 3196,
+      "sha256": "a58ad703d18a24020b29e0622c5cb327ad9667bd916a68ce532a50a506ecb3bb"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/data/job_api.dart",
+      "bytes": 7769,
+      "sha256": "ba61a795846bed8985f5da70852499b29c6a52e2390df23767f083ff723acc4c"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/data/job_read_diagnostics.dart",
+      "bytes": 2173,
+      "sha256": "7fc56c882bb99d51e840058a2d52e0d8d6de38a933bc7133a39ac4ddb56b48f0"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/data/job_repository_impl.dart",
+      "bytes": 2855,
+      "sha256": "580c4dbdc54ced09fc1aff886170c17e8bfe6f19a055494f795a537771ac1605"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/domain/job_create_requests.dart",
+      "bytes": 876,
+      "sha256": "4f9a20ae331408bd17335305059c1559173b18d404d6f6b0c784755acab266a2"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/domain/job_failure.dart",
+      "bytes": 1229,
+      "sha256": "e3092f2f93cf7da25d878160393d656cd352badc40fd76511bea3fab10fd63c0"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/domain/job_page.dart",
+      "bytes": 652,
+      "sha256": "8f61faf6f04bdbabdc51a4ccea622e875158ffa9954eb08a273985d4a7fe4d5d"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/domain/job_report.dart",
+      "bytes": 3201,
+      "sha256": "94ea714ed195d3fa4df1f8f0636499b1ba77409ca5300dbc1e116304aa9726ac"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/domain/job_repository.dart",
+      "bytes": 1223,
+      "sha256": "eb705fe0c9038145cbf5efd714ef641f8af7b1a404ebe4b305a8954f7ea0dccf"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/presentation/job_center_cubit.dart",
+      "bytes": 7473,
+      "sha256": "c88865f55869616dd9dad75f616003cd8354207e18d512e26fadc7ec75ff7147"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/presentation/job_center_page.dart",
+      "bytes": 7453,
+      "sha256": "473518199d45035b7f9e797ed2ce055d1a6360f8420212e66c2c33ced247bcef"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/presentation/job_detail_cubit.dart",
+      "bytes": 11488,
+      "sha256": "d70f0f47b0d346da33d905181150407d6c91646ffb9af1763395f5e5d87139b4"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/presentation/job_detail_page.dart",
+      "bytes": 8127,
+      "sha256": "146dfac9df4e47916ae0c87c86adc907a211f611e85f1cf4d3ef411ebe2be5b4"
+    },
+    {
+      "path": "lib/bird_companion/features/jobs/presentation/widgets/job_card.dart",
+      "bytes": 6580,
+      "sha256": "9403517a14076176554ce253cd7a38bd6a8ac39982246981e2da7cfb819eb89e"
+    },
+    {
+      "path": "lib/bird_companion/features/recognition/recognition_repository.dart",
+      "bytes": 5246,
+      "sha256": "2a5ccc7837235a0558934a603cb07937e8d8aa42aad5a57ed663da50dbc707e4"
+    },
+    {
+      "path": "lib/bird_companion/features/recognition/recognition_widgets.dart",
+      "bytes": 11592,
+      "sha256": "38f0bae3f20e2f5f4199f042e5a6034d01c1062462c779572ce616ace2d6091a"
+    },
+    {
+      "path": "lib/bird_companion/features/review/data/review_api.dart",
+      "bytes": 6717,
+      "sha256": "65d4af2755e2ea59f78c7ee26847ba6acf473eaa2051639bf1b61208f9b2ac1d"
+    },
+    {
+      "path": "lib/bird_companion/features/review/data/review_checkpoint_store.dart",
+      "bytes": 2554,
+      "sha256": "770069ea9b982139bf650a6e31a750ab3e9994d6f4d0d337d7a5bd4bde9ca56e"
+    },
+    {
+      "path": "lib/bird_companion/features/review/data/review_repository_impl.dart",
+      "bytes": 29001,
+      "sha256": "aa4298c61630e5660e99c7e9fb49776d7dc3bb157eec3ec943635897bf0ba31e"
+    },
+    {
+      "path": "lib/bird_companion/features/review/domain/review_checkpoint.dart",
+      "bytes": 3699,
+      "sha256": "9fc084a46f578f11480a3713ff45d2047a9244c75e1c1b5d222a79b99f0f91be"
+    },
+    {
+      "path": "lib/bird_companion/features/review/domain/review_repository.dart",
+      "bytes": 1166,
+      "sha256": "2e2e4cf4eb463b4704018c5494d5caf8ef1ce9929359e6a69e119a76f7e9d86a"
+    },
+    {
+      "path": "lib/bird_companion/features/review/domain/review_save_receipt.dart",
+      "bytes": 1483,
+      "sha256": "ac90192e181e09673c9c8d8d482ea39658e2ea7765e92bdd2b613980939470dc"
+    },
+    {
+      "path": "lib/bird_companion/features/review/domain/review_undo_entry.dart",
+      "bytes": 230,
+      "sha256": "d8877637574dba7a147af6bf8c2964f637a0ac04c44e85ea59a1158f861a751f"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/comparison_review_cubit.dart",
+      "bytes": 6368,
+      "sha256": "09ffdcbe393ec590759b64871225f3c8ffe1072e444b1d5cead6c83c4dd563c9"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/comparison_review_page.dart",
+      "bytes": 13053,
+      "sha256": "7b9a641a088761dc7a6437e40b12d78dedc1d9a69cd5ea3a6e22b960e79a5695"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/group_review_cubit.dart",
+      "bytes": 9397,
+      "sha256": "1d1a0a9d963ab22111c21e2cbd1edcff3f58ebb7391b790ed6fea2324682cc53"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/group_review_page.dart",
+      "bytes": 29993,
+      "sha256": "1604ee7c6bbe53abc255c3ef805b1807aeb7c086a79c455e7371c577e5e5a327"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/photo_detail_cubit.dart",
+      "bytes": 13519,
+      "sha256": "88dbccc37f3cc05e87150af66b4b0542de4ecac6ff9c16c388214c33be970680"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/photo_detail_page.dart",
+      "bytes": 27678,
+      "sha256": "c23d833c260eb55365f1282541fbed5e6e16cb37fb075619a7f2d06344af8205"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/review_edit_page.dart",
+      "bytes": 14921,
+      "sha256": "da49973259a17e0e6206d7309c89e8a765ad2f1e402d313cfbf18096f22637a4"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/review_media_context.dart",
+      "bytes": 1152,
+      "sha256": "6220283bf61f7d2153ba373a2f21944841e628c3b7e53b17b6ef7568c4f7ddbe"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/version_history_page.dart",
+      "bytes": 6262,
+      "sha256": "e54e6c1b1dfe65829792b19478ac5fe8f7efd23cdb8460deebbd50826ef33d49"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/widgets/comparison_photo_pane.dart",
+      "bytes": 8390,
+      "sha256": "495eedce49d87598eabaa639410107a453155794de592b892758033142c8fed5"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/widgets/comparison_review_actions.dart",
+      "bytes": 3371,
+      "sha256": "58d9d61b89e7b9b38703cda74f80b2b418cdd9e319168c70b415f7b29fa78f4c"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/widgets/conflict_dialog.dart",
+      "bytes": 1756,
+      "sha256": "4c83eea78f457b332b1f81992f72184e5a6ba293d773caa0243aabf7e61facc8"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/widgets/exif_panel.dart",
+      "bytes": 818,
+      "sha256": "8b1e2d2fd1429caa037ce36800b180188746702326ca7edd373a0dce36e3274a"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/widgets/group_review_comparison_action.dart",
+      "bytes": 552,
+      "sha256": "273e5d26d7f7732ec265e3b7214784a28431dccc9dcf7eeb20be0e9236bf3449"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/widgets/group_review_scope_selector.dart",
+      "bytes": 1323,
+      "sha256": "26ad4ba63815fcf05519476cfb32a3981c7ab2301f370c5085799f52b0a84547"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/widgets/rating_reason_panel.dart",
+      "bytes": 3505,
+      "sha256": "7d826209d759941f793c82d5279561be08063f871c58bc8aad7a122d8ec9791f"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/widgets/recognition_panel.dart",
+      "bytes": 4838,
+      "sha256": "60b1bee7fecf1560deb40f81581ebd90b3c036162f545fce2038030e9fa18331"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/widgets/review_conflict_banner.dart",
+      "bytes": 2250,
+      "sha256": "25ad724ec8ee31d451879a041708f49f9364835f979a80031ef27fa9b6bb35ad"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/widgets/subject_overlay_view.dart",
+      "bytes": 5851,
+      "sha256": "acd305f21b49c3f4e0541d92545ce87ac62b64e129544452832a5107e68e23ee"
+    },
+    {
+      "path": "lib/bird_companion/features/review/presentation/widgets/tag_editor_sheet.dart",
+      "bytes": 2419,
+      "sha256": "a649517a6c63a6401fb97c5fd3ab6cd8189ac560d2538eb96cc70193aa859060"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/data/settings_store.dart",
+      "bytes": 5837,
+      "sha256": "92559613925d45e746577cdba7a04eb222bc56fe1d3e0b9589fdd6bf4b0ab9e5"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/domain/diagnostic_result.dart",
+      "bytes": 192,
+      "sha256": "1755e2b3e96cd8dc02d7fa4b92a59dc31c390f331777675514ad5f4dd6ecb210"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/adapters/device_overview_adapter.dart",
+      "bytes": 3478,
+      "sha256": "09d1478a8b0ba736134c68007f0fc1bdd87db1f491b9d6955236439f42432da1"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/bird_settings_asset_catalog.dart",
+      "bytes": 1178,
+      "sha256": "4c404948d191d792cde692edb3dfa748d1d01eaf2ad497e85a742b3a952bb634"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/bird_settings_controller.dart",
+      "bytes": 7918,
+      "sha256": "f864f29bcc7db2e8ae9fe3ec893026baf4d345709f0fca381c8869f92afe9c12"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/device_management_cubit.dart",
+      "bytes": 3887,
+      "sha256": "5937cbf80088165d03a1dd32dae58cffb2713f389d7c3316e79135a88626a411"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/diagnostics_page.dart",
+      "bytes": 12427,
+      "sha256": "1869b8e7e2b42b1f506720e6087f4611306a876f6edd1a1c1d9261474d7a8122"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/copy_backup_settings_page.dart",
+      "bytes": 7429,
+      "sha256": "70391753bd17a815406f1d055d9271a13925369f1bf9419208db40e8109a0184"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/device_details_page.dart",
+      "bytes": 18127,
+      "sha256": "8448d0dcc2f70b84be58dfe58f13c609a0a27aa7c6934c62a8f1140120b9abf6"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/device_information_pages.dart",
+      "bytes": 19476,
+      "sha256": "5f0ce2f13c016f3ec059becbbb600297c7bb0a794878d21f41e23773f4156b9d"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/device_management_page.dart",
+      "bytes": 11582,
+      "sha256": "b34d55acf0170b0bc93e882e598f38588e46d9643a1c325c629bd6430f0b7256"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/display_settings_page.dart",
+      "bytes": 6273,
+      "sha256": "98cf8bb1c16ba9025ec04706011bdfac44b8b3318d5c5e71753e08c9917cc758"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/help_center_page.dart",
+      "bytes": 7074,
+      "sha256": "efc1561ee459cc8ce81661e82310b77574e77e3eeb1be1caaeb62c834eeafc19"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/help_detail_pages.dart",
+      "bytes": 12887,
+      "sha256": "42f9051067bbc067a2243289bcc368455156fa8b64a0c556dcf6525bafb0031d"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/network_diagnostics_page.dart",
+      "bytes": 15620,
+      "sha256": "864de7607182b88cabebe23e775c0c93be858120fdcd9e1f945029f41e7fa48f"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/network_settings_page.dart",
+      "bytes": 8689,
+      "sha256": "0b2235d0fb8100e35c476f76c13c591abeca19037220fccb88c576b9b3468b9f"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/photo_settings_page.dart",
+      "bytes": 8846,
+      "sha256": "e62bee69220deda42bc91356901083b5c247bb82fe312ed96e128007e4559264"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/storage_target_page.dart",
+      "bytes": 19546,
+      "sha256": "1c66f43391ac0dff87df687669b788a18b0418478cbf64be88758e43c744fdf2"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/system_logs_page.dart",
+      "bytes": 13620,
+      "sha256": "5db515f148a5d17cf28076fac3f8b816d9915d17e49342888ec52eaa53e946c8"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/settings_cubit.dart",
+      "bytes": 4405,
+      "sha256": "7af9f9d718909bed43274e5442f9acadbe60d0f8dbacc2f36452bd8e23ccc56a"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/settings_experience_root.dart",
+      "bytes": 4034,
+      "sha256": "5d8cf01146e0d4c0e9e3ab3980a86bb6a582c763c2c2323262908425fcec7204"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/settings_page.dart",
+      "bytes": 12809,
+      "sha256": "09f8e8867c244412d9df653d10ae9987904f5a727e79d8fcf304c96fb360732f"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/settings_showcase_page.dart",
+      "bytes": 26276,
+      "sha256": "195d4093036a0d841ddcac213d1a663dfb99316e1de36fe0e24547bf3282425c"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/widgets/bird_settings_atmosphere.dart",
+      "bytes": 6121,
+      "sha256": "2b98c9df28d0cb4afc1e40add2ffa435e7514f6dfe57c2ebd44a4620b09da62e"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/widgets/bird_settings_card.dart",
+      "bytes": 1639,
+      "sha256": "eaa911a410e3e2f3e8a65c1cd6f0b7230ef379b26ff801d5b4c8a5bb618f95b8"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart",
+      "bytes": 4264,
+      "sha256": "20c4cc7f11cc37bdab721b8fd2ccde2c3f86b0c27649386f0b02fbce994419f3"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/widgets/bird_settings_row.dart",
+      "bytes": 3204,
+      "sha256": "5aadf2b035f35c60ce121d8677fed9db5b5bbaffa2fd9d6f74178d13098ffe5e"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/widgets/bird_settings_scaffold.dart",
+      "bytes": 2639,
+      "sha256": "2940b3df86c43fa1d7856ec6b84a1d3780e957bde2bda409ee60f79aab8819bc"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/widgets/bird_settings_sheet.dart",
+      "bytes": 3734,
+      "sha256": "cea43f4ea284e27a6e6c027a677a33a1b0a622a10ef04bfe14b689eece0ec6ac"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/widgets/cache_management_card.dart",
+      "bytes": 2826,
+      "sha256": "2469636290ea457ce2f11ed3c215e7d8660471dd59ab2da0b931f233f43ab0db"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/widgets/device_current_work_card.dart",
+      "bytes": 4786,
+      "sha256": "5437e7271384d37383a1da1b8075f39963c30cc7c264aa0892b0125beb5ef968"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/widgets/privacy_card.dart",
+      "bytes": 451,
+      "sha256": "83f2dcfa5a8a9ac8b645fa95baa9684bc32d4daf8ed5a99bde86e9330970f58c"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/widgets/version_info_card.dart",
+      "bytes": 855,
+      "sha256": "87e1406fd9b4dc16480285be6145b41210648e05d907d2f7a6bc4d975eb437b8"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/data/fake_smart_follow_backend.dart",
+      "bytes": 14546,
+      "sha256": "c5bb34e2bbd3860cbc15dc4d89d6e51405bef2444e5e0de296c114157d597fb4"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/data/smart_follow_api.dart",
+      "bytes": 10718,
+      "sha256": "f01e75db80ef830a88bfcba7f1dec38f8a857a0f574522ee15218e23fec4e47f"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/data/smart_follow_gateway.dart",
+      "bytes": 3146,
+      "sha256": "c75abf026737d8777e343fed622f5816b589a6e8a56d51a350951291c9016b12"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/data/smart_follow_repository.dart",
+      "bytes": 25963,
+      "sha256": "c11ebccc2a4e7611c95b2eeff258a42c6a55083d3071d6d2f86934635543f6cc"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/domain/continuous_queue_models.dart",
+      "bytes": 5154,
+      "sha256": "a419510ec3e128fdc0e25db952ef3dc864b20762014877cb1ded81d1443811ba"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/domain/smart_follow_metadata.dart",
+      "bytes": 15565,
+      "sha256": "6b90eae166e825cf14d79023b43cb714d8e3129ec939114d595d285c11b99676"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/domain/smart_follow_models.dart",
+      "bytes": 29524,
+      "sha256": "b125a653cfb67498f7ffe95fcc99ca5813d42cc8fe5c58a30a22c6cf64012283"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/entry/smart_follow_configuration_controller.dart",
+      "bytes": 14091,
+      "sha256": "64b046325141708acb1afd6ccc98d8ed32e2ebd8fee8ef79b1f6d4ff92dab731"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/entry/smart_follow_configuration_form.dart",
+      "bytes": 9051,
+      "sha256": "ca0dcbadd45e6447ef1ffb81aed7e30b41abb3411bee214e66829b04f7fe091e"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/entry/smart_follow_creation_service.dart",
+      "bytes": 13540,
+      "sha256": "805ee7b543184afb30a96c47b7131de6e75296658d5a7350b10003768698151c"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/entry/smart_follow_entry_decision.dart",
+      "bytes": 7076,
+      "sha256": "38e1f61f3f8117a352f9588c8ce9fbcee3839516fb26c49a795f1727291f562d"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/entry/smart_follow_entry_gate.dart",
+      "bytes": 3485,
+      "sha256": "41ad156c798bd619b0fb69cdc04c478a7b8341ae444cdff47579495adc7e4925"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/entry/smart_follow_entry_section.dart",
+      "bytes": 10229,
+      "sha256": "4ee83406adf21edcba1af6cc2536531afd723bc8093c33c28eadfb7c2f9f6c8b"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/entry/smart_follow_mode_panel.dart",
+      "bytes": 5000,
+      "sha256": "587d071b35695d57f310361cfeaf3f410ca3d0c04f4b4adf0123b42e6da7cba5"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/entry/smart_follow_start_panel.dart",
+      "bytes": 7003,
+      "sha256": "f17807b73ab877358819e065bdf9bcebcaaf617549a1b871e4416780fba325d6"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/entry/smart_follow_task_tile.dart",
+      "bytes": 6387,
+      "sha256": "0e01c33b0f10ef441a66085f2477064d4b04a6600eae8085f8dd23379d228b07"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/finish/smart_follow_completion_controller.dart",
+      "bytes": 15236,
+      "sha256": "c2c9e8d897ee9a61b4a1b0b9ea592aecc421fe66e1034b402bf355d92aa8d2c5"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/finish/smart_follow_completion_page.dart",
+      "bytes": 13662,
+      "sha256": "cfdc7a877e3f595e40a2128eb73fe7e2b9a0f1b1022125684b2c8ddda28cfdd2"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/finish/smart_follow_metadata_controller.dart",
+      "bytes": 10122,
+      "sha256": "4bec0bc48d0520d2dfd2b76e5dce171a3df25c4863d6396519546a6ee5a6a483"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/finish/smart_follow_metadata_preview_page.dart",
+      "bytes": 7549,
+      "sha256": "f0e9c3f278b53a55fdeee6fd50cd25eeaf7d395b57e2b3051f674ef658904f37"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/finish/smart_follow_metadata_section.dart",
+      "bytes": 5899,
+      "sha256": "f2a13a9333747be46e179b017f25c013bd3cc58cda0c48d2c9ebdd7164ff085b"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/finish/smart_follow_metadata_update_controller.dart",
+      "bytes": 7383,
+      "sha256": "19389e48e511527630e26b2952bc0817f4b5bea26a8dab469a18e60148b86141"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/finish/smart_follow_metadata_update_page.dart",
+      "bytes": 12342,
+      "sha256": "8e6d11affb615f5e2a453ac1628c5ceb629b85dc618c11b58a2e4abb0ecb5c89"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/run/grouped_copy_history_page.dart",
+      "bytes": 6266,
+      "sha256": "d0da98848acee3bbd2b6947b0825a4c871af27797324b1494d959eda042b0153"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/run/smart_follow_child_jobs_view.dart",
+      "bytes": 6355,
+      "sha256": "3b7eca42ac0f22413b562398c266ce5078232263ff3c7eb695dc449d9da3133c"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/run/smart_follow_files_page.dart",
+      "bytes": 5669,
+      "sha256": "768c7c28fbf5197f7d1fcb8d65102a55025b408879b6007a7bd6543f6afb1896"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/run/smart_follow_run_page.dart",
+      "bytes": 22695,
+      "sha256": "41ce3a5e35f9a991b4116bc0e0ea5c37bc785d77063d8b265e89388258ecd4a9"
+    },
+    {
+      "path": "lib/bird_companion/features/smart_follow/presentation/run/smart_follow_stage.dart",
+      "bytes": 8225,
+      "sha256": "49620f53f662806ea326bf4fc9c101056337661d2193a2fcd17c2187f33883f6"
+    },
+    {
+      "path": "lib/bird_companion/features/storage/data/storage_api.dart",
+      "bytes": 641,
+      "sha256": "296bce783f8b5d8f8c0abfec128229e1a9bce09bef42ba27670df6aa07e002b7"
+    },
+    {
+      "path": "lib/bird_companion/features/storage/data/storage_repository_impl.dart",
+      "bytes": 590,
+      "sha256": "83b73f24e18c7f710e8549c8ad2079ef84b162bf8c0d917da6cc104fd52fe3af"
+    },
+    {
+      "path": "lib/bird_companion/features/storage/domain/card_scan_result.dart",
+      "bytes": 1679,
+      "sha256": "121721c17606df99e94048f93b4805f4d16e5b583b3269adc5210db4ec1bd514"
+    },
+    {
+      "path": "lib/bird_companion/features/storage/domain/storage_repository.dart",
+      "bytes": 279,
+      "sha256": "db4d07c19ff1daf9daaa9435160a8144f63207b2660ca1abb7b04eaad28852a0"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/demo/demo_task_experience_data_source.dart",
+      "bytes": 3966,
+      "sha256": "41f85bfd3f8ed0abb606b1506cb22cb290625f38ad78c36d1a48699463728040"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/domain/task_destination_resolver.dart",
+      "bytes": 1653,
+      "sha256": "3637c23bd42723e2c24fc8b387f3f2aa12b734e14daa80dfe142b835c7309d15"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/domain/task_experience.dart",
+      "bytes": 7131,
+      "sha256": "cb75929670c21895ee1ed2f358c49993c2e42bb3f9e4f5f84c9deac4aa8ce606"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/domain/task_home_capability_resolver.dart",
+      "bytes": 8180,
+      "sha256": "e230d067da3390b6fbd9bc08d3c93a01a5304587071e16c62a60ee172c09369f"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/adapters/job_status_view_adapter.dart",
+      "bytes": 4683,
+      "sha256": "08eee31a32702e1bea1f7a032f24ba5651aca6d037a3c1f0065178f1060244dd"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/pages/batch_setup_page.dart",
+      "bytes": 7069,
+      "sha256": "0ca8cb412a3812328588222119bc49122289eb9c0c4770a43db18d52980a6119"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/pages/copy_confirmation_page.dart",
+      "bytes": 6248,
+      "sha256": "fc5e5ef5a92d9298ebd9cd46ecac1bfa511236ad4766252bf35904fc5b9e9f4b"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/pages/copy_content_page.dart",
+      "bytes": 8865,
+      "sha256": "79828294b3051f468152f519991a8f630987b6e41eb321fc250f148d840b8ba1"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/pages/production_task_result_page.dart",
+      "bytes": 12320,
+      "sha256": "3240248dffa847acc6668bdccdcf87cf3478d3a6057e25f6cd7b796123f92449"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/pages/sd_card_flow_page.dart",
+      "bytes": 18231,
+      "sha256": "86ebd621aed018cd03426a7bf771c4ba368531fa5bd84711d1a3d4fa07395389"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/pages/task_detail_page.dart",
+      "bytes": 20500,
+      "sha256": "e08c670923e1ba0dde4c54e001774d3b4893aadf81c2b89d899e9d3cc7960d0a"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/pages/task_home_page.dart",
+      "bytes": 22966,
+      "sha256": "dd86205f49889e6a2087b1239a0fb5c502b9ce0f4256fb62483d2536184edb06"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/pages/task_result_page.dart",
+      "bytes": 5907,
+      "sha256": "8b3ab9c9df09fb1a5987513f1a189fd8bb6d42901c6db506b9ecfcc1230048d0"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/pages/task_sync_job_summary_sheet.dart",
+      "bytes": 3772,
+      "sha256": "5090330211c1680e0c2b95ad5d6e1a53d5c128a37322b2c44ac0216d8286c886"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/pages/task_sync_result_sheet.dart",
+      "bytes": 8457,
+      "sha256": "c486ead14763488a89af829120d869660f51f0d01470816a8f08247712ab6f62"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/production_task_experience_data_source.dart",
+      "bytes": 1298,
+      "sha256": "6674f5eb01205c3d092df33bd9c4c1886374722e70cafc270fb45ffaffac9ea9"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/repository_task_experience_controller.dart",
+      "bytes": 35245,
+      "sha256": "c19a1369bc96e85b749a53db16ab35b564e3beb47fc89a1219d8762e7e828451"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/task_experience_controller.dart",
+      "bytes": 12553,
+      "sha256": "9e60d58f3b322b6f3cfc09b9cdaf174808206de5260622b7deb1834b3502f4ea"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/task_experience_root.dart",
+      "bytes": 26946,
+      "sha256": "540685c4c2f0529a5315cedd049c9a8e3d28099bafdca8df7c7bdaf0e3be61ec"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/widgets/task_design_components.dart",
+      "bytes": 7176,
+      "sha256": "18a0ff924920b791cf648e87de20cd6d156f594c5a2131ec19e1d63fb7991116"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/widgets/task_nature_background.dart",
+      "bytes": 1348,
+      "sha256": "79f412f3f5d86cb3cd48ec778589228afdbb3bb4760ea13ed7cf3c2dc56437af"
+    },
+    {
+      "path": "lib/bird_companion/features/tasks/presentation/widgets/task_page_frame.dart",
+      "bytes": 5427,
+      "sha256": "51795408a8a88bbf1a16c7b383dd80ef31180109d0dc1dd203f1c366d47c87ff"
+    },
+    {
+      "path": "lib/bird_companion/simulation/embedded_demo/demo_runtime.dart",
+      "bytes": 5933,
+      "sha256": "33fa92c1c14122c4fc5edf2565b5d4f6cf1b40ee7ea7d7fb4d7c6b3ab5a19837"
+    },
+    {
+      "path": "lib/bird_companion/simulation/embedded_demo/embedded_demo_app.dart",
+      "bytes": 7467,
+      "sha256": "9077e4d0569c497ef3a730518604d15a9b621897d9d8db6d26496b193e60a0a9"
+    },
+    {
+      "path": "lib/bird_companion/simulation/mock_box_server.dart",
+      "bytes": 160277,
+      "sha256": "8c96061edb4999f9194911b86a028b173b38456bb488061ff5ebdc63cf10051f"
+    },
+    {
+      "path": "lib/bird_companion/simulation/repair_acceptance_profile.dart",
+      "bytes": 3124,
+      "sha256": "7fada5da7f5a40d92b2044ff98b68096152cb73f797eb7aadf6dfb8bd7f1f63f"
+    },
+    {
+      "path": "lib/bird_companion/simulation/repair_acceptance_workflow.dart",
+      "bytes": 9506,
+      "sha256": "df85be9ac25766f7bf2ea522e3779fe43acda14fe0042b225b7eacf3eea2bab8"
+    },
+    {
+      "path": "lib/bird_companion/simulation/simulated_bird_box_debug_app.dart",
+      "bytes": 10435,
+      "sha256": "02da1db9f2b4237c59ea16fcb587127dae3d6cf4c449fefe744cb2ac41d836f3"
+    },
+    {
+      "path": "lib/main.dart",
+      "bytes": 118,
+      "sha256": "d10f9fd5aaba75873e29f135a927f241da0f55917d3ae121ef0068ea19bbc8a5"
+    },
+    {
+      "path": "lib/main_bird.dart",
+      "bytes": 327,
+      "sha256": "a2912a287e2af3a51ef638614e57805524c43224880b4fe926d04aba96f94dd8"
+    },
+    {
+      "path": "lib/main_bird_demo.dart",
+      "bytes": 687,
+      "sha256": "6ad9efc65ef0a82b50b6f005901b45caf50a5e7a9c56a04f7ba8d604dc296978"
+    },
+    {
+      "path": "lib/main_bird_settings.dart",
+      "bytes": 6561,
+      "sha256": "01cac248448744c6aa2e13cdb8f4573eb14651100ae4be2fb71191fad741b139"
+    },
+    {
+      "path": "lib/main_bird_simulated.dart",
+      "bytes": 959,
+      "sha256": "13fd0e601548e0aa381dd7930b786a745cf16ad20973726d753880428b70e7e1"
+    },
+    {
+      "path": "pubspec.lock",
+      "bytes": 25889,
+      "sha256": "46d5404a7a0b094f2e07c8f3e7b6466ab7fbf5156de2588fb9882460f89f37d7"
+    },
+    {
+      "path": "pubspec.yaml",
+      "bytes": 1235,
+      "sha256": "a893398701fbe78b892abd830bd216a9db6a3d776b4ae91b9e5d7a727b515af8"
+    },
+    {
+      "path": "test/bird_companion/acceptance/b7_preflight_gate_test.dart",
+      "bytes": 3029,
+      "sha256": "289bb7112a93eddc36071732c62f69be0d7bc21fcc630451da621c72dcbbf0eb"
+    },
+    {
+      "path": "test/bird_companion/acceptance/b7_simulated_demo_page_test.dart",
+      "bytes": 3754,
+      "sha256": "9ca2116c1a63c143b6a63db14216768ee5212ff4d93634393d2390f7b6e7ba0e"
+    },
+    {
+      "path": "test/bird_companion/acceptance/ble11_simulated_evidence_test.dart",
+      "bytes": 3921,
+      "sha256": "4d5113fa6cbb0be5d785307a77a3a610c7df08285e2ceeb03b7547651ccb2976"
+    },
+    {
+      "path": "test/bird_companion/acceptance/ble11_virtual_box_isolation_test.dart",
+      "bytes": 1506,
+      "sha256": "04748f6523bc76ea0e6ed1b2d23af9b804982990435ac008ffed207fc5a21330"
+    },
+    {
+      "path": "test/bird_companion/acceptance/ble12_candidate_package_test.dart",
+      "bytes": 12978,
+      "sha256": "606ac9092fa49edc5534b89043b68be91064361a9e31679503ec7067d6864669"
+    },
+    {
+      "path": "test/bird_companion/acceptance/ble20_bond_first_evidence_test.dart",
+      "bytes": 10426,
+      "sha256": "1aa6c959f1e1a3ae916a996d76d4cbed554dd904c8bd6f828b09feb3a1a3c932"
+    },
+    {
+      "path": "test/bird_companion/acceptance/ble20_local_capture_test.dart",
+      "bytes": 1460,
+      "sha256": "d45ca7cd3ad4393b189cbf9344a84483c91e240026da26fd7e9d527b3030d029"
+    },
+    {
+      "path": "test/bird_companion/acceptance/ble22_capture_test.dart",
+      "bytes": 3337,
+      "sha256": "e3ee5c05a21a68d7d8a3910cadbdd95fb35359b3e657eb43a77c9bc9fa578828"
+    },
+    {
+      "path": "test/bird_companion/acceptance/ble22_phone_semantics_test.dart",
+      "bytes": 1353,
+      "sha256": "a25c7708fb2ea364396408c96dcb72a1f3b7cdf3991c24cebbc75ae3a0b2f7ef"
+    },
+    {
+      "path": "test/bird_companion/acceptance/ble_provisioning_evidence_template_test.dart",
+      "bytes": 4086,
+      "sha256": "6bab33c896fe0d41fd40ca865ecca55a2ad24c9060de789bb268abcedf30d597"
+    },
+    {
+      "path": "test/bird_companion/acceptance/ble_provisioning_rc4_acceptance_test.dart",
+      "bytes": 1828,
+      "sha256": "42a34cfa1a7705df8c6521edd1d4512b0689ad50cec265d8db775a5eb6c5da54"
+    },
+    {
+      "path": "test/bird_companion/acceptance/ble_provisioning_real_device_gate_test.dart",
+      "bytes": 7751,
+      "sha256": "acc41bf8839bad3de55afd67ef7cae755e1081bd2faa495e863338f369c9b4a7"
+    },
+    {
+      "path": "test/bird_companion/acceptance/production_b12a_k7_acceptance_test.dart",
+      "bytes": 1137,
+      "sha256": "1133214b013a52b26b5962e1808fa5975f30ac92dd3c123fa4259d550ce988af"
+    },
+    {
+      "path": "test/bird_companion/acceptance/production_b12b_release_gate_test.dart",
+      "bytes": 6577,
+      "sha256": "c52d712ed61a2ca92dfce56a3f2c6c6257ba87c828a81b6be3f90703825e0f57"
+    },
+    {
+      "path": "test/bird_companion/acceptance/progressive_media_p4_acceptance_test.dart",
+      "bytes": 7266,
+      "sha256": "ac9083b1daf13d480b4394db742954000690de757646371db24cd0aee2f4d0c7"
+    },
+    {
+      "path": "test/bird_companion/acceptance/rc4_hf_ble_03_evidence_validator_test.dart",
+      "bytes": 16352,
+      "sha256": "8187e99935fc235428226e5acad2e0d65aa7b199effd8251d83cd452de57ba43"
+    },
+    {
+      "path": "test/bird_companion/acceptance/rc4_hf_ble_04_release_gate_test.dart",
+      "bytes": 13018,
+      "sha256": "63524d1081318bec0bf4d6ce158ad967908bf5252f51e560bcc6a9115de9223b"
+    },
+    {
+      "path": "test/bird_companion/acceptance/rc4_hf_ble_05_handoff_gate_test.dart",
+      "bytes": 9141,
+      "sha256": "b88c2eb9bfea4fd33e26b8f917f03edfc642ddfb9b22fc9a9d46e1a4cba22a8b"
+    },
+    {
+      "path": "test/bird_companion/acceptance/rc4_hf_ble_16_evidence_validator_test.dart",
+      "bytes": 8432,
+      "sha256": "fdae055306f6d245680d67278cbb68ec438c3e741adee0ffcb8bab048287d0fa"
+    },
+    {
+      "path": "test/bird_companion/acceptance/simulated_debug_entrypoint_test.dart",
+      "bytes": 9507,
+      "sha256": "8c8de41541833065c6781f790659b39fdb0ed1e2d7d287d24540a51aa3743254"
+    },
+    {
+      "path": "test/bird_companion/android_flavor_isolation_test.dart",
+      "bytes": 2150,
+      "sha256": "f586e562711e66b92b85eb35ac3e4b36e2b902710b7f08b78ce0effd73c422c7"
+    },
+    {
+      "path": "test/bird_companion/app/app_theme_interaction_test.dart",
+      "bytes": 2040,
+      "sha256": "8bf90cc2da1fb93651063a54596f7a50337806a5741de7b411888db6be1b126e"
+    },
+    {
+      "path": "test/bird_companion/app/disconnected_device_startup_test.dart",
+      "bytes": 2494,
+      "sha256": "abc187e25d90a88731503424df22d1684ce263f9cc2da231a79b28087228072e"
+    },
+    {
+      "path": "test/bird_companion/app/reconnect_connection_route_test.dart",
+      "bytes": 2771,
+      "sha256": "7a1fe694612d5d26c0b028e80b2572c08d193029fe3eae6bbec41c1a10acf76e"
+    },
+    {
+      "path": "test/bird_companion/core/api_contract_compatibility_test.dart",
+      "bytes": 4286,
+      "sha256": "62ffa4ee34111b6ec7e9f32f31e3ff69041f5a5b856a20702c648e5279151aed"
+    },
+    {
+      "path": "test/bird_companion/core/authentication_flow_test.dart",
+      "bytes": 13462,
+      "sha256": "804d29cedeb83eb1b8013febb55449d85c342f328c4fbc919f503a04aaaaec88"
+    },
+    {
+      "path": "test/bird_companion/core/batch_models_test.dart",
+      "bytes": 1783,
+      "sha256": "3e65bd0a136f2abe8cfe771fd030298b1e3f9b94699b0b807339045c056c0847"
+    },
+    {
+      "path": "test/bird_companion/core/cache_schema_migration_test.dart",
+      "bytes": 4274,
+      "sha256": "d31f39e057c227ce3d28a6b7dc81017663ffb02c51e1cb7c0cd9c5795e2697b0"
+    },
+    {
+      "path": "test/bird_companion/core/client_identity_store_test.dart",
+      "bytes": 1428,
+      "sha256": "1de03be23a27e47dc100fee9cf9a606350cf6552752ab3d7ecce1751db260d36"
+    },
+    {
+      "path": "test/bird_companion/core/event_client_close_test.dart",
+      "bytes": 6199,
+      "sha256": "f2558eac5647d043458716553a266e4c454b23b37b6a0e24ff12e8165f6e9fab"
+    },
+    {
+      "path": "test/bird_companion/core/import_project_backfill_test.dart",
+      "bytes": 3774,
+      "sha256": "51e3ab01faa314d78eea3defd596229a6e1572093a477c4285b74fb97a19a220"
+    },
+    {
+      "path": "test/bird_companion/core/media_asset_auth_test.dart",
+      "bytes": 2612,
+      "sha256": "570ef7c220f55f79568587c2e89fdd835424cc33926fdfdb254f3963ecab5066"
+    },
+    {
+      "path": "test/bird_companion/core/media_asset_coordinator_test.dart",
+      "bytes": 5204,
+      "sha256": "988a0b4ac2d7feba85a8c7923bf490d1249942f6d319a57a50d430e25ed4e0ea"
+    },
+    {
+      "path": "test/bird_companion/core/media_asset_service_b4_test.dart",
+      "bytes": 8710,
+      "sha256": "4a7c597aac19ef95fe6fb2e85fd1199be8f2e5b3714da7c363e78d522fade843"
+    },
+    {
+      "path": "test/bird_companion/core/media_uri_resolution_test.dart",
+      "bytes": 1687,
+      "sha256": "f709b48352e1c9e85e08b03fa5f7c7ff4ceea40499339fdb5db3dff81f32c899"
+    },
+    {
+      "path": "test/bird_companion/core/mock_box_server_test.dart",
+      "bytes": 22743,
+      "sha256": "564f9829a726f86b1909e18931fe0cde6b13850b8e5941b6ac85e08dd499f566"
+    },
+    {
+      "path": "test/bird_companion/core/offline_sync_test.dart",
+      "bytes": 14354,
+      "sha256": "02053071836b3c4da0da0156d083f4a825315c4fa15e024c8b0be5fa24f43753"
+    },
+    {
+      "path": "test/bird_companion/core/pending_operation_device_test.dart",
+      "bytes": 1572,
+      "sha256": "0083b88763590685c95f730bcc6bdc56a0a05c1a23125fdc147ce49123a32134"
+    },
+    {
+      "path": "test/bird_companion/core/photo_detail_paging_args_test.dart",
+      "bytes": 1603,
+      "sha256": "53008d3002e53e5a3af45e4e625bcf8e2b85d825cd4651482ae8901c23730b95"
+    },
+    {
+      "path": "test/bird_companion/core/progressive_media_mock_test.dart",
+      "bytes": 5413,
+      "sha256": "b1a84a8ce286a40e2c4197069a098f671e76a828ca83bed3f2b9edf209a9762d"
+    },
+    {
+      "path": "test/bird_companion/core/progressive_media_models_test.dart",
+      "bytes": 3018,
+      "sha256": "f4eddc04f4db8296f98a556491581b40924f34d7af1fe4a9cc6981a0d3a013b0"
+    },
+    {
+      "path": "test/bird_companion/core/provisioning_error_mapping_test.dart",
+      "bytes": 6245,
+      "sha256": "64be8ecacc9543f8024ec2cfd82bef51b568c561b533d8cab340389e79b89610"
+    },
+    {
+      "path": "test/bird_companion/core/tag_input_test.dart",
+      "bytes": 475,
+      "sha256": "e2a4f9b74038256eaad5cd20e0a15fe7d4bbda50b0b13c1a29407e1aabfe83d1"
+    },
+    {
+      "path": "test/bird_companion/core/user_facing_text_test.dart",
+      "bytes": 404,
+      "sha256": "70f690e877a7d41fc2e2298c0189830ca0447218332c1eaf85d67bf2291db57d"
+    },
+    {
+      "path": "test/bird_companion/default_entrypoint_test.dart",
+      "bytes": 538,
+      "sha256": "58d45e5de68649bc61e65924f8ac7dc25a28f4572ca4897f2778283947745cb2"
+    },
+    {
+      "path": "test/bird_companion/diagnostics/phone_diagnostic_retention_test.dart",
+      "bytes": 5642,
+      "sha256": "2a7ddba797bdb7f58be1fcbbe7ba404f86c1b86185f2b623eb354dc4fe103a8d"
+    },
+    {
+      "path": "test/bird_companion/diagnostics/phone_diagnostic_widgets_test.dart",
+      "bytes": 5602,
+      "sha256": "9fe21557baa2a0baac863dd5ac8d15fe6025f3bacf363f74d8cfa66c9017f263"
+    },
+    {
+      "path": "test/bird_companion/diagnostics/phone_http_diagnostics_test.dart",
+      "bytes": 8485,
+      "sha256": "cfa2570ff3fa2bef9576031fedaf2920da26032f9e1d5955cbf9d44769884c3d"
+    },
+    {
+      "path": "test/bird_companion/features/batches/batch_filter_bar_test.dart",
+      "bytes": 2269,
+      "sha256": "26b33ccb78b40549c7cc0468acb62c813a862e04cf0b7a07d4da29fe819121ad"
+    },
+    {
+      "path": "test/bird_companion/features/batches/batch_history_filter_test.dart",
+      "bytes": 3634,
+      "sha256": "917677bdcf5e9cacea3116984b107e31acca5684bc507e274b24e295093c92ce"
+    },
+    {
+      "path": "test/bird_companion/features/batches/batch_list_cubit_race_test.dart",
+      "bytes": 4831,
+      "sha256": "9f15522cff7360abe8d0d8c95237978e6034a0f4626de4a7ad2a066b99b82767"
+    },
+    {
+      "path": "test/bird_companion/features/batches/batch_list_page_filter_test.dart",
+      "bytes": 7314,
+      "sha256": "5f53f28f4975dbccb2e6b73b0a20bdc7c45f99f12b33e51a9bd83d5a0ebc5cce"
+    },
+    {
+      "path": "test/bird_companion/features/batches/batch_list_tile_status_test.dart",
+      "bytes": 2271,
+      "sha256": "c6fffbe8f37d230e2cbdd3a02f5a920c76d69cf6d5cdf404b5f2094b03047df7"
+    },
+    {
+      "path": "test/bird_companion/features/batches/current_batch_card_test.dart",
+      "bytes": 2994,
+      "sha256": "30cb337fd4536b7b8086b60117505fd08947b4bc08f2bfa819477c9cf3b5052d"
+    },
+    {
+      "path": "test/bird_companion/features/batches/gallery_batch_summary_delta_test.dart",
+      "bytes": 8459,
+      "sha256": "8ed17afd5a4513737973d97519470d656841ce5d179ac04bf5aee87bfbf10eaa"
+    },
+    {
+      "path": "test/bird_companion/features/connection/api_connection_failure_test.dart",
+      "bytes": 4521,
+      "sha256": "608b67ebc405e76961306cfd0c0257895d22bbf2e06177bc437fc7271d0509a7"
+    },
+    {
+      "path": "test/bird_companion/features/connection/b5_b6_session_recovery_test.dart",
+      "bytes": 13070,
+      "sha256": "e4f31b7145cf6b6949684290e199715b9f7f612a18a5f45d4675004dbf7b4d44"
+    },
+    {
+      "path": "test/bird_companion/features/connection/birdbox_dpp_platform_test.dart",
+      "bytes": 3601,
+      "sha256": "2496dd32ea23a6ad266e8a39e7bf025b188b50303440c2dbb17922aca6a1558d"
+    },
+    {
+      "path": "test/bird_companion/features/connection/birdbox_wifi_platform_test.dart",
+      "bytes": 3047,
+      "sha256": "70c53f39fa42c43ac48858fa3a4335268026eb23d946c4ec8007b5b617d8b2e1"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble1019_b5_navigation_test.dart",
+      "bytes": 14316,
+      "sha256": "424274a2379220c35966c2f08cc0ebbdfb2cf0902f4f3c0684ecaba2d7a9154e"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble1019_b5_release_repository_test.dart",
+      "bytes": 8415,
+      "sha256": "db6b138bac09673e87e4691394b67d3c110fbd7bb7e0024510d2d0a547f6c7e1"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble1019_batch2_release_test.dart",
+      "bytes": 16821,
+      "sha256": "010705859c21a938eb9b630df17e39b85d0c6d740d9ef67b01d6c348777714ee"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble1019_batch3_regression_test.dart",
+      "bytes": 5921,
+      "sha256": "743bda9639288e5f7102fd48e4e8cf427c739fc85fdca7031cad195d35026f6d"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble19_retention_test.dart",
+      "bytes": 10348,
+      "sha256": "90dbb5d20a8345f59f03e00dd58d464dd11a34de5e4d40899ddb289222f43784"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble21_business_flow_test.dart",
+      "bytes": 5817,
+      "sha256": "28ac212fac70329f743976a159d1ea9a166f280260842ec3962ce2016233da89"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_attempt_failure_test.dart",
+      "bytes": 13200,
+      "sha256": "bbc7d91a33283904d82cb119b7695d739e39bc8ab61c9243b88ba6c2c2b30c6c"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_batch2_lifecycle_test.dart",
+      "bytes": 17380,
+      "sha256": "41e4ba359b282ef79ffd1cdd560c73d4e89c90ac08a57c783c15985d92aeda71"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_connection_diagnostics_test.dart",
+      "bytes": 13369,
+      "sha256": "82c681f6b85a917fbd2044758a87d9398b2e4afe64097a8dc7b329760dc6d9d5"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_connection_page_test.dart",
+      "bytes": 14593,
+      "sha256": "f35c8264dad9fb77b3b5e3b8ca7ef621467688446a88641e684d6450e8e46f50"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_diagnostic_export_test.dart",
+      "bytes": 8307,
+      "sha256": "8659a76e26974129be8e062ffc22e52e38579730c0f451c12d36e7b71db0d720"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_diagnostic_file_test.dart",
+      "bytes": 5989,
+      "sha256": "91d428114c0ebbfdea9d509c71f18a9c4dd2853cb40164b3ca21e52e5a9287d4"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_diagnostic_snapshot_test.dart",
+      "bytes": 9392,
+      "sha256": "a7bcf21e0b137b9d3ecd57de159513dec296a9aa4fe29be09d473911776aee5a"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_discovery_test.dart",
+      "bytes": 42347,
+      "sha256": "ca9bf6c350791279514082691955e307cc628e17e51d89cac840364d7d834123"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_fragment_codec_test.dart",
+      "bytes": 4961,
+      "sha256": "23b3917853b54ae404da00729e9c3a4f20dcd21c9b6d347a0f08d9bba7213f58"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_message_codec_test.dart",
+      "bytes": 3248,
+      "sha256": "b3da4b9815c8d244bbd820d6f9dad96a2d65f0be5c7f3f9fac9be05feaffd452"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_pairing_evidence_test.dart",
+      "bytes": 1427,
+      "sha256": "f5b4fd3a520b113d5a4d86da7e56daa601980d60fd9fed2f12504648b901a2f5"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_protocol_constants_test.dart",
+      "bytes": 2522,
+      "sha256": "4c94f43052446498c6513a937ff50bcea50e90b426d2f3d7a3eb945dfacfe4f2"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_provisioning_simulated_flow_test.dart",
+      "bytes": 5084,
+      "sha256": "c765190480dc5c8de7868fbae99675c8be82cfb1fb3d85fbe9f0c4b16159bff4"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_request_idempotency_test.dart",
+      "bytes": 1415,
+      "sha256": "7ef1e48a6e6aa63e102989edc1b0b6c41925f52a0189d7756ff7c02f3721524d"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_scan_b7_evidence_validator_test.dart",
+      "bytes": 2819,
+      "sha256": "b280147c5f73ca4661e3fcf444fc6b8bfc50a50bf169e8555c738d6bfabae234"
+    },
+    {
+      "path": "test/bird_companion/features/connection/ble_security_write_recovery_test.dart",
+      "bytes": 24541,
+      "sha256": "b789958229a45ae65a77e105dc552a4d80f32b7d3d2ef82ef44b94534f48797c"
+    },
+    {
+      "path": "test/bird_companion/features/connection/business_http_disconnect_reproduction_test.dart",
+      "bytes": 8519,
+      "sha256": "1df925d192775fd1ddeb6e22917ffe0388dcd2a6e9ee9b73d48ff84bd46b1fbe"
+    },
+    {
+      "path": "test/bird_companion/features/connection/connection_1023_storage_test.dart",
+      "bytes": 8331,
+      "sha256": "5fb2532464c20603d6344605fea2e3e0b727e112244bcf8a05267285a5cbf74f"
+    },
+    {
+      "path": "test/bird_companion/features/connection/connection_attempt_20261020_test.dart",
+      "bytes": 5624,
+      "sha256": "f10aa137bb186b71d19cad49930636059c7cb3f7e9e3535753452bbab69f1674"
+    },
+    {
+      "path": "test/bird_companion/features/connection/direct_ap_handoff_test.dart",
+      "bytes": 15019,
+      "sha256": "085a0d4e8552ea81371eb06fe158e6a1cf942a7a1a52ac8af11a3d466e79179f"
+    },
+    {
+      "path": "test/bird_companion/features/connection/direct_ap_python_backend_test.dart",
+      "bytes": 5923,
+      "sha256": "1ba7c09a4fdc8b425b6a80c71fc7ba41195c37e966e4c004c689305ed36214d8"
+    },
+    {
+      "path": "test/bird_companion/features/connection/dpp_provisioning_repository_test.dart",
+      "bytes": 10102,
+      "sha256": "beea8f10573460d3e85a4c9ca8cc6d2eea780ce9f11c09d63c1344f7a0f1d964"
+    },
+    {
+      "path": "test/bird_companion/features/connection/dynamic_base_uri_test.dart",
+      "bytes": 2967,
+      "sha256": "bc0260466aefde01adf085c5a850508aaaf583b63682bb055ab004af531c50fc"
+    },
+    {
+      "path": "test/bird_companion/features/connection/existing_network_authorization_test.dart",
+      "bytes": 6134,
+      "sha256": "5f460913386b913be8cf6a6774e0badce17119154944ae3867b23a37de01353d"
+    },
+    {
+      "path": "test/bird_companion/features/connection/fakes/controlled_provisioning_repository.dart",
+      "bytes": 2648,
+      "sha256": "06f253990e8ca6b4288777e9b9fb6e53bdfc2f996ba6cc57f9607948396c22cf"
+    },
+    {
+      "path": "test/bird_companion/features/connection/fakes/fake_birdbox_ble_data_source.dart",
+      "bytes": 4000,
+      "sha256": "40f5298b2d274aa76ee2c5d76d04290a6e5afabe796c1ee9d45748142654a164"
+    },
+    {
+      "path": "test/bird_companion/features/connection/fakes/fake_birdbox_dpp_platform.dart",
+      "bytes": 1138,
+      "sha256": "599f373c9f718bd428d461bf5381958609f7d72b6c8e8c6cf85f1d3c08528018"
+    },
+    {
+      "path": "test/bird_companion/features/connection/fakes/fake_birdbox_wifi_platform.dart",
+      "bytes": 1808,
+      "sha256": "31e3d7a3339d639eec6a366833a77028b57b808822291d3448f1fc11d330f1d4"
+    },
+    {
+      "path": "test/bird_companion/features/connection/fakes/fake_provisioning_repository.dart",
+      "bytes": 7803,
+      "sha256": "b38d15365701a2af0261c0f251fbd81c091f4b76b2f25a49d4e80ed0251741dd"
+    },
+    {
+      "path": "test/bird_companion/features/connection/fakes/preflight_ble_platform.dart",
+      "bytes": 13706,
+      "sha256": "57e31bf52112fb87aba76dee30c8794e8c5f7c956295d4251d479fb16da3c4ba"
+    },
+    {
+      "path": "test/bird_companion/features/connection/health_pairing_api_test.dart",
+      "bytes": 2388,
+      "sha256": "2f61028c0da0a970b0589b91f10a1a956f22ca54ac6b81cf0084ec9d6d820616"
+    },
+    {
+      "path": "test/bird_companion/features/connection/http_authorization_readiness_test.dart",
+      "bytes": 5120,
+      "sha256": "9d98b4c7d7c419f9527ef08e37b2afae0ae16e46ef0b4b23b01898a9e7d7b6f6"
+    },
+    {
+      "path": "test/bird_companion/features/connection/network_operation_resume_test.dart",
+      "bytes": 10329,
+      "sha256": "a63166b8ef2345e9c1338a07bcc88430ef534f420ccaac66f6163f4a7e453b6b"
+    },
+    {
+      "path": "test/bird_companion/features/connection/network_provisioning_cubit_test.dart",
+      "bytes": 49722,
+      "sha256": "672a96400cc7232c0c3621a9dc3b1a21f8f5709fcc3a17e2e4b2d65e4258b7e8"
+    },
+    {
+      "path": "test/bird_companion/features/connection/network_provisioning_page_test.dart",
+      "bytes": 32004,
+      "sha256": "5c8d1173b7947c77dacac3278e8220b91d76a264a5e52e9bd9d0107318f7fa27"
+    },
+    {
+      "path": "test/bird_companion/features/connection/nov18_b5_fault_matrix_test.dart",
+      "bytes": 15386,
+      "sha256": "3902722d51b706f47faaf56dd0acad59c211de24fc5be6a11120e3fb1b093d12"
+    },
+    {
+      "path": "test/bird_companion/features/connection/nov18_b5_regressions_test.dart",
+      "bytes": 3709,
+      "sha256": "bc42910526385ab43173a25f83fc7de571fa4d8ad4fb414c8da2c9c24fc8578c"
+    },
+    {
+      "path": "test/bird_companion/features/connection/pairing_code_form_test.dart",
+      "bytes": 1846,
+      "sha256": "a67914e26c98d20b9f307e78255b3540950803e115393613fa79b9809fb15fb8"
+    },
+    {
+      "path": "test/bird_companion/features/connection/pairing_flow_test.dart",
+      "bytes": 4039,
+      "sha256": "cd1bc2c67ca9643cb9f11c2418e3b5869e5b1bd49ebfa8a402585681c87c6381"
+    },
+    {
+      "path": "test/bird_companion/features/connection/pairing_preflight_flow_test.dart",
+      "bytes": 31142,
+      "sha256": "bcef44572ffc430c4b29c42425a81815eba4b64af2abb0be872683597efc7af3"
+    },
+    {
+      "path": "test/bird_companion/features/connection/pairing_preflight_platform_test.dart",
+      "bytes": 21190,
+      "sha256": "2f723cdb5508303660f37d414cb5654d85d0bd4a447938a4a16b2dba86078390"
+    },
+    {
+      "path": "test/bird_companion/features/connection/pairing_preflight_protocol_test.dart",
+      "bytes": 12682,
+      "sha256": "0f89ab7293ad268fc381d86190529624a5ac108bd589e84487ce3059a356a817"
+    },
+    {
+      "path": "test/bird_companion/features/connection/pairing_preflight_repository_test.dart",
+      "bytes": 7701,
+      "sha256": "370b425fbaeffed8bc47146b42ac162529ef1a6858a7a139480f5218dd3e8d30"
+    },
+    {
+      "path": "test/bird_companion/features/connection/provisioning_cubit_test.dart",
+      "bytes": 8315,
+      "sha256": "f5bd43642aee62d030885c80985cd9c2db408354ddb1c45ff44d08b206543fcf"
+    },
+    {
+      "path": "test/bird_companion/features/connection/provisioning_error_test.dart",
+      "bytes": 2557,
+      "sha256": "f3fbe399448b9c8321c4ecdb28af97994b93e0765a250c03208ca93b946da1b3"
+    },
+    {
+      "path": "test/bird_companion/features/connection/provisioning_models_test.dart",
+      "bytes": 5749,
+      "sha256": "598688c2afb30cd431e84b80be9eb61e3178968993c81049bb3be2721060bf9b"
+    },
+    {
+      "path": "test/bird_companion/features/connection/provisioning_platform_contract_test.dart",
+      "bytes": 5712,
+      "sha256": "febba287692a76a425b07eeeb69cdc8164dea796e3cb463670c31e77260522f9"
+    },
+    {
+      "path": "test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart",
+      "bytes": 30982,
+      "sha256": "b7edff6ab5f9e573d9d14c875ad5d327a731b6fc3f907b735b5a26d1ab811b78"
+    },
+    {
+      "path": "test/bird_companion/features/connection/session_1023_recovery_test.dart",
+      "bytes": 13799,
+      "sha256": "c5f964cba4845ac325d585cd1d7fb6c8e4417c563da10b59c4fed345a8905e30"
+    },
+    {
+      "path": "test/bird_companion/features/connection/session_network_state_test.dart",
+      "bytes": 15211,
+      "sha256": "66a45c429034943af60b1bb94fed29857384e330bed7aab242c39eab0736a69b"
+    },
+    {
+      "path": "test/bird_companion/features/connection/sta_handoff_20261020_test.dart",
+      "bytes": 12048,
+      "sha256": "ab51caf1bec8983c713dd56e60c4215fc7c7be3b9235f18da3533f6fc1da5cfd"
+    },
+    {
+      "path": "test/bird_companion/features/connection/sync_20261020_regression_test.dart",
+      "bytes": 3675,
+      "sha256": "1353f116ebc3d1c9330bd4c8f25839096ac06d135ed31f4a48754757b41a4f2c"
+    },
+    {
+      "path": "test/bird_companion/features/connection/wifi_qr_import_test.dart",
+      "bytes": 3682,
+      "sha256": "2ddac4edc1045cefae1b28392b888fd8813cebd8a0a9c8411a7f785ca2b627e8"
+    },
+    {
+      "path": "test/bird_companion/features/connection/wifi_qr_parser_test.dart",
+      "bytes": 2392,
+      "sha256": "437e7d0ea6e7229b4975ab20a1ad2794043363e5cced403565df16140b17faa6"
+    },
+    {
+      "path": "test/bird_companion/features/connection/wifi_qr_scanner_page_test.dart",
+      "bytes": 6294,
+      "sha256": "0ad299ee8f9dad75e6178dc0d4064cd39544b8c2843ec40ba165af3a89164a4e"
+    },
+    {
+      "path": "test/bird_companion/features/connection_address_test.dart",
+      "bytes": 1489,
+      "sha256": "55e2970e77b39b06c7877dd4bd45d4c68d32ac044b0913adfa0711175a3ce339"
+    },
+    {
+      "path": "test/bird_companion/features/copy/active_copy_job_recovery_test.dart",
+      "bytes": 11017,
+      "sha256": "009ad0f47387192777c3f8dc48725f9a64530820d85e3659e209a78c9c9baf27"
+    },
+    {
+      "path": "test/bird_companion/features/copy/atomic_creation_recovery_test.dart",
+      "bytes": 3793,
+      "sha256": "14dfd02c6c33156a7c554b39e1c97438e1fff4f384cc4064aa2fdd1d2f319fc4"
+    },
+    {
+      "path": "test/bird_companion/features/copy/atomic_preferences_occupancy_test.dart",
+      "bytes": 4765,
+      "sha256": "8f39fb41951cffc5ef1ad72d08a8a39673f67b35a1d04b0beae91d83f48f3308"
+    },
+    {
+      "path": "test/bird_companion/features/copy/b1_device_refresh_test.dart",
+      "bytes": 4815,
+      "sha256": "c935d4eea21ed1af802202fb834c8294173a5a7b541d4a4f16fe3bcbed5e7590"
+    },
+    {
+      "path": "test/bird_companion/features/copy/b2_background_recovery_test.dart",
+      "bytes": 6165,
+      "sha256": "61c71b3a49a0f4da73fb3a01effda7185d6a76b3a7987ea9340bb63337227568"
+    },
+    {
+      "path": "test/bird_companion/features/copy/b3_copy_preflight_invalidation_test.dart",
+      "bytes": 26635,
+      "sha256": "8738a71f5645c47b936697af194d2adb1fc7d3fcb0d56302b2207e5ba053054a"
+    },
+    {
+      "path": "test/bird_companion/features/copy/b3_copy_targets_and_errors_test.dart",
+      "bytes": 12994,
+      "sha256": "e31efda390fe446ba15998cb66ce08e6e6e45ef66b13b1e23128e11eeea1954a"
+    },
+    {
+      "path": "test/bird_companion/features/copy/b4_copy_plan_integrity_test.dart",
+      "bytes": 19694,
+      "sha256": "5c437f0dc91fe9012c405fe5e18cd2548c7c0f734b867c970ec167ce4cca3081"
+    },
+    {
+      "path": "test/bird_companion/features/copy/b4_copy_preview_api_test.dart",
+      "bytes": 2840,
+      "sha256": "0968bb7aade855bb6cf0cf178b460f27c512029032def5d6738ea44884006577"
+    },
+    {
+      "path": "test/bird_companion/features/copy/b4_waiting_state_test.dart",
+      "bytes": 5847,
+      "sha256": "f761fbc2b4cb7fbb2b27c635bde81b4c5c03acb522a6605ffd70b7218ff617ea"
+    },
+    {
+      "path": "test/bird_companion/features/copy/b5_copy_task_presentation_test.dart",
+      "bytes": 19425,
+      "sha256": "fa25d484ed6fe960452160b254e9c3342f2e805509e595dcf985c068c1021a90"
+    },
+    {
+      "path": "test/bird_companion/features/copy/b5_paused_restart_test.dart",
+      "bytes": 5586,
+      "sha256": "9b4615c874fbf31d39b23f4cb0a27215797293076562acadaced2621a5795c76"
+    },
+    {
+      "path": "test/bird_companion/features/copy/b6_detail_statistics_test.dart",
+      "bytes": 6766,
+      "sha256": "8f358aae83f941d2c84bf665837bc940c0db7d4cf3ca6a89ad039b0410a5f77f"
+    },
+    {
+      "path": "test/bird_companion/features/copy/b7_offline_target_test.dart",
+      "bytes": 6640,
+      "sha256": "9ef0798a84fffcf6490ddc084ea82175dc9686c1e4b0ab6c4cca5ee45e8de5cb"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_1022_rework_regressions_test.dart",
+      "bytes": 3567,
+      "sha256": "1c09a12854b738ac8d9252825d5b9a7334745b772546916f2b95514a517472ef"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_config_pair_policy_rollback_test.dart",
+      "bytes": 9455,
+      "sha256": "39b71d02e67c2219c3c8b65b8d93a28df72e04e51f227e041514d652b336c326"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_confirmation_lifecycle_test.dart",
+      "bytes": 6835,
+      "sha256": "81aae0e2b083ec99d244ea23c6eaf47fed1d701b910d4e4b29bc4f2e8aefbc9f"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_entry_guard_test.dart",
+      "bytes": 3443,
+      "sha256": "5559ae927b9ae591ff0a92042545b17850e782a9a492700de088d8f9155ce883"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_job_detail_cubit_test.dart",
+      "bytes": 6823,
+      "sha256": "6825121e15759bf5c7247f66d52c4b104b2ee21bb4f2100ee69c273bd874e54e"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_job_detail_first_load_retry_test.dart",
+      "bytes": 9571,
+      "sha256": "97142f8135b6b597c597c92a39a82bbef8b14f75aa9355941759920a05008d0e"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_job_list_load_more_retry_test.dart",
+      "bytes": 4671,
+      "sha256": "1d11f9ea70f7ac4cd9748ea9769b0d6ddb33b66d124ec2e7baae80178e9dc97d"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_job_models_wire_test.dart",
+      "bytes": 13308,
+      "sha256": "310a42d3839206a6cc85563897562f97eabed0e99f59c095cf21476a8f91e821"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_job_read_recovery_test.dart",
+      "bytes": 8469,
+      "sha256": "3347336c8ed44033331061b493cdf53058fb202d38980370461cb27b5b1a486f"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_metadata_controller_test.dart",
+      "bytes": 3906,
+      "sha256": "0ddf270b6ceda99bb5b3793c4fb9d619a970263d2247370ed001d614c5130813"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_occupied_device_test.dart",
+      "bytes": 5204,
+      "sha256": "9567c9d4efd59d9024fec53e101200d951f0bb8ca55d37b9094a9640a1d06ca7"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_preview_auto_recheck_test.dart",
+      "bytes": 5974,
+      "sha256": "7bca07ec8ddd8f0cfe91a6a78155656eab7b569efc6cfcd97098b6be32b9fc10"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_preview_items_sheet_test.dart",
+      "bytes": 5676,
+      "sha256": "f08d3b8dcf62ab7d7d269b69d5833522d0b78bf4e37876fb7a488ab749b170f5"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_request_diagnostics_test.dart",
+      "bytes": 3130,
+      "sha256": "de465ad87f6024106f85ac10cb5646a9ee2d7e4383a23cfb5e9352ea48985dc8"
+    },
+    {
+      "path": "test/bird_companion/features/copy/copy_submit_result_dialog_test.dart",
+      "bytes": 9069,
+      "sha256": "1395dc59850b5f89623124359f2aa3da4e067394889cb7fd6fad3b0c15d3003e"
+    },
+    {
+      "path": "test/bird_companion/features/copy/fakes/fake_copy_environment.dart",
+      "bytes": 5645,
+      "sha256": "45349460c6c0023d939093fc65abeeeef7d8b72763e5d1114ac2fce1d8f8eaee"
+    },
+    {
+      "path": "test/bird_companion/features/copy/fakes/synthetic_copy_plan.dart",
+      "bytes": 1156,
+      "sha256": "fed8b44b754cbcb5f49e2c7db15fcddaf7882e749b8bec7e1a8a194116705c35"
+    },
+    {
+      "path": "test/bird_companion/features/copy/mock_copy_job_lifecycle_test.dart",
+      "bytes": 10951,
+      "sha256": "27642fb39cdbb2c9880d11407911d396222205be56bc5cb7defa33f3620fa6e3"
+    },
+    {
+      "path": "test/bird_companion/features/copy/nov18_copy_back_test.dart",
+      "bytes": 1829,
+      "sha256": "d7bcb2977c1cf00664316d1f08c00ee6101cd95c63a0103b8a2875ff05f0c8a3"
+    },
+    {
+      "path": "test/bird_companion/features/copy/production_copy_b2_test.dart",
+      "bytes": 9875,
+      "sha256": "62ffffa2eb68dde2c1dfce861c925a1abb3a9867a50c3fbfb368451fc5e38df8"
+    },
+    {
+      "path": "test/bird_companion/features/copy/production_copy_r3_flow_test.dart",
+      "bytes": 14502,
+      "sha256": "ad3c0150e50a50eef7734b49ba644462898f4ce7f9a9e083597f853bb619e82a"
+    },
+    {
+      "path": "test/bird_companion/features/copy/production_copy_scope_unsupported_test.dart",
+      "bytes": 5251,
+      "sha256": "5261b32707d546ed69707ed1734224eaabae8235ad83a1542b6f19cc65523ff7"
+    },
+    {
+      "path": "test/bird_companion/features/copy/python_atomic_creation_test.dart",
+      "bytes": 2664,
+      "sha256": "8d082757b8057a0c0c533416a149d2f885e38b682d00dce45ec25b7e3dbbf06a"
+    },
+    {
+      "path": "test/bird_companion/features/copy/python_backend_contract_test.dart",
+      "bytes": 2171,
+      "sha256": "9563a2ebaef7118575275e9f1d1b1bd1267b46ca504421ea8c19d1ba7f2b7d56"
+    },
+    {
+      "path": "test/bird_companion/features/copy/python_metadata_backend_test.dart",
+      "bytes": 9639,
+      "sha256": "9113d48695d39943c41dc4ba1838c4d2ba6c40dfc1b8be81b82aea05191369f4"
+    },
+    {
+      "path": "test/bird_companion/features/copy/v10_batch1_presentation_test.dart",
+      "bytes": 7542,
+      "sha256": "b9e95e6ba7143b8dcc95fe386d4a015925ad685229684da907a565570b756cf9"
+    },
+    {
+      "path": "test/bird_companion/features/copy/v10_batch2_recovery_test.dart",
+      "bytes": 9861,
+      "sha256": "cbf77b1e926c9097aee3b19565cf9875b6383f374a63f0240a1f82dace4ad911"
+    },
+    {
+      "path": "test/bird_companion/features/copy/v10_batch3_contract_test.dart",
+      "bytes": 11058,
+      "sha256": "0b7ad51c7d68f4b72b6522a34578674ef2255606f0ac001e1e0f69b4d6f07f61"
+    },
+    {
+      "path": "test/bird_companion/features/copy/v10_receipt_alignment_test.dart",
+      "bytes": 4916,
+      "sha256": "cbe8c1104b22aa35f8568ef4b30ff2d8eaef344b791cae5df00d7bf2099e9fcd"
+    },
+    {
+      "path": "test/bird_companion/features/device/device_status_api_test.dart",
+      "bytes": 1036,
+      "sha256": "aefeb9e7656f3c90ca782ae5e08b5139c7881b9071a19872b4c80e2345ef8739"
+    },
+    {
+      "path": "test/bird_companion/features/device/device_status_cubit_test.dart",
+      "bytes": 5920,
+      "sha256": "b97774429e201edf6d8daecebfad906c6c895b95c2b4be1d6ea95b8068db1871"
+    },
+    {
+      "path": "test/bird_companion/features/device/device_status_pills_test.dart",
+      "bytes": 1435,
+      "sha256": "4c61a430385384de913a356c459d6224e5c29bde62ce4cc3c9dbbdb6fa160246"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/active_filter_summary_test.dart",
+      "bytes": 1678,
+      "sha256": "22c12d07b912af9376c63ba3bbf987e139552ebed51cb4e18f9a21e4113cc931"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/album_history_entry_test.dart",
+      "bytes": 7206,
+      "sha256": "8fdf9e43ca5d18551e7b7833276a93cc8ef36f4a69ede325561238269c19730c"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/album_view_cache_key_test.dart",
+      "bytes": 8578,
+      "sha256": "d233afe686fec8b0b2b36dbd7ee5be75c36334080f4f2a2740319573722be3fc"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/analysis_to_album_materialization_test.dart",
+      "bytes": 6805,
+      "sha256": "f95fb571487feda3ff3c7d36287c9b7118588087b3ac88e911f6834b0591ef6e"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/app_issue_b5_acceptance_test.dart",
+      "bytes": 5985,
+      "sha256": "e9fe7ace6b5a6953bd161d5d23c7df888f36a7e5bcffe6cb31ba2dd7e3d5c9ec"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/b10_photo_filter_experience_test.dart",
+      "bytes": 15405,
+      "sha256": "fa9e935e3c4e6e0d1b30c2962f4e5f7f5e671971c9ade703213129714bc1b146"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/b2_gallery_refresh_test.dart",
+      "bytes": 9061,
+      "sha256": "dfe0fe33ae51f1f35325f203d623effaf81970d001b880a41592c873a323689f"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/b8_photo_query_freeze_test.dart",
+      "bytes": 6501,
+      "sha256": "6affc95f4e77ac303b043c77484786d94358740911e06ba74a16fc748cca126b"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/b9_photo_query_execution_test.dart",
+      "bytes": 7775,
+      "sha256": "a54369f8aa5e0613d242e886d5a738466385af44c1c86d505911e706ec344462"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/batch_add_tags_dialog_test.dart",
+      "bytes": 1588,
+      "sha256": "18941fad52edf66c94f224c65013d59cd2a2817f0edb3ecc0c1e49e8142e5533"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/batch_keep_state_consistency_test.dart",
+      "bytes": 3501,
+      "sha256": "dea86514fca4b7f36ca174fb8591f36644b31e710561e0d7474cd2c3b39da357"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/batch_remove_tags_dialog_test.dart",
+      "bytes": 3894,
+      "sha256": "ab1efec3691c7930b3aa31a59a29a2f253826763d8a04f115f3d430ff4b6fc04"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/batch_review_count_update_test.dart",
+      "bytes": 5237,
+      "sha256": "3e06bb043f6c92ef926aee799b77237bc5898b24142d30ae70ce0ae442d6cdbe"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/gallery_candidate_notice_test.dart",
+      "bytes": 2508,
+      "sha256": "73bc35efb175546a6fb7267a01e249da750a712a0470ddea3581dc97e2313dc4"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/gallery_resilience_test.dart",
+      "bytes": 4267,
+      "sha256": "8c4c43b1ca77dffdef2bbd623a9b8eafc35e2308fcf3d2f44d117698934e1705"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/gallery_selection_visibility_test.dart",
+      "bytes": 38919,
+      "sha256": "b67ca0f83a36771ef7bc58ec3cf6f8a75396ce79cc83557f903915f71baca0f9"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/media_cache_identity_test.dart",
+      "bytes": 1287,
+      "sha256": "cb8b3c107d6160804b0c1688b9fdb85efb69b0dad695e876c0d57a73fcb9004d"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/nov18_categories_and_counts_test.dart",
+      "bytes": 9828,
+      "sha256": "5734ea5f049637fa74a7eea70d4d7e0f48ea23a5bdaaadb2bbc22c2f2932807b"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/photo_api_version_contract_test.dart",
+      "bytes": 1193,
+      "sha256": "5185e220bbb518e121e36064ff1c6733468508ead050b89a276196b4f72afa67"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/photo_masonry_grid_test.dart",
+      "bytes": 5380,
+      "sha256": "a2e958b01f3bbcf83a3d499c1315f1d5d6bcbb1f3c766a5dd7d3326c1d8277de"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/photo_module_baseline_contract_test.dart",
+      "bytes": 4242,
+      "sha256": "3893622931cc3c46258ac280f765e5b8e4835cb5e25168571d213b3f9656f710"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/photo_tile_test.dart",
+      "bytes": 3677,
+      "sha256": "bfe174369284e0c6d9eeb1079b0d862df62ad12a195e6b7d84c1f5890f3ed6c3"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/progressive_photo_tile_test.dart",
+      "bytes": 8539,
+      "sha256": "64d8f8e2f53267d6cee4e40dab41f26b341798029a122530c50e36b9f36eecc7"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/review_count_reducer_test.dart",
+      "bytes": 2624,
+      "sha256": "47fc5ad8ddb90633c2a4156d36b2de79781ccd6097869e491bca8849131f9d69"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/selection_action_bar_layout_test.dart",
+      "bytes": 2809,
+      "sha256": "bf5d4612b40208d8389cfcfc4cedcecda24d25ef835bbfeeb0e27d19d41e1f89"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/selection_action_bar_test.dart",
+      "bytes": 2812,
+      "sha256": "37ac5f421c62f0597496b3f5e862d5f026fa5a94f72b2a02f4bfc339dd66cfcd"
+    },
+    {
+      "path": "test/bird_companion/features/gallery/selection_cubit_test.dart",
+      "bytes": 1371,
+      "sha256": "77b20457be399dca8035b3c57077c187bd6848b9513abed978cd8ab8faf2a0a1"
+    },
+    {
+      "path": "test/bird_companion/features/jobs/job_card_action_test.dart",
+      "bytes": 928,
+      "sha256": "6be217914ede5b6f053e767bc2e9df58731ce2551dab90ad871f503a7e6e56b7"
+    },
+    {
+      "path": "test/bird_companion/features/jobs/job_detail_route_test.dart",
+      "bytes": 724,
+      "sha256": "2f58eba65878365be641aedd0d152d99d9321f98dff8cd1c6d17024daf9590d7"
+    },
+    {
+      "path": "test/bird_companion/features/jobs/job_read_diagnostics_test.dart",
+      "bytes": 3713,
+      "sha256": "4cb684ac7934a2fadaaf17214118baa8c0effbe0d86554ff79c695c1f068e92a"
+    },
+    {
+      "path": "test/bird_companion/features/recognition/recognition_test.dart",
+      "bytes": 8973,
+      "sha256": "d5b470bf27f9a39a4bf5dad4e21dee5c68c0f81ea59aa1eb7dcee63f828c8440"
+    },
+    {
+      "path": "test/bird_companion/features/review/batch_tags_sync_test.dart",
+      "bytes": 9156,
+      "sha256": "468eb20936dc4fb0cf27fcdc7503fc7525f170aa245db3595db4ed9209c70604"
+    },
+    {
+      "path": "test/bird_companion/features/review/comparison_review_actions_test.dart",
+      "bytes": 2504,
+      "sha256": "30896e10c22df2e30d35ee2b522e0e2f599efbef6a63c4dd21ebe6fcffcb201e"
+    },
+    {
+      "path": "test/bird_companion/features/review/comparison_review_cubit_test.dart",
+      "bytes": 7116,
+      "sha256": "9d995ea5b4882ad3100bace436bf5b0ade6ae50456bb89e5b1289b6f20cab1de"
+    },
+    {
+      "path": "test/bird_companion/features/review/group_review_cubit_test.dart",
+      "bytes": 4557,
+      "sha256": "a1625f0a1ed19a3a8a998195b5103a272fb1d815c5b3b582d6410858fd5dd146"
+    },
+    {
+      "path": "test/bird_companion/features/review/group_review_scope_selector_test.dart",
+      "bytes": 1068,
+      "sha256": "fb90eca02f3735411f4efb7ccdfc6cbd89eb843b73adda9aef30b84b4bc6c685"
+    },
+    {
+      "path": "test/bird_companion/features/review/nov18_manual_species_test.dart",
+      "bytes": 12716,
+      "sha256": "c83642a5ad80a017c6b80dce99551ae75ce967afd93f085424638639e73b34d4"
+    },
+    {
+      "path": "test/bird_companion/features/review/nov18_manual_species_widgets_test.dart",
+      "bytes": 3327,
+      "sha256": "b5052a1a22274a8bb2c63fc6d192087594e83d459be64f97dc3fc386bb0dfe7f"
+    },
+    {
+      "path": "test/bird_companion/features/review/photo_detail_navigation_test.dart",
+      "bytes": 16475,
+      "sha256": "93ae938d79053fe16cfae2586ae6d2ff55beb29791acd21145930b75b9b259fc"
+    },
+    {
+      "path": "test/bird_companion/features/review/photo_detail_sync_test.dart",
+      "bytes": 13254,
+      "sha256": "8c45d263728d1fb28894bbae3edd6bd7c0b262eef2f377bdbefea20c82eab6ec"
+    },
+    {
+      "path": "test/bird_companion/features/review/progressive_review_media_test.dart",
+      "bytes": 9871,
+      "sha256": "785e180188fdb064814198adf30d957ce03c9daa7b9d60725b48c836886ae072"
+    },
+    {
+      "path": "test/bird_companion/features/review/review_api_version_contract_test.dart",
+      "bytes": 5254,
+      "sha256": "7b6001ce34d0c8af86831724529cda1797c6c5e1ffcc31b32038714185795240"
+    },
+    {
+      "path": "test/bird_companion/features/review/review_checkpoint_test.dart",
+      "bytes": 3175,
+      "sha256": "ce0ab251d9d190e73ac0d47a913a7ed1128f07badcc3b5f546ee59799926c8d2"
+    },
+    {
+      "path": "test/bird_companion/features/review/review_conflict_banner_test.dart",
+      "bytes": 973,
+      "sha256": "1e226b86a526f12893971da89d2c88daeb5816116a38008f29f58af386bde712"
+    },
+    {
+      "path": "test/bird_companion/features/review/review_cross_page_sync_test.dart",
+      "bytes": 6699,
+      "sha256": "f3856f50d280fce0467b86ed3998117010e89f8c793412365d6f31e8ad95264e"
+    },
+    {
+      "path": "test/bird_companion/features/review/review_decision_change_event_test.dart",
+      "bytes": 6929,
+      "sha256": "3c21ab4c7ff6c3681c154ecd83aff3703e3c694522bd46da730288085b1d1494"
+    },
+    {
+      "path": "test/bird_companion/features/review/review_edit_page_test.dart",
+      "bytes": 2014,
+      "sha256": "adbde5b790f8bb6c5cb13c06fb29be9e5d5e2507b3cf127d58f8995a9cd989cc"
+    },
+    {
+      "path": "test/bird_companion/features/review/subject_overlay_navigation_test.dart",
+      "bytes": 3608,
+      "sha256": "f29562a1c37214eee49666dbc43c475c275c3c64a49aeba6ff093794492f65fa"
+    },
+    {
+      "path": "test/bird_companion/features/review/tag_editor_sheet_test.dart",
+      "bytes": 3000,
+      "sha256": "85c689a4b12ebc9c77e8b0cc637ad44bf35e31ecef40e97199c1cdc241664521"
+    },
+    {
+      "path": "test/bird_companion/features/review/user_decision_patch_test.dart",
+      "bytes": 1326,
+      "sha256": "d9c6b0a4257de8a5ad9b7ee5a2e0899d5e21a48fcafa9131d024461fb42c3412"
+    },
+    {
+      "path": "test/bird_companion/features/settings/cache_management_card_test.dart",
+      "bytes": 1143,
+      "sha256": "4f8bd91d3190f63e3e05c19c79ec5ce365400c52dcaf9bef1b0b2c6f3b150088"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/continuous_api_contract_test.dart",
+      "bytes": 5494,
+      "sha256": "38c50fa20f8b678a66094fbd6962f6549690943fadc6634be2283293a2549259"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/continuous_files_page_test.dart",
+      "bytes": 4120,
+      "sha256": "daa87febc5e95a6f4a9b8e25eba9cf981ded4e0202c8d695137c9a817a92da54"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/continuous_history_completion_test.dart",
+      "bytes": 8393,
+      "sha256": "dc409f698e212df2087d4cb4727bcd83a9f20eaee66ce24b276a5bc62a442972"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/continuous_summary_contract_test.dart",
+      "bytes": 6594,
+      "sha256": "3d3b7db1d568c92c6a88569b954727a8c2b51701803b6e48e2f975c430019821"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/durable_session_events_test.dart",
+      "bytes": 2889,
+      "sha256": "2bdad4f6d4aae0af9b22b1b41897243a5b25357c513d3be1bf2c46f85d63462f"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/entry/configuration_fixtures.dart",
+      "bytes": 3781,
+      "sha256": "4b5dd8c2116449619c7b0a6d911f94f7f849b6a03ef7cae45b84137f9700c731"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/entry/creation_fixtures.dart",
+      "bytes": 4510,
+      "sha256": "3f24d1e14a6b86cdff7dfdb22a0350cc35ef07d43d4951a0b034f312e4ad0fec"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/entry/smart_follow_configuration_controller_test.dart",
+      "bytes": 12178,
+      "sha256": "38f6312539ffc271e4ef99b45b58110fcd57ddbb0178e0cb9d8971d17b528bcf"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/entry/smart_follow_configuration_form_test.dart",
+      "bytes": 14065,
+      "sha256": "44db6fe8b26401a39693d8be8caa4c04fc4691f4883bd181d4a15fa42029ca95"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/entry/smart_follow_creation_service_test.dart",
+      "bytes": 12715,
+      "sha256": "59837da74300db19222d64cf052e18f2b9c063a398c651eeced3d279ff88ef59"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/entry/smart_follow_entry_decision_test.dart",
+      "bytes": 8015,
+      "sha256": "3ed89c24b0177c6527e0767f15c7734be077b1a3143366df9f42ae567e229d11"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/entry/smart_follow_modes_test.dart",
+      "bytes": 17308,
+      "sha256": "181e5a8585985fe6d51225b08db8065026365f55c9e3cdacc437472d566d15ba"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/entry/smart_follow_start_panel_test.dart",
+      "bytes": 9062,
+      "sha256": "9784608683990c4443bf649041f5e41cfaa5771719e782567eded47cb7c2f569"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/fake_smart_follow_backend_test.dart",
+      "bytes": 8312,
+      "sha256": "030a8f490e7a7bac836cca02650827945f3bfa8c13344210f22f385dbee75a7d"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/completion_fixtures.dart",
+      "bytes": 4301,
+      "sha256": "340911902f1d3b7d89624f63e49d24a09ad9e128ad8af6e6a2efd987eeeb95fe"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/metadata_fixtures.dart",
+      "bytes": 4690,
+      "sha256": "df6d82b89f3c0d1942a7a6b1761e43cf8c504dd83917698f381676c40e645bfb"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/metadata_update_fixtures.dart",
+      "bytes": 2845,
+      "sha256": "cdfa0e5269cf9f14d1c65f071d641598d114cd1728c21abf64a1ad4e1abd92c7"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/smart_follow_completion_controller_test.dart",
+      "bytes": 11638,
+      "sha256": "6c4ddc6cd006f0d32036de55f8203b638692fb3db111042f44da8ade8c8b7efe"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/smart_follow_completion_http_test.dart",
+      "bytes": 4256,
+      "sha256": "4919cbc82e81b822435889a4a0b39d90d27a2b405ccb96850a5b130470167161"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/smart_follow_completion_navigation_test.dart",
+      "bytes": 5771,
+      "sha256": "2c52ee538d307f65dd6d004645ad042c7a83f3880706f0119c50bd27ce98ab53"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/smart_follow_completion_page_test.dart",
+      "bytes": 9026,
+      "sha256": "cfc394a13d93042b57aaee69feb91c87ed4168e3f3506ca47e80da2eafc713f4"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/smart_follow_metadata_controller_test.dart",
+      "bytes": 13373,
+      "sha256": "d9acfd00efb2f473cb2be99ee167cd95eb1c8d657f76c280b22b37d46cec4921"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/smart_follow_metadata_http_test.dart",
+      "bytes": 3899,
+      "sha256": "219cc58e44406aaec9c230e244219a8f454c89b66c6e60372d312d5f50d492fa"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/smart_follow_metadata_navigation_test.dart",
+      "bytes": 6383,
+      "sha256": "e1e0f0124a293b1153a6521d84d04eb7ca08ac0ce83bf6371c89502e8463a34d"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/smart_follow_metadata_page_test.dart",
+      "bytes": 11021,
+      "sha256": "3b92fcbc368596de243d4a972a289603f681b9be6ddc7387c9c1239f020143c9"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/smart_follow_metadata_update_controller_test.dart",
+      "bytes": 12783,
+      "sha256": "aea21aada918019f3ae555b3a67924ca00fa7bed8335c1e4900f6b6069bd2e46"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/smart_follow_metadata_update_http_test.dart",
+      "bytes": 3497,
+      "sha256": "422c2ffdce3331c8f3de9d657d0b4e0a82a8a89d5bbe3dea092abcb51ae4d302"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/smart_follow_metadata_update_navigation_test.dart",
+      "bytes": 5439,
+      "sha256": "e4adcc03e9343d64626b95a86b5532b5d74d177a6efed9f52d4c3c95d876b4fc"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/finish/smart_follow_metadata_update_page_test.dart",
+      "bytes": 10014,
+      "sha256": "761c9d129230f9469adfbc92ebf18ac4e3fd2ab2c852a16b5762bfc631d30873"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/mock_box_server_smart_follow_test.dart",
+      "bytes": 10495,
+      "sha256": "9df10dc961a9b5cb620ba5be97ce7bbefd1cfbc11856870f414f69710879e973"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/python_continuous_backend_test.dart",
+      "bytes": 4136,
+      "sha256": "d374c187f3ee79e51cf8111a6871d305326a18f17f0eddca0de918b7866e20f6"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/python_control_backend_test.dart",
+      "bytes": 3976,
+      "sha256": "42cf4fb85700a5aeb6d2f7219af9b4d0657811a895cb32f9a204931f937dd1fe"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/python_extension_schema_test.dart",
+      "bytes": 3393,
+      "sha256": "8e1fcb6418f40ceeda8d9da32742317fbdc19bc642f78c2f1e4c39c2370c73c0"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/smart_follow_atomic_http_test.dart",
+      "bytes": 2452,
+      "sha256": "1072221a4423e3097ca587340407f76a3aa670a1d3b3c0e304a24b160a6aa26a"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/smart_follow_child_jobs_view_test.dart",
+      "bytes": 3323,
+      "sha256": "1cd11b23e8fc20e734d030c36a6105f2f1b71ac7d7a612002ca077305e3f108a"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/smart_follow_contract_test.dart",
+      "bytes": 17843,
+      "sha256": "a983421bd5b5b571abf03bfa4354131bcbcbc49007df7a5fff9a4261364ed955"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/smart_follow_device_isolation_test.dart",
+      "bytes": 5320,
+      "sha256": "274646bbb914d8f1238cfe9cae6183aaa87fe3275c5f679b9c1becdd2be4fdd9"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/smart_follow_entry_gate_test.dart",
+      "bytes": 3843,
+      "sha256": "3fc378ff4b2ce84a8a6a754ddee0bcb0aca5a2c3e7bd23cf475977afed2e4638"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/smart_follow_error_mapping_test.dart",
+      "bytes": 3298,
+      "sha256": "d890f15770493600e833c91dcf222c143852817472a49f5f7defac8ab57612e8"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/smart_follow_repository_test.dart",
+      "bytes": 16567,
+      "sha256": "d5d46394c3b4c4e339d2b2eaa26d4987baa9356227127c0587309b39e101acb3"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/smart_follow_run_page_test.dart",
+      "bytes": 7329,
+      "sha256": "6c7d8ca17b99750eeb390ad0b408bd35b26baee83ff9d465923160ef66476c0e"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/smart_follow_run_recovery_test.dart",
+      "bytes": 6393,
+      "sha256": "a90bbda8141cd7f2a0958db847b6fb38b54f0cf30f90cbe2044f8d891f7b1e8f"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/smart_follow_stage_test.dart",
+      "bytes": 5344,
+      "sha256": "2f7ccb68910ec29a49443f548387b6b79641891439515d59a31da417f28704ac"
+    },
+    {
+      "path": "test/bird_companion/features/smart_follow/smart_follow_task_tile_test.dart",
+      "bytes": 5884,
+      "sha256": "ce97b211d6f9924ccf9ee6fa25eb832984b465ddf3b509ca7968b202ebea85a0"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_b11_design_closure_test.dart",
+      "bytes": 9220,
+      "sha256": "95e6ee6ffbb6a1ad8a1f0ab59a27a47f585269338e7d5a827b0205332914678e"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_b1_capability_test.dart",
+      "bytes": 7049,
+      "sha256": "4443160cf2fa8bf23e274cbcddad827f6d64a2c19ac27a01e756c0ac0d0040c6"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_b3_test.dart",
+      "bytes": 8115,
+      "sha256": "dfa20c954b288ef41e59184bf0f636b973de6d51f32177ffc775493bc1c1e439"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_b4_test.dart",
+      "bytes": 5938,
+      "sha256": "0b4b8090a1206c11f62b08770c53f3543647c0c31d5e3fe53fde32ff27703537"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_b5_test.dart",
+      "bytes": 9722,
+      "sha256": "ed2d0cfec7a6ed2782471f1d0b849888071c72ab55bdc441b9b5c39ef8ee105b"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_b6_test.dart",
+      "bytes": 4671,
+      "sha256": "70eebe84294f218b00202c8480be8e3b5acc429e498b7137881e625ce2ac2904"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_data_source_baseline_test.dart",
+      "bytes": 426,
+      "sha256": "bd3361071251cbc6ac167f614efb828c9a8643dd23fa03d946fac46a38e37102"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_r0_baseline_test.dart",
+      "bytes": 5514,
+      "sha256": "0a064994c736949e851e1304ffa2d74052aa91edca5b47f248d54487531da424"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_r1_safety_test.dart",
+      "bytes": 10592,
+      "sha256": "bcb901e980e2423b9d6f4b29034414ac76c5e5b5e1807e5c876e97192ca2be97"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_r2_unification_test.dart",
+      "bytes": 4923,
+      "sha256": "4d69eb213bf40c8339c2fc98037ebe82c053d43f72cf78c91a8983afa2ca9d8c"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_r4_test.dart",
+      "bytes": 9387,
+      "sha256": "e871ce5028d53980df20adbaeb3ca5d8dcf492e44545b8938bcf7202a7d44360"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_r5_test.dart",
+      "bytes": 6884,
+      "sha256": "9866e1cf5648e93763048fa992c4813fdd98304eaedb86adb7cfe6584423180c"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_ui_fix_batch1_test.dart",
+      "bytes": 7238,
+      "sha256": "5eadce809e18b03e3d559d4c5649d0fcfe1810eeda0cdba04a06bf739a0d9102"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_ui_fix_batch2_test.dart",
+      "bytes": 4203,
+      "sha256": "40de2693da324c953e9bffc72da86481ac38f100b068ee9ce5b67f7e1acd0525"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_ui_fix_batch3_test.dart",
+      "bytes": 4868,
+      "sha256": "bf71f3b5fa51fef85c5c090b52f1474a7410fe16511326e2247bd702d9fcc9d9"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/production_task_ui_fix_batch4_test.dart",
+      "bytes": 4467,
+      "sha256": "187beeb877b40ab6e1961581af75418f36a56129e3eb5a0f67dc6f8b6af7a666"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/task_destination_resolver_test.dart",
+      "bytes": 7182,
+      "sha256": "8238716cb6bd70bf6db111ef7afe995f9fa85508543605299f8e5d2967f3d9db"
+    },
+    {
+      "path": "test/bird_companion/features/tasks/task_home_photo_gate_fallback_test.dart",
+      "bytes": 3416,
+      "sha256": "0905a354510d9380cacaa951f0ae7c2d0626824dd4c27b204dc7d9a47377813e"
+    },
+    {
+      "path": "test/bird_companion/goldens/fonts/MaterialIcons-Settings.otf",
+      "bytes": 9380,
+      "sha256": "1b47be533cbe4240793aae8f4bf2e53a24ca49064de9f520539f2830a320d12c"
+    },
+    {
+      "path": "test/bird_companion/goldens/fonts/NotoSansSC-Settings.ttf",
+      "bytes": 171604,
+      "sha256": "987d9946b72d01216c0e50610f49876c1f1cae8aacce04c2bba03f90b8bb7e33"
+    },
+    {
+      "path": "test/bird_companion/nov18_b4_copy_return_test.dart",
+      "bytes": 8201,
+      "sha256": "9eaec6be8efa4eb27d1cba8f0e1c9506f310f83ece8a510a7593f8cab3fd32d2"
+    },
+    {
+      "path": "test/bird_companion/nov18_b4_navigation_test.dart",
+      "bytes": 11635,
+      "sha256": "eaf6aadf855557bf5114668cc8e77124afb70ad2c4f2deff88f192a4f1fa9bd0"
+    },
+    {
+      "path": "test/bird_companion/nov18_navigation_test_support.dart",
+      "bytes": 9326,
+      "sha256": "36fbecb01526ee68db60b65b07a743abf9bcb1f8b7c1d52141c0b21f9b1bf949"
+    },
+    {
+      "path": "test/bird_companion/nov18_repair_test_support.dart",
+      "bytes": 3564,
+      "sha256": "2c04014810b03dee5f1276e74c9d02edd90f1e0499d5303582f9fae30adff35f"
+    },
+    {
+      "path": "test/bird_companion/production_entrypoint_test.dart",
+      "bytes": 2760,
+      "sha256": "c0193815ec08ec5a2265c74fefcf44c6e759e6dd0cbdbbca442aaff54f7f0224"
+    },
+    {
+      "path": "test/bird_companion/release_fake_ble_isolation_test.dart",
+      "bytes": 3633,
+      "sha256": "483b122875c4394ccf1895c5a4150ed66dd9550bfafabb00f0edec908f07f6e0"
+    },
+    {
+      "path": "test/bird_companion/settings/copy_settings_flow_test.dart",
+      "bytes": 2560,
+      "sha256": "3329878651b7edef65baa7c67306b141b551a33802e1faf139f7399608bcf216"
+    },
+    {
+      "path": "test/bird_companion/settings/device_clickable_coverage_test.dart",
+      "bytes": 6077,
+      "sha256": "3a36dd956019ffb6f5370c6afe7a9ad951ea4f1c1e8f33d4246409d8da349988"
+    },
+    {
+      "path": "test/bird_companion/settings/device_details_route_test.dart",
+      "bytes": 750,
+      "sha256": "ab90f6173c9e648a57bbb0f5cb293bcdab63a9c5cebf2346b22588a103f02082"
+    },
+    {
+      "path": "test/bird_companion/settings/device_management_cubit_test.dart",
+      "bytes": 3791,
+      "sha256": "5b55c4b6f64134d0afeaa73b4efd25c9d2f2335f6539ed8302322a2647a58fb4"
+    },
+    {
+      "path": "test/bird_companion/settings/device_overview_adapter_test.dart",
+      "bytes": 6256,
+      "sha256": "5f59e81c2005e0cfc2be8aff230e35550c3126ae3d82ae45510d3ecb29524fdc"
+    },
+    {
+      "path": "test/bird_companion/settings/device_settings_flow_test.dart",
+      "bytes": 3242,
+      "sha256": "72360db85a50d49c384d36fbd03711e43737bdca31f118659cedff0ae5d76950"
+    },
+    {
+      "path": "test/bird_companion/settings/network_settings_page_test.dart",
+      "bytes": 3652,
+      "sha256": "642f5f8c840a798c7c4abffc9b304e1445d3a374eb03b7d812c15601deeb315b"
+    },
+    {
+      "path": "test/bird_companion/settings/photo_settings_flow_test.dart",
+      "bytes": 3476,
+      "sha256": "e542517a58af5f817a7e054d8294613335efa3078ee18cce94c00724817891a7"
+    },
+    {
+      "path": "test/bird_companion/settings/settings_asset_catalog_test.dart",
+      "bytes": 538,
+      "sha256": "00b5f49ede85da02c42039a632f11eb31ce580f32eb41ed51019c0648a692267"
+    },
+    {
+      "path": "test/bird_companion/settings/settings_components_test.dart",
+      "bytes": 2964,
+      "sha256": "98c5660996981d3c44d8fd35ba9b6a61eb62972ba30ababbee86fffd671e6abd"
+    },
+    {
+      "path": "test/bird_companion/settings/settings_device_status_test.dart",
+      "bytes": 13698,
+      "sha256": "3cd036a56e538facaef053170b4659d2257f7992a226b0ebe1e5cabb536a7ad5"
+    },
+    {
+      "path": "test/bird_companion/settings/settings_navigation_test.dart",
+      "bytes": 5916,
+      "sha256": "d96b13f7adf56ac2e6c8baf4211e290eccefa28beb42992543532a4f25ac829f"
+    },
+    {
+      "path": "test/bird_companion/settings/settings_phone_layout_test.dart",
+      "bytes": 3304,
+      "sha256": "3ce9af655681b0d0a684db83c1ba4c46276ca39f8cd8ce4483bf66d3502d6997"
+    },
+    {
+      "path": "test/bird_companion/settings/settings_store_test.dart",
+      "bytes": 3921,
+      "sha256": "852403fa74d20b6deb2689478887eb466056237c0bce45737bb754937390363f"
+    },
+    {
+      "path": "test/bird_companion/settings/settings_v1_visual_structure_test.dart",
+      "bytes": 2949,
+      "sha256": "48c96ee89f93c836bd8cd9771bc6b324695d1adc7ca206b792a7a1127a423748"
+    },
+    {
+      "path": "test/bird_companion/settings/support_settings_flow_test.dart",
+      "bytes": 4578,
+      "sha256": "5a41000950f4b96167bf8a19326e42f14055d1ed0e3f9c4cfb1d2d6234c861c1"
+    },
+    {
+      "path": "test/bird_companion/simulation/embedded_demo_features_test.dart",
+      "bytes": 10252,
+      "sha256": "1ef8a5f381f83faf2ec9afe725a1edb783299802f8d1042d525ce16a16e91953"
+    },
+    {
+      "path": "test/bird_companion/simulation/embedded_demo_isolation_test.dart",
+      "bytes": 2041,
+      "sha256": "dc6013f0113e2b58b0c4d204ea4a82bfa9f072d4f3fc3a60e3d255c9c7515364"
+    },
+    {
+      "path": "test/bird_companion/simulation/nov19_merged_feedback_test.dart",
+      "bytes": 7240,
+      "sha256": "3a49df02ac7710e52b2153f9afcfb36a5303203aaf62d194c989f36219ab3b58"
+    },
+    {
+      "path": "test/bird_companion/simulation/repair_acceptance_profile_test.dart",
+      "bytes": 16957,
+      "sha256": "0742fddb0d818c59d9d4a6e7f467168116fd286e69164f28e31b3d4cd8921db4"
+    },
+    {
+      "path": "test/bird_companion/simulation/virtual_box_diagnostics_test.dart",
+      "bytes": 1731,
+      "sha256": "03308c34edd6018e24a64ad54d683475586c94af847eb13821f81f80d10808d5"
+    },
+    {
+      "path": "test/bird_companion/tasks/batch_setup_feedback_test.dart",
+      "bytes": 1532,
+      "sha256": "cc3992c58a80e61da5fad73252fd090862f6921fb0a81585402882c2f262b8b4"
+    },
+    {
+      "path": "test/bird_companion/tasks/current_task_progress_regression_test.dart",
+      "bytes": 9258,
+      "sha256": "37cd81c0de13283cfeeadb3b48de438d4a3ef98add9e13c03af55ea10a0eb9cf"
+    },
+    {
+      "path": "test/bird_companion/tasks/job_models_contract_test.dart",
+      "bytes": 3273,
+      "sha256": "bdaef6137e6b4660d13cabbbb66a3fc6357b04d4e11ef6aee7be219f77def6d4"
+    },
+    {
+      "path": "test/bird_companion/tasks/job_status_view_adapter_test.dart",
+      "bytes": 3904,
+      "sha256": "f379633f8726b08fa054add3bdef33d657b22a5d9e21b42e66e74fa3161d95c3"
+    },
+    {
+      "path": "test/bird_companion/tasks/repository_task_experience_controller_test.dart",
+      "bytes": 26252,
+      "sha256": "929e066d2add6ba09b9d763c1707f60f523f59e6b558ac2c2ba12ee1831f8b47"
+    },
+    {
+      "path": "test/bird_companion/tasks/task_experience_controller_test.dart",
+      "bytes": 18407,
+      "sha256": "66dc2bb0867bc294bd135ac550c8b554b93baa16a6c25d2293c764ae53f64080"
+    },
+    {
+      "path": "test/bird_companion/tasks/task_navigation_test.dart",
+      "bytes": 30506,
+      "sha256": "5a2e494f44517e018191f9f90829bd590d5d05b8f2f8da95728aed6689256f90"
+    },
+    {
+      "path": "test/bird_companion/tasks/task_visual_structure_test.dart",
+      "bytes": 6033,
+      "sha256": "c50883222724050a6fa347f67a4cce6f77ad0d2c2d8cf17149ae38ab6bb951f3"
+    },
+    {
+      "path": "test/bird_companion/tasks/ws_disconnect_progress_recovery_test.dart",
+      "bytes": 8329,
+      "sha256": "4b2ff05843131a047c28d7e4a34b67c983db6a56fb64bed2477f7b51083607f5"
+    },
+    {
+      "path": "test/bird_companion/unified_shell_navigation_test.dart",
+      "bytes": 2916,
+      "sha256": "64fff5090239c723fa14fddbcbc7e5dc2934cbcd3b571d480197c1cc9e152c4d"
+    },
+    {
+      "path": "test/contracts/README.md",
+      "bytes": 692,
+      "sha256": "4e3d55e2862ae8cdbac21f9ed04e307c7a17c8844d8718a2f3bbbcbd93ed9e0d"
+    },
+    {
+      "path": "test/contracts/a7_mock_security_audit_test.dart",
+      "bytes": 4262,
+      "sha256": "de85f105b3381f221ed4047814bca0bb3aa8999abac3345a4be5f253f4e851e3"
+    },
+    {
+      "path": "test/contracts/contract_validation_test.dart",
+      "bytes": 5117,
+      "sha256": "feffc531003ec5aeccecce9b7f67af5e7744d8eb7dc1af7760f9c1931d954eee"
+    },
+    {
+      "path": "test/contracts/fixture-manifest.json",
+      "bytes": 3228,
+      "sha256": "cbc74be39eacc40770a5858c87ece35af91a67783086337a4bfca087a1da6070"
+    },
+    {
+      "path": "test/contracts/fixtures/bird-job-status.response.json",
+      "bytes": 705,
+      "sha256": "67b7fa4d088ebcfcdd6efc1ffd6c9670db7f3c256cb9e4eb718afb2e5dcbb949"
+    },
+    {
+      "path": "test/contracts/fixtures/ble-command-envelope.rc4.json",
+      "bytes": 203,
+      "sha256": "ec90c403802d587a29a7ec02f3ef2eb3720b2b7af163200860958a1b3b938372"
+    },
+    {
+      "path": "test/contracts/fixtures/ble-device-info.preflight-v1.json",
+      "bytes": 788,
+      "sha256": "1746f4742aa36f2f06e890a1e3538c93d5cfa0c75a5230bd3b2d82de086715e1"
+    },
+    {
+      "path": "test/contracts/fixtures/ble-device-info.rc4.json",
+      "bytes": 753,
+      "sha256": "d40a70a5745e5c62786601b492f9add49d4c30cf1583b3463b2bab59d76f73cb"
+    },
+    {
+      "path": "test/contracts/fixtures/ble-network-status.rc4.json",
+      "bytes": 824,
+      "sha256": "bfd825f5f67d57464646857ec185a87e4ea2faa09647a81a8594a41f34b495e4"
+    },
+    {
+      "path": "test/contracts/fixtures/device-status.response.json",
+      "bytes": 900,
+      "sha256": "e4f874aea67a3e6941a9317b07ddacb5e7c90020697a6cd3f71d2d9b96f0c49c"
+    },
+    {
+      "path": "test/contracts/fixtures/error.response.json",
+      "bytes": 209,
+      "sha256": "97ee72979b8d566ede28960c97fe01bd02f0bd725e0d4653d7d28bdfd321121c"
+    },
+    {
+      "path": "test/contracts/fixtures/event-envelope.response.json",
+      "bytes": 880,
+      "sha256": "6ec08c5ac72bfc008f332b7884a4505d56954723bfd93ad0dc3c229b0e5ea1c2"
+    },
+    {
+      "path": "test/contracts/fixtures/health.rc4.json",
+      "bytes": 216,
+      "sha256": "cba901c4d1c45c293e5f2c1f799807e3ddd91fdd4f3c3168b80d25e789fe5d0d"
+    },
+    {
+      "path": "test/contracts/fixtures/invalid-ble-device-info.preflight-v1.json",
+      "bytes": 790,
+      "sha256": "347c14860f87053b1857748e998d9ac5c45f2300535b3c93cda1d14db22d0914"
+    },
+    {
+      "path": "test/contracts/fixtures/invalid-empty-decision-patch.request.json",
+      "bytes": 22,
+      "sha256": "36ac7873730b5dd6a5d93401521e64358476bf088eaba8e0f01e481631bd6548"
+    },
+    {
+      "path": "test/contracts/fixtures/invalid-job-progress.response.json",
+      "bytes": 245,
+      "sha256": "662eaf0028796bd79217b3ab58dbdb5cfd7df244825ece83da515736c8ef2a91"
+    },
+    {
+      "path": "test/contracts/fixtures/invalid-partial-event.response.json",
+      "bytes": 188,
+      "sha256": "2bb0a20702bdbe952b916f5d5aa1f7e8bed806004dd52fd03ff6ba76ef94e42f"
+    },
+    {
+      "path": "test/contracts/fixtures/pairing-token.rc4.json",
+      "bytes": 211,
+      "sha256": "52258fe6c23b0f320d40f385c0f983d20fcb23ab90e6d413b3b8adbc4a6ffc9d"
+    },
+    {
+      "path": "test/contracts/fixtures/photo.response.json",
+      "bytes": 1287,
+      "sha256": "6812f7d9509916cff9799ecc9d8f121fc89d20007c49c531a9c322547b956b80"
+    },
+    {
+      "path": "test/contracts/fixtures/project.response.json",
+      "bytes": 687,
+      "sha256": "c745b6b86dd37e41e0217a9818d80925856e665845eae849d410a7243b20003c"
+    },
+    {
+      "path": "test/contracts/fixtures/user-decision-patch.request.json",
+      "bytes": 124,
+      "sha256": "ebc501500d98fc4839b019c059c4b7c52d6cfbb3e29f6da9bae4c69c7eecb6b4"
+    },
+    {
+      "path": "test/contracts/progressive_media_proposal_test.dart",
+      "bytes": 2650,
+      "sha256": "f9f97e5980931c4836c94192e1f9ef3eeb7756114142c91f99087cee412c6055"
+    },
+    {
+      "path": "test/contracts/project4_831_interface_freeze_test.dart",
+      "bytes": 2463,
+      "sha256": "878400176a560364efc95e86ea82c59006e77e37541473869ea6b47884f973dd"
+    },
+    {
+      "path": "test/fixtures/bird_companion/copy_1022/README.md",
+      "bytes": 6322,
+      "sha256": "292c799453ee3df32a256dc178e51de37bc659195f37257cdcededd01852ba54"
+    },
+    {
+      "path": "test/fixtures/contracts/smart_follow_v1.json",
+      "bytes": 4592,
+      "sha256": "45d326fe2d48227bc04d345e224cf4da6f8852e826b269a7f7f5b7521d90c7bb"
+    },
+    {
+      "path": "test/fixtures/repair_acceptance_profiles.json",
+      "bytes": 521,
+      "sha256": "8a86abe0be5e632d06af3a0f44ee00e0da346f8f7603d3049d8b21478f4077e0"
+    },
+    {
+      "path": "test/support/disconnect_fault_server.dart",
+      "bytes": 5749,
+      "sha256": "3362cd48257974c46df511e5b25523fc8eeadf0a712c0cfab984493ee02acd80"
+    },
+    {
+      "path": "test/support/serve_disconnect_reproduction.py",
+      "bytes": 2637,
+      "sha256": "aa741781b5bdc95541b1a2ee472f35616d0ff6a8887d510506251117816fd7fa"
+    },
+    {
+      "path": "tool/acceptance/b12a_k7_acceptance.dart",
+      "bytes": 12094,
+      "sha256": "1edece39fc372cc0a87df47d95104eaea87bebab1feded29bdb3273a6ac81a8a"
+    },
+    {
+      "path": "tool/acceptance/b12b_release_gate.dart",
+      "bytes": 14765,
+      "sha256": "c7f163383332ec36c15eff8dd9ecd5fa5a3ab3e181499be42f7369c740f7e200"
+    },
+    {
+      "path": "tool/acceptance/ble_provisioning_rc4_acceptance.dart",
+      "bytes": 3966,
+      "sha256": "9dadd5f58bcb45bfb5110be19d7bf9043227c88fbea5cff8fd40cfa3085b197c"
+    },
+    {
+      "path": "tool/acceptance/ble_provisioning_rc4_real_device_gate.dart",
+      "bytes": 16549,
+      "sha256": "8c7fb90e2bd5a7a86f08133a499f0c7a4da709e5e4758712c569c61bbea14292"
+    },
+    {
+      "path": "tool/acceptance/ble_scan_b7_evidence_validator.dart",
+      "bytes": 8316,
+      "sha256": "b77a982015975731d29606894f625cf49b426a95ef30856748be22e22850a4bc"
+    },
+    {
+      "path": "tool/acceptance/progressive_media_p4_acceptance.dart",
+      "bytes": 12520,
+      "sha256": "8a2471643038cf56dafcc9753cc8b112c309d1971c424eb8f0320983e7b5f6ec"
+    },
+    {
+      "path": "tool/acceptance/rc4_hf_ble_03_evidence_validator.dart",
+      "bytes": 32237,
+      "sha256": "9695138a54931ab2c51fda4edd7710943fa45dab6f59b6ffa56302e73c42005d"
+    },
+    {
+      "path": "tool/acceptance/rc4_hf_ble_04_release_gate.dart",
+      "bytes": 23925,
+      "sha256": "308a0f100597938cd2663cd1b44079f6da2a9415eedb4dee9a06748c709db28b"
+    },
+    {
+      "path": "tool/acceptance/rc4_hf_ble_05_handoff_gate.dart",
+      "bytes": 14279,
+      "sha256": "8015a1e30168610995021554cbb33ff9b149a88094a4475faee3f3e9ad6dcf98"
+    },
+    {
+      "path": "tool/acceptance/rc4_hf_ble_16_evidence_validator.dart",
+      "bytes": 19532,
+      "sha256": "59bb82149721820692d959d48278a9071cba9a0dd53a6371cf7f146e2c5894bb"
+    },
+    {
+      "path": "tool/ble11/README.md",
+      "bytes": 5894,
+      "sha256": "d9bb7771b4f450c16f2ac8724858c16ef5f722dcbce17ef9446cd26c9119d234"
+    },
+    {
+      "path": "tool/ble11/ble11_evidence_validator.dart",
+      "bytes": 7534,
+      "sha256": "df6d507b2e5b63f666822cc55420d06b9bb33f1e29fa8cd51af956a0f9e1c8a3"
+    },
+    {
+      "path": "tool/ble11/bond_first_evidence_validator.dart",
+      "bytes": 13569,
+      "sha256": "5e32b8631492ff647a8e42b4c9d5f3a37f8827ec62d41fd75e2342caa816e265"
+    },
+    {
+      "path": "tool/ble11/confirm_ble20_avd_pairing.ps1",
+      "bytes": 4462,
+      "sha256": "0a19f3707897cc1fff911086d0f41e4c66560708623c4a816957b6bdd81c1d21"
+    },
+    {
+      "path": "tool/ble11/local_capture_validator.dart",
+      "bytes": 1669,
+      "sha256": "d61ffbd9f62d808515930240947eb7e4a530bde88d0ce11278a6d370aeea8d40"
+    },
+    {
+      "path": "tool/ble11/run_ble11_dual_avd.ps1",
+      "bytes": 14278,
+      "sha256": "f7d229eb59db59cb61865873e3420058cc60bf8b75fc9aee533d9d6c61dcb0f9"
+    },
+    {
+      "path": "tool/ble11/run_ble20_two_phones.ps1",
+      "bytes": 6609,
+      "sha256": "972c778d3ce31fb3be2735c87aa2e362cf8644c88d6b482a58fba454b86a6890"
+    },
+    {
+      "path": "tool/ble11/setup_ble11_avds.ps1",
+      "bytes": 2466,
+      "sha256": "23ee0f602f333dfcd7fa3ad6f693caf76f1e0ad1bf541a864987ac1602b2d7d0"
+    },
+    {
+      "path": "tool/ble11/validate_ble11_evidence.dart",
+      "bytes": 1110,
+      "sha256": "aeb77b65bb01c047a5899bd169a1b674dac6867a829866937a4b72bea3d78ad7"
+    },
+    {
+      "path": "tool/ble12/README.md",
+      "bytes": 1276,
+      "sha256": "1f259a20cd63ed7fedf514022c7f4f11560231f0b2f55e1458879cb0761559f8"
+    },
+    {
+      "path": "tool/ble12/ble12_candidate_validator.dart",
+      "bytes": 22801,
+      "sha256": "633cc90a845be5097c63da7d09ea269136778b823e9f8241995940d01cc16fc9"
+    },
+    {
+      "path": "tool/ble12/build_ble12_candidate.ps1",
+      "bytes": 27992,
+      "sha256": "a3d95c86328d22089b19070d1d2fed5f0cf274bd26fb7a52c73af7cae0fefd1f"
+    },
+    {
+      "path": "tool/ble12/materials/ble12-return.template.json",
+      "bytes": 730,
+      "sha256": "22ce2a8efc0d19c8a0c13c2c508afdb8b2787aabcb13527d9d7edffbe3328606"
+    },
+    {
+      "path": "tool/ble12/materials/diagnostic-return-guide.zh-CN.md",
+      "bytes": 843,
+      "sha256": "d0d3a1c8551b2273a45fed6803322821b20928a8d12679b6cd063f8b0a2923dd"
+    },
+    {
+      "path": "tool/ble12/materials/field-integration-manual.zh-CN.md",
+      "bytes": 1511,
+      "sha256": "f47ad0330b919ddddab62da04b7c55f5143c43ae10c598cbe06874937251fdd4"
+    },
+    {
+      "path": "tool/ble12/materials/verify_package.ps1",
+      "bytes": 3761,
+      "sha256": "59ba1013845b3eab727d65aa47024ccfb5e1431fda36aa5365103458dcc33096"
+    },
+    {
+      "path": "tool/ble12/validate_ble12_candidate.dart",
+      "bytes": 1827,
+      "sha256": "299218f7c44e9bb277fb4f74b5e5f2147978889be3ff4bece049a9d431cbf151"
+    },
+    {
+      "path": "tool/ble19/WriteDiagnosticSamples.java",
+      "bytes": 1458,
+      "sha256": "dcb709513b62bbe5d2e05d313477dd19a1ef63c714824d08f7d146e43d61ab64"
+    },
+    {
+      "path": "tool/ble19/test_verify_diagnostic_file.py",
+      "bytes": 6373,
+      "sha256": "e8348ad17d23c452f46b05b458b96e832f7abc75f32bc587a8d2a8f6f5cf9fe7"
+    },
+    {
+      "path": "tool/ble19/verify_diagnostic_file.py",
+      "bytes": 5915,
+      "sha256": "01de7aa47f31bedbf54d90c19574787ed2e29a852582f546ed73dba84c1c6241"
+    },
+    {
+      "path": "tool/ble21/run_local_business_checks.ps1",
+      "bytes": 2716,
+      "sha256": "2bfb4d6d4b221e9f66eb08482031733fb615eac2764a96a6c3c62cb2a1286edf"
+    },
+    {
+      "path": "tool/ble21/virtual_protocol_contract_test.dart",
+      "bytes": 1467,
+      "sha256": "2532e55c647e9effca1dfdf74351439e7b434d0ec12a8ce150e151ee414b4e6a"
+    },
+    {
+      "path": "tool/ble22/Ble22.Tools.psm1",
+      "bytes": 30526,
+      "sha256": "ce4b997680429bc4c858ee921af4ed45859ff246604b61a7a47ade162c821ca8"
+    },
+    {
+      "path": "tool/ble22/README.md",
+      "bytes": 12960,
+      "sha256": "8adf4d9ede3030f54c3347bed6b9c25dc3774fb1129d2ff74b31868d7284096a"
+    },
+    {
+      "path": "tool/ble22/ble1019/README.md",
+      "bytes": 12736,
+      "sha256": "3360559b447418dee451323b5adfc5c85dc1044b1698cbf3432b0b9b024e5cea"
+    },
+    {
+      "path": "tool/ble22/ble1019/acceptance.py",
+      "bytes": 36968,
+      "sha256": "c5b88ef61afb77566e7ef27e77f875fafcddd0e9dbdbe02d427b4c12671d3026"
+    },
+    {
+      "path": "tool/ble22/ble1019/register_build.ps1",
+      "bytes": 3668,
+      "sha256": "0180b09e648211c548be4299f4980ba02f32d3ec6925b71f2ffe854949c7af0d"
+    },
+    {
+      "path": "tool/ble22/ble1019/run_offline.ps1",
+      "bytes": 6724,
+      "sha256": "1f8a9e6ee61b074571d315fc316ea2945309ce37c7f7dd8221783e077df19140"
+    },
+    {
+      "path": "tool/ble22/ble1019/test_acceptance.py",
+      "bytes": 21030,
+      "sha256": "617a250677654d3e89bea3fafdb00e8de93e16ab899880902f135fe109954137"
+    },
+    {
+      "path": "tool/ble22/ble1019/test_scripts.ps1",
+      "bytes": 2842,
+      "sha256": "4aec9f100ed28f7eb26aec26806729302a3ae977e1ad492cfbcc5488b44a305a"
+    },
+    {
+      "path": "tool/ble22/capture_phone_flow.dart",
+      "bytes": 709,
+      "sha256": "1baa20e1728a0076b2c38cc4db3fbc7d67baef4748cb5aafab30cc085bc09de9"
+    },
+    {
+      "path": "tool/ble22/first_bond_run.template.json",
+      "bytes": 1489,
+      "sha256": "dc130107ecea62d337358ef39c99eb80b8333dd92e78d2202a20538436edb9d5"
+    },
+    {
+      "path": "tool/ble22/install_phone_apk.ps1",
+      "bytes": 1511,
+      "sha256": "061808eda28bbe8f80fc300a2ada102fa743d7f32f20714a9015d7353400d586"
+    },
+    {
+      "path": "tool/ble22/integration_driver.dart",
+      "bytes": 109,
+      "sha256": "2f80a384a6d27eaff7c355e92644a0ab171504857103a4d53579236e8ecdb05f"
+    },
+    {
+      "path": "tool/ble22/open_test_bond_detail.ps1",
+      "bytes": 6117,
+      "sha256": "cc3a7c1590f72d7ba11396b4045e3f6d9b74dd03fc9a83bc9a536850ee687836"
+    },
+    {
+      "path": "tool/ble22/operator_ui.ps1",
+      "bytes": 1179,
+      "sha256": "b35da1260b76947dcd470444a6e2970f0c3f4ab54b4ded33aec83ade50af3bd6"
+    },
+    {
+      "path": "tool/ble22/phone_inspection_semantics.dart",
+      "bytes": 597,
+      "sha256": "2154f8de56cd8ceb3dbbf07448bd9537387758221238bf60edae504b6417ea7b"
+    },
+    {
+      "path": "tool/ble22/prepare_phone_pair.ps1",
+      "bytes": 2165,
+      "sha256": "7b3d8115c7cf470ade2e2d9b43e5f52527e2d8b97e3c74be5a8abddabee64930"
+    },
+    {
+      "path": "tool/ble22/prepare_round.ps1",
+      "bytes": 5629,
+      "sha256": "a80c42f64a630eee247cf0fbc2fa48be641ba70a6d92c28a5ff99bd1ff0ababc"
+    },
+    {
+      "path": "tool/ble22/release_received_cache.ps1",
+      "bytes": 4201,
+      "sha256": "9eaad325d2f12ef73473c696558dfcc2a2fbd608a3655cf3fadce1605f723e71"
+    },
+    {
+      "path": "tool/ble22/reset_test_bond.ps1",
+      "bytes": 1981,
+      "sha256": "e14730442e2bdf3ccd8f148adc8b5ebaafc7a8d0a88858c489a8b824ff3ae372"
+    },
+    {
+      "path": "tool/ble22/run_phone_round.ps1",
+      "bytes": 15547,
+      "sha256": "1d391a2b9c07d2efc3b188772cd4d2b5c38472db74916378c2ca36b57087e08a"
+    },
+    {
+      "path": "tool/ble22/summarize.py",
+      "bytes": 3896,
+      "sha256": "6db326c9002b9cf38a8d0de77ca6235fff20b7f8b5dcb2d552dc072cad4c62e5"
+    },
+    {
+      "path": "tool/ble22/test_tools.ps1",
+      "bytes": 22822,
+      "sha256": "bb47c308a52a63bf233b87cad13b857acb159204b849517b9c71466db8f25050"
+    },
+    {
+      "path": "tool/ble22/test_tools.py",
+      "bytes": 8920,
+      "sha256": "270d66a5bc26549e3543cb7963efe04b572b54bda0e0c30f788d13bc398a1cd3"
+    },
+    {
+      "path": "tool/ble22/verify_pairing_stop.py",
+      "bytes": 5963,
+      "sha256": "22d78040b330f9aaf1848a0e9a716d42f79939aaa7a4a787fb4c145d123c6b38"
+    },
+    {
+      "path": "tool/ble22/verify_received.py",
+      "bytes": 2947,
+      "sha256": "2ba49c6e390146710b842f2bfa323705d755971f1c0f1ff4cd6c6aeec36e7ad2"
+    },
+    {
+      "path": "tool/build_demo_apk.ps1",
+      "bytes": 2026,
+      "sha256": "0f2ff409d8a9cf53f0ed32a0f8c0b4ae96634edb7a9bb655724a9b6128b60982"
+    },
+    {
+      "path": "tool/build_task_filter_impl_docx.py",
+      "bytes": 47524,
+      "sha256": "504a11ff4be2867eb1bcb2e577b7c489e96746b75a0d40064124f38a964e3f32"
+    },
+    {
+      "path": "tool/contracts/contract_validator.dart",
+      "bytes": 26899,
+      "sha256": "d7ad2f218eb82bd3a8749e079fb641b47b2822761215490aa2b3be9bd74d0819"
+    },
+    {
+      "path": "tool/contracts/verify_contracts.dart",
+      "bytes": 933,
+      "sha256": "1f6f6fabb3e653e73787793e7d72b1aeedfa34ded83e24c4c16462a54241bce6"
+    },
+    {
+      "path": "tool/direct_ap_python_fixture.py",
+      "bytes": 1425,
+      "sha256": "5d62aefc8606ce8a2dadad0d34707716b28a5fe38feec9875c84444c38fadde8"
+    },
+    {
+      "path": "tool/mock_box_server/README.md",
+      "bytes": 13824,
+      "sha256": "15896a0861b64653bad349854caa255810844cd650c91e9c3b40b412713a1792"
+    },
+    {
+      "path": "tool/mock_box_server/assets/egret.png",
+      "bytes": 1912748,
+      "sha256": "421af71e27d4617feae6d15bd5b86c14bb7ce8dfb1b2e5f48644187c7d645416"
+    },
+    {
+      "path": "tool/mock_box_server/assets/kingfisher.png",
+      "bytes": 1987875,
+      "sha256": "61e34ad612a06c1eb640d8f771e6be5211917a7c04034cdc46d6dbbde40f5145"
+    },
+    {
+      "path": "tool/mock_box_server/assets/sandpiper.png",
+      "bytes": 1796852,
+      "sha256": "98f8fb22c2c927ab7fb89259cd4afa18ee2b2207543970fa75238371b304444e"
+    },
+    {
+      "path": "tool/mock_box_server/assets/warbler.png",
+      "bytes": 1857846,
+      "sha256": "17c0fb0b9681d74e3fe52e6881451988697a940fd927f4091e1ebc6fb0d134f6"
+    },
+    {
+      "path": "tool/mock_box_server/mock_box_server.dart",
+      "bytes": 202,
+      "sha256": "bebc29253f9a8a4ca9198f110f5de9e05ccb5a2aa0411abdf0ae50a8163aa0a9"
+    },
+    {
+      "path": "tool/mock_box_server/server.dart",
+      "bytes": 8590,
+      "sha256": "966e43de1db9f4bf0dc2f16d61d5b2febe6d438c8c869b3dc4bad95d231db06e"
+    },
+    {
+      "path": "tool/release/README.md",
+      "bytes": 10570,
+      "sha256": "b2a9b0367a1be368bca1ec0b56e1ea4238e441ba3b6feef63ae0e445ebb2c4d1"
+    },
+    {
+      "path": "tool/release/build_android_apks.ps1",
+      "bytes": 15330,
+      "sha256": "504e698c437b050ded060ad8aa64047b6d5da5318188269739bf6a5f240623c5"
+    },
+    {
+      "path": "tool/release/run_b7_gate.ps1",
+      "bytes": 20795,
+      "sha256": "a281b58e44e78cbf328cc2d463afe3743f52182740a9174d29d43c163efe6f82"
+    },
+    {
+      "path": "tool/release/verify_android_release.ps1",
+      "bytes": 3172,
+      "sha256": "a1321db03151f2aa1a4edb70bb4746dc9ee58e702a5dbb5f7330703efd2eb058"
+    },
+    {
+      "path": "tool/release/verify_production_integrity.dart",
+      "bytes": 15727,
+      "sha256": "1c8b8a23a808f8ecb4b200c35680a316742ad94fdd9ed09cddfaebb3d1ce17cf"
+    },
+    {
+      "path": "tool/run_app.sh",
+      "bytes": 2348,
+      "sha256": "930fee73f6a127d82aff9bf14d805c58630f8cc9623ec740d2de1c5eb9bc21e1"
+    },
+    {
+      "path": "tool/task2/make_qr_fixtures.py",
+      "bytes": 1178,
+      "sha256": "a580d213555b06e9db9cb4712cc2a16501ea2727ecc8ca7d79943c681a037908"
+    }
+  ],
+  "file_count": 894
+}

@@ -199,4 +199,10 @@ class MediaAssetService implements MediaAssetLoader {
   Future<void> evict(MediaAssetDescriptor descriptor) => _cache.remove(descriptor);
 
   void dispose() => _httpClient.dispose();
+
+  void resetNetworkConnections() {
+    _inFlight.clear();
+    _latestIdentity.clear();
+    _httpClient.resetNetworkConnections();
+  }
 }

@@ -1,0 +1,48 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_cubit_test.dart
+00:00 +0: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_cubit_test.dart: ProvisioningCubit keeps a compact BirdBox advertisement without manufacturer data visible
+00:00 +1: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_cubit_test.dart: ProvisioningCubit does not enter the trusted pairing flow until Device Info has completed
+00:00 +2: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_cubit_test.dart: ProvisioningCubit coalesces repeated device taps into one connection action
+00:00 +3: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_cubit_test.dart: ProvisioningCubit only offers connection methods after a pairing code has been authorized
+00:00 +4: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_cubit_test.dart: ProvisioningCubit closing the presentation cubit does not tear down the app-wide connection
+00:00 +5: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_cubit_test.dart: ProvisioningCubit surfaces the latest secret-safe scan diagnostic for support
+00:00 +6: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_cubit_test.dart: ProvisioningCubit pairing retry rebuilds the BLE session before opening a new window
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart:509:12: Error: A value of type 'Object?' can't be returned from a function with return type 'Object'.
+ - 'Object' is from 'dart:core'.
+    return _sessionOwner;
+           ^
+00:04 +7 -1: loading D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart [E]
+  Failed to load "D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart":
+  Compilation failed for testPath=D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: lib/bird_companion/features/connection/data/provisioning_repository_impl.dart:509:12: Error: A value of type 'Object?' can't be returned from a function with return type 'Object'.
+   - 'Object' is from 'dart:core'.
+      return _sessionOwner;
+             ^
+  .
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart:509:12: Error: A value of type 'Object?' can't be returned from a function with return type 'Object'.
+ - 'Object' is from 'dart:core'.
+    return _sessionOwner;
+           ^
+00:10 +7 -2: loading D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_batch2_lifecycle_test.dart [E]
+  Failed to load "D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_batch2_lifecycle_test.dart":
+  Compilation failed for testPath=D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_batch2_lifecycle_test.dart: lib/bird_companion/features/connection/data/provisioning_repository_impl.dart:509:12: Error: A value of type 'Object?' can't be returned from a function with return type 'Object'.
+   - 'Object' is from 'dart:core'.
+      return _sessionOwner;
+             ^
+  .
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart:509:12: Error: A value of type 'Object?' can't be returned from a function with return type 'Object'.
+ - 'Object' is from 'dart:core'.
+    return _sessionOwner;
+           ^
+00:12 +7 -3: loading D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart [E]
+  Failed to load "D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart":
+  Compilation failed for testPath=D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: lib/bird_companion/features/connection/data/provisioning_repository_impl.dart:509:12: Error: A value of type 'Object?' can't be returned from a function with return type 'Object'.
+   - 'Object' is from 'dart:core'.
+      return _sessionOwner;
+             ^
+  .
+00:12 +7 -3: Some tests failed.
+
+Failing tests:
+  D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_batch2_lifecycle_test.dart: loading D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_batch2_lifecycle_test.dart
+  D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: loading D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart
+  D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: loading D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart

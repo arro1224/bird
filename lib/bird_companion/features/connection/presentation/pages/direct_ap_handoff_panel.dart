@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
-import 'package:aves/bird_companion/features/connection/data/provisioning_repository_impl.dart';
 import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
 import 'package:aves/bird_companion/features/connection/presentation/widgets/ble_diagnostic_export_dialog.dart';
 import 'package:flutter/material.dart';
@@ -20,8 +19,9 @@ class DirectApHandoffPanel extends StatelessWidget {
     final state = cubit.state;
     final pending = state.pending!;
     final dependencies = BirdCompanionScope.maybeOf(context);
-    final repository = dependencies?.provisioningRepository;
+    final failed = state.phase == DirectApHandoffPhase.failure || state.phase == DirectApHandoffPhase.directApJoinTimeout;
     final title = switch (state.phase) {
+      DirectApHandoffPhase.joiningPhoneAp => '正在请求连接盒子热点',
       DirectApHandoffPhase.verifyingDirectApHttp => '正在验证盒子',
       DirectApHandoffPhase.directApJoinTimeout => '等待连接超时',
       DirectApHandoffPhase.failure => '盒子验证未完成',
@@ -41,14 +41,22 @@ class DirectApHandoffPanel extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
           Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: AppSpacing.md),
-          Text(pending.isSta ? '请让手机与盒子连接同一 Wi-Fi。App 会验证设备身份、授权和实时连接后自动进入首页。' : '盒子热点已就绪，请在手机 WLAN 设置中连接 ${pending.ssid ?? '盒子热点'}。', textAlign: TextAlign.center),
+          Text(
+            pending.isSta
+                ? '请让手机与盒子连接同一 Wi-Fi。App 会验证设备身份、授权和实时连接后自动进入首页。'
+                : cubit.manualRescue
+                ? '正在验证手工连接的盒子，身份与授权确认后即可继续使用。'
+                : 'App 正在自动连接 ${pending.ssid ?? '盒子热点'}。如系统弹窗，请确认加入。',
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: AppSpacing.sm),
-          Text(pending.isSta ? '无需再次配对或重复提交密码。返回前台后会继续检查连接。' : '若手机提示“此网络无法上网”，请选择保持连接。返回 App 后会继续验证，无需重新配对或启动热点。'),
-          if (!pending.isSta && repository is ProvisioningRepositoryImpl)
-            FutureBuilder<String?>(
-              future: repository.directApPassphrase(pending.deviceId),
-              builder: (_, snapshot) => snapshot.data == null ? const SizedBox.shrink() : ExpansionTile(title: const Text('查看盒子热点密码'), children: [SelectableText(snapshot.data!)]),
-            ),
+          Text(
+            pending.isSta
+                ? '无需再次配对或重复提交密码。返回前台后会继续检查连接。'
+                : cubit.manualRescue
+                ? '请保持当前 Wi-Fi 连接，App 会继续检查盒子的业务访问。'
+                : '无需查找热点或输入盒子密码。系统入网完成后还会验证设备身份、授权和实时连接。',
+          ),
           const SizedBox(height: AppSpacing.md),
           Text('剩余等待时间：${state.remainingSeconds} 秒 · 已验证 ${state.attempt} 次', textAlign: TextAlign.center),
           if (state.message != null)
@@ -56,26 +64,27 @@ class DirectApHandoffPanel extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
               child: Text(state.message!),
             ),
-          if (state.phase == DirectApHandoffPhase.verifyingDirectApHttp) const LinearProgressIndicator(),
+          if (!pending.isSta && failed) const Text('如果本手机正在开热点且无法加入盒子热点，请按系统提示关闭手机热点后重试。'),
+          if (state.phase == DirectApHandoffPhase.verifyingDirectApHttp || state.phase == DirectApHandoffPhase.joiningPhoneAp) const LinearProgressIndicator(),
           const SizedBox(height: AppSpacing.lg),
-          BirdButton(
-            label: '打开 WLAN 设置',
-            onPressed: () async {
-              try {
-                await _wifi.invokeMethod<void>('openWifiSettings');
-              } catch (_) {
-                /* Manual navigation remains available. */
-              }
-            },
-          ),
+          if (pending.isSta || failed)
+            BirdButton(
+              label: pending.isSta ? '打开 WLAN 设置' : '故障备用：打开 WLAN 设置',
+              onPressed: () async {
+                try {
+                  await _wifi.invokeMethod<void>('openWifiSettings');
+                } catch (_) {
+                  /* System settings unavailable. */
+                }
+              },
+            ),
           const SizedBox(height: AppSpacing.sm),
-          // 终态失败后「我已连接，继续验证」会一直置灰（授权已消费，重试不可能成功），
-          // 只有一个不显眼的 TextButton 能退出去，现场很容易卡在这一页。
-          // 失败时把主按钮换成明确的「返回并重新配对」。
-          if (state.phase == DirectApHandoffPhase.failure || state.phase == DirectApHandoffPhase.directApJoinTimeout)
-            BirdButton(label: '返回并重新配对', onPressed: onBack)
-          else
-            BirdButton(label: '我已连接，继续验证', onPressed: !state.canContinue ? null : () => unawaited(cubit.continueVerification())),
+          if (failed && state.lastError == 'ProvisioningCredentialSaveException') BirdButton(label: '重试保存并继续验证', onPressed: () => unawaited(cubit.continueVerification())),
+          if (failed && cubit.canUseManualRescue) BirdButton(label: '我已手动连接，验证备用连接', onPressed: () => unawaited(cubit.continueAfterManualJoin())),
+          if (failed)
+            BirdButton(label: '返回连接方式后重试', onPressed: onBack)
+          else if (pending.isSta || state.lastError == 'ProvisioningCredentialSaveException')
+            BirdButton(label: '继续验证', onPressed: !state.canContinue ? null : () => unawaited(cubit.continueVerification())),
           TextButton(onPressed: onBack, child: const Text('返回连接方式')),
           if (dependencies != null)
             TextButton(

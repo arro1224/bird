@@ -1,0 +1,4 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Androidstudio2/project/4/test/bird_companion/core/mock_box_server_test.dart
+00:00 +0: RC3 复制任务闭环：capabilities/预检拒绝全量备份/创建→轮询部分完成/动作版本冲突/安全移除
+00:00 +1: All tests passed!

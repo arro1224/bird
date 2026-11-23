@@ -1,0 +1,2299 @@
+{
+  "scope_note": "Lexical inventory: definitions, calls, channel names and comments; not a runtime call graph. Stream/controller cleanup is included, not counted as network release.",
+  "files_scanned": 82,
+  "matches": 382,
+  "sites": [
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 137,
+      "group": "ble_owner_transport",
+      "source": "// STATE_DISCONNECTED arrives and close() has run; completed exactly once."
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 323,
+      "group": "ble_owner_transport",
+      "source": "if (disposed && !\"dispose\".equals(call.method)) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 337,
+      "group": "ble_owner_transport",
+      "source": "case \"stopScan\":"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 338,
+      "group": "ble_owner_transport",
+      "source": "stopScan();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 348,
+      "group": "ble_owner_transport",
+      "source": "case \"disconnect\":"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 367,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(true, \"requested\", BluetoothGatt.GATT_SUCCESS);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 412,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(true, \"user_cancelled\", BluetoothGatt.GATT_SUCCESS);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 434,
+      "group": "ble_owner_transport",
+      "source": "case \"dispose\":"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 436,
+      "group": "ble_owner_transport",
+      "source": "dispose();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 676,
+      "group": "ble_owner_transport",
+      "source": "stopScan();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 696,
+      "group": "ble_owner_transport",
+      "source": "private void stopScan() {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 815,
+      "group": "ble_owner_transport",
+      "source": "activeScanner.stopScan(callback);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1145,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(false, \"pre_connect_reset\", BluetoothGatt.GATT_SUCCESS);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1199,
+      "group": "ble_owner_transport",
+      "source": "private boolean releaseParkedResetGatt() {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1204,
+      "group": "ble_owner_transport",
+      "source": "recordGattRelease(parkedRetireConnectionGeneration, parkedRetireGattGeneration,"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1214,
+      "group": "ble_owner_transport",
+      "source": "return parked == null || closeGattClient(parked);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1217,
+      "group": "ble_owner_transport",
+      "source": "private void recordGattRelease(int generation, int instance, @Nullable String trace,"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1233,
+      "group": "ble_owner_transport",
+      "source": "private boolean finishParkedRelease(boolean disconnected, int status) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1236,
+      "group": "ble_owner_transport",
+      "source": "final boolean closed = releaseParkedResetGatt();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1238,
+      "group": "ble_owner_transport",
+      "source": "recordGattRelease(generation, instance, trace, reason,"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1242,
+      "group": "ble_owner_transport",
+      "source": "emitReleaseDiagnostic(\"pre_connect_reset\".equals(reason), confirmed, status);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1246,
+      "group": "ble_owner_transport",
+      "source": "private void emitReleaseDiagnostic(boolean preConnect, boolean confirmed, int status) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1252,
+      "group": "ble_owner_transport",
+      "source": "\"disconnect\", status, null,"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1269,
+      "group": "ble_owner_transport",
+      "source": "finishParkedRelease(false, -1);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1270,
+      "group": "ble_owner_transport",
+      "source": "completeControlledRelease(false);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1271,
+      "group": "ble_owner_transport",
+      "source": "failPreConnectRelease();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1276,
+      "group": "ble_owner_transport",
+      "source": "private void failPreConnectRelease() {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1286,
+      "group": "ble_owner_transport",
+      "source": "private void completeControlledRelease(boolean confirmed) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1322,
+      "group": "ble_owner_transport",
+      "source": "stopScan();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1578,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(false, \"controlled_reconnect\", BluetoothGatt.GATT_SUCCESS);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1762,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(true, \"bond_lost\", status);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1769,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(true, \"encrypted_retry_failed\", status);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1775,
+      "group": "ble_owner_transport",
+      "source": "if (old != null) closeGattForSecurity(old, true);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1781,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(true, \"permission_revoked\", status);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1911,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(true, \"security_failure\", BluetoothGatt.GATT_FAILURE);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 1957,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(true, \"bond_lost\", BluetoothGatt.GATT_FAILURE);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2050,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(true, code, gattStatus >= 0 ? gattStatus : BluetoothGatt.GATT_FAILURE);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2061,
+      "group": "ble_owner_transport",
+      "source": "if (gatt != null) closeGattForSecurity(gatt, true);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2128,
+      "group": "ble_owner_transport",
+      "source": "disconnectGattClient(failed);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2338,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(true, \"operation_timeout\", BluetoothGatt.GATT_FAILURE);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2546,
+      "group": "ble_owner_transport",
+      "source": "final boolean confirmed = finishParkedRelease(true, status);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2549,
+      "group": "ble_owner_transport",
+      "source": "releaseRetiringGatt();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2550,
+      "group": "ble_owner_transport",
+      "source": "releaseHeldLegacyRegistrations();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2551,
+      "group": "ble_owner_transport",
+      "source": "completeControlledRelease(confirmed);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2553,
+      "group": "ble_owner_transport",
+      "source": "else failPreConnectRelease();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2569,
+      "group": "ble_owner_transport",
+      "source": "} else releaseRetiringGatt();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2579,
+      "group": "ble_owner_transport",
+      "source": "closeGattClient(current);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2618,
+      "group": "ble_owner_transport",
+      "source": "else { failPending(\"bluetooth_permission_denied\", \"Bluetooth connect permission is missing.\"); closeGatt(true, \"service_discovery_failed\", status); }"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2621,
+      "group": "ble_owner_transport",
+      "source": "else { failPending(\"ble_gatt_operation_failed\", \"Service discovery failed.\"); closeGatt(true, \"service_discovery_failed\", status); }"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2637,
+      "group": "ble_owner_transport",
+      "source": "closeGattForSecurity(current);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2643,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(true, disconnectRequested ? \"requested\" : \"link_lost\", status);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2683,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(true, \"service_discovery_failed\", BluetoothGatt.GATT_FAILURE);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2706,
+      "group": "ble_owner_transport",
+      "source": "else { failPending(\"invalid_request\", \"BirdBox service or characteristic properties are invalid.\"); closeGatt(true, \"service_invalid\", status); }"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2940,
+      "group": "ble_owner_transport",
+      "source": "private void closeGattForSecurity(@NonNull BluetoothGatt callbackGatt) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2941,
+      "group": "ble_owner_transport",
+      "source": "closeGattForSecurity(callbackGatt, false);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2944,
+      "group": "ble_owner_transport",
+      "source": "private void closeGattForSecurity(@NonNull BluetoothGatt callbackGatt, boolean awaitDisconnect) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2950,
+      "group": "ble_owner_transport",
+      "source": "else closeGatt(true, \"legacy_registration_limit\", BluetoothGatt.GATT_FAILURE);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2969,
+      "group": "ble_owner_transport",
+      "source": "releaseRetiringGatt();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2971,
+      "group": "ble_owner_transport",
+      "source": "else closeGatt(true, \"old_gatt_disconnect_timeout\", BluetoothGatt.GATT_FAILURE);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2975,
+      "group": "ble_owner_transport",
+      "source": "if (!disconnectGattClient(callbackGatt)) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2977,
+      "group": "ble_owner_transport",
+      "source": "if (awaitDisconnect) { releaseRetiringGatt(); return; }"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2979,
+      "group": "ble_owner_transport",
+      "source": "if (!awaitDisconnect) closeGattClient(callbackGatt);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2982,
+      "group": "ble_owner_transport",
+      "source": "private void releaseRetiringGatt() {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2989,
+      "group": "ble_owner_transport",
+      "source": "closeGattClient(retired);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2993,
+      "group": "ble_owner_transport",
+      "source": "private void releaseHeldLegacyRegistrations() {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 2995,
+      "group": "ble_owner_transport",
+      "source": "closeGattClient(held);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3001,
+      "group": "ble_owner_transport",
+      "source": "private static boolean disconnectGattClient(@NonNull BluetoothGatt client) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3003,
+      "group": "ble_owner_transport",
+      "source": "client.disconnect();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3012,
+      "group": "ble_owner_transport",
+      "source": "private static boolean closeGattClient(@NonNull BluetoothGatt client) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3014,
+      "group": "ble_owner_transport",
+      "source": "client.close();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3047,
+      "group": "ble_owner_transport",
+      "source": "private synchronized void closeGatt(boolean emitDisconnect, @NonNull String reason, int status) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3054,
+      "group": "ble_owner_transport",
+      "source": "emitDiagnostic(\"teardown_started\", \"disconnect\", status, null, reason);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3059,
+      "group": "ble_owner_transport",
+      "source": "stopScan();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3077,
+      "group": "ble_owner_transport",
+      "source": "releaseParkedResetGatt();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3083,
+      "group": "ble_owner_transport",
+      "source": "recordGattRelease(retireConnectionGeneration, retireGattGeneration,"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3088,
+      "group": "ble_owner_transport",
+      "source": "disconnectGattClient(current);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3092,
+      "group": "ble_owner_transport",
+      "source": "disconnectGattClient(current);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3093,
+      "group": "ble_owner_transport",
+      "source": "final boolean closed = closeGattClient(current);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3095,
+      "group": "ble_owner_transport",
+      "source": "recordGattRelease(retireConnectionGeneration, retireGattGeneration, activeTraceId,"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3098,
+      "group": "ble_owner_transport",
+      "source": "emitReleaseDiagnostic(\"pre_connect_reset\".equals(reason), closed, status);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3104,
+      "group": "ble_owner_transport",
+      "source": "releaseRetiringGatt();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3105,
+      "group": "ble_owner_transport",
+      "source": "releaseHeldLegacyRegistrations();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3113,
+      "group": "ble_owner_transport",
+      "source": "releaseParkedResetGatt();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3125,
+      "group": "ble_owner_transport",
+      "source": "emitDisconnect(reason, status, !disconnectRequested);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3141,
+      "group": "ble_owner_transport",
+      "source": "emitDiagnostic(\"teardown_completed\", \"disconnect\", status, null, reason);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3144,
+      "group": "ble_owner_transport",
+      "source": "private void emitDisconnect(@NonNull String reason, int status, boolean unexpected) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3152,
+      "group": "ble_owner_transport",
+      "source": "emitDiagnostic(\"disconnected\", \"disconnect\", status, null, reason);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3405,
+      "group": "ble_owner_transport",
+      "source": "public void dispose() {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3406,
+      "group": "ble_owner_transport",
+      "source": "dispose(\"bridge_disposed\");"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3409,
+      "group": "ble_owner_transport",
+      "source": "void dispose(String reason) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3411,
+      "group": "ble_owner_transport",
+      "source": "mainHandler.post(() -> dispose(reason));"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3427,
+      "group": "ble_owner_transport",
+      "source": "closeGatt(true, reason, BluetoothGatt.GATT_SUCCESS);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java",
+      "line": 3428,
+      "group": "ble_owner_transport",
+      "source": "releaseParkedResetGatt();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxDppChannel.java",
+      "line": 204,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 92,
+      "group": "wifi_native_or_bridge",
+      "source": "if (disposed && !\"dispose\".equals(call.method)) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 130,
+      "group": "wifi_native_or_bridge",
+      "source": "case \"releaseNetwork\":"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 131,
+      "group": "wifi_native_or_bridge",
+      "source": "releaseNetwork(true);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 140,
+      "group": "wifi_native_or_bridge",
+      "source": "case \"dispose\":"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 141,
+      "group": "wifi_native_or_bridge",
+      "source": "dispose();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 388,
+      "group": "wifi_native_or_bridge",
+      "source": "releaseNetwork(false);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 447,
+      "group": "wifi_native_or_bridge",
+      "source": "unbindProcess();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 449,
+      "group": "wifi_native_or_bridge",
+      "source": "releaseCallback(this, generation);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 499,
+      "group": "wifi_native_or_bridge",
+      "source": "releaseCallback(callback, generation);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 516,
+      "group": "wifi_native_or_bridge",
+      "source": "releaseNetwork(false);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 526,
+      "group": "wifi_native_or_bridge",
+      "source": "private void releaseCallback("
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 539,
+      "group": "wifi_native_or_bridge",
+      "source": "private void releaseNetwork(boolean userInitiated) {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 540,
+      "group": "wifi_native_or_bridge",
+      "source": "unbindProcess();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 561,
+      "group": "wifi_native_or_bridge",
+      "source": "private void unbindProcess() {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 607,
+      "group": "wifi_native_or_bridge",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "line": 610,
+      "group": "wifi_native_or_bridge",
+      "source": "releaseNetwork(false);"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/MainActivity.java",
+      "line": 92,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "if (birdBoxBleDiagnosticFileChannel != null) { birdBoxBleDiagnosticFileChannel.dispose(); birdBoxBleDiagnosticFileChannel = null; }"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/MainActivity.java",
+      "line": 94,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "birdBoxWifiChannel.dispose();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/MainActivity.java",
+      "line": 98,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "birdBoxDppChannel.dispose();"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/MainActivity.java",
+      "line": 322,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "@Override public void onStopDiscoveryFailed(String type, int errorCode) {"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 541,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "if (ownedIntentId != null && deviceSessionCubit.acceptsNetworkIntent(ownedIntentId!)) deviceSessionCubit.disconnected(message ?? '盒子连接验证暂未完成，可以继续验证。');"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 545,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "if (active) deviceSessionCubit.disconnected('正在验证盒子网络连接。');"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 564,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 565,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "copyJobRecovery.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 566,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "activeCopyJobs.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 570,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "recognitionRepository.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 571,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "smartFollowRepository.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 572,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "unawaited(provisioningRepository.dispose());"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 573,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "unawaited(mediaAssetCoordinator.dispose());"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 574,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "mediaAssetService.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 575,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "unawaited(eventClient.dispose());"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 576,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "unawaited(sessionCoordinator.dispose());"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 577,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "unawaited(apiClient.dispose());"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 578,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "unawaited(deviceSessionCubit.close());"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 579,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "unawaited(birdSyncService.dispose());"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 580,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "unawaited(refreshCoordinator.dispose());"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 581,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "unawaited(dataChangeBus.dispose());"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 582,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "unawaited(pendingOperationStore.dispose());"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "line": 583,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "unawaited(Future.wait([phoneDiagnostics.dispose(), bleScanDiagnosticStore.dispose(), bleConnectionDiagnosticStore.dispose()]).whenComplete(cache.close));"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "line": 368,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "line": 369,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "_controller?.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "line": 370,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "super.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "line": 490,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "line": 491,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "_controller?.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "line": 492,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "super.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "line": 572,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "line": 573,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "_controller?.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "line": 574,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "super.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "line": 639,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "line": 640,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "_controller?.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/app/app_router.dart",
+      "line": 641,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "super.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/core/session/device_session_cubit.dart",
+      "line": 528,
+      "group": "business_session",
+      "source": "void disconnected([String? message, bool clearDevice = false]) {"
+    },
+    {
+      "path": "lib/bird_companion/core/session/device_session_cubit.dart",
+      "line": 534,
+      "group": "business_session",
+      "source": "Future<void> close() async {"
+    },
+    {
+      "path": "lib/bird_companion/core/session/device_session_cubit.dart",
+      "line": 542,
+      "group": "business_session",
+      "source": "return super.close();"
+    },
+    {
+      "path": "lib/bird_companion/core/session/session_coordinator.dart",
+      "line": 119,
+      "group": "business_session",
+      "source": "await _eventClient.disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/core/session/session_coordinator.dart",
+      "line": 186,
+      "group": "business_session",
+      "source": "await _eventClient.disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/core/session/session_coordinator.dart",
+      "line": 216,
+      "group": "business_session",
+      "source": "Future<void> dispose() async {"
+    },
+    {
+      "path": "lib/bird_companion/core/session/session_coordinator.dart",
+      "line": 219,
+      "group": "business_session",
+      "source": "await _authenticationFailures.close();"
+    },
+    {
+      "path": "lib/bird_companion/core/session/session_coordinator.dart",
+      "line": 220,
+      "group": "business_session",
+      "source": "await _addressChanges.close();"
+    },
+    {
+      "path": "lib/bird_companion/core/session/session_refresh_coordinator.dart",
+      "line": 11,
+      "group": "business_session",
+      "source": "Future<void> dispose() => _controller.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/birdbox_ble_data_source.dart",
+      "line": 26,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "Future<void> stopScan();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/birdbox_ble_data_source.dart",
+      "line": 28,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "Future<void> disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/birdbox_ble_data_source.dart",
+      "line": 40,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "Future<void> dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/ble_connection_diagnostic_store.dart",
+      "line": 37,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "Future<void> dispose() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/ble_connection_diagnostic_store.dart",
+      "line": 39,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "await _records.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/ble_scan_diagnostic_store.dart",
+      "line": 29,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "Future<void> dispose() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/ble_scan_diagnostic_store.dart",
+      "line": 31,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "await _records.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/pairing_preflight_platform.dart",
+      "line": 23,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "const NativeGattReleaseSnapshot({required this.connectionGeneration, required this.gattInstanceId, required this.state, required this.resultCode, required this.disconnectObserved, required this.closeCompleted, this.traceId});"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/pairing_preflight_platform.dart",
+      "line": 49,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "return NativeGattReleaseSnapshot(connectionGeneration: generation, gattInstanceId: instance, state: state as String, resultCode: result as String, disconnectObserved: disconnected, closeCompleted: closed, traceId: trace as String?);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 34,
+      "group": "ble_owner_transport",
+      "source": "Future<void> stopScan();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 39,
+      "group": "ble_owner_transport",
+      "source": "Future<void> disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 56,
+      "group": "ble_owner_transport",
+      "source": "Future<void> dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 62,
+      "group": "ble_owner_transport",
+      "source": "Future<void> disconnectOwned(String? requestId, BlePairingReady? ready, int? connectionGeneration);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 89,
+      "group": "ble_owner_transport",
+      "source": "const BleDisconnectEvent({"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 104,
+      "group": "ble_owner_transport",
+      "source": "String toString() => 'BleDisconnectEvent(reason: $reason, gattStatus: $gattStatus, unexpected: $unexpected, connectionGeneration: $connectionGeneration, gattInstanceId: $gattInstanceId)';"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 285,
+      "group": "ble_owner_transport",
+      "source": "Future<void> stopScan() => _invoke<void>('stopScan');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 299,
+      "group": "ble_owner_transport",
+      "source": "Future<void> disconnect() => _invoke<void>('disconnect');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 331,
+      "group": "ble_owner_transport",
+      "source": "Future<void> disconnectOwned(String? requestId, BlePairingReady? ready, int? connectionGeneration) => _invoke<void>('disconnect', {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 383,
+      "group": "ble_owner_transport",
+      "source": "Future<void> dispose() => _invoke<void>('dispose');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 398,
+      "group": "ble_owner_transport",
+      "source": "static BleDisconnectEvent _disconnectEvent(Object? raw) {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 408,
+      "group": "ble_owner_transport",
+      "source": "return BleDisconnectEvent("
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 657,
+      "group": "ble_owner_transport",
+      "source": "Object claimSession() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 667,
+      "group": "ble_owner_transport",
+      "source": "Future<void> endSession(Object owner) async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 670,
+      "group": "ble_owner_transport",
+      "source": "await stopScan();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 672,
+      "group": "ble_owner_transport",
+      "source": "await disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 681,
+      "group": "ble_owner_transport",
+      "source": "if (!identical(_scanController, _scanPreflightController)) await stopScan();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 699,
+      "group": "ble_owner_transport",
+      "source": "_handleDisconnect(BleDisconnectEvent(reason: 'native_snapshot_unavailable', gattStatus: 0, unexpected: true, connectionGeneration: generation));"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 708,
+      "group": "ble_owner_transport",
+      "source": "_markDisconnected('native_gatt_retiring');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 718,
+      "group": "ble_owner_transport",
+      "source": "_handleDisconnect(BleDisconnectEvent(reason: 'native_ownership_lost', gattStatus: 0, unexpected: true, connectionGeneration: generation));"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 866,
+      "group": "ble_owner_transport",
+      "source": "Future<void> stopScan() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 883,
+      "group": "ble_owner_transport",
+      "source": "await _platform.stopScan();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 890,
+      "group": "ble_owner_transport",
+      "source": "if (!controller.isClosed) await controller.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1016,
+      "group": "ble_owner_transport",
+      "source": "_checkNotDisposed();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1044,
+      "group": "ble_owner_transport",
+      "source": "await stopScan();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1049,
+      "group": "ble_owner_transport",
+      "source": "_markDisconnected('pre_connect_reset');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1055,
+      "group": "ble_owner_transport",
+      "source": "await _teardownPlatformSession(reason: 'pre_connect_reset');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1080,
+      "group": "ble_owner_transport",
+      "source": "_handleDisconnect(event);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1124,
+      "group": "ble_owner_transport",
+      "source": "await _teardownPlatformSession(reason: 'connect_failed');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1129,
+      "group": "ble_owner_transport",
+      "source": "operationName: 'disconnect',"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1159,
+      "group": "ble_owner_transport",
+      "source": "Future<void> disconnect() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1162,
+      "group": "ble_owner_transport",
+      "source": "return _teardownPlatformSession(reason: 'requested');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1165,
+      "group": "ble_owner_transport",
+      "source": "Future<void> _teardownPlatformSession({required String reason}) {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1169,
+      "group": "ble_owner_transport",
+      "source": "operation = _performPlatformTeardown(reason).whenComplete(() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1176,
+      "group": "ble_owner_transport",
+      "source": "Future<void> _performPlatformTeardown(String reason) async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1179,
+      "group": "ble_owner_transport",
+      "source": "await _retryBlockedRelease(reason);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1186,
+      "group": "ble_owner_transport",
+      "source": "_markDisconnected(reason);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1187,
+      "group": "ble_owner_transport",
+      "source": "await _recordConnectionDiagnostic(eventType: 'cleanup_noop', operationName: 'disconnect', resultCode: 'public_owner_not_owned');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1199,
+      "group": "ble_owner_transport",
+      "source": "operationName: 'disconnect',"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1206,
+      "group": "ble_owner_transport",
+      "source": "await _releaseKnownGatt(owned, reason, requestId: requestId, ready: ready);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1211,
+      "group": "ble_owner_transport",
+      "source": "await _recordConnectionDiagnostic(eventType: 'cleanup_noop', operationName: 'disconnect', resultCode: 'no_known_native_instance');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1214,
+      "group": "ble_owner_transport",
+      "source": "await (platform as BirdBoxPairingPlatform).disconnectOwned(requestId, ready, generation);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1216,
+      "group": "ble_owner_transport",
+      "source": "await platform.disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1227,
+      "group": "ble_owner_transport",
+      "source": "failure.capture(error, stack, method: 'disconnect', expectedState: 'release_confirmed', currentState: 'release_failed');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1228,
+      "group": "ble_owner_transport",
+      "source": "await _recordConnectionDiagnostic(eventType: 'gatt_release_failed', operationName: 'disconnect', failure: failure, connectionGeneration: owned?.$1, gattInstanceId: owned?.$2);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1231,
+      "group": "ble_owner_transport",
+      "source": "_markDisconnected(reason);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1237,
+      "group": "ble_owner_transport",
+      "source": "operationName: 'disconnect',"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1246,
+      "group": "ble_owner_transport",
+      "source": "Future<void> _releaseKnownGatt((int, int) owned, String reason, {String? requestId, BlePairingReady? ready}) async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1252,
+      "group": "ble_owner_transport",
+      "source": "await _recordConnectionDiagnostic(eventType: 'gatt_release_confirmed', operationName: 'disconnect', resultCode: 'native_disconnect_and_close_confirmed', connectionGeneration: owned.$1, gattInstanceId: owned.$2);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1257,
+      "group": "ble_owner_transport",
+      "source": "await _recordConnectionDiagnostic(eventType: 'gatt_release_requested', operationName: 'disconnect', resultCode: reason, connectionGeneration: owned.$1, gattInstanceId: owned.$2);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1267,
+      "group": "ble_owner_transport",
+      "source": "final pending = _NativeReleaseWait(owned, _activeTraceId ?? _lastTraceId);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1270,
+      "group": "ble_owner_transport",
+      "source": "await (_platform as BirdBoxPairingPlatform).disconnectOwned(requestId, ready, owned.$1).timeout(releaseTimeout);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1271,
+      "group": "ble_owner_transport",
+      "source": "await _recordConnectionDiagnostic(eventType: 'gatt_release_request_accepted', operationName: 'disconnect', resultCode: 'awaiting_physical_confirmation', connectionGeneration: owned.$1, gattInstanceId: owned.$2);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1272,
+      "group": "ble_owner_transport",
+      "source": "if (!await _waitForNativeRelease(pending).timeout(releaseTimeout)) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1282,
+      "group": "ble_owner_transport",
+      "source": "await _recordConnectionDiagnostic(eventType: 'gatt_release_confirmed', operationName: 'disconnect', resultCode: 'native_disconnect_and_close_confirmed', connectionGeneration: owned.$1, gattInstanceId: owned.$2);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1288,
+      "group": "ble_owner_transport",
+      "source": "Future<bool> _waitForNativeRelease(_NativeReleaseWait pending) async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1303,
+      "group": "ble_owner_transport",
+      "source": "Future<void> _retryBlockedRelease(String reason) async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1306,
+      "group": "ble_owner_transport",
+      "source": "await _recordConnectionDiagnostic(eventType: 'gatt_release_retry_requested', operationName: 'disconnect', resultCode: 'explicit_retry', connectionGeneration: owned?.$1, gattInstanceId: owned?.$2);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1315,
+      "group": "ble_owner_transport",
+      "source": "await _releaseKnownGatt(owned, reason);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1317,
+      "group": "ble_owner_transport",
+      "source": "await _recordConnectionDiagnostic(eventType: 'gatt_release_confirmed', operationName: 'disconnect', resultCode: 'native_disconnect_and_close_confirmed', connectionGeneration: owned.$1, gattInstanceId: owned.$2);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1324,
+      "group": "ble_owner_transport",
+      "source": "await _recordConnectionDiagnostic(eventType: 'gatt_release_recovered', operationName: 'disconnect', resultCode: 'adapter_disabled_and_native_absent', connectionGeneration: owned.$1, gattInstanceId: owned.$2);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1329,
+      "group": "ble_owner_transport",
+      "source": "_markDisconnected('explicit_release_recovery');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1332,
+      "group": "ble_owner_transport",
+      "source": "..capture(original, null, method: 'disconnect', expectedState: 'release_confirmed', currentState: 'release_failed');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1334,
+      "group": "ble_owner_transport",
+      "source": "await _recordConnectionDiagnostic(eventType: 'gatt_release_retry_blocked', operationName: 'disconnect', resultCode: 'new_confirmation_required', failure: failure, connectionGeneration: owned?.$1, gattInstanceId: owned?.$2);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1372,
+      "group": "ble_owner_transport",
+      "source": "await run.wait(_releasePublicGatt(run, previous.connectionGeneration, previous.gattInstanceId, 'preflight_replace_connection'));"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1405,
+      "group": "ble_owner_transport",
+      "source": "await run.wait(_releasePublicGatt(run, gatt.connectionGeneration, gatt.gattInstanceId, 'preflight_service_cache'));"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1434,
+      "group": "ble_owner_transport",
+      "source": "await run.wait(_releasePublicGatt(run, reset.connectionGeneration, reset.gattInstanceId, 'pairing_reset'));"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1452,
+      "group": "ble_owner_transport",
+      "source": "await run.wait(_releasePublicGatt(run, gatt.connectionGeneration, gatt.gattInstanceId, 'preflight_service_cache'));"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1461,
+      "group": "ble_owner_transport",
+      "source": "await run.wait(_releasePublicGatt(run, generation, instance, 'preflight_retry'));"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1470,
+      "group": "ble_owner_transport",
+      "source": "_markDisconnected('public_owner_mismatch');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1474,
+      "group": "ble_owner_transport",
+      "source": "_markDisconnected('public_release_unconfirmed');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1489,
+      "group": "ble_owner_transport",
+      "source": "await _teardownPlatformSession(reason: 'preflight_failed');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1566,
+      "group": "ble_owner_transport",
+      "source": "_markDisconnected('native_gatt_retiring');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1640,
+      "group": "ble_owner_transport",
+      "source": "Future<void> _releasePublicGatt(_PublicPreparation run, int generation, int instance, String reason) async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 1662,
+      "group": "ble_owner_transport",
+      "source": "_markDisconnected('controlled_preflight_release');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2131,
+      "group": "ble_owner_transport",
+      "source": "void _handleDisconnect([BleDisconnectEvent? event]) {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2137,
+      "group": "ble_owner_transport",
+      "source": "unawaited(_recordConnectionDiagnostic(eventType: 'stale_disconnect_ignored', operationName: 'disconnect', resultCode: 'foreign_gatt_instance', connectionGeneration: eventGeneration, gattInstanceId: instance));"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2143,
+      "group": "ble_owner_transport",
+      "source": "_markDisconnected('release_requested');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2158,
+      "group": "ble_owner_transport",
+      "source": "_markDisconnected('expected_pairing_reset');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2170,
+      "group": "ble_owner_transport",
+      "source": "operationName: 'disconnect',"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2182,
+      "group": "ble_owner_transport",
+      "source": "operationName: 'disconnect',"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2196,
+      "group": "ble_owner_transport",
+      "source": "operationName: 'disconnect',"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2201,
+      "group": "ble_owner_transport",
+      "source": "_markDisconnected(event?.reason ?? 'unknown');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2206,
+      "group": "ble_owner_transport",
+      "source": "void _markDisconnected([String reason = 'unknown']) {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2232,
+      "group": "ble_owner_transport",
+      "source": "_activeCommandFailure?.capture(error, StackTrace.current, method: 'disconnect', expectedState: 'matching_response', currentState: 'disconnected');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2241,
+      "group": "ble_owner_transport",
+      "source": "Future<void> dispose() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2253,
+      "group": "ble_owner_transport",
+      "source": "await _teardownPlatformSession(reason: 'disposed');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2260,
+      "group": "ble_owner_transport",
+      "source": "await _platform.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2261,
+      "group": "ble_owner_transport",
+      "source": "await _events.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2262,
+      "group": "ble_owner_transport",
+      "source": "await _disconnects.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2263,
+      "group": "ble_owner_transport",
+      "source": "await _scanDiagnostics.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2264,
+      "group": "ble_owner_transport",
+      "source": "await _pairingProgress.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2267,
+      "group": "ble_owner_transport",
+      "source": "void _checkNotDisposed() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2274,
+      "group": "ble_owner_transport",
+      "source": "_checkNotDisposed();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2296,
+      "group": "ble_owner_transport",
+      "source": "operationName: 'disconnect',"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart",
+      "line": 2434,
+      "group": "ble_owner_transport",
+      "source": "_NativeReleaseWait(this.owned, this.traceId);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/connection_api.dart",
+      "line": 139,
+      "group": "business_session",
+      "source": "Future<void> disconnect() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/connection_repository_impl.dart",
+      "line": 198,
+      "group": "business_session",
+      "source": "Future<void> disconnect() => _api.disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/connection_repository_impl.dart",
+      "line": 204,
+      "group": "business_session",
+      "source": "await _api.disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart",
+      "line": 42,
+      "group": "wifi_native_or_bridge",
+      "source": "Future<void> releaseNetwork();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart",
+      "line": 44,
+      "group": "wifi_native_or_bridge",
+      "source": "Future<void> dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart",
+      "line": 125,
+      "group": "wifi_native_or_bridge",
+      "source": "Future<void> releaseNetwork() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart",
+      "line": 126,
+      "group": "wifi_native_or_bridge",
+      "source": "await _invoke<void>('releaseNetwork');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart",
+      "line": 131,
+      "group": "wifi_native_or_bridge",
+      "source": "Future<void> dispose() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart",
+      "line": 135,
+      "group": "wifi_native_or_bridge",
+      "source": "await _invoke<void>('dispose');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart",
+      "line": 139,
+      "group": "wifi_native_or_bridge",
+      "source": "await _networkLosses.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 236,
+      "group": "provisioning_repository",
+      "source": "Object claimSession() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 238,
+      "group": "provisioning_repository",
+      "source": "if (!sessionReleasePending && !sessionReleaseFailed) _nativeSessionOwner = _bleControl?.claimSession();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 245,
+      "group": "provisioning_repository",
+      "source": "Future<void> endSession(Object owner) => ownsSession(owner) ? _releaseSession() : Future.value();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 247,
+      "group": "provisioning_repository",
+      "source": "Future<void> _releaseSession() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 253,
+      "group": "provisioning_repository",
+      "source": "_performSessionRelease().then("
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 269,
+      "group": "provisioning_repository",
+      "source": "Future<void> _performSessionRelease() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 273,
+      "group": "provisioning_repository",
+      "source": "await control.endSession(nativeOwner);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 275,
+      "group": "provisioning_repository",
+      "source": "await _ble.stopScan();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 276,
+      "group": "provisioning_repository",
+      "source": "await _ble.disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 279,
+      "group": "provisioning_repository",
+      "source": "await _wifi.releaseNetwork();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 285,
+      "group": "provisioning_repository",
+      "source": "Future<void> waitForSessionRelease() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 290,
+      "group": "provisioning_repository",
+      "source": "_checkNotDisposed();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 291,
+      "group": "provisioning_repository",
+      "source": "_nativeSessionOwner ??= _bleControl?.claimSession();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 298,
+      "group": "provisioning_repository",
+      "source": "await waitForSessionRelease();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 304,
+      "group": "provisioning_repository",
+      "source": "await _ble.stopScan();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 311,
+      "group": "provisioning_repository",
+      "source": "await waitForSessionRelease();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 320,
+      "group": "provisioning_repository",
+      "source": "await waitForSessionRelease();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 327,
+      "group": "provisioning_repository",
+      "source": "await waitForSessionRelease();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 369,
+      "group": "provisioning_repository",
+      "source": "_checkNotDisposed();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 371,
+      "group": "provisioning_repository",
+      "source": "await waitForSessionRelease();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 383,
+      "group": "provisioning_repository",
+      "source": "Future<void> stopDiscovery() => _ble.stopScan();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 387,
+      "group": "provisioning_repository",
+      "source": "_checkNotDisposed();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 393,
+      "group": "provisioning_repository",
+      "source": "await waitForSessionRelease();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 438,
+      "group": "provisioning_repository",
+      "source": "await _releaseSession();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 451,
+      "group": "provisioning_repository",
+      "source": "Future<void> disconnect() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 452,
+      "group": "provisioning_repository",
+      "source": "await _releaseSession();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 527,
+      "group": "provisioning_repository",
+      "source": "await _wifi.releaseNetwork();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 782,
+      "group": "provisioning_repository",
+      "source": "await _wifi.releaseNetwork();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 811,
+      "group": "provisioning_repository",
+      "source": "await _wifi.releaseNetwork();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 898,
+      "group": "provisioning_repository",
+      "source": "await _wifi.releaseNetwork();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 905,
+      "group": "provisioning_repository",
+      "source": "await _wifi.releaseNetwork();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 933,
+      "group": "provisioning_repository",
+      "source": "await _wifi.releaseNetwork();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 1102,
+      "group": "provisioning_repository",
+      "source": "_checkNotDisposed();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 1132,
+      "group": "provisioning_repository",
+      "source": "void _checkNotDisposed() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 1137,
+      "group": "provisioning_repository",
+      "source": "Future<void> dispose() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 1139,
+      "group": "provisioning_repository",
+      "source": "await disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 1144,
+      "group": "provisioning_repository",
+      "source": "await _wifi.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 1146,
+      "group": "provisioning_repository",
+      "source": "await _ble.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 1147,
+      "group": "provisioning_repository",
+      "source": "await _events.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 1148,
+      "group": "provisioning_repository",
+      "source": "await _disconnects.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "line": 1149,
+      "group": "provisioning_repository",
+      "source": "await _wifiScanResults.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/ble_pairing_progress.dart",
+      "line": 15,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "Object claimSession();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/ble_pairing_progress.dart",
+      "line": 17,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "Future<void> endSession(Object owner);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/ble_pairing_progress.dart",
+      "line": 31,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "Future<void> waitForSessionRelease();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/connection_repository.dart",
+      "line": 20,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "Future<void> disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/provisioning_repository.dart",
+      "line": 29,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "Future<void> stopDiscovery();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/provisioning_repository.dart",
+      "line": 31,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "Future<void> disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/provisioning_repository.dart",
+      "line": 45,
+      "group": "application_or_auxiliary_cleanup",
+      "source": "Future<void> dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart",
+      "line": 117,
+      "group": "simulation_only",
+      "source": "Future<void> stopDiscovery() async => calls.add('stopDiscovery');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart",
+      "line": 128,
+      "group": "simulation_only",
+      "source": "Future<void> disconnect() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart",
+      "line": 129,
+      "group": "simulation_only",
+      "source": "calls.add('disconnect');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart",
+      "line": 405,
+      "group": "simulation_only",
+      "source": "Future<void> dispose() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart",
+      "line": 407,
+      "group": "simulation_only",
+      "source": "await _events.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart",
+      "line": 408,
+      "group": "simulation_only",
+      "source": "await _disconnects.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_cubit.dart",
+      "line": 172,
+      "group": "page_or_cubit_lifetime",
+      "source": "if (!preserveExistingSession) _sessionCubit.disconnected();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_cubit.dart",
+      "line": 184,
+      "group": "page_or_cubit_lifetime",
+      "source": "_sessionCubit.disconnected('连接盒子失败。');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_cubit.dart",
+      "line": 225,
+      "group": "page_or_cubit_lifetime",
+      "source": "_sessionCubit.disconnected('配对失败。');"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_cubit.dart",
+      "line": 259,
+      "group": "page_or_cubit_lifetime",
+      "source": "if (!preserveExistingSession) _sessionCubit.disconnected();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_cubit.dart",
+      "line": 282,
+      "group": "page_or_cubit_lifetime",
+      "source": "if (!preserveExistingSession) _sessionCubit.disconnected();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_cubit.dart",
+      "line": 307,
+      "group": "page_or_cubit_lifetime",
+      "source": "Future<void> close() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_cubit.dart",
+      "line": 312,
+      "group": "page_or_cubit_lifetime",
+      "source": "if (!preserveExistingSession) _sessionCubit.disconnected();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_cubit.dart",
+      "line": 314,
+      "group": "page_or_cubit_lifetime",
+      "source": "return super.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_page.dart",
+      "line": 244,
+      "group": "page_or_cubit_lifetime",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_page.dart",
+      "line": 251,
+      "group": "page_or_cubit_lifetime",
+      "source": "unawaited(_handoff?.close());"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_page.dart",
+      "line": 252,
+      "group": "page_or_cubit_lifetime",
+      "source": "unawaited(_provisioningCubit.close());"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_page.dart",
+      "line": 253,
+      "group": "page_or_cubit_lifetime",
+      "source": "unawaited(_networkCubit.close());"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_page.dart",
+      "line": 254,
+      "group": "page_or_cubit_lifetime",
+      "source": "super.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_page.dart",
+      "line": 415,
+      "group": "page_or_cubit_lifetime",
+      "source": "ProvisioningPhase.disconnecting => const _BleDisconnectingView(),"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/connection_page.dart",
+      "line": 885,
+      "group": "page_or_cubit_lifetime",
+      "source": "const _BleDisconnectingView();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart",
+      "line": 300,
+      "group": "page_or_cubit_lifetime",
+      "source": "Future<void> close() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart",
+      "line": 309,
+      "group": "page_or_cubit_lifetime",
+      "source": "return super.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/network_provisioning_cubit.dart",
+      "line": 1074,
+      "group": "page_or_cubit_lifetime",
+      "source": "Future<void> close() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/network_provisioning_cubit.dart",
+      "line": 1079,
+      "group": "page_or_cubit_lifetime",
+      "source": "return super.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/pages/b7_simulated_demo_page.dart",
+      "line": 31,
+      "group": "simulation_only",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/pages/b7_simulated_demo_page.dart",
+      "line": 32,
+      "group": "simulation_only",
+      "source": "if (widget.repository == null) unawaited(_repository.dispose());"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/pages/b7_simulated_demo_page.dart",
+      "line": 33,
+      "group": "simulation_only",
+      "source": "super.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/pages/wifi_qr_scanner_page.dart",
+      "line": 54,
+      "group": "page_or_cubit_lifetime",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/pages/wifi_qr_scanner_page.dart",
+      "line": 56,
+      "group": "page_or_cubit_lifetime",
+      "source": "unawaited(_controller.dispose());"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/pages/wifi_qr_scanner_page.dart",
+      "line": 57,
+      "group": "page_or_cubit_lifetime",
+      "source": "super.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 90,
+      "group": "page_or_cubit_lifetime",
+      "source": "_owner = _control!.claimSession();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 181,
+      "group": "page_or_cubit_lifetime",
+      "source": "await _repository.stopDiscovery();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 234,
+      "group": "page_or_cubit_lifetime",
+      "source": "Future<void> _disconnectOwned() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 238,
+      "group": "page_or_cubit_lifetime",
+      "source": "await _control!.endSession(owner);"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 239,
+      "group": "page_or_cubit_lifetime",
+      "source": "if (!_closing && !isClosed && identical(_owner, owner) && _control!.ownsSession(owner)) _owner = _control!.claimSession();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 241,
+      "group": "page_or_cubit_lifetime",
+      "source": "await _repository.disconnect();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 256,
+      "group": "page_or_cubit_lifetime",
+      "source": "await guard.waitForSessionRelease();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 260,
+      "group": "page_or_cubit_lifetime",
+      "source": "await _repository.stopDiscovery();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 305,
+      "group": "page_or_cubit_lifetime",
+      "source": "await _repository.stopDiscovery();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 311,
+      "group": "page_or_cubit_lifetime",
+      "source": "await guard.waitForSessionRelease();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 427,
+      "group": "page_or_cubit_lifetime",
+      "source": "await _disconnectOwned();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 474,
+      "group": "page_or_cubit_lifetime",
+      "source": "await _disconnectOwned();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 542,
+      "group": "page_or_cubit_lifetime",
+      "source": "Future<void> close() async {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 549,
+      "group": "page_or_cubit_lifetime",
+      "source": "? _control!.endSession(_owner!).catchError((Object error, StackTrace stack) {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 563,
+      "group": "page_or_cubit_lifetime",
+      "source": "await _repository.stopDiscovery();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/provisioning_cubit.dart",
+      "line": 565,
+      "group": "page_or_cubit_lifetime",
+      "source": "return super.close();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/qr_connection_scanner_page.dart",
+      "line": 33,
+      "group": "page_or_cubit_lifetime",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/qr_connection_scanner_page.dart",
+      "line": 34,
+      "group": "page_or_cubit_lifetime",
+      "source": "unawaited(_controller.dispose());"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/qr_connection_scanner_page.dart",
+      "line": 35,
+      "group": "page_or_cubit_lifetime",
+      "source": "super.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/manual_address_form.dart",
+      "line": 27,
+      "group": "page_or_cubit_lifetime",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/manual_address_form.dart",
+      "line": 28,
+      "group": "page_or_cubit_lifetime",
+      "source": "_addressController.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/manual_address_form.dart",
+      "line": 29,
+      "group": "page_or_cubit_lifetime",
+      "source": "super.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart",
+      "line": 46,
+      "group": "page_or_cubit_lifetime",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart",
+      "line": 47,
+      "group": "page_or_cubit_lifetime",
+      "source": "_controller.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart",
+      "line": 48,
+      "group": "page_or_cubit_lifetime",
+      "source": "_focusNode.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart",
+      "line": 49,
+      "group": "page_or_cubit_lifetime",
+      "source": "super.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/sta_network_form.dart",
+      "line": 48,
+      "group": "page_or_cubit_lifetime",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/sta_network_form.dart",
+      "line": 50,
+      "group": "page_or_cubit_lifetime",
+      "source": "_passwordController.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/sta_network_form.dart",
+      "line": 51,
+      "group": "page_or_cubit_lifetime",
+      "source": "_ssidController.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/widgets/sta_network_form.dart",
+      "line": 52,
+      "group": "page_or_cubit_lifetime",
+      "source": "super.dispose();"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/network_settings_page.dart",
+      "line": 90,
+      "group": "page_or_cubit_lifetime",
+      "source": "void dispose() {"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/network_settings_page.dart",
+      "line": 94,
+      "group": "page_or_cubit_lifetime",
+      "source": "unawaited(_handoff?.close());"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/network_settings_page.dart",
+      "line": 96,
+      "group": "page_or_cubit_lifetime",
+      "source": "unawaited(_cubit.close());"
+    },
+    {
+      "path": "lib/bird_companion/features/settings/presentation/pages/network_settings_page.dart",
+      "line": 97,
+      "group": "page_or_cubit_lifetime",
+      "source": "super.dispose();"
+    }
+  ]
+}

@@ -11,12 +11,14 @@ class DiscoveredDeviceCard extends StatelessWidget {
     required this.onConnect,
     this.isRecent = false,
     this.connecting = false,
+    this.isConnected = false,
   });
 
   final DeviceConnection device;
   final VoidCallback onConnect;
   final bool isRecent;
   final bool connecting;
+  final bool isConnected;
 
   @override
   Widget build(BuildContext context) => BirdCard(
@@ -24,9 +26,13 @@ class DiscoveredDeviceCard extends StatelessWidget {
     child: LayoutBuilder(
       builder: (context, constraints) {
         final narrow = constraints.maxWidth < 290;
-        final details = _DeviceDetails(device: device, isRecent: isRecent);
+        final details = _DeviceDetails(device: device, isRecent: isRecent, isConnected: isConnected);
         final button = BirdButton(
-          label: connecting ? '连接中' : '连接',
+          label: connecting
+              ? '连接中'
+              : isConnected
+              ? '返回此盒子'
+              : '连接',
           onPressed: connecting ? null : onConnect,
           busy: connecting,
           expanded: narrow,
@@ -64,10 +70,11 @@ class DiscoveredDeviceCard extends StatelessWidget {
 }
 
 class _DeviceDetails extends StatelessWidget {
-  const _DeviceDetails({required this.device, required this.isRecent});
+  const _DeviceDetails({required this.device, required this.isRecent, required this.isConnected});
 
   final DeviceConnection device;
   final bool isRecent;
+  final bool isConnected;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -95,7 +102,11 @@ class _DeviceDetails extends StatelessWidget {
           const SizedBox(width: AppSpacing.xxs),
           Flexible(
             child: Text(
-              isRecent ? '最近使用 · 状态待确认' : '${device.networkMode.label}发现',
+              isConnected
+                  ? '${device.networkMode.label} · 业务已验证'
+                  : isRecent
+                  ? '最近使用 · 状态待确认'
+                  : '${device.networkMode.label}发现',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(

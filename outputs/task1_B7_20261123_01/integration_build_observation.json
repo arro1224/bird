@@ -1,0 +1,7 @@
+{
+  "recorded_at_utc": "2026-11-23T11:04:14.541536Z",
+  "scope": "integration test build, not B6 normal candidate",
+  "entry": "integration test runner build; target at capture was not independently verified",
+  "apk_sha256": "ba5635d8c3f40949ed00e40c21fbf841493d0a5693f913ab763c9884307c2d56",
+  "bytes": 189747829
+}

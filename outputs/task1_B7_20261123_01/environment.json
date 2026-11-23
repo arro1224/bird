@@ -1,0 +1,16 @@
+{
+  "client_alias": "vivo_client_01",
+  "manufacturer": "vivo",
+  "model": "vivo X20",
+  "android_release": "8.1.0",
+  "sdk_int": 27,
+  "transport": "USB ADB",
+  "initial_apk_sha256": "b388c52d3159c2dcb81aafd37cdce53725c3618eb36d59a04003fca751e8782f",
+  "keyguard_showing": false,
+  "original_stay_on_while_plugged_in": "0",
+  "peripheral_app_reported_by_user": "拍鸟模拟盒子",
+  "peripheral_role": "Huawei phone as simulated box",
+  "peripheral_installed_build_verified": false,
+  "real_box": false,
+  "generated_at_utc": "2026-11-23T10:04:39.4470851+00:00"
+}

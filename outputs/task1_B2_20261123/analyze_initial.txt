@@ -1,0 +1,5 @@
+Analyzing lib, test, integration_test, tool...
+
+   info - lib\bird_companion\features\connection\data\provisioning_repository_impl.dart:138:85 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+
+1 issue found.

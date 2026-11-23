@@ -22,8 +22,10 @@ import android.os.Looper;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.location.LocationManagerCompat;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -128,7 +130,7 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
                 bindProcessToNetwork(call, result);
                 return;
             case "releaseNetwork":
-                releaseNetwork(true);
+                releaseNetwork("user_cancelled".equals(call.argument("reason")));
                 result.success(null);
                 return;
             case "currentSsid":
@@ -230,8 +232,7 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
         try {
             final LocationManager manager = (LocationManager) activity.getSystemService(Context.LOCATION_SERVICE);
             if (manager == null) return true;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return manager.isLocationEnabled();
-            return Settings.Secure.getInt(activity.getContentResolver(), Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF) != Settings.Secure.LOCATION_MODE_OFF;
+            return LocationManagerCompat.isLocationEnabled(manager);
         } catch (RuntimeException error) {
             // Diagnostics must not fail when the setting is unreadable.
             return true;
@@ -299,9 +300,9 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
                 deleteChildren(directory);
                 target = new File(directory, "qr-" + System.nanoTime() + guessImageExtension(uri));
                 long total = 0L;
-                final InputStream input = activity.getContentResolver().openInputStream(uri);
-                if (input == null) throw new IOException("selected image cannot be opened");
-                try (InputStream source = input; OutputStream sink = new FileOutputStream(target)) {
+                try (InputStream source = activity.getContentResolver().openInputStream(uri);
+                     OutputStream sink = new FileOutputStream(target)) {
+                    if (source == null) throw new IOException("selected image cannot be opened");
                     final byte[] buffer = new byte[16 * 1024];
                     int read;
                     while ((read = source.read(buffer)) > 0) {
@@ -315,9 +316,15 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
             } catch (IOException | SecurityException error) {
                 failure = "The selected image could not be read.";
             }
+            if (failure != null && target != null) {
+                try {
+                    deleteCachedImage(target);
+                } catch (IOException | SecurityException cleanupError) {
+                    failure = "The selected image could not be removed from temporary storage.";
+                }
+            }
             final String resolvedPath = path;
             final String failureReason = failure;
-            if (failureReason != null && target != null) target.delete();
             mainHandler.post(() -> {
                 if (failureReason != null) {
                     result.error("picker_read_failed", failureReason, null);
@@ -339,29 +346,30 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
             return ".img";
         }
         if (type == null) return ".img";
-        switch (type) {
-            case "image/jpeg":
-                return ".jpg";
-            case "image/png":
-                return ".png";
-            case "image/webp":
-                return ".webp";
-            case "image/gif":
-                return ".gif";
-            case "image/heic":
-            case "image/heif":
-                return ".heic";
-            default:
-                return ".img";
-        }
+        return switch (type) {
+            case "image/jpeg" -> ".jpg";
+            case "image/png" -> ".png";
+            case "image/webp" -> ".webp";
+            case "image/gif" -> ".gif";
+            case "image/heic", "image/heif" -> ".heic";
+            default -> ".img";
+        };
     }
 
-    private static void deleteChildren(@NonNull File directory) {
+    private static void deleteChildren(@NonNull File directory) throws IOException {
         final File[] children = directory.listFiles();
         if (children == null) return;
         for (File child : children) {
             // Only copies written by this channel live in the directory.
-            if (child.isFile()) child.delete();
+            if (child.isFile()) deleteCachedImage(child);
+        }
+    }
+
+    private static void deleteCachedImage(@NonNull File image) throws IOException {
+        if (!image.delete() && image.exists()) {
+            // Do not silently accumulate QR images that may contain credentials.
+            // The existing picker_read_failed path reports a generic failure.
+            throw new IOException("QR cache cleanup did not complete");
         }
     }
 
@@ -380,19 +388,25 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
         }
         final String ssid = call.argument("ssid");
         final String passphrase = call.argument("passphrase");
+        final String security = call.argument("security");
         if (ssid == null || ssid.isEmpty() || passphrase == null || passphrase.isEmpty()) {
             result.error("invalid_request", "SSID and passphrase are required.", null);
             return;
         }
 
-        releaseNetwork(false);
+        if (!isSupportedDirectApSecurity(security)) {
+            result.error("wifi_security_unsupported", "The box Wi-Fi security type is unsupported.", null);
+            return;
+        }
+        final WifiManager wifiManager = (WifiManager) activity.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        if ("wpa3_personal".equals(security) && (wifiManager == null || !wifiManager.isWpa3SaeSupported())) {
+            result.error("wifi_security_unsupported", "WPA3 is unavailable on this phone.", null);
+            return;
+        }
         final WifiNetworkSpecifier specifier;
         final NetworkRequest request;
         try {
-            specifier = new WifiNetworkSpecifier.Builder()
-                    .setSsid(ssid)
-                    .setWpa2Passphrase(passphrase)
-                    .build();
+            specifier = directApSpecifier(ssid, passphrase, security);
             request = new NetworkRequest.Builder()
                     .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
                     .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -403,6 +417,7 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
             return;
         }
 
+        releaseNetwork(false);
         final long generation;
         synchronized (stateLock) {
             pendingJoinResult = result;
@@ -415,7 +430,7 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
                 final MethodChannel.Result pending;
                 final String responseSsid;
                 synchronized (stateLock) {
-                    if (!isActiveCallback(this, generation)) return;
+                    if (isStaleCallback(this, generation)) return;
                     requestedNetwork = network;
                     pending = pendingJoinResult;
                     pendingJoinResult = null;
@@ -431,7 +446,9 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
 
             @Override
             public void onUnavailable() {
-                completeJoinFailure(this, generation, "system_denied", "wifi_request_unavailable");
+                // Android uses the same callback for denial and connection
+                // failure. Without stronger evidence do not call it rejection.
+                completeJoinUnavailable(this, generation);
             }
 
             @Override
@@ -439,13 +456,13 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
                 final String handle;
                 final String ssid;
                 synchronized (stateLock) {
-                    if (!isActiveCallback(this, generation) || !network.equals(requestedNetwork)) return;
+                    if (isStaleCallback(this, generation) || !network.equals(requestedNetwork)) return;
                     handle = Long.toUnsignedString(network.getNetworkHandle());
                     ssid = requestedSsid;
                     requestedNetwork = null;
+                    unbindProcess();
                 }
-                unbindProcess();
-                emitNetworkLost(handle, ssid, "network_lost");
+                emitNetworkLost(handle, ssid);
                 releaseCallback(this, generation);
             }
         };
@@ -458,11 +475,28 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
         }
     }
 
+    static boolean isSupportedDirectApSecurity(@Nullable String security) {
+        return "wpa2_personal".equals(security) || "wpa3_personal".equals(security)
+                || "wpa2_wpa3_transition".equals(security);
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    static WifiNetworkSpecifier directApSpecifier(String ssid, String passphrase, String security) {
+        if (!isSupportedDirectApSecurity(security)) throw new IllegalArgumentException("Unsupported AP security");
+        final WifiNetworkSpecifier.Builder builder = new WifiNetworkSpecifier.Builder().setSsid(ssid);
+        if ("wpa3_personal".equals(security)) builder.setWpa3Passphrase(passphrase);
+        // Transition mode explicitly permits WPA2; never silently map an
+        // unknown or WPA3-only AP to a WPA2 request.
+        else builder.setWpa2Passphrase(passphrase);
+        return builder.build();
+    }
+
     private void bindProcessToNetwork(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
         if (connectivityManager == null) {
             result.error("wifi_unsupported", "Connectivity service is unavailable.", null);
             return;
         }
+        synchronized (stateLock) {
         final Network network = requestedNetwork;
         final String handle = call.argument("handle");
         if (network == null || handle == null || !handle.equals(Long.toUnsignedString(network.getNetworkHandle()))) {
@@ -482,25 +516,24 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
             return;
         }
         result.success(null);
+        }
     }
 
-    private void completeJoinFailure(
+    private void completeJoinUnavailable(
             @NonNull ConnectivityManager.NetworkCallback callback,
-            long generation,
-            @NonNull String outcome,
-            @NonNull String errorCode
+            long generation
     ) {
         final MethodChannel.Result result;
         synchronized (stateLock) {
-            if (!isActiveCallback(callback, generation)) return;
+            if (isStaleCallback(callback, generation)) return;
             result = pendingJoinResult;
             pendingJoinResult = null;
         }
         releaseCallback(callback, generation);
         if (result != null) {
             final Map<String, Object> response = new LinkedHashMap<>();
-            response.put("outcome", outcome);
-            response.put("errorCode", errorCode);
+            response.put("outcome", "unavailable");
+            response.put("errorCode", "wifi_request_unavailable");
             mainHandler.post(() -> result.success(response));
         }
     }
@@ -516,11 +549,11 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
         releaseNetwork(false);
     }
 
-    private boolean isActiveCallback(
+    private boolean isStaleCallback(
             @NonNull ConnectivityManager.NetworkCallback callback,
             long generation
     ) {
-        return !disposed && generation == requestGeneration && callback == networkCallback;
+        return disposed || generation != requestGeneration || callback != networkCallback;
     }
 
     private void releaseCallback(
@@ -537,10 +570,10 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
     }
 
     private void releaseNetwork(boolean userInitiated) {
-        unbindProcess();
         final ConnectivityManager.NetworkCallback callback;
         final MethodChannel.Result pending;
         synchronized (stateLock) {
+            unbindProcess();
             callback = networkCallback;
             networkCallback = null;
             requestedNetwork = null;
@@ -579,12 +612,11 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
 
     private void emitNetworkLost(
             @NonNull String handle,
-            @Nullable String ssid,
-            @NonNull String reason
+            @Nullable String ssid
     ) {
         final EventChannel.EventSink sink = networkEventsSink;
         if (sink == null || disposed) return;
-        final Map<String, Object> event = networkLostEvent(handle, ssid, reason);
+        final Map<String, Object> event = networkLostEvent(handle, ssid, "network_lost");
         mainHandler.post(() -> {
             if (!disposed && sink == networkEventsSink) sink.success(event);
         });

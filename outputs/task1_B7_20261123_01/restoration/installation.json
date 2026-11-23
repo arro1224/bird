@@ -1,0 +1,10 @@
+{
+  "failure_kind": "RuntimeException",
+  "status": "failed",
+  "reason": "ADB operation failed (exit=137).",
+  "permission_mode": "Ui",
+  "hardware_status": "pending",
+  "generated_at": "2026-11-23T11:05:57.2158028Z",
+  "package": "deckers.thibault.aves.bird",
+  "expected_sha256": "684e38a5aaa8e66276492e5b9cb839581ba4a7a47c21cb175da40122d5b81a2e"
+}

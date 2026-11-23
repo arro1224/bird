@@ -1,0 +1,50 @@
+{
+  "captured_at": "2026-11-23T13:27:17.549823+08:00",
+  "batch": "T1-B0",
+  "head": "28aeae2a0ba5edf4c19dca584117345d26762e05",
+  "tree": "2aa8d0de1b38e2c1e33ad19635c835611595253c",
+  "branch": "codex/task1-network-20261123",
+  "source_branch": "thirdtime",
+  "task2_commit": "28aeae2a0ba5edf4c19dca584117345d26762e05",
+  "working_tree_status": {
+    "command": [
+      "git",
+      "-c",
+      "core.quotePath=false",
+      "status",
+      "--short"
+    ],
+    "exit_code": 0,
+    "stdout": "?? doc/任务/任务一_实施任务批次_2026-11-23.md\n?? doc/任务/任务一_实施方案_2026-11-23.md\n?? outputs/task1_B0_20261123/",
+    "stderr": ""
+  },
+  "tracked_input_diff": {
+    "command": [
+      "git",
+      "diff",
+      "--exit-code",
+      "HEAD",
+      "--",
+      "lib",
+      "android",
+      "test",
+      "integration_test",
+      "tool",
+      "pubspec.yaml",
+      "pubspec.lock",
+      "docs/contracts"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "source_manifest_sha256": "841329c332d2ce7417a174633534ee7461202d8c14c1959c020d9f30f2ea1908",
+  "source_file_count": 894,
+  "resource_site_count": 382,
+  "business_source_modified": false,
+  "apk_built": false,
+  "hardware_acceptance": "not_run",
+  "checks": "checks.json",
+  "open_items": "接口待确认清单.md",
+  "completion_rule": "Local B0 audit complete; board answers and hardware evidence remain pending, and do not imply A15/A17/A18 acceptance."
+}

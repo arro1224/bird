@@ -7,6 +7,38 @@ abstract interface class DirectApHttpPreparation {
   Future<void> cancelDirectApHttp(String deviceId);
 }
 
+/// App-internal network preparation before public identity or credentials are sent.
+/// The implementation is application-lived; presentation never owns a Wi-Fi handle.
+abstract interface class DirectApNetworkPreparation {
+  Future<bool> prepareDirectApNetwork(ProvisioningCompletion completion, {required String operationId, required String attemptId, required CancelToken cancelToken, bool manualRescue = false});
+  void confirmDirectApNetwork(String attemptId);
+  Future<void> releaseDirectApNetwork(String attemptId, {required String reason});
+  Future<void> selectDirectApDevice(String? deviceId);
+}
+
+final class DirectApConfigurationUnavailable implements Exception {
+  const DirectApConfigurationUnavailable();
+}
+
+abstract interface class SavedDirectApRecovery {
+  Stream<void> get directApNetworkLosses;
+  Future<bool> restoreSavedDirectApNetwork(String deviceId, String attemptId, CancelToken token, {bool userInitiated = false});
+}
+
+abstract interface class BleControlRecovery {
+  Future<ProvisioningDeviceInfo> recoverBleControl(String deviceId, CancelToken cancelToken);
+}
+
+/// Reconciles an accepted stop after BLE reconnect cleared the request ledger.
+/// Implementations must check their own identity-correlated status snapshot.
+abstract interface class StoppedDirectApCleanup {
+  Future<void> confirmStoppedNetwork(String deviceId, String operationId);
+}
+
+final class DirectApRestoreSuspended implements Exception {
+  const DirectApRestoreSuspended();
+}
+
 /// Local readiness only; HTTP identity and authorization must still be verified.
 /// Reading this view never consumes a pairing session or exposes its secrets.
 abstract interface class ProvisioningHttpAuthorizationReadiness {
@@ -60,6 +92,14 @@ abstract interface class ProvisioningSessionRepository {
   ProvisioningDeviceInfo? get connectedDeviceInfo;
   Stream<void> get disconnects;
   bool get networkStatusResumeRequired;
+}
+
+/// Read-only attachment for discovery pages. Observing an existing owner must
+/// not cancel native preparation or acquire responsibility for its teardown.
+abstract interface class ReusableBleSession {
+  Object? get observableSessionOwner;
+  ProvisioningDevice? get currentBleDevice;
+  Stream<void> get sessionChanges;
 }
 
 /// Optional production verifier used before a status restored after BLE loss

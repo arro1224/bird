@@ -1,0 +1,6 @@
+{
+  "action": "svc bluetooth disable, then enable",
+  "original_bluetooth_on": "1",
+  "topology": "same LAN; virtual peripheral; not direct AP",
+  "started_at_utc": "2026-11-23T10:49:11.7057090Z"
+}

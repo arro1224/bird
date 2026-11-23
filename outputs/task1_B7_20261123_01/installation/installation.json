@@ -1,0 +1,8 @@
+{
+  "generated_at": "2026-11-23T10:05:01.8334192Z",
+  "hardware_status": "pending",
+  "permission_mode": "Ui",
+  "package": "deckers.thibault.aves.bird",
+  "expected_sha256": "684e38a5aaa8e66276492e5b9cb839581ba4a7a47c21cb175da40122d5b81a2e",
+  "status": "installed_hash_verified"
+}

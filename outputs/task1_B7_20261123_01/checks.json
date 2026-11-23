@@ -1,0 +1,94 @@
+{
+  "date": "2026-11-23",
+  "branch": "thirdtime",
+  "head": "28aeae2a0ba5edf4c19dca584117345d26762e05",
+  "index_empty": true,
+  "committed_by_agent": false,
+  "app_code_changed_in_B7": false,
+  "test_harness_changed": "task1_ui_scenarios.dart: idle while paused, pump after resumed",
+  "shared_host_ui_tests": {
+    "passed": 4,
+    "failed": 0,
+    "log": "shared_ui_host.log"
+  },
+  "device_integration": {
+    "client": "vivo X20 / Android8.1.0 / API27",
+    "exit_code": 0,
+    "passed": 9,
+    "failed": 0,
+    "task1": {
+      "passed": 4,
+      "transport": "simulated BLE/repository with real widgets"
+    },
+    "task2": {
+      "passed": 5,
+      "ssid_observed": "permissionDenied",
+      "ssid_result": "explicit fallback explanation; actual SSID prefill not proven",
+      "single_qr_decode": true,
+      "double_qr_rejected": true,
+      "gallery_cancel_safe": true,
+      "simulated_first_join_commands": 1,
+      "box_transport": "simulated repository"
+    },
+    "normal_B6_candidate": false,
+    "final_log": "device_integration_final.log",
+    "initial_attempt": {
+      "status": "interrupted",
+      "passed_before_interruption": 1,
+      "reason": "paused binding cannot pumpAndSettle until resumed",
+      "log": "device_integration_initial.log"
+    },
+    "test_harness_fix": "tester.idle while paused; pumpAndSettle only after resumed; shared host 4 passed",
+    "runner_cleanup": {
+      "automatic_same_package_uninstalls_observed_in_final_log": 2,
+      "app_local_state_cleared": true,
+      "full_data_backup_available": false,
+      "restoration": "normal B6 APK reinstalled separately; cannot claim all prior preferences/credentials restored"
+    },
+    "acceptance_scope": "on-device widgets/platform decoding only; not real board AP or prescribed client matrix"
+  },
+  "phone_app_local_state_cleared_by_flutter_test_cleanup": true,
+  "full_previous_app_state_restored": false,
+  "normal_candidate_real_ui_rounds": 3,
+  "actual_scans_in_rounds": 6,
+  "foreground_owned_gatt_reused": true,
+  "formal_B7_status": "partial_current_topology_verified; prescribed_clients_and_real_box_pending",
+  "compiled_inputs": {
+    "compiled_input_count": 535,
+    "changed_compiled_inputs": [],
+    "candidate_manifest_fingerprint": "56fb4f8111794e08603f2260828f2c25fa545ab5e020befa24f37aa18684b1c1",
+    "app_source_changed_in_B7": false
+  },
+  "final_environment": {
+    "business_usb_forwarding": false,
+    "recorded_at_utc": "2026-11-23T11:13:49.6556724Z",
+    "known_test_vm_forward_ports_removed": [
+      65459,
+      62271
+    ],
+    "stay_on_while_plugged_in": "0",
+    "other_forwards_not_removed": true,
+    "restoration_method": "actual installed base.apk independently hash verified after wrapper exit137",
+    "installed_apk_sha256": "684e38a5aaa8e66276492e5b9cb839581ba4a7a47c21cb175da40122d5b81a2e",
+    "ble_evidence": "restoration_verified",
+    "bluetooth_on": "1",
+    "installed_candidate": "B6 normal bird Debug",
+    "wifi_on": "1",
+    "final_ui_evidence": "final_restored_album",
+    "phone_app_state_cleared_by_test_runner": true,
+    "full_previous_local_app_state_restored": false,
+    "app_reauthenticated_to_simulator": true
+  },
+  "final_diagnostic": {
+    "file": "final_phone.zip",
+    "source_file": "BirdBox_Phone_1.14.11_176_vivo_X20_20261123_105330_338b4601-cdd3-42f2-815b-dcf4dcdf78c3_8ae28581.zip",
+    "bytes": 146025,
+    "sha256": "c662865f427069b3b1ebb384e76f992806dcbaf0d255d8295401ef746307239b",
+    "expected_hash_source": "independently observed App final-file SHA256 in UI hierarchy",
+    "receipt_capture": "build/task1_B7_20261123_01/private/final_receipt_hash_ui.xml",
+    "receipt_xml_sha256": "76bb7ab433c02b32de8db949808444572c982a8aad937c0b2a103910e4dbcd73",
+    "transport": "ADB run-as of own Debug App; native file picker cancelled; no external share",
+    "received_hash_and_size_match_ui": true
+  },
+  "generated_at_utc": "2026-11-23T11:14:20.834949+00:00"
+}

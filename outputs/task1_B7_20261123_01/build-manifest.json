@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-11-23T09:54:05.5980342+00:00",
+  "mode": "Normal",
+  "delivery_role": "app_board_backend_integration",
+  "official_delivery_flavor": "bird",
+  "source": {
+    "git_sha": "28aeae2a0ba5edf4c19dca584117345d26762e05",
+    "working_tree_clean": false,
+    "build_dirty": true,
+    "build_id": "ble-20261123T095328618Z-56fb4f811179",
+    "source_fingerprint": "56fb4f8111794e08603f2260828f2c25fa545ab5e020befa24f37aa18684b1c1",
+    "build_input_source_fingerprint": "56fb4f8111794e08603f2260828f2c25fa545ab5e020befa24f37aa18684b1c1",
+    "build_input_file_count": 1199,
+    "version_name": "1.14.11",
+    "version_code": 176
+  },
+  "releasable": false,
+  "artifacts": [
+    {
+      "file": "BirdBox-1.14.11-176-debug.apk",
+      "package_id": "deckers.thibault.aves.bird",
+      "flavor": "bird",
+      "build_type": "debug",
+      "target": "lib/main.dart",
+      "scan_permission_policy": "never_for_location",
+      "scan_strategy_fallback_enabled": true,
+      "bytes": 255192312,
+      "sha256": "684e38a5aaa8e66276492e5b9cb839581ba4a7a47c21cb175da40122d5b81a2e",
+      "signing_certificate_sha256": "542da17c96faff1e6c346e9eca9546b09331633b9bfb9ae60c36675e320081b8"
+    }
+  ]
+}

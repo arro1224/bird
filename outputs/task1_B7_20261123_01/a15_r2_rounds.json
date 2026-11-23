@@ -1,0 +1,36 @@
+{
+  "started_at_utc": "2026-11-23T10:43:24.676921+00:00",
+  "evidence_kind": "real_vivo_normal_app_with_huawei_virtual_peripheral",
+  "transport": "real BLE and LAN; no USB business forwarding",
+  "rounds": [
+    {
+      "iteration": 1,
+      "started_at_utc": "2026-11-23T10:43:24.677921+00:00",
+      "finished_at_utc": "2026-11-23T10:44:36.219043+00:00",
+      "ui_assertions": "passed",
+      "current_business_cards": 1,
+      "trusted_ble_retained": true,
+      "native_no_reconnect_assertion": "verify separately against retained diagnostic records"
+    },
+    {
+      "iteration": 2,
+      "started_at_utc": "2026-11-23T10:44:36.221038+00:00",
+      "finished_at_utc": "2026-11-23T10:45:48.276078+00:00",
+      "ui_assertions": "passed",
+      "current_business_cards": 1,
+      "trusted_ble_retained": true,
+      "native_no_reconnect_assertion": "verify separately against retained diagnostic records"
+    },
+    {
+      "iteration": 3,
+      "started_at_utc": "2026-11-23T10:45:48.276078+00:00",
+      "finished_at_utc": "2026-11-23T10:47:00.031327+00:00",
+      "ui_assertions": "passed",
+      "current_business_cards": 1,
+      "trusted_ble_retained": true,
+      "native_no_reconnect_assertion": "verify separately against retained diagnostic records"
+    }
+  ],
+  "status": "three_ui_rounds_passed_native_evidence_pending",
+  "finished_at_utc": "2026-11-23T10:47:00.032327+00:00"
+}

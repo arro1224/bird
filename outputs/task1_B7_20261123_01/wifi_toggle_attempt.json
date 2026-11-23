@@ -1,0 +1,46 @@
+{
+  "generated_at_utc": "2026-11-23T10:11:18.843598+00:00",
+  "action": "one observed system WLAN toggle tap",
+  "samples": [
+    {
+      "after_wait_seconds": 0,
+      "wifi_requested": "1",
+      "state": [
+        "Wi-Fi is unknown state",
+        "curState=StaDisabledWithScanState",
+        "curState=InitialState",
+        "curState=UninitializedState"
+      ]
+    },
+    {
+      "after_wait_seconds": 3,
+      "wifi_requested": "1",
+      "state": [
+        "Wi-Fi is unknown state",
+        "curState=StaDisabledWithScanState",
+        "curState=InitialState",
+        "curState=UninitializedState"
+      ]
+    },
+    {
+      "after_wait_seconds": 7,
+      "wifi_requested": "1",
+      "state": [
+        "Wi-Fi is unknown state",
+        "curState=StaDisabledWithScanState",
+        "curState=InitialState",
+        "curState=UninitializedState"
+      ]
+    }
+  ],
+  "system_events": [
+    "11-23 18:11:28.495  1799  1799 E WifiController: WifiControllerWifi turn on failed",
+    "11-23 18:11:28.509  1218  1218 E wificond: Failed to get wiphy indices",
+    "11-23 18:11:28.713  1799  1799 E WifiController: WifiControllerWifi turn on failed",
+    "11-23 18:11:28.719  1218  1218 E wificond: Failed to get wiphy indices",
+    "11-23 18:11:28.925  1799  1799 E WifiController: WifiControllerWifi turn on failed",
+    "11-23 18:11:28.934  1218  1218 E wificond: Failed to get wiphy indices",
+    "11-23 18:11:29.102  1799  1799 E WifiController: WifiControllerWifi turn on failed",
+    "11-23 18:11:29.106  1218  1218 E wificond: Failed to get wiphy indices"
+  ]
+}

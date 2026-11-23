@@ -1,0 +1,55 @@
+{
+  "date": "2026-11-23",
+  "branch": "thirdtime",
+  "head": "28aeae2a0ba5edf4c19dca584117345d26762e05",
+  "index_empty": true,
+  "committed_by_agent": false,
+  "full_suite": {
+    "passed": 2012,
+    "skipped": 9,
+    "failed": 0,
+    "log": "full_suite_final.txt"
+  },
+  "native_unit": {
+    "tests": 248,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "xml_files": 12
+  },
+  "static_analysis": "passed",
+  "production_integrity": "passed",
+  "contracts": "passed",
+  "android_instrumentation_compilation": "passed",
+  "android_device_tests": "not run; adb lists no devices",
+  "task1_shared_ui_scenarios": "host run; Android entry added, device execution pending",
+  "task2_device_integration": "not run; host regressions included in full suite",
+  "candidate_directory": "build/delivery/task1_B6_20261123_01",
+  "artifact": {
+    "file": "BirdBox-1.14.11-176-debug.apk",
+    "package_id": "deckers.thibault.aves.bird",
+    "flavor": "bird",
+    "build_type": "debug",
+    "target": "lib/main.dart",
+    "scan_permission_policy": "never_for_location",
+    "scan_strategy_fallback_enabled": true,
+    "bytes": 255192312,
+    "sha256": "684e38a5aaa8e66276492e5b9cb839581ba4a7a47c21cb175da40122d5b81a2e",
+    "signing_certificate_sha256": "542da17c96faff1e6c346e9eca9546b09331633b9bfb9ae60c36675e320081b8"
+  },
+  "build_identity": {
+    "git_sha": "28aeae2a0ba5edf4c19dca584117345d26762e05",
+    "working_tree_clean": false,
+    "build_dirty": true,
+    "build_id": "ble-20261123T095328618Z-56fb4f811179",
+    "source_fingerprint": "56fb4f8111794e08603f2260828f2c25fa545ab5e020befa24f37aa18684b1c1",
+    "build_input_source_fingerprint": "56fb4f8111794e08603f2260828f2c25fa545ab5e020befa24f37aa18684b1c1",
+    "build_input_file_count": 1199,
+    "version_name": "1.14.11",
+    "version_code": 176
+  },
+  "compiled_input_files_reverified": 535,
+  "starting_files_preserved": 1363,
+  "starting_files_intentionally_continued": 8,
+  "real_box_acceptance": "pending B7"
+}

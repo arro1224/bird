@@ -6,11 +6,12 @@ import 'package:aves/bird_companion/core/storage/diagnostic_storage.dart';
 import 'package:aves/bird_companion/features/connection/data/connection_api.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../domain/request_id_factory.dart';
 
-enum DirectApHandoffPhase { idle, waitingForPhoneApJoin, verifyingDirectApHttp, directApConnected, directApJoinTimeout, failure }
+enum DirectApHandoffPhase { idle, waitingForPhoneApJoin, joiningPhoneAp, verifyingDirectApHttp, directApConnected, directApJoinTimeout, failure }
 
 final class PendingDirectAp {
   const PendingDirectAp({required this.deviceId, required this.baseUri, required this.operationId, this.ssid, this.networkMode = ProvisioningNetworkMode.directAp, this.attemptId});
@@ -54,6 +55,8 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
   DirectApHandoffCubit({
     required this.store,
     required this.verify,
+    this.prepareNetwork,
+    this.prepareManualNetwork,
     this.onCancel,
     this.activeChanged,
     this.onBegin,
@@ -66,6 +69,18 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
   static const pendingKey = 'connection:pending-direct-ap:v1';
   final DiagnosticStorage store;
   final Future<void> Function(PendingDirectAp, CancelToken) verify;
+  final Future<void> Function(PendingDirectAp, CancelToken)? prepareNetwork;
+  final Future<void> Function(PendingDirectAp, CancelToken)? prepareManualNetwork;
+  bool _manualRescue = false;
+  bool get canUseManualRescue => prepareManualNetwork != null && state.pending?.isSta == false;
+  bool get manualRescue => _manualRescue;
+
+  Future<void> continueAfterManualJoin() {
+    if (!canUseManualRescue || !{DirectApHandoffPhase.failure, DirectApHandoffPhase.directApJoinTimeout}.contains(state.phase)) return Future<void>.value();
+    _manualRescue = true;
+    return continueVerification();
+  }
+
   final Future<void> Function(String deviceId)? onCancel;
   final void Function(bool active)? activeChanged;
   final bool Function(PendingDirectAp pending, bool restored)? onBegin;
@@ -117,6 +132,7 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
       pending = PendingDirectAp(deviceId: pending.deviceId, baseUri: pending.baseUri, operationId: pending.operationId, ssid: pending.ssid, networkMode: pending.networkMode, attemptId: SecureRequestIdFactory().create());
     }
     if (onBegin?.call(pending, restored) == false) return;
+    _manualRescue = false;
     final generation = ++_generation;
     _initialized = false;
     activeChanged?.call(true);
@@ -133,7 +149,7 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
   }
 
   Future<void> continueVerification() {
-    if (isClosed || !_initialized || !state.active || state.phase == DirectApHandoffPhase.directApConnected || !state.canContinue) return Future<void>.value();
+    if (isClosed || !_initialized || !state.active || state.phase == DirectApHandoffPhase.directApConnected || (!state.canContinue && !_manualRescue)) return Future<void>.value();
     if (isIntentCurrent?.call(state.pending!) == false) return Future<void>.value();
     if (_running != null) {
       _wakeRetry();
@@ -164,7 +180,7 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
     }
   }
 
-  bool get _automaticContinuationAllowed => state.phase == DirectApHandoffPhase.waitingForPhoneApJoin || state.phase == DirectApHandoffPhase.verifyingDirectApHttp;
+  bool get _automaticContinuationAllowed => state.phase == DirectApHandoffPhase.waitingForPhoneApJoin || state.phase == DirectApHandoffPhase.joiningPhoneAp || state.phase == DirectApHandoffPhase.verifyingDirectApHttp;
 
   Future<void> _run(int generation) async {
     final pending = state.pending!;
@@ -181,15 +197,30 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
       if (!isClosed && generation == _generation) _emit(state.phase, remaining: ((window - stopwatch.elapsed).inMilliseconds / 1000).ceil().clamp(0, window.inSeconds));
     });
     _countdown = countdown;
+    var networkPrepared = false;
+    final networkPreparation = _manualRescue ? prepareManualNetwork : prepareNetwork;
     try {
       while (!isClosed && generation == _generation && !token.isCancelled && stopwatch.elapsed < window && isIntentCurrent?.call(pending) != false) {
         if (_backgrounded) {
           await _wait(retryUnit);
           continue;
         }
-        _emit(DirectApHandoffPhase.verifyingDirectApHttp, attempt: state.attempt + 1);
-        _log('direct_ap_http_attempt');
         try {
+          if (!networkPrepared && networkPreparation != null) {
+            if (!pending.isSta) _emit(_manualRescue ? DirectApHandoffPhase.verifyingDirectApHttp : DirectApHandoffPhase.joiningPhoneAp);
+            _log(
+              _manualRescue
+                  ? 'direct_ap_manual_rescue_requested'
+                  : pending.isSta
+                  ? 'sta_network_prepare'
+                  : 'direct_ap_system_join_attempt',
+            );
+            await Future.any<void>([networkPreparation(pending, token), token.whenCancel.then<void>((error) => throw error)]);
+            if (isClosed || generation != _generation || token.isCancelled || isIntentCurrent?.call(pending) == false) return;
+            networkPrepared = true;
+          }
+          _emit(DirectApHandoffPhase.verifyingDirectApHttp, attempt: state.attempt + 1);
+          _log('direct_ap_http_attempt');
           await Future.any<void>([verify(pending, token), token.whenCancel.then<void>((error) => throw error)]);
           if (isClosed || generation != _generation || isIntentCurrent?.call(pending) == false) return;
           if (token.isCancelled) throw token.cancelError!;
@@ -199,7 +230,7 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
           countdown.cancel();
           activeChanged?.call(false);
           _emit(DirectApHandoffPhase.directApConnected);
-          _log('direct_ap_http_verified', {'device_id_verified': true});
+          _log('direct_ap_http_verified', {'device_id_verified': true, 'connection_path': _manualRescue ? 'manual_rescue' : 'automatic'});
           unawaited(_clearPending(pending));
           return;
         } catch (error, stack) {
@@ -219,7 +250,7 @@ final class DirectApHandoffCubit extends Cubit<DirectApHandoffState> {
             _emit(DirectApHandoffPhase.failure, message: directApErrorMessage(error), firstError: classification);
             return;
           }
-          _emit(DirectApHandoffPhase.waitingForPhoneApJoin, message: pending.isSta ? '等待盒子与手机处于同一 Wi-Fi，连接恢复后会继续验证。' : '尚未连接到盒子热点。请在 WLAN 设置中连接后返回。', firstError: classification);
+          _emit(DirectApHandoffPhase.waitingForPhoneApJoin, message: pending.isSta ? '等待盒子与手机处于同一 Wi-Fi，连接恢复后会继续验证。' : '正在等待盒子业务响应，会在当前连接上继续验证。', firstError: classification);
           _log('direct_ap_waiting_for_phone');
         }
         await _wait(retryUnit * state.attempt.clamp(1, 3));
@@ -332,18 +363,28 @@ String directApErrorKind(Object error) {
 }
 
 String directApErrorMessage(Object error) {
+  if (error is DirectApConfigurationUnavailable) return '当前盒子热点配置不可用，请返回连接方式重新取得配置。';
   if (error is ProvisioningException && error.code == ProvisioningErrorCode.deviceIdMismatch) return '设备身份不一致，已停止连接。';
   if (error is ProvisioningCredentialSaveException) return '授权已取得，但手机保存失败。可以继续验证以重试保存，不会再次兑换授权。';
   if (error is ProvisioningException) {
     switch (error.code) {
+      case ProvisioningErrorCode.userCancelledWifiDialog:
+        return '已取消本次系统连接。自动重试已停止，可返回连接方式重试。';
+      case ProvisioningErrorCode.networkSwitchFailed:
+      case ProvisioningErrorCode.systemWifiJoinDenied:
+        return '手机与盒子热点的连接未建立。可能是系统未批准、热点不可见或请求超时，请检查后重试。';
+      case ProvisioningErrorCode.localNetworkPermissionDenied:
+        return '缺少连接本地 Wi-Fi 所需权限，请授权后返回重试。';
+      case ProvisioningErrorCode.wifiSecurityUnsupported:
+        return '当前手机不支持盒子热点的安全类型，请检查设备配置。';
       case ProvisioningErrorCode.authorizationRequired:
-        return '盒子可达，但手机尚未取得有效授权。请点「返回并重新配对」完成验证码授权。';
+        return '盒子可达，但手机尚未取得有效授权。请返回连接方式完成验证码授权。';
       case ProvisioningErrorCode.pairingSessionExpired:
-        return '盒子可达，但配对授权已过期。请点「返回并重新配对」重新授权。';
+        return '盒子可达，但配对授权已过期。请返回连接方式重新授权。';
       case ProvisioningErrorCode.pairingSessionUsed:
-        return '盒子可达，但本次配对授权已经使用。请点「返回并重新配对」重新授权。';
+        return '盒子可达，但本次配对授权已经使用。请返回连接方式重新授权。';
       case ProvisioningErrorCode.pairingSessionInvalid:
-        return '盒子可达，但配对授权不匹配。请点「返回并重新配对」重新授权。';
+        return '盒子可达，但配对授权不匹配。请返回连接方式重新授权。';
       default:
         break;
     }
@@ -352,7 +393,7 @@ String directApErrorMessage(Object error) {
       error is ProvisioningException &&
           {ProvisioningErrorCode.authorizationRequired, ProvisioningErrorCode.pairingSessionExpired, ProvisioningErrorCode.pairingSessionUsed, ProvisioningErrorCode.pairingSessionInvalid}.contains(error.code) ||
       error is ApiException && {401, 403}.contains(error.statusCode)) {
-    return '盒子可达，但当前授权已失效。请点「返回并重新配对」重新安全授权，无需重新启动热点。';
+    return '盒子可达，但当前授权已失效。请返回连接方式重新安全授权，无需重新启动热点。';
   }
   return '盒子验证未通过，已停止自动重试。请查看连接诊断或返回。';
 }

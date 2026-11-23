@@ -8,13 +8,14 @@ import 'package:dio/dio.dart';
 /// Attaching metadata to the token lets lower layers retain the original trace
 /// even after another intent becomes current.
 final class ConnectionAttempt {
-  ConnectionAttempt({required this.id, required this.generation, required this.token, required this.isCurrent, this.deviceId, this.operationId, this.diagnostic, this.onStage}) {
+  ConnectionAttempt({required this.id, required this.generation, required this.token, required this.isCurrent, this.deviceId, this.operationId, this.diagnostic, this.onStage, this.intent}) {
     _tokens[token] = this;
   }
 
   static final _tokens = Expando<ConnectionAttempt>();
   static ConnectionAttempt? forToken(CancelToken? token) => token == null ? null : _tokens[token];
   final String id;
+  final String? intent;
   final int generation;
   final CancelToken token;
   final bool Function() isCurrent;

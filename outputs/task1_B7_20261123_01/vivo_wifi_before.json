@@ -1,0 +1,14 @@
+{
+  "wifi_requested": "1",
+  "airplane_mode": "0",
+  "bluetooth_requested": "1",
+  "wifi_state_lines": [
+    "Wi-Fi is unknown state",
+    "WifiController:",
+    "curState=StaDisabledWithScanState",
+    "WifiStateMachine:",
+    "curState=InitialState",
+    "curState=UninitializedState"
+  ],
+  "wifi_system_events": []
+}

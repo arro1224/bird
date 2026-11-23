@@ -1,0 +1,500 @@
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :gradle:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :gradle:compileKotlin UP-TO-DATE
+> Task :gradle:compileJava NO-SOURCE
+> Task :gradle:compileGroovy NO-SOURCE
+> Task :gradle:pluginDescriptors UP-TO-DATE
+> Task :gradle:processResources UP-TO-DATE
+> Task :gradle:classes UP-TO-DATE
+> Task :gradle:jar UP-TO-DATE
+
+> Configure project :app
+WARNING: The option setting 'android.overridePathCheck=true' is experimental.
+The current default is 'false'.
+WARNING: The option setting 'android.builtInKotlin=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: The option setting 'android.newDsl=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+Build was configured to prefer settings repositories over project repositories but repository 'maven' was added by plugin 'dev.flutter.flutter-gradle-plugin'
+Build was configured to prefer settings repositories over project repositories but repository 'maven' was added by plugin 'dev.flutter.flutter-gradle-plugin'
+Build was configured to prefer settings repositories over project repositories but repository 'maven' was added by plugin 'dev.flutter.flutter-gradle-plugin'
+Build was configured to prefer settings repositories over project repositories but repository 'maven' was added by plugin 'dev.flutter.flutter-gradle-plugin'
+Build was configured to prefer settings repositories over project repositories but repository 'maven' was added by plugin 'dev.flutter.flutter-gradle-plugin'
+Build was configured to prefer settings repositories over project repositories but repository 'maven' was added by plugin 'dev.flutter.flutter-gradle-plugin'
+Build was configured to prefer settings repositories over project repositories but repository 'maven' was added by plugin 'dev.flutter.flutter-gradle-plugin'
+Build was configured to prefer settings repositories over project repositories but repository 'maven' was added by plugin 'dev.flutter.flutter-gradle-plugin'
+Build was configured to prefer settings repositories over project repositories but repository 'maven' was added by plugin 'dev.flutter.flutter-gradle-plugin'
+Build was configured to prefer settings repositories over project repositories but repository 'maven' was added by plugin 'dev.flutter.flutter-gradle-plugin'
+Build was configured to prefer settings repositories over project repositories but repository 'maven' was added by plugin 'dev.flutter.flutter-gradle-plugin'
+WARNING: API 'applicationVariants' is obsolete and has been replaced with 'AndroidComponentsExtension'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+The legacy variant API is disabled by default in AGP 9.0, but can be re-enabled by adding
+    android.newDsl=false
+to this project's gradle.properties file.
+For more information, see http://developer.android.com/build/r/new-dsl.
+
+To determine what is calling applicationVariants, use -Pandroid.debug.obsoleteApi=true on the command line to display more information.
+WARNING: API 'testVariants' is obsolete and has been replaced with 'AndroidComponentsExtension'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+The legacy variant API is disabled by default in AGP 9.0, but can be re-enabled by adding
+    android.newDsl=false
+to this project's gradle.properties file.
+For more information, see http://developer.android.com/build/r/new-dsl.
+
+To determine what is calling testVariants, use -Pandroid.debug.obsoleteApi=true on the command line to display more information.
+WARNING: API 'unitTestVariants' is obsolete and has been replaced with 'AndroidComponentsExtension'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+The legacy variant API is disabled by default in AGP 9.0, but can be re-enabled by adding
+    android.newDsl=false
+to this project's gradle.properties file.
+For more information, see http://developer.android.com/build/r/new-dsl.
+
+To determine what is calling unitTestVariants, use -Pandroid.debug.obsoleteApi=true on the command line to display more information.
+w: [33m[1mDeprecated 'org.jetbrains.kotlin.android' plugin usage[0m[0m
+The 'org.jetbrains.kotlin.android' plugin in project ':app' is no longer required for Kotlin support since AGP 9.0.
+[32m[1mSolution:[0m[0m
+[32m[3mRemove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.[0m[0m
+[36mSee [0m[34mhttps://kotl.in/gradle/agp-built-in-kotlin[0m[36m for more details.[0m
+
+
+> Configure project :connectivity_plus
+Build was configured to prefer settings repositories over project repositories but repository 'Google' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\connectivity_plus-7.3.1\android\build.gradle'
+WARNING: API 'libraryVariants' is obsolete and has been replaced with 'AndroidComponentsExtension'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+The legacy variant API is disabled by default in AGP 9.0, but can be re-enabled by adding
+    android.newDsl=false
+to this project's gradle.properties file.
+For more information, see http://developer.android.com/build/r/new-dsl.
+
+To determine what is calling libraryVariants, use -Pandroid.debug.obsoleteApi=true on the command line to display more information.
+w: [33m[1mDeprecated 'org.jetbrains.kotlin.android' plugin usage[0m[0m
+The 'org.jetbrains.kotlin.android' plugin in project ':connectivity_plus' is no longer required for Kotlin support since AGP 9.0.
+[32m[1mSolution:[0m[0m
+[32m[3mRemove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.[0m[0m
+[36mSee [0m[34mhttps://kotl.in/gradle/agp-built-in-kotlin[0m[36m for more details.[0m
+
+
+> Configure project :integration_test
+Build was configured to prefer settings repositories over project repositories but repository 'Google2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'Google2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'Google2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'Google2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'Google2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'Google2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'Google2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'Google2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'Google2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'Google2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'Google2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo2' was added by build file 'D:\flutter344\flutter\packages\integration_test\android\build.gradle.kts'
+w: [33m[1mDeprecated 'org.jetbrains.kotlin.android' plugin usage[0m[0m
+The 'org.jetbrains.kotlin.android' plugin in project ':integration_test' is no longer required for Kotlin support since AGP 9.0.
+[32m[1mSolution:[0m[0m
+[32m[3mRemove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.[0m[0m
+[36mSee [0m[34mhttps://kotl.in/gradle/agp-built-in-kotlin[0m[36m for more details.[0m
+
+
+> Configure project :jni
+Build was configured to prefer settings repositories over project repositories but repository 'Google3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo3' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni-1.0.3\android\build.gradle'
+w: [33m[1mDeprecated 'org.jetbrains.kotlin.android' plugin usage[0m[0m
+The 'org.jetbrains.kotlin.android' plugin in project ':jni' is no longer required for Kotlin support since AGP 9.0.
+[32m[1mSolution:[0m[0m
+[32m[3mRemove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.[0m[0m
+[36mSee [0m[34mhttps://kotl.in/gradle/agp-built-in-kotlin[0m[36m for more details.[0m
+
+
+> Configure project :jni_flutter
+Build was configured to prefer settings repositories over project repositories but repository 'Google4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo4' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\jni_flutter-1.0.3\android\build.gradle'
+w: [33m[1mDeprecated 'org.jetbrains.kotlin.android' plugin usage[0m[0m
+The 'org.jetbrains.kotlin.android' plugin in project ':jni_flutter' is no longer required for Kotlin support since AGP 9.0.
+[32m[1mSolution:[0m[0m
+[32m[3mRemove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.[0m[0m
+[36mSee [0m[34mhttps://kotl.in/gradle/agp-built-in-kotlin[0m[36m for more details.[0m
+
+
+> Configure project :mobile_scanner
+w: [33m[1mDeprecated 'org.jetbrains.kotlin.android' plugin usage[0m[0m
+The 'org.jetbrains.kotlin.android' plugin in project ':mobile_scanner' is no longer required for Kotlin support since AGP 9.0.
+[32m[1mSolution:[0m[0m
+[32m[3mRemove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.[0m[0m
+[36mSee [0m[34mhttps://kotl.in/gradle/agp-built-in-kotlin[0m[36m for more details.[0m
+
+
+> Configure project :package_info_plus
+Build was configured to prefer settings repositories over project repositories but repository 'Google5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\package_info_plus-10.2.1\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\package_info_plus-10.2.1\android\build.gradle.kts'
+w: [33m[1mDeprecated 'org.jetbrains.kotlin.android' plugin usage[0m[0m
+The 'org.jetbrains.kotlin.android' plugin in project ':package_info_plus' is no longer required for Kotlin support since AGP 9.0.
+[32m[1mSolution:[0m[0m
+[32m[3mRemove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.[0m[0m
+[36mSee [0m[34mhttps://kotl.in/gradle/agp-built-in-kotlin[0m[36m for more details.[0m
+
+
+> Configure project :permission_handler_android
+Build was configured to prefer settings repositories over project repositories but repository 'Google5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\permission_handler_android-14.1.0\android\build.gradle.kts'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\permission_handler_android-14.1.0\android\build.gradle.kts'
+w: [33m[1mDeprecated 'org.jetbrains.kotlin.android' plugin usage[0m[0m
+The 'org.jetbrains.kotlin.android' plugin in project ':permission_handler_android' is no longer required for Kotlin support since AGP 9.0.
+[32m[1mSolution:[0m[0m
+[32m[3mRemove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.[0m[0m
+[36mSee [0m[34mhttps://kotl.in/gradle/agp-built-in-kotlin[0m[36m for more details.[0m
+
+
+> Configure project :sqflite_android
+Build was configured to prefer settings repositories over project repositories but repository 'Google5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google6' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo6' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google6' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo6' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'Google5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+Build was configured to prefer settings repositories over project repositories but repository 'MavenRepo5' was added by build file 'C:\Users\32714\AppData\Local\Pub\Cache\hosted\pub.flutter-io.cn\sqflite_android-2.4.4\android\build.gradle'
+w: [33m[1mDeprecated 'org.jetbrains.kotlin.android' plugin usage[0m[0m
+The 'org.jetbrains.kotlin.android' plugin in project ':sqflite_android' is no longer required for Kotlin support since AGP 9.0.
+[32m[1mSolution:[0m[0m
+[32m[3mRemove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.[0m[0m
+[36mSee [0m[34mhttps://kotl.in/gradle/agp-built-in-kotlin[0m[36m for more details.[0m
+
+
+> Configure project :virtualBirdBox
+w: [33m[1mDeprecated 'org.jetbrains.kotlin.android' plugin usage[0m[0m
+The 'org.jetbrains.kotlin.android' plugin in project ':virtualBirdBox' is no longer required for Kotlin support since AGP 9.0.
+[32m[1mSolution:[0m[0m
+[32m[3mRemove both `android.builtInKotlin=true` and `android.newDsl=false` from `gradle.properties`, then migrate to built-in Kotlin.[0m[0m
+[36mSee [0m[34mhttps://kotl.in/gradle/agp-built-in-kotlin[0m[36m for more details.[0m
+
+
+> Task :connectivity_plus:generateDebugAssets UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :connectivity_plus:preBuild UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :connectivity_plus:preDebugBuild UP-TO-DATE
+> Task :app:preBirdDebugBuild UP-TO-DATE
+> Task :connectivity_plus:mergeDebugAssets UP-TO-DATE
+> Task :integration_test:generateDebugAssets UP-TO-DATE
+> Task :integration_test:preBuild UP-TO-DATE
+> Task :integration_test:preDebugBuild UP-TO-DATE
+> Task :integration_test:mergeDebugAssets UP-TO-DATE
+> Task :jni:generateDebugAssets UP-TO-DATE
+> Task :jni:preBuild UP-TO-DATE
+> Task :jni:preDebugBuild UP-TO-DATE
+> Task :jni:mergeDebugAssets UP-TO-DATE
+> Task :jni_flutter:generateDebugAssets UP-TO-DATE
+> Task :jni_flutter:preBuild UP-TO-DATE
+> Task :jni_flutter:preDebugBuild UP-TO-DATE
+> Task :jni_flutter:mergeDebugAssets UP-TO-DATE
+> Task :mobile_scanner:generateDebugAssets UP-TO-DATE
+> Task :mobile_scanner:preBuild UP-TO-DATE
+> Task :mobile_scanner:preDebugBuild UP-TO-DATE
+> Task :mobile_scanner:mergeDebugAssets UP-TO-DATE
+> Task :package_info_plus:generateDebugAssets UP-TO-DATE
+> Task :package_info_plus:preBuild UP-TO-DATE
+> Task :package_info_plus:preDebugBuild UP-TO-DATE
+> Task :package_info_plus:mergeDebugAssets UP-TO-DATE
+> Task :permission_handler_android:generateDebugAssets UP-TO-DATE
+> Task :permission_handler_android:preBuild UP-TO-DATE
+> Task :permission_handler_android:preDebugBuild UP-TO-DATE
+> Task :permission_handler_android:mergeDebugAssets UP-TO-DATE
+> Task :sqflite_android:generateDebugAssets UP-TO-DATE
+> Task :sqflite_android:preBuild UP-TO-DATE
+> Task :sqflite_android:preDebugBuild UP-TO-DATE
+> Task :sqflite_android:mergeDebugAssets UP-TO-DATE
+> Task :connectivity_plus:processDebugNavigationResources UP-TO-DATE
+> Task :integration_test:processDebugNavigationResources UP-TO-DATE
+> Task :jni:processDebugNavigationResources UP-TO-DATE
+> Task :jni_flutter:processDebugNavigationResources UP-TO-DATE
+> Task :mobile_scanner:processDebugNavigationResources UP-TO-DATE
+> Task :package_info_plus:processDebugNavigationResources UP-TO-DATE
+> Task :permission_handler_android:processDebugNavigationResources UP-TO-DATE
+> Task :sqflite_android:processDebugNavigationResources UP-TO-DATE
+> Task :connectivity_plus:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :connectivity_plus:generateDebugResources UP-TO-DATE
+> Task :connectivity_plus:packageDebugResources UP-TO-DATE
+> Task :app:generateBirdDebugBuildConfig
+> Task :connectivity_plus:parseDebugLocalResources UP-TO-DATE
+> Task :connectivity_plus:generateDebugRFile UP-TO-DATE
+> Task :connectivity_plus:compileDebugKotlin NO-SOURCE
+> Task :connectivity_plus:javaPreCompileDebug UP-TO-DATE
+> Task :app:cleanMergeBirdDebugAssets
+> Task :app:generateBirdDebugAssets UP-TO-DATE
+> Task :connectivity_plus:compileDebugJavaWithJavac UP-TO-DATE
+> Task :connectivity_plus:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :integration_test:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :integration_test:generateDebugResources UP-TO-DATE
+> Task :integration_test:packageDebugResources UP-TO-DATE
+> Task :integration_test:parseDebugLocalResources UP-TO-DATE
+> Task :integration_test:generateDebugRFile UP-TO-DATE
+> Task :integration_test:compileDebugKotlin NO-SOURCE
+> Task :integration_test:javaPreCompileDebug UP-TO-DATE
+> Task :integration_test:compileDebugJavaWithJavac UP-TO-DATE
+> Task :integration_test:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :jni:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :jni:generateDebugResources UP-TO-DATE
+> Task :jni:packageDebugResources UP-TO-DATE
+> Task :jni:parseDebugLocalResources UP-TO-DATE
+> Task :jni:generateDebugRFile UP-TO-DATE
+> Task :jni:compileDebugKotlin NO-SOURCE
+> Task :jni:javaPreCompileDebug UP-TO-DATE
+> Task :jni:compileDebugJavaWithJavac UP-TO-DATE
+> Task :jni:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :jni_flutter:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :jni_flutter:generateDebugResources UP-TO-DATE
+> Task :jni_flutter:packageDebugResources UP-TO-DATE
+> Task :jni_flutter:parseDebugLocalResources UP-TO-DATE
+> Task :jni_flutter:generateDebugRFile UP-TO-DATE
+> Task :jni_flutter:compileDebugKotlin NO-SOURCE
+> Task :jni_flutter:javaPreCompileDebug UP-TO-DATE
+> Task :jni_flutter:compileDebugJavaWithJavac UP-TO-DATE
+> Task :jni_flutter:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :mobile_scanner:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :mobile_scanner:generateDebugResources UP-TO-DATE
+> Task :mobile_scanner:packageDebugResources UP-TO-DATE
+> Task :mobile_scanner:parseDebugLocalResources UP-TO-DATE
+> Task :mobile_scanner:generateDebugRFile UP-TO-DATE
+> Task :app:mergeBirdDebugAssets
+> Task :mobile_scanner:compileDebugKotlin UP-TO-DATE
+> Task :mobile_scanner:javaPreCompileDebug UP-TO-DATE
+> Task :mobile_scanner:compileDebugJavaWithJavac NO-SOURCE
+> Task :mobile_scanner:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :package_info_plus:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :package_info_plus:generateDebugResources UP-TO-DATE
+> Task :app:copyFlutterAssetsBirdDebug
+> Task :app:generateBirdDebugResValues UP-TO-DATE
+> Task :app:generateBirdDebugResources UP-TO-DATE
+> Task :package_info_plus:packageDebugResources UP-TO-DATE
+> Task :package_info_plus:parseDebugLocalResources UP-TO-DATE
+> Task :app:packageBirdDebugResources UP-TO-DATE
+> Task :package_info_plus:generateDebugRFile UP-TO-DATE
+> Task :package_info_plus:compileDebugKotlin UP-TO-DATE
+> Task :package_info_plus:javaPreCompileDebug UP-TO-DATE
+> Task :package_info_plus:compileDebugJavaWithJavac NO-SOURCE
+> Task :package_info_plus:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :permission_handler_android:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :permission_handler_android:generateDebugResources UP-TO-DATE
+> Task :permission_handler_android:packageDebugResources UP-TO-DATE
+> Task :permission_handler_android:parseDebugLocalResources UP-TO-DATE
+> Task :permission_handler_android:generateDebugRFile UP-TO-DATE
+> Task :permission_handler_android:compileDebugKotlin NO-SOURCE
+> Task :permission_handler_android:javaPreCompileDebug UP-TO-DATE
+> Task :permission_handler_android:compileDebugJavaWithJavac UP-TO-DATE
+> Task :permission_handler_android:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :sqflite_android:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :sqflite_android:generateDebugResources UP-TO-DATE
+> Task :sqflite_android:packageDebugResources UP-TO-DATE
+> Task :sqflite_android:parseDebugLocalResources UP-TO-DATE
+> Task :sqflite_android:generateDebugRFile UP-TO-DATE
+> Task :sqflite_android:compileDebugKotlin NO-SOURCE
+> Task :sqflite_android:javaPreCompileDebug UP-TO-DATE
+> Task :sqflite_android:compileDebugJavaWithJavac UP-TO-DATE
+> Task :sqflite_android:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :connectivity_plus:writeDebugAarMetadata UP-TO-DATE
+> Task :integration_test:writeDebugAarMetadata UP-TO-DATE
+> Task :jni:writeDebugAarMetadata UP-TO-DATE
+> Task :jni_flutter:writeDebugAarMetadata UP-TO-DATE
+> Task :mobile_scanner:writeDebugAarMetadata UP-TO-DATE
+> Task :package_info_plus:writeDebugAarMetadata UP-TO-DATE
+> Task :permission_handler_android:writeDebugAarMetadata UP-TO-DATE
+> Task :sqflite_android:writeDebugAarMetadata UP-TO-DATE
+> Task :connectivity_plus:extractDeepLinksDebug UP-TO-DATE
+> Task :connectivity_plus:processDebugManifest UP-TO-DATE
+> Task :integration_test:extractDeepLinksDebug UP-TO-DATE
+> Task :integration_test:processDebugManifest UP-TO-DATE
+> Task :jni:extractDeepLinksDebug UP-TO-DATE
+> Task :jni:processDebugManifest UP-TO-DATE
+> Task :jni_flutter:extractDeepLinksDebug UP-TO-DATE
+> Task :jni_flutter:processDebugManifest UP-TO-DATE
+> Task :mobile_scanner:extractDeepLinksDebug UP-TO-DATE
+> Task :mobile_scanner:processDebugManifest UP-TO-DATE
+> Task :package_info_plus:extractDeepLinksDebug UP-TO-DATE
+> Task :package_info_plus:processDebugManifest UP-TO-DATE
+> Task :permission_handler_android:extractDeepLinksDebug UP-TO-DATE
+> Task :permission_handler_android:processDebugManifest UP-TO-DATE
+> Task :sqflite_android:extractDeepLinksDebug UP-TO-DATE
+> Task :sqflite_android:processDebugManifest UP-TO-DATE
+> Task :connectivity_plus:mapDebugSourceSetPaths UP-TO-DATE
+> Task :connectivity_plus:compileDebugLibraryResources UP-TO-DATE
+> Task :integration_test:mapDebugSourceSetPaths UP-TO-DATE
+> Task :integration_test:compileDebugLibraryResources UP-TO-DATE
+> Task :jni:mapDebugSourceSetPaths UP-TO-DATE
+> Task :jni:compileDebugLibraryResources UP-TO-DATE
+> Task :jni_flutter:mapDebugSourceSetPaths UP-TO-DATE
+> Task :jni_flutter:compileDebugLibraryResources UP-TO-DATE
+> Task :mobile_scanner:mapDebugSourceSetPaths UP-TO-DATE
+> Task :mobile_scanner:compileDebugLibraryResources UP-TO-DATE
+> Task :package_info_plus:mapDebugSourceSetPaths UP-TO-DATE
+> Task :package_info_plus:compileDebugLibraryResources UP-TO-DATE
+> Task :permission_handler_android:mapDebugSourceSetPaths UP-TO-DATE
+> Task :permission_handler_android:compileDebugLibraryResources UP-TO-DATE
+> Task :sqflite_android:mapDebugSourceSetPaths UP-TO-DATE
+> Task :sqflite_android:compileDebugLibraryResources UP-TO-DATE
+> Task :connectivity_plus:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :connectivity_plus:processDebugJavaRes NO-SOURCE
+> Task :integration_test:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :integration_test:processDebugJavaRes NO-SOURCE
+> Task :jni:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :jni:processDebugJavaRes NO-SOURCE
+> Task :jni_flutter:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :jni_flutter:processDebugJavaRes NO-SOURCE
+> Task :mobile_scanner:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :mobile_scanner:processDebugJavaRes UP-TO-DATE
+> Task :package_info_plus:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :package_info_plus:processDebugJavaRes UP-TO-DATE
+> Task :permission_handler_android:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :permission_handler_android:processDebugJavaRes NO-SOURCE
+> Task :sqflite_android:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :sqflite_android:processDebugJavaRes NO-SOURCE
+> Task :app:processBirdDebugNavigationResources UP-TO-DATE
+> Task :app:parseBirdDebugLocalResources UP-TO-DATE
+> Task :app:generateBirdDebugRFile UP-TO-DATE
+> Task :app:compileBirdDebugKotlin NO-SOURCE
+> Task :app:javaPreCompileBirdDebug UP-TO-DATE
+
+> Task :app:compileBirdDebugJavaWithJavac
+注: 某些输入文件使用或覆盖了已过时的 API。
+注: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
+
+> Task :app:checkBirdDebugAarMetadata UP-TO-DATE
+> Task :app:mapBirdDebugSourceSetPaths UP-TO-DATE
+> Task :app:compileBirdDebugNavigationResources UP-TO-DATE
+> Task :app:mergeBirdDebugResources UP-TO-DATE
+> Task :app:createBirdDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksBirdDebug UP-TO-DATE
+> Task :app:processBirdDebugMainManifest
+> Task :app:outputBirdDebugAppLinkSettings
+> Task :app:processBirdDebugManifest
+> Task :app:preBirdDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileBirdDebugUnitTest UP-TO-DATE
+> Task :app:processBirdDebugJavaRes NO-SOURCE
+> Task :app:preBirdDebugAndroidTestBuild SKIPPED
+> Task :app:processBirdDebugAndroidTestManifest UP-TO-DATE
+> Task :app:generateBirdDebugAndroidTestBuildConfig
+> Task :app:generateBirdDebugAndroidTestResValues UP-TO-DATE
+> Task :app:generateBirdDebugAndroidTestResources UP-TO-DATE
+> Task :app:packageBirdDebugAndroidTestResources UP-TO-DATE
+> Task :app:processBirdDebugAndroidTestNavigationResources UP-TO-DATE
+> Task :app:parseBirdDebugAndroidTestLocalResources UP-TO-DATE
+> Task :app:generateBirdDebugAndroidTestRFile UP-TO-DATE
+> Task :app:javaPreCompileBirdDebugAndroidTest UP-TO-DATE
+> Task :app:processBirdDebugManifestForPackage
+> Task :app:processBirdDebugResources
+> Task :app:bundleBirdDebugClassesToCompileJar
+> Task :app:bundleBirdDebugClassesToRuntimeJar
+> Task :app:compileBirdDebugUnitTestKotlin NO-SOURCE
+
+> Task :app:compileBirdDebugUnitTestJavaWithJavac
+注: 某些输入文件使用或覆盖了已过时的 API。
+注: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
+
+> Task :app:processBirdDebugUnitTestJavaRes NO-SOURCE
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :app:testBirdDebugUnitTest
+
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+
+> Task :app:compileBirdDebugAndroidTestKotlin NO-SOURCE
+
+> Task :app:compileBirdDebugAndroidTestJavaWithJavac
+注: D:\Androidstudio2\project\4\android\app\src\androidTest\java\deckers\thibault\aves\BirdBoxBleDiagnosticFileProviderTest.java使用或覆盖了已过时的 API。
+注: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
+
+[Incubating] Problems report is available at: file:///D:/Androidstudio2/project/4/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.6.0/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 2h 2m 45s
+164 actionable tasks: 16 executed, 148 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.6.0/userguide/configuration_cache_enabling.html

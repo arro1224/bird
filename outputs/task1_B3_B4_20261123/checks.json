@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-23",
+  "branch": "thirdtime",
+  "head": "28aeae2a0ba5edf4c19dca584117345d26762e05",
+  "index_empty": true,
+  "committed_by_agent": false,
+  "full_suite": {
+    "passed": 1998,
+    "skipped": 9,
+    "failed": 0,
+    "log": "full_suite.txt"
+  },
+  "final_connection": {
+    "passed": 556,
+    "skipped": 3,
+    "failed": 0,
+    "log": "connection_final.txt"
+  },
+  "final_owner": {
+    "passed": 41,
+    "skipped": 0,
+    "failed": 0,
+    "log": "owner_final.txt"
+  },
+  "analyze": "passed",
+  "production_integrity": "passed",
+  "contracts": "passed",
+  "coverage_note": "Full suite ran before the last stop-resume case and small owner/event guards; final connection and owner reruns cover those changes. Counts are not additive.",
+  "device_tests": "not run; adb lists no devices",
+  "apk": "not built",
+  "prior_preserved_files": 74,
+  "prior_intentionally_continued_files": 6
+}

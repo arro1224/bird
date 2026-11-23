@@ -1,0 +1,77 @@
+{
+  "flutter_test": {
+    "exit_code": 0,
+    "scope": [
+      "test/bird_companion/features/connection",
+      "test/bird_companion/settings/network_settings_page_test.dart",
+      "test/bird_companion/app/reconnect_connection_route_test.dart"
+    ],
+    "result_counts": {
+      "success": 518,
+      "skipped": 3
+    },
+    "done": [
+      {
+        "success": true,
+        "type": "done",
+        "time": 37638
+      }
+    ],
+    "skipped_cases": [
+      {
+        "id": 280,
+        "name": "repeated real HTTP business timeouts no longer downgrade a reachable box",
+        "suiteID": 237,
+        "groupIDs": [
+          279
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Start serve_disconnect_reproduction.py on loopback first."
+        },
+        "line": 22,
+        "column": 3,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/business_http_disconnect_reproduction_test.dart"
+      },
+      {
+        "id": 315,
+        "name": "real Python directAp RC4 redemption, authenticated REST/WS handoff and restored reuse after transient failure",
+        "suiteID": 261,
+        "groupIDs": [
+          314
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Set BIRDBOX_DIRECT_AP_BASE and run tool/direct_ap_python_fixture.py; real HTTP not configured."
+        },
+        "line": 27,
+        "column": 5,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_python_backend_test.dart"
+      },
+      {
+        "id": 316,
+        "name": "real Python infrastructureSta RC4 redemption, authenticated REST/WS handoff and restored reuse after transient failure",
+        "suiteID": 261,
+        "groupIDs": [
+          314
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Set BIRDBOX_DIRECT_AP_BASE and run tool/direct_ap_python_fixture.py; real HTTP not configured."
+        },
+        "line": 27,
+        "column": 5,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_python_backend_test.dart"
+      }
+    ]
+  },
+  "dart_analyze": {
+    "exit_code": 0
+  },
+  "production_integrity": {
+    "exit_code": 0
+  },
+  "contracts": {
+    "exit_code": 0
+  }
+}

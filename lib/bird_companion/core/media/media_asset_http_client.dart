@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:aves/bird_companion/core/media/media_asset_models.dart';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 
 class MediaAssetHttpResponse {
   const MediaAssetHttpResponse({
@@ -188,5 +189,12 @@ class MediaAssetHttpClient {
 
   void dispose() {
     if (_ownsDio) _dio.close(force: true);
+  }
+
+  void resetNetworkConnections() {
+    if (_ownsDio && _dio.httpClientAdapter is IOHttpClientAdapter) {
+      _dio.httpClientAdapter.close(force: true);
+      _dio.httpClientAdapter = IOHttpClientAdapter();
+    }
   }
 }

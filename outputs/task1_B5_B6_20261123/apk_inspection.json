@@ -1,0 +1,19 @@
+{
+  "package_id": "deckers.thibault.aves.bird",
+  "version_name": "1.14.11",
+  "version_code": 176,
+  "debuggable": true,
+  "embedded_identity_found_in_dex": {
+    "git_sha": [
+      "classes11.dex"
+    ],
+    "build_id": [
+      "classes11.dex"
+    ],
+    "source_fingerprint": [
+      "classes11.dex"
+    ]
+  },
+  "bluetooth_scan_never_for_location_flag": true,
+  "real_device_execution": false
+}

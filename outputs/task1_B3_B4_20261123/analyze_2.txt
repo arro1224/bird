@@ -1,0 +1,7 @@
+Analyzing lib, test, integration_test, tool...
+
+  error - test\bird_companion\settings\network_settings_page_test.dart:181:1 - Directives must appear before any declarations. Try moving the directive before any declarations. - directive_after_declaration
+  error - test\bird_companion\settings\network_settings_page_test.dart:182:1 - Directives must appear before any declarations. Try moving the directive before any declarations. - directive_after_declaration
+  error - test\bird_companion\settings\network_settings_page_test.dart:183:1 - Directives must appear before any declarations. Try moving the directive before any declarations. - directive_after_declaration
+
+3 issues found.

@@ -12,6 +12,7 @@ import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/app/theme/bird_ui.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
+import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/features/connection/presentation/connection_cubit.dart';
@@ -108,6 +109,7 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
   StreamSubscription<DirectApHandoffState>? _handoffSubscription;
   StreamSubscription<void>? _networkSubscription;
   StreamSubscription<ProvisioningState>? _provisioningTrace;
+  StreamSubscription<DeviceSessionState>? _businessSubscription;
   bool _checkingExisting = false;
   bool _entered = false;
   bool _initialized = false;
@@ -119,7 +121,7 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
   @override
   void initState() {
     super.initState();
-    _provisioningCubit = ProvisioningCubit(widget.repository, permissionSettingsOpener: openAppSettings);
+    _provisioningCubit = ProvisioningCubit(widget.repository, permissionSettingsOpener: openAppSettings, diagnostic: (event) => _dependencies?.connectionAttempts.record(event));
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -130,6 +132,9 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
     _initialized = true;
     final dependencies = BirdCompanionScope.maybeOf(context);
     _dependencies = dependencies;
+    _businessSubscription = dependencies?.deviceSessionCubit.stream.listen((_) {
+      if (mounted) setState(() {});
+    });
     _handoff = dependencies?.createDirectApHandoff();
     _networkCubit = NetworkProvisioningCubit(
       widget.repository,
@@ -246,6 +251,7 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
     unawaited(_handoffSubscription?.cancel());
     unawaited(_networkSubscription?.cancel());
     unawaited(_provisioningTrace?.cancel());
+    unawaited(_businessSubscription?.cancel());
     final id = _bleIntentId;
     if (id != null) _dependencies?.deviceSessionCubit.endNetworkIntent(id);
     unawaited(_handoff?.close());
@@ -324,6 +330,7 @@ class _BleConnectionHostState extends State<_BleConnectionHost> with WidgetsBind
               onProvisioningCompleted: _complete,
               completing: _completing,
               titlePrefix: widget.titlePrefix,
+              onOpenCurrent: _enterConnectedShell,
             ),
           ),
   );
@@ -341,12 +348,14 @@ class _BleConnectionView extends StatelessWidget {
     this.onProvisioningCompleted,
     this.completing = false,
     this.titlePrefix,
+    this.onOpenCurrent,
   });
 
   final ValueChanged<ConnectionMethod>? onMethodSelected;
   final _NetworkProvisioningCompletion? onProvisioningCompleted;
   final bool completing;
   final String? titlePrefix;
+  final VoidCallback? onOpenCurrent;
 
   @override
   Widget build(BuildContext context) => BlocBuilder<NetworkProvisioningCubit, NetworkProvisioningState>(
@@ -422,6 +431,10 @@ class _BleConnectionView extends StatelessWidget {
               onDiscover: cubit.discover,
               onSelectDevice: cubit.selectDevice,
               connectionEnabled: !state.releaseBlocked,
+              currentBleInfo: state.linkStatus == BleLinkStatus.connected ? state.deviceInfo : null,
+              onUseCurrentBle: cubit.useCurrentDevice,
+              onOpenCurrent: onOpenCurrent,
+              currentBusiness: BirdCompanionScope.maybeOf(context)?.deviceSessionCubit.state.isConnected == true ? BirdCompanionScope.maybeOf(context)?.deviceSessionCubit.state.device : null,
               onRetry: state.releaseBlocked
                   ? cubit.returnToDiscovery
                   : switch (state.error) {
@@ -437,7 +450,7 @@ class _BleConnectionView extends StatelessWidget {
                     ),
             ),
           };
-          final inDiscovery = const {ProvisioningPhase.idle, ProvisioningPhase.discovering, ProvisioningPhase.discovered}.contains(state.phase) && state.linkStatus == BleLinkStatus.disconnected;
+          final inDiscovery = const {ProvisioningPhase.idle, ProvisioningPhase.discovering, ProvisioningPhase.discovered}.contains(state.phase);
           return PopScope(
             canPop: inDiscovery,
             onPopInvokedWithResult: (didPop, result) {
@@ -614,6 +627,10 @@ class _BleDiscoveryView extends StatelessWidget {
     required this.onRetry,
     this.onCopyDiagnostic,
     this.connectionEnabled = true,
+    this.currentBleInfo,
+    this.currentBusiness,
+    this.onUseCurrentBle,
+    this.onOpenCurrent,
   });
 
   final List<ProvisioningDevice> devices;
@@ -626,6 +643,9 @@ class _BleDiscoveryView extends StatelessWidget {
   final Future<void> Function() onRetry;
   final Future<void> Function()? onCopyDiagnostic;
   final bool connectionEnabled;
+  final ProvisioningDeviceInfo? currentBleInfo;
+  final DeviceConnection? currentBusiness;
+  final VoidCallback? onUseCurrentBle, onOpenCurrent;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -636,6 +656,28 @@ class _BleDiscoveryView extends StatelessWidget {
       AppSpacing.xxl,
     ),
     children: [
+      if (currentBusiness != null) ...[
+        Text('当前已连接盒子', key: const Key('current-business-device'), style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: AppSpacing.sm),
+        DiscoveredDeviceCard(device: currentBusiness!, isConnected: true, onConnect: onOpenCurrent ?? () {}),
+        Text(currentBleInfo?.deviceId == currentBusiness!.id ? '当前盒子蓝牙控制已连接' : '业务连接有效，蓝牙控制未连接'),
+        const SizedBox(height: AppSpacing.md),
+      ],
+      if (currentBleInfo != null && currentBleInfo!.deviceId != currentBusiness?.id) ...[
+        BirdCard(
+          key: const Key('current-ble-device'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('当前蓝牙盒子', style: Theme.of(context).textTheme.titleMedium),
+              Text(currentBleInfo!.deviceName, style: Theme.of(context).textTheme.titleLarge),
+              const Text('蓝牙控制已连接，业务连接状态需另行验证。'),
+              BirdButton(label: '继续设置此盒子', onPressed: onUseCurrentBle),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+      ],
       const SizedBox(height: AppSpacing.md),
       const Icon(
         Icons.bluetooth_searching_rounded,
@@ -698,7 +740,7 @@ class _BleDiscoveryView extends StatelessWidget {
         ),
       ],
       const SizedBox(height: AppSpacing.xl),
-      if (devices.isEmpty && !searching && error == null)
+      if (devices.isEmpty && !searching && error == null && currentBusiness == null && currentBleInfo == null)
         BirdCard(
           child: Column(
             children: [
@@ -759,7 +801,7 @@ class _BleDiscoveryView extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.sm),
       ],
-      if (!searching && devices.isNotEmpty)
+      if (!searching && (devices.isNotEmpty || currentBusiness != null || currentBleInfo != null))
         BirdButton(
           label: '重新搜索',
           onPressed: onDiscover,

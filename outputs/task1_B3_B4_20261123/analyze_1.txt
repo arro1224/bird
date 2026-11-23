@@ -1,0 +1,11 @@
+Analyzing lib, test, integration_test, tool...
+
+  error - lib\bird_companion\features\connection\presentation\network_provisioning_cubit.dart:322:18 - The method 'throwIfCancellationRequested' isn't defined for the type 'CancelToken'. Try correcting the name to the name of an existing method, or defining a method named 'throwIfCancellationRequested'. - undefined_method
+  error - lib\bird_companion\features\connection\presentation\network_provisioning_cubit.dart:336:20 - The method 'throwIfCancellationRequested' isn't defined for the type 'CancelToken'. Try correcting the name to the name of an existing method, or defining a method named 'throwIfCancellationRequested'. - undefined_method
+   info - lib\bird_companion\features\settings\presentation\pages\network_settings_page.dart:79:7 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib\bird_companion\features\settings\presentation\pages\network_settings_page.dart:164:9 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib\bird_companion\features\settings\presentation\pages\network_settings_page.dart:176:7 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib\bird_companion\features\settings\presentation\pages\network_settings_page.dart:317:9 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib\bird_companion\features\settings\presentation\pages\network_settings_page.dart:331:7 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+
+7 issues found.

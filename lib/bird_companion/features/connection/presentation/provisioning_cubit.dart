@@ -83,15 +83,18 @@ final class ProvisioningState {
 /// returns Device Info. Advertisement names and scan IDs are shown only as
 /// discovery hints and never become a device identity.
 final class ProvisioningCubit extends Cubit<ProvisioningState> {
-  ProvisioningCubit(this._repository, {this.permissionSettingsOpener}) : super(const ProvisioningState()) {
+  ProvisioningCubit(this._repository, {this.permissionSettingsOpener, this.diagnostic}) : super(const ProvisioningState()) {
     final repository = _repository;
     if (repository is BleProvisioningControl) {
       _control = repository as BleProvisioningControl;
-      _owner = _control!.claimSession();
+      final observed = repository is ReusableBleSession ? (repository as ReusableBleSession).observableSessionOwner : null;
+      _borrowedSession = observed != null;
+      _owner = observed ?? _control!.claimSession();
       _pairingSubscription = _control!.pairingProgress.listen((progress) {
         if (_alive && (state.phase == ProvisioningPhase.authorizing || state.phase == ProvisioningPhase.connecting)) emit(state.copyWith(pairingProgress: progress));
       });
     }
+    _syncCurrentDevice();
     if (repository is BleScanDiagnosticsRepository) {
       _scanDiagnosticSubscription = (repository as BleScanDiagnosticsRepository).scanDiagnostics.listen(_onScanDiagnostic);
     }
@@ -103,14 +106,36 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
           emit(state.copyWith(linkStatus: BleLinkStatus.disconnected));
           return;
         }
+        if (_inDiscovery) {
+          emit(state.copyWith(linkStatus: BleLinkStatus.disconnected, clearSelection: true, clearDeviceInfo: true, clearPairingWindow: true, clearPairingProgress: true));
+          _trace('ble_current_lost');
+          return;
+        }
         emit(state.copyWith(phase: ProvisioningPhase.failure, linkStatus: BleLinkStatus.disconnected, clearDeviceInfo: true, clearPairingWindow: true, clearPairingProgress: true));
         _onFailure(const ProvisioningException(code: ProvisioningErrorCode.bleGattNotReady, retryable: true));
+      });
+    }
+    if (repository is ReusableBleSession) {
+      _sessionSubscription = (repository as ReusableBleSession).sessionChanges.listen((_) {
+        if (_closing || isClosed) return;
+        if (!_alive) {
+          final observed = (repository as ReusableBleSession).observableSessionOwner;
+          if (observed == null) return;
+          _nextAction();
+          _connectionActionActive = false;
+          _owner = observed;
+          _borrowedSession = true;
+          emit(const ProvisioningState());
+        }
+        if (_inDiscovery) _syncCurrentDevice();
       });
     }
   }
 
   final ProvisioningRepository _repository;
   final Future<bool> Function()? permissionSettingsOpener;
+  final void Function(Map<String, dynamic>)? diagnostic;
+  bool _borrowedSession = false;
   StreamSubscription<ProvisioningDevice>? _discoverySubscription;
   StreamSubscription<BleScanDiagnosticSession>? _scanDiagnosticSubscription;
   var _lastAction = _ProvisioningAction.discover;
@@ -120,6 +145,8 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   Object? _owner;
   StreamSubscription<BlePairingProgress>? _pairingSubscription;
   StreamSubscription<void>? _disconnectSubscription;
+  StreamSubscription<void>? _sessionSubscription;
+  int? _resumeScanGeneration;
   Future<void>? _resetFuture;
   int _actionGeneration = 0;
   bool _closing = false;
@@ -128,6 +155,44 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   int _settingsSequence = 0;
   bool get _alive => !isClosed && !_closing && (_owner == null || (_control?.ownsSession(_owner!) ?? true));
   bool _current(int generation) => _alive && generation == _actionGeneration;
+
+  bool get _inDiscovery => const {ProvisioningPhase.idle, ProvisioningPhase.discovering, ProvisioningPhase.discovered, ProvisioningPhase.failure}.contains(state.phase);
+
+  void _trace(String event) =>
+      diagnostic?.call({'event': event, 'device_id': state.deviceInfo?.deviceId, 'candidate_count': state.devices.length, 'generation': _actionGeneration, 'ble_state': state.linkStatus.name, 'observing_session': _borrowedSession});
+
+  void _syncCurrentDevice() {
+    final repository = _repository;
+    if (repository is! ReusableBleSession) return;
+    final current = (repository as ReusableBleSession).currentBleDevice;
+    if (current?.deviceInfo != null) {
+      emit(state.copyWith(linkStatus: BleLinkStatus.connected, selectedDevice: current, deviceInfo: current!.deviceInfo, devices: state.devices.where((device) => device.scanId != current.scanId).toList(growable: false)));
+      _trace('ble_current_reused');
+    } else if (state.linkStatus == BleLinkStatus.connected && _inDiscovery) {
+      emit(state.copyWith(linkStatus: BleLinkStatus.disconnected, clearDeviceInfo: true, clearSelection: true));
+    }
+  }
+
+  void _takeControl() {
+    if (!_borrowedSession || _control == null) return;
+    _owner = _control!.claimSession();
+    _borrowedSession = false;
+  }
+
+  Future<void> useCurrentDevice() async {
+    if (!_alive || state.releaseBlocked || _connectionActionActive || !_inDiscovery) return;
+    _syncCurrentDevice();
+    if (state.linkStatus != BleLinkStatus.connected || state.deviceInfo == null) return;
+    final generation = _nextAction();
+    try {
+      await _discoverySubscription?.cancel();
+      if (!_current(generation)) return;
+      await _repository.stopDiscovery();
+      if (_current(generation) && state.linkStatus == BleLinkStatus.connected) emit(state.copyWith(phase: ProvisioningPhase.trusted, clearError: true));
+    } catch (error, stack) {
+      if (_current(generation)) _onFailure(error, stack);
+    }
+  }
 
   int _nextAction() {
     _settingsRequest = null;
@@ -175,6 +240,9 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
     if (request != null && _settingsOwnerCurrent(request)) request.leftApp = true;
     // A system bond dialog may pause the Activity. Preserve its active attempt.
     if (state.phase == ProvisioningPhase.authorizing || state.phase == ProvisioningPhase.connecting) return;
+    if (_settingsRequest == null && const {ProvisioningPhase.discovering, ProvisioningPhase.discovered}.contains(state.phase)) {
+      _resumeScanGeneration = _actionGeneration;
+    }
     if (_control != null && _owner != null) {
       await _control!.pauseDiscovery(_owner!);
     } else {
@@ -187,6 +255,8 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
     final generation = _actionGeneration;
     final owner = _owner;
     final request = _settingsRequest;
+    final resumeScan = _resumeScanGeneration;
+    _resumeScanGeneration = null;
     try {
       if (_control != null && owner != null) await _control!.resumeDiscovery(owner);
     } catch (error, stack) {
@@ -194,7 +264,14 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
       return;
     }
     if (!_current(generation) || !identical(owner, _owner)) return;
-    if (request == null || !identical(request, _settingsRequest) || !request.leftApp || !_settingsOwnerCurrent(request)) return;
+    if (_inDiscovery) _syncCurrentDevice();
+    if (request == null) {
+      // Native keeps permission preflight alive across its system dialog.
+      // Restart only a completed/paused scan, never a pending denial or error.
+      if (resumeScan == generation && state.phase == ProvisioningPhase.discovered) await discover();
+      return;
+    }
+    if (!identical(request, _settingsRequest) || !request.leftApp || !_settingsOwnerCurrent(request)) return;
     // Consume this exact return before awaiting the environment. Duplicate
     // lifecycle callbacks and old opener results must not consume a new request.
     _settingsRequest = null;
@@ -232,6 +309,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   }
 
   Future<void> _disconnectOwned() async {
+    _takeControl();
     final owner = _owner;
     if (_control != null && owner != null) {
       if (!_control!.ownsSession(owner)) return;
@@ -243,23 +321,27 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
   }
 
   Future<void> discover() async {
-    if (!_alive || state.releaseBlocked || state.linkStatus == BleLinkStatus.connected || _connectionActionActive || state.phase == ProvisioningPhase.authorizing) return;
+    if (!_alive || state.releaseBlocked || _connectionActionActive || state.phase == ProvisioningPhase.authorizing) return;
     final generation = _nextAction();
     _failures = null;
     _lastAction = _ProvisioningAction.discover;
     try {
       await _discoverySubscription?.cancel();
+      if (!_current(generation)) return;
       if (_repository is BleSessionReleaseGuard) {
         final guard = _repository as BleSessionReleaseGuard;
         if (guard.sessionReleasePending || guard.sessionReleaseFailed) {
           emit(state.copyWith(phase: ProvisioningPhase.disconnecting, linkStatus: BleLinkStatus.disconnecting));
           await guard.waitForSessionRelease();
           if (!_current(generation)) return;
+          emit(state.copyWith(linkStatus: BleLinkStatus.disconnected, clearDeviceInfo: true, clearSelection: true));
         }
       }
       await _repository.stopDiscovery();
       if (!_current(generation)) return;
-      emit(const ProvisioningState(phase: ProvisioningPhase.discovering));
+      _syncCurrentDevice();
+      emit(state.copyWith(phase: ProvisioningPhase.discovering, devices: const [], clearPairingWindow: true, clearPairingProgress: true, clearScanDiagnostic: true, clearError: true));
+      _trace('ble_discovery_started');
 
       _discoverySubscription = _repository.discoverDevices().listen(
         (device) {
@@ -281,10 +363,15 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 
   Future<void> selectDevice(ProvisioningDevice device) async {
     if (!_alive || state.releaseBlocked || state.phase == ProvisioningPhase.authorizing || _connectionActionActive) return;
+    if (state.linkStatus == BleLinkStatus.connected && state.selectedDevice?.scanId == device.scanId) {
+      await useCurrentDevice();
+      return;
+    }
     if (state.linkStatus == BleLinkStatus.connected) {
       await reset();
       if (!_alive || state.releaseBlocked || state.phase != ProvisioningPhase.idle) return;
     }
+    _takeControl();
     _connectionActionActive = true;
     final generation = _nextAction();
     _failures = null;
@@ -302,6 +389,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
     );
     try {
       await _discoverySubscription?.cancel();
+      if (!_current(generation)) return;
       await _repository.stopDiscovery();
       if (!_current(generation)) return;
       if (_repository is BleSessionReleaseGuard) {
@@ -332,6 +420,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 
   Future<void> openPairing() async {
     if (!_alive || state.releaseBlocked || state.linkStatus != BleLinkStatus.connected || (state.phase != ProvisioningPhase.trusted && state.phase != ProvisioningPhase.methodSelection) || state.deviceInfo == null) return;
+    _takeControl();
     final generation = _nextAction();
     _lastAction = _ProvisioningAction.openPairing;
     _failures = null;
@@ -448,7 +537,19 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 
   Future<void> reset() => _resetSession(rescan: false);
 
-  Future<void> returnToDiscovery() => _resetSession(rescan: true);
+  Future<void> returnToDiscovery() {
+    final reusable = _repository is ReusableBleSession ? (_repository as ReusableBleSession).currentBleDevice : null;
+    if (_alive &&
+        !state.releaseBlocked &&
+        !_connectionActionActive &&
+        state.phase != ProvisioningPhase.authorizing &&
+        state.linkStatus == BleLinkStatus.connected &&
+        state.deviceInfo != null &&
+        reusable?.deviceInfo?.deviceId == state.deviceInfo?.deviceId) {
+      return discover();
+    }
+    return _resetSession(rescan: true);
+  }
 
   Future<void> _resetSession({required bool rescan}) {
     final pending = _resetFuture;
@@ -487,6 +588,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
 
   void _onDiscoveredDevice(ProvisioningDevice device) {
     if (!_alive || _failures != null) return;
+    if (state.linkStatus == BleLinkStatus.connected && state.selectedDevice?.scanId == device.scanId) return;
     final devices = [...state.devices];
     final index = devices.indexWhere((item) => item.scanId == device.scanId);
     if (index >= 0) {
@@ -545,7 +647,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
     _nextAction();
     final cleanup =
         _resetFuture ??
-        (_control != null && _owner != null && !retainSession
+        (_control != null && _owner != null && !retainSession && !_borrowedSession
             ? _control!.endSession(_owner!).catchError((Object error, StackTrace stack) {
                 final failure = _failures ??= BleAttemptFailure(attemptId: 'page-$_actionGeneration');
                 failure.capture(error, stack, method: 'close.endSession', expectedState: 'gatt_closed', currentState: 'closing');
@@ -557,6 +659,7 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
     await _scanDiagnosticSubscription?.cancel();
     await _pairingSubscription?.cancel();
     await _disconnectSubscription?.cancel();
+    await _sessionSubscription?.cancel();
     if (_control != null && _owner != null) {
       await cleanup;
     } else {

@@ -1,0 +1,10 @@
+Analyzing lib, test, integration_test, tool...
+
+   info - lib\bird_companion\features\connection\data\direct_ap_profile_store.dart:32:80 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib\bird_companion\features\connection\presentation\network_provisioning_cubit.dart:466:40 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib\bird_companion\features\connection\presentation\network_provisioning_cubit.dart:863:35 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib\bird_companion\features\connection\presentation\network_provisioning_cubit.dart:864:14 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib\bird_companion\features\settings\presentation\pages\network_settings_page.dart:65:26 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib\bird_companion\features\settings\presentation\pages\network_settings_page.dart:74:36 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+
+6 issues found.

@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'package:aves/bird_companion/features/connection/data/direct_ap_pending_store.dart';
+import 'package:aves/bird_companion/features/connection/data/direct_ap_profile_store.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
+import 'package:aves/bird_companion/features/connection/presentation/provisioning_cubit.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -33,6 +38,194 @@ const _scanRequest = '10000000-0000-4000-8000-000000000004';
 const _staRequest = '10000000-0000-4000-8000-000000000005';
 
 void main() {
+  test('T1 B5 real repository rediscovery observes owner and preserves online AP', () async {
+    final harness = await _Harness.create();
+    addTearDown(harness.close);
+    final owner = harness.repository.claimSession();
+    await harness.connect();
+    await harness.authorize();
+    await harness.completeDirectApExchange();
+    await harness.repository.restoreSavedDirectApNetwork(_deviceId, 'b5-business', CancelToken());
+    harness.repository.confirmDirectApNetwork('b5-business');
+    final releases = harness.wifi.releaseCount;
+    for (var i = 0; i < 3; i++) {
+      final page = ProvisioningCubit(harness.repository);
+      await page.discover();
+      await Future<void>.delayed(Duration.zero);
+      expect(page.state.deviceInfo?.deviceId, _deviceId);
+      expect(page.state.devices, isEmpty);
+      await page.onAppBackgrounded();
+      await page.onAppResumed();
+      await page.close();
+      expect(harness.repository.ownsSession(owner), true);
+      expect(harness.ble.isConnected, true);
+      expect(harness.wifi.boundNetwork, isNotNull);
+      expect(harness.wifi.releaseCount, releases);
+    }
+  });
+  group('T1 B3 saved AP and B4 control recovery', () {
+    test('wrong BLE public identity cannot release the active business AP', () async {
+      final profiles = DirectApProfileStore(MemoryDirectApAuthorizationStore());
+      await profiles.save(
+        DirectApProfile(
+          deviceId: _deviceId,
+          operationId: 'op_saved',
+          ssid: 'BirdBox-82F41C9E',
+          passphrase: 'test-only-password',
+          security: WifiSecurity.wpa2Personal,
+          baseUri: Uri.parse('http://192.0.2.1'),
+          blePlatformId: 'untrusted-opaque-hint',
+          bleName: 'BirdBox-82F41C9E',
+        ),
+      );
+      final harness = await _Harness.create(profileStore: profiles, bleDeviceId: 'bbx-11111111111111111111111111111111');
+      addTearDown(harness.close);
+      harness.wifi.queueJoinResult(
+        const WifiJoinResult(
+          outcome: WifiJoinOutcome.joined,
+          network: BirdBoxWifiNetwork(handle: 'keep-business-ap', ssid: 'BirdBox-82F41C9E'),
+        ),
+      );
+      await harness.repository.restoreSavedDirectApNetwork(_deviceId, 'active-ap', CancelToken());
+      harness.repository.confirmDirectApNetwork('active-ap');
+      final releases = harness.wifi.releaseCount;
+      await expectLater(harness.repository.recoverBleControl(_deviceId, CancelToken()), throwsA(isA<ProvisioningException>()));
+      expect(harness.repository.connectedDeviceInfo, isNull);
+      expect(harness.wifi.releaseCount, releases);
+      expect(harness.wifi.boundNetwork?.handle, 'keep-business-ap');
+      expect(harness.server.pairingExchangeCount, 0);
+    });
+
+    test('explicit system cancellation persists automatic-restore suspension', () async {
+      final profiles = DirectApProfileStore(MemoryDirectApAuthorizationStore());
+      await profiles.save(DirectApProfile(deviceId: _deviceId, operationId: 'op_saved', ssid: 'BirdBox-Test', passphrase: 'test-only-password', security: WifiSecurity.wpa2Personal, baseUri: Uri.parse('http://192.0.2.1')));
+      final harness = await _Harness.create(profileStore: profiles);
+      addTearDown(harness.close);
+      harness.wifi.queueJoinResult(const WifiJoinResult(outcome: WifiJoinOutcome.userCancelled));
+      await expectLater(harness.repository.restoreSavedDirectApNetwork(_deviceId, 'system-cancel', CancelToken()), throwsA(isA<ProvisioningException>()));
+      expect((await profiles.load(_deviceId))?.automaticRestore, false);
+      await expectLater(harness.repository.restoreSavedDirectApNetwork(_deviceId, 'foreground', CancelToken()), throwsA(isA<DirectApRestoreSuspended>()));
+      expect(harness.wifi.requestedSsids, hasLength(1));
+    });
+    test('explicit retry refreshes changed AP credentials over authorized BLE', () async {
+      final profiles = DirectApProfileStore(MemoryDirectApAuthorizationStore());
+      final harness = await _Harness.create(profileStore: profiles);
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      await harness.completeDirectApExchange();
+      await harness.repository.restoreSavedDirectApNetwork(_deviceId, 'original-ap', CancelToken());
+      await harness.repository.releaseDirectApNetwork('original-ap', reason: 'cancelled');
+      harness.ble.queueResponse(BleCommandType.getNetworkStatus, _event(ProvisioningEventType.networkStatus, _scanRequest, Map<String, dynamic>.from(_fixture('ble-network-status.rc4.json')['payload'] as Map)));
+      harness.ble.queueResponse(BleCommandType.startDirectAp, _event(ProvisioningEventType.commandAccepted, _staRequest, {'operation_id': 'op_refreshed_ap', 'desired_mode': 'direct_ap', 'provisioning_method': null}));
+      harness.wifi.queueJoinResult(
+        const WifiJoinResult(
+          outcome: WifiJoinOutcome.joined,
+          network: BirdBoxWifiNetwork(handle: 'new-ap-handle', ssid: 'BirdBox-Updated'),
+        ),
+      );
+      final restore = harness.repository.restoreSavedDirectApNetwork(_deviceId, 'explicit-retry', CancelToken(), userInitiated: true);
+      for (var i = 0; i < 50 && harness.ble.requests.where((r) => r.type == BleCommandType.startDirectAp).length < 2; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      harness.ble.emitEvent(
+        _event(ProvisioningEventType.directApReady, _staRequest, {
+          'operation_id': 'op_refreshed_ap',
+          'active_mode': 'direct_ap',
+          'ssid': 'BirdBox-Updated',
+          'security': 'wpa3_personal',
+          'passphrase': 'test-only-rotated-password',
+          'gateway_ipv4': '192.0.2.40',
+          'prefix_length': 24,
+          'base_uri': 'http://192.0.2.40:8080',
+        }),
+      );
+      expect(await restore.timeout(const Duration(seconds: 2)), true);
+      final profile = await profiles.load(_deviceId);
+      expect(profile?.security, WifiSecurity.wpa3Personal);
+      expect(profile?.baseUri.host, '192.0.2.40');
+      expect(profile?.automaticRestore, true);
+      expect(harness.wifi.requestedSsids, ['BirdBox-82F41C9E', 'BirdBox-Updated']);
+      expect(harness.server.pairingExchangeCount, 1, reason: 'Existing authorization must not be redeemed again.');
+      expect(harness.ble.requests.where((r) => r.type == BleCommandType.openPairing), hasLength(1));
+    });
+    test('cold repository restores encrypted AP without pairing or HTTP precondition', () async {
+      final profiles = DirectApProfileStore(MemoryDirectApAuthorizationStore());
+      final first = await _Harness.create(profileStore: profiles);
+      await first.connect();
+      await first.authorize();
+      await first.completeDirectApExchange();
+      final profile = await profiles.load(_deviceId);
+      expect(profile?.blePlatformId, 'opaque-android-handle');
+      await first.close();
+      final reopened = await _Harness.create(profileStore: profiles);
+      addTearDown(reopened.close);
+      reopened.wifi.queueJoinResult(
+        const WifiJoinResult(
+          outcome: WifiJoinOutcome.joined,
+          network: BirdBoxWifiNetwork(handle: 'fresh-native-handle', ssid: 'BirdBox-82F41C9E'),
+        ),
+      );
+      expect(await reopened.repository.restoreSavedDirectApNetwork(_deviceId, 'cold-ap', CancelToken()), true);
+      expect(reopened.wifi.boundNetwork?.handle, 'fresh-native-handle');
+      expect(reopened.ble.requests, isEmpty);
+      expect(reopened.server.pairingExchangeCount, 0);
+    });
+
+    test('cancelled AP intent stays suspended after repository restart', () async {
+      final profiles = DirectApProfileStore(MemoryDirectApAuthorizationStore());
+      final first = await _Harness.create(profileStore: profiles);
+      await first.connect();
+      await first.authorize();
+      await first.startAp();
+      final ready = first.repository.events.first;
+      first.ble.emitEvent(first.apReady());
+      await ready;
+      await first.repository.restoreSavedDirectApNetwork(_deviceId, 'cancelled-ap', CancelToken());
+      await first.repository.releaseDirectApNetwork('cancelled-ap', reason: 'cancelled');
+      await first.close();
+      final reopened = await _Harness.create(profileStore: profiles);
+      addTearDown(reopened.close);
+      await expectLater(reopened.repository.restoreSavedDirectApNetwork(_deviceId, 'automatic', CancelToken()), throwsA(isA<DirectApRestoreSuspended>()));
+      expect(reopened.wifi.requestedSsids, isEmpty);
+    });
+
+    test('unavailable request is not repeated by automatic foreground recovery', () async {
+      final profiles = DirectApProfileStore(MemoryDirectApAuthorizationStore());
+      final harness = await _Harness.create(profileStore: profiles);
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      await harness.startAp();
+      final ready = harness.repository.events.first;
+      harness.ble.emitEvent(harness.apReady());
+      await ready;
+      // Consume the queued successful request then lose its lease.
+      await harness.repository.restoreSavedDirectApNetwork(_deviceId, 'first', CancelToken());
+      harness.wifi.loseNetwork();
+      harness.wifi.queueJoinResult(const WifiJoinResult(outcome: WifiJoinOutcome.unavailable));
+      await expectLater(harness.repository.restoreSavedDirectApNetwork(_deviceId, 'lost', CancelToken()), throwsA(isA<ProvisioningException>()));
+      await expectLater(harness.repository.restoreSavedDirectApNetwork(_deviceId, 'foreground', CancelToken()), throwsA(isA<DirectApRestoreSuspended>()));
+      expect(harness.wifi.requestedSsids, hasLength(2));
+    });
+
+    test('ten control recoveries coalesce and require no HTTP or pairing', () async {
+      final harness = await _Harness.create();
+      addTearDown(harness.close);
+      await harness.connect();
+      await harness.authorize();
+      await harness.completeDirectApExchange();
+      await harness.repository.disconnect();
+      harness.ble.queueResponse(BleCommandType.getNetworkStatus, _event(ProvisioningEventType.networkStatus, _scanRequest, Map<String, dynamic>.from(_fixture('ble-network-status.rc4.json')['payload'] as Map)));
+      final before = harness.server.pairingExchangeCount;
+      final futures = List.generate(10, (_) => harness.repository.recoverBleControl(_deviceId, CancelToken()));
+      final infos = await Future.wait(futures);
+      expect(infos.every((info) => info.deviceId == _deviceId), true);
+      expect(harness.server.pairingExchangeCount, before);
+      expect(harness.ble.requests.where((r) => r.type == BleCommandType.openPairing), hasLength(1));
+      expect(harness.wifi.requestedSsids, isEmpty);
+    });
+  });
   group('BLE-21 redemption and event ownership', () {
     test('STA terminal evidence survives BLE teardown while phone routing is released', () async {
       final harness = await _Harness.create();
@@ -82,10 +275,16 @@ void main() {
       harness.ble.emitEvent(harness.apReady());
       await ready;
       await harness.repository.disconnect();
+      await harness.repository.prepareDirectApNetwork(
+        ProvisioningCompletion(deviceId: _deviceId, baseUri: harness.baseUri, networkMode: ProvisioningNetworkMode.directAp),
+        operationId: 'op_direct_ap_setup',
+        attemptId: 'after-ble-loss',
+        cancelToken: CancelToken(),
+      );
       await harness.finishHttp();
       expect(harness.server.pairingExchangeCount, 1);
       expect(await harness.credentials.read(_deviceId), isNotNull);
-      expect(harness.wifi.requestedSsids, isEmpty);
+      expect(harness.wifi.requestedSsids, ['BirdBox-82F41C9E']);
     });
     test('deferred HTTP persistence retry needs no new network command', () async {
       final store = _FailOnceStore();
@@ -421,7 +620,52 @@ void main() {
 
     tearDown(() => harness.close());
 
-    test('direct AP readiness is forwarded before phone join; HTTP exchanges later', () async {
+    test('real repository page owner release preserves an online Wi-Fi lease', () async {
+      await harness.startAp();
+      await harness.repository.directApConnection.connect(deviceId: _deviceId, operationId: 'op_direct_ap_setup', intentId: 'online', ssid: 'BirdBox-82F41C9E', passphrase: 'TEST_ONLY_NOT_A_REAL_SECRET', cancelToken: CancelToken());
+      harness.repository.directApConnection.markOnline('online');
+      final page = ProvisioningCubit(harness.repository);
+      await page.close();
+      expect(harness.wifi.releaseCount, 0);
+      expect(harness.wifi.boundNetwork, isNotNull);
+      await harness.repository.directApConnection.release(reason: 'explicit_exit', intentId: 'online');
+      expect(harness.wifi.releaseCount, 1);
+    });
+
+    test('cancel during automatic join blocks credentials and a late network callback', () async {
+      await harness.startAp();
+      final ready = harness.repository.events.firstWhere((event) => event.type == ProvisioningEventType.directApReady);
+      harness.ble.emitEvent(harness.apReady());
+      await ready;
+      final gate = Completer<void>();
+      harness.wifi.beforeJoin = () => gate.future;
+      final token = CancelToken();
+      final joining = harness.repository.prepareDirectApNetwork(
+        ProvisioningCompletion(deviceId: _deviceId, baseUri: harness.baseUri, networkMode: ProvisioningNetworkMode.directAp),
+        operationId: 'op_direct_ap_setup',
+        attemptId: 'cancel',
+        cancelToken: token,
+      );
+      final rejected = expectLater(joining, throwsA(isA<DioException>()));
+      await Future<void>.delayed(Duration.zero);
+      token.cancel();
+      await Future<void>.delayed(Duration.zero);
+      gate.complete();
+      await rejected;
+      expect(harness.server.pairingExchangeCount, 0);
+      expect(harness.wifi.boundNetwork, isNull);
+    });
+
+    test('already reachable exact device is verified and reused without starting another AP', () async {
+      final completion = ProvisioningCompletion(deviceId: _deviceId, baseUri: harness.baseUri, networkMode: ProvisioningNetworkMode.directAp);
+      expect(await harness.repository.prepareDirectApNetwork(completion, operationId: 'existing-network', attemptId: 'reuse', cancelToken: CancelToken()), isFalse);
+      expect(harness.wifi.requestedSsids, isEmpty);
+      expect(harness.server.pairingExchangeCount, 0);
+      await harness.finishHttp();
+      expect(harness.server.pairingExchangeCount, 1);
+    });
+
+    test('normal AP joins once before HTTP authorization; repeated intent reuses its request', () async {
       harness.ble.queueResponse(
         BleCommandType.startDirectAp,
         _event(
@@ -469,7 +713,13 @@ void main() {
       await readyFuture.timeout(const Duration(seconds: 3));
 
       expect(harness.wifi.boundNetwork, isNull);
-      expect(harness.wifi.requestedSsids, isEmpty);
+      final completion = ProvisioningCompletion(deviceId: _deviceId, baseUri: harness.baseUri, networkMode: ProvisioningNetworkMode.directAp);
+      final token = CancelToken();
+      await harness.repository.prepareDirectApNetwork(completion, operationId: 'op_direct_ap_test', attemptId: 'normal', cancelToken: token);
+      await harness.repository.prepareDirectApNetwork(completion, operationId: 'op_direct_ap_test', attemptId: 'normal', cancelToken: token);
+      expect(harness.wifi.boundNetwork, isNotNull);
+      expect(harness.wifi.requestedSsids, ['BirdBox-82F41C9E']);
+      expect(harness.wifi.requestedSecurities, [WifiSecurity.wpa2Personal]);
       expect(harness.server.pairingExchangeCount, 0);
       await harness.finishHttp();
       expect(harness.server.lastRc4PairingClientId, _clientId);
@@ -624,7 +874,7 @@ final class _Harness {
   final MemorySecureSessionStore credentials;
   final ProvisioningRepositoryImpl repository;
 
-  static Future<_Harness> create({MemorySecureSessionStore? credentialStore, String httpDeviceId = _deviceId}) async {
+  static Future<_Harness> create({MemorySecureSessionStore? credentialStore, String httpDeviceId = _deviceId, DirectApProfileStore? profileStore, String bleDeviceId = _deviceId}) async {
     final server = MockBoxServer(
       logRequests: false,
       deviceId: httpDeviceId,
@@ -633,7 +883,7 @@ final class _Harness {
     final baseUri = await server.start();
     final client = ApiClient();
     final deviceInfo = ProvisioningDeviceInfo.fromJson(
-      _fixture('ble-device-info.rc4.json'),
+      {..._fixture('ble-device-info.rc4.json'), 'device_id': bleDeviceId},
     );
     final networkStatus =
         ProvisioningEvent.fromJson(
@@ -661,6 +911,7 @@ final class _Harness {
         initialValue: _clientId,
       ),
       credentialStore: credentials,
+      directApProfileStore: profileStore,
       healthApi: HealthApi(client),
       pairingApi: PairingApi(client),
       requestIds: _SequenceRequestIdFactory(const [

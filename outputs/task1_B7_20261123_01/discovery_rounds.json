@@ -1,0 +1,10 @@
+{
+  "started_at_utc": "2026-11-23T10:40:22.541900+00:00",
+  "evidence_kind": "real_vivo_normal_app_with_huawei_virtual_peripheral",
+  "transport": "real BLE and LAN; no USB business forwarding",
+  "rounds": [],
+  "status": "failed",
+  "failure_kind": "CalledProcessError",
+  "failure_reason": "Command '['D:\\\\anaconda\\\\python.exe', 'D:\\\\Androidstudio2\\\\project\\\\4\\\\tool\\\\task1_b7\\\\android_ui.py', '--serial', 'b502aabb', '--name', 'a15_1_down', '--quiet', '--expect-package', 'deckers.thibault.aves.bird', '--scroll', 'down']' returned non-zero exit status 1.",
+  "finished_at_utc": "2026-11-23T10:40:39.924304+00:00"
+}

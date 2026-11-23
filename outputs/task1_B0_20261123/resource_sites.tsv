@@ -1,0 +1,383 @@
+path	line	group	source
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	137	ble_owner_transport	// STATE_DISCONNECTED arrives and close() has run; completed exactly once.
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	323	ble_owner_transport	if (disposed && !"dispose".equals(call.method)) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	337	ble_owner_transport	case "stopScan":
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	338	ble_owner_transport	stopScan();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	348	ble_owner_transport	case "disconnect":
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	367	ble_owner_transport	closeGatt(true, "requested", BluetoothGatt.GATT_SUCCESS);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	412	ble_owner_transport	closeGatt(true, "user_cancelled", BluetoothGatt.GATT_SUCCESS);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	434	ble_owner_transport	case "dispose":
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	436	ble_owner_transport	dispose();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	676	ble_owner_transport	stopScan();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	696	ble_owner_transport	private void stopScan() {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	815	ble_owner_transport	activeScanner.stopScan(callback);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1145	ble_owner_transport	closeGatt(false, "pre_connect_reset", BluetoothGatt.GATT_SUCCESS);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1199	ble_owner_transport	private boolean releaseParkedResetGatt() {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1204	ble_owner_transport	recordGattRelease(parkedRetireConnectionGeneration, parkedRetireGattGeneration,
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1214	ble_owner_transport	return parked == null || closeGattClient(parked);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1217	ble_owner_transport	private void recordGattRelease(int generation, int instance, @Nullable String trace,
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1233	ble_owner_transport	private boolean finishParkedRelease(boolean disconnected, int status) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1236	ble_owner_transport	final boolean closed = releaseParkedResetGatt();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1238	ble_owner_transport	recordGattRelease(generation, instance, trace, reason,
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1242	ble_owner_transport	emitReleaseDiagnostic("pre_connect_reset".equals(reason), confirmed, status);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1246	ble_owner_transport	private void emitReleaseDiagnostic(boolean preConnect, boolean confirmed, int status) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1252	ble_owner_transport	"disconnect", status, null,
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1269	ble_owner_transport	finishParkedRelease(false, -1);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1270	ble_owner_transport	completeControlledRelease(false);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1271	ble_owner_transport	failPreConnectRelease();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1276	ble_owner_transport	private void failPreConnectRelease() {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1286	ble_owner_transport	private void completeControlledRelease(boolean confirmed) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1322	ble_owner_transport	stopScan();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1578	ble_owner_transport	closeGatt(false, "controlled_reconnect", BluetoothGatt.GATT_SUCCESS);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1762	ble_owner_transport	closeGatt(true, "bond_lost", status);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1769	ble_owner_transport	closeGatt(true, "encrypted_retry_failed", status);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1775	ble_owner_transport	if (old != null) closeGattForSecurity(old, true);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1781	ble_owner_transport	closeGatt(true, "permission_revoked", status);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1911	ble_owner_transport	closeGatt(true, "security_failure", BluetoothGatt.GATT_FAILURE);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	1957	ble_owner_transport	closeGatt(true, "bond_lost", BluetoothGatt.GATT_FAILURE);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2050	ble_owner_transport	closeGatt(true, code, gattStatus >= 0 ? gattStatus : BluetoothGatt.GATT_FAILURE);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2061	ble_owner_transport	if (gatt != null) closeGattForSecurity(gatt, true);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2128	ble_owner_transport	disconnectGattClient(failed);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2338	ble_owner_transport	closeGatt(true, "operation_timeout", BluetoothGatt.GATT_FAILURE);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2546	ble_owner_transport	final boolean confirmed = finishParkedRelease(true, status);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2549	ble_owner_transport	releaseRetiringGatt();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2550	ble_owner_transport	releaseHeldLegacyRegistrations();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2551	ble_owner_transport	completeControlledRelease(confirmed);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2553	ble_owner_transport	else failPreConnectRelease();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2569	ble_owner_transport	} else releaseRetiringGatt();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2579	ble_owner_transport	closeGattClient(current);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2618	ble_owner_transport	else { failPending("bluetooth_permission_denied", "Bluetooth connect permission is missing."); closeGatt(true, "service_discovery_failed", status); }
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2621	ble_owner_transport	else { failPending("ble_gatt_operation_failed", "Service discovery failed."); closeGatt(true, "service_discovery_failed", status); }
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2637	ble_owner_transport	closeGattForSecurity(current);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2643	ble_owner_transport	closeGatt(true, disconnectRequested ? "requested" : "link_lost", status);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2683	ble_owner_transport	closeGatt(true, "service_discovery_failed", BluetoothGatt.GATT_FAILURE);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2706	ble_owner_transport	else { failPending("invalid_request", "BirdBox service or characteristic properties are invalid."); closeGatt(true, "service_invalid", status); }
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2940	ble_owner_transport	private void closeGattForSecurity(@NonNull BluetoothGatt callbackGatt) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2941	ble_owner_transport	closeGattForSecurity(callbackGatt, false);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2944	ble_owner_transport	private void closeGattForSecurity(@NonNull BluetoothGatt callbackGatt, boolean awaitDisconnect) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2950	ble_owner_transport	else closeGatt(true, "legacy_registration_limit", BluetoothGatt.GATT_FAILURE);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2969	ble_owner_transport	releaseRetiringGatt();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2971	ble_owner_transport	else closeGatt(true, "old_gatt_disconnect_timeout", BluetoothGatt.GATT_FAILURE);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2975	ble_owner_transport	if (!disconnectGattClient(callbackGatt)) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2977	ble_owner_transport	if (awaitDisconnect) { releaseRetiringGatt(); return; }
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2979	ble_owner_transport	if (!awaitDisconnect) closeGattClient(callbackGatt);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2982	ble_owner_transport	private void releaseRetiringGatt() {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2989	ble_owner_transport	closeGattClient(retired);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2993	ble_owner_transport	private void releaseHeldLegacyRegistrations() {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	2995	ble_owner_transport	closeGattClient(held);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3001	ble_owner_transport	private static boolean disconnectGattClient(@NonNull BluetoothGatt client) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3003	ble_owner_transport	client.disconnect();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3012	ble_owner_transport	private static boolean closeGattClient(@NonNull BluetoothGatt client) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3014	ble_owner_transport	client.close();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3047	ble_owner_transport	private synchronized void closeGatt(boolean emitDisconnect, @NonNull String reason, int status) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3054	ble_owner_transport	emitDiagnostic("teardown_started", "disconnect", status, null, reason);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3059	ble_owner_transport	stopScan();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3077	ble_owner_transport	releaseParkedResetGatt();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3083	ble_owner_transport	recordGattRelease(retireConnectionGeneration, retireGattGeneration,
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3088	ble_owner_transport	disconnectGattClient(current);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3092	ble_owner_transport	disconnectGattClient(current);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3093	ble_owner_transport	final boolean closed = closeGattClient(current);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3095	ble_owner_transport	recordGattRelease(retireConnectionGeneration, retireGattGeneration, activeTraceId,
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3098	ble_owner_transport	emitReleaseDiagnostic("pre_connect_reset".equals(reason), closed, status);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3104	ble_owner_transport	releaseRetiringGatt();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3105	ble_owner_transport	releaseHeldLegacyRegistrations();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3113	ble_owner_transport	releaseParkedResetGatt();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3125	ble_owner_transport	emitDisconnect(reason, status, !disconnectRequested);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3141	ble_owner_transport	emitDiagnostic("teardown_completed", "disconnect", status, null, reason);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3144	ble_owner_transport	private void emitDisconnect(@NonNull String reason, int status, boolean unexpected) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3152	ble_owner_transport	emitDiagnostic("disconnected", "disconnect", status, null, reason);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3405	ble_owner_transport	public void dispose() {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3406	ble_owner_transport	dispose("bridge_disposed");
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3409	ble_owner_transport	void dispose(String reason) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3411	ble_owner_transport	mainHandler.post(() -> dispose(reason));
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3427	ble_owner_transport	closeGatt(true, reason, BluetoothGatt.GATT_SUCCESS);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxBleChannel.java	3428	ble_owner_transport	releaseParkedResetGatt();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxDppChannel.java	204	application_or_auxiliary_cleanup	void dispose() {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	92	wifi_native_or_bridge	if (disposed && !"dispose".equals(call.method)) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	130	wifi_native_or_bridge	case "releaseNetwork":
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	131	wifi_native_or_bridge	releaseNetwork(true);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	140	wifi_native_or_bridge	case "dispose":
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	141	wifi_native_or_bridge	dispose();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	388	wifi_native_or_bridge	releaseNetwork(false);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	447	wifi_native_or_bridge	unbindProcess();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	449	wifi_native_or_bridge	releaseCallback(this, generation);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	499	wifi_native_or_bridge	releaseCallback(callback, generation);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	516	wifi_native_or_bridge	releaseNetwork(false);
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	526	wifi_native_or_bridge	private void releaseCallback(
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	539	wifi_native_or_bridge	private void releaseNetwork(boolean userInitiated) {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	540	wifi_native_or_bridge	unbindProcess();
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	561	wifi_native_or_bridge	private void unbindProcess() {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	607	wifi_native_or_bridge	void dispose() {
+android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java	610	wifi_native_or_bridge	releaseNetwork(false);
+android/app/src/main/java/deckers/thibault/aves/MainActivity.java	92	application_or_auxiliary_cleanup	if (birdBoxBleDiagnosticFileChannel != null) { birdBoxBleDiagnosticFileChannel.dispose(); birdBoxBleDiagnosticFileChannel = null; }
+android/app/src/main/java/deckers/thibault/aves/MainActivity.java	94	application_or_auxiliary_cleanup	birdBoxWifiChannel.dispose();
+android/app/src/main/java/deckers/thibault/aves/MainActivity.java	98	application_or_auxiliary_cleanup	birdBoxDppChannel.dispose();
+android/app/src/main/java/deckers/thibault/aves/MainActivity.java	322	application_or_auxiliary_cleanup	@Override public void onStopDiscoveryFailed(String type, int errorCode) {
+lib/bird_companion/app/app_dependencies.dart	541	application_or_auxiliary_cleanup	if (ownedIntentId != null && deviceSessionCubit.acceptsNetworkIntent(ownedIntentId!)) deviceSessionCubit.disconnected(message ?? '盒子连接验证暂未完成，可以继续验证。');
+lib/bird_companion/app/app_dependencies.dart	545	application_or_auxiliary_cleanup	if (active) deviceSessionCubit.disconnected('正在验证盒子网络连接。');
+lib/bird_companion/app/app_dependencies.dart	564	application_or_auxiliary_cleanup	void dispose() {
+lib/bird_companion/app/app_dependencies.dart	565	application_or_auxiliary_cleanup	copyJobRecovery.dispose();
+lib/bird_companion/app/app_dependencies.dart	566	application_or_auxiliary_cleanup	activeCopyJobs.dispose();
+lib/bird_companion/app/app_dependencies.dart	570	application_or_auxiliary_cleanup	recognitionRepository.dispose();
+lib/bird_companion/app/app_dependencies.dart	571	application_or_auxiliary_cleanup	smartFollowRepository.dispose();
+lib/bird_companion/app/app_dependencies.dart	572	application_or_auxiliary_cleanup	unawaited(provisioningRepository.dispose());
+lib/bird_companion/app/app_dependencies.dart	573	application_or_auxiliary_cleanup	unawaited(mediaAssetCoordinator.dispose());
+lib/bird_companion/app/app_dependencies.dart	574	application_or_auxiliary_cleanup	mediaAssetService.dispose();
+lib/bird_companion/app/app_dependencies.dart	575	application_or_auxiliary_cleanup	unawaited(eventClient.dispose());
+lib/bird_companion/app/app_dependencies.dart	576	application_or_auxiliary_cleanup	unawaited(sessionCoordinator.dispose());
+lib/bird_companion/app/app_dependencies.dart	577	application_or_auxiliary_cleanup	unawaited(apiClient.dispose());
+lib/bird_companion/app/app_dependencies.dart	578	application_or_auxiliary_cleanup	unawaited(deviceSessionCubit.close());
+lib/bird_companion/app/app_dependencies.dart	579	application_or_auxiliary_cleanup	unawaited(birdSyncService.dispose());
+lib/bird_companion/app/app_dependencies.dart	580	application_or_auxiliary_cleanup	unawaited(refreshCoordinator.dispose());
+lib/bird_companion/app/app_dependencies.dart	581	application_or_auxiliary_cleanup	unawaited(dataChangeBus.dispose());
+lib/bird_companion/app/app_dependencies.dart	582	application_or_auxiliary_cleanup	unawaited(pendingOperationStore.dispose());
+lib/bird_companion/app/app_dependencies.dart	583	application_or_auxiliary_cleanup	unawaited(Future.wait([phoneDiagnostics.dispose(), bleScanDiagnosticStore.dispose(), bleConnectionDiagnosticStore.dispose()]).whenComplete(cache.close));
+lib/bird_companion/app/app_router.dart	368	application_or_auxiliary_cleanup	void dispose() {
+lib/bird_companion/app/app_router.dart	369	application_or_auxiliary_cleanup	_controller?.dispose();
+lib/bird_companion/app/app_router.dart	370	application_or_auxiliary_cleanup	super.dispose();
+lib/bird_companion/app/app_router.dart	490	application_or_auxiliary_cleanup	void dispose() {
+lib/bird_companion/app/app_router.dart	491	application_or_auxiliary_cleanup	_controller?.dispose();
+lib/bird_companion/app/app_router.dart	492	application_or_auxiliary_cleanup	super.dispose();
+lib/bird_companion/app/app_router.dart	572	application_or_auxiliary_cleanup	void dispose() {
+lib/bird_companion/app/app_router.dart	573	application_or_auxiliary_cleanup	_controller?.dispose();
+lib/bird_companion/app/app_router.dart	574	application_or_auxiliary_cleanup	super.dispose();
+lib/bird_companion/app/app_router.dart	639	application_or_auxiliary_cleanup	void dispose() {
+lib/bird_companion/app/app_router.dart	640	application_or_auxiliary_cleanup	_controller?.dispose();
+lib/bird_companion/app/app_router.dart	641	application_or_auxiliary_cleanup	super.dispose();
+lib/bird_companion/core/session/device_session_cubit.dart	528	business_session	void disconnected([String? message, bool clearDevice = false]) {
+lib/bird_companion/core/session/device_session_cubit.dart	534	business_session	Future<void> close() async {
+lib/bird_companion/core/session/device_session_cubit.dart	542	business_session	return super.close();
+lib/bird_companion/core/session/session_coordinator.dart	119	business_session	await _eventClient.disconnect();
+lib/bird_companion/core/session/session_coordinator.dart	186	business_session	await _eventClient.disconnect();
+lib/bird_companion/core/session/session_coordinator.dart	216	business_session	Future<void> dispose() async {
+lib/bird_companion/core/session/session_coordinator.dart	219	business_session	await _authenticationFailures.close();
+lib/bird_companion/core/session/session_coordinator.dart	220	business_session	await _addressChanges.close();
+lib/bird_companion/core/session/session_refresh_coordinator.dart	11	business_session	Future<void> dispose() => _controller.close();
+lib/bird_companion/features/connection/data/ble/birdbox_ble_data_source.dart	26	application_or_auxiliary_cleanup	Future<void> stopScan();
+lib/bird_companion/features/connection/data/ble/birdbox_ble_data_source.dart	28	application_or_auxiliary_cleanup	Future<void> disconnect();
+lib/bird_companion/features/connection/data/ble/birdbox_ble_data_source.dart	40	application_or_auxiliary_cleanup	Future<void> dispose();
+lib/bird_companion/features/connection/data/ble/ble_connection_diagnostic_store.dart	37	application_or_auxiliary_cleanup	Future<void> dispose() async {
+lib/bird_companion/features/connection/data/ble/ble_connection_diagnostic_store.dart	39	application_or_auxiliary_cleanup	await _records.close();
+lib/bird_companion/features/connection/data/ble/ble_scan_diagnostic_store.dart	29	application_or_auxiliary_cleanup	Future<void> dispose() async {
+lib/bird_companion/features/connection/data/ble/ble_scan_diagnostic_store.dart	31	application_or_auxiliary_cleanup	await _records.close();
+lib/bird_companion/features/connection/data/ble/pairing_preflight_platform.dart	23	application_or_auxiliary_cleanup	const NativeGattReleaseSnapshot({required this.connectionGeneration, required this.gattInstanceId, required this.state, required this.resultCode, required this.disconnectObserved, required this.closeCompleted, this.traceId});
+lib/bird_companion/features/connection/data/ble/pairing_preflight_platform.dart	49	application_or_auxiliary_cleanup	return NativeGattReleaseSnapshot(connectionGeneration: generation, gattInstanceId: instance, state: state as String, resultCode: result as String, disconnectObserved: disconnected, closeCompleted: closed, traceId: trace as String?);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	34	ble_owner_transport	Future<void> stopScan();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	39	ble_owner_transport	Future<void> disconnect();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	56	ble_owner_transport	Future<void> dispose();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	62	ble_owner_transport	Future<void> disconnectOwned(String? requestId, BlePairingReady? ready, int? connectionGeneration);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	89	ble_owner_transport	const BleDisconnectEvent({
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	104	ble_owner_transport	String toString() => 'BleDisconnectEvent(reason: $reason, gattStatus: $gattStatus, unexpected: $unexpected, connectionGeneration: $connectionGeneration, gattInstanceId: $gattInstanceId)';
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	285	ble_owner_transport	Future<void> stopScan() => _invoke<void>('stopScan');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	299	ble_owner_transport	Future<void> disconnect() => _invoke<void>('disconnect');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	331	ble_owner_transport	Future<void> disconnectOwned(String? requestId, BlePairingReady? ready, int? connectionGeneration) => _invoke<void>('disconnect', {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	383	ble_owner_transport	Future<void> dispose() => _invoke<void>('dispose');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	398	ble_owner_transport	static BleDisconnectEvent _disconnectEvent(Object? raw) {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	408	ble_owner_transport	return BleDisconnectEvent(
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	657	ble_owner_transport	Object claimSession() {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	667	ble_owner_transport	Future<void> endSession(Object owner) async {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	670	ble_owner_transport	await stopScan();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	672	ble_owner_transport	await disconnect();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	681	ble_owner_transport	if (!identical(_scanController, _scanPreflightController)) await stopScan();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	699	ble_owner_transport	_handleDisconnect(BleDisconnectEvent(reason: 'native_snapshot_unavailable', gattStatus: 0, unexpected: true, connectionGeneration: generation));
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	708	ble_owner_transport	_markDisconnected('native_gatt_retiring');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	718	ble_owner_transport	_handleDisconnect(BleDisconnectEvent(reason: 'native_ownership_lost', gattStatus: 0, unexpected: true, connectionGeneration: generation));
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	866	ble_owner_transport	Future<void> stopScan() async {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	883	ble_owner_transport	await _platform.stopScan();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	890	ble_owner_transport	if (!controller.isClosed) await controller.close();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1016	ble_owner_transport	_checkNotDisposed();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1044	ble_owner_transport	await stopScan();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1049	ble_owner_transport	_markDisconnected('pre_connect_reset');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1055	ble_owner_transport	await _teardownPlatformSession(reason: 'pre_connect_reset');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1080	ble_owner_transport	_handleDisconnect(event);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1124	ble_owner_transport	await _teardownPlatformSession(reason: 'connect_failed');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1129	ble_owner_transport	operationName: 'disconnect',
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1159	ble_owner_transport	Future<void> disconnect() {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1162	ble_owner_transport	return _teardownPlatformSession(reason: 'requested');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1165	ble_owner_transport	Future<void> _teardownPlatformSession({required String reason}) {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1169	ble_owner_transport	operation = _performPlatformTeardown(reason).whenComplete(() {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1176	ble_owner_transport	Future<void> _performPlatformTeardown(String reason) async {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1179	ble_owner_transport	await _retryBlockedRelease(reason);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1186	ble_owner_transport	_markDisconnected(reason);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1187	ble_owner_transport	await _recordConnectionDiagnostic(eventType: 'cleanup_noop', operationName: 'disconnect', resultCode: 'public_owner_not_owned');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1199	ble_owner_transport	operationName: 'disconnect',
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1206	ble_owner_transport	await _releaseKnownGatt(owned, reason, requestId: requestId, ready: ready);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1211	ble_owner_transport	await _recordConnectionDiagnostic(eventType: 'cleanup_noop', operationName: 'disconnect', resultCode: 'no_known_native_instance');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1214	ble_owner_transport	await (platform as BirdBoxPairingPlatform).disconnectOwned(requestId, ready, generation);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1216	ble_owner_transport	await platform.disconnect();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1227	ble_owner_transport	failure.capture(error, stack, method: 'disconnect', expectedState: 'release_confirmed', currentState: 'release_failed');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1228	ble_owner_transport	await _recordConnectionDiagnostic(eventType: 'gatt_release_failed', operationName: 'disconnect', failure: failure, connectionGeneration: owned?.$1, gattInstanceId: owned?.$2);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1231	ble_owner_transport	_markDisconnected(reason);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1237	ble_owner_transport	operationName: 'disconnect',
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1246	ble_owner_transport	Future<void> _releaseKnownGatt((int, int) owned, String reason, {String? requestId, BlePairingReady? ready}) async {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1252	ble_owner_transport	await _recordConnectionDiagnostic(eventType: 'gatt_release_confirmed', operationName: 'disconnect', resultCode: 'native_disconnect_and_close_confirmed', connectionGeneration: owned.$1, gattInstanceId: owned.$2);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1257	ble_owner_transport	await _recordConnectionDiagnostic(eventType: 'gatt_release_requested', operationName: 'disconnect', resultCode: reason, connectionGeneration: owned.$1, gattInstanceId: owned.$2);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1267	ble_owner_transport	final pending = _NativeReleaseWait(owned, _activeTraceId ?? _lastTraceId);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1270	ble_owner_transport	await (_platform as BirdBoxPairingPlatform).disconnectOwned(requestId, ready, owned.$1).timeout(releaseTimeout);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1271	ble_owner_transport	await _recordConnectionDiagnostic(eventType: 'gatt_release_request_accepted', operationName: 'disconnect', resultCode: 'awaiting_physical_confirmation', connectionGeneration: owned.$1, gattInstanceId: owned.$2);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1272	ble_owner_transport	if (!await _waitForNativeRelease(pending).timeout(releaseTimeout)) throw const ProvisioningException(code: ProvisioningErrorCode.bleGattReleaseUnconfirmed, retryable: false);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1282	ble_owner_transport	await _recordConnectionDiagnostic(eventType: 'gatt_release_confirmed', operationName: 'disconnect', resultCode: 'native_disconnect_and_close_confirmed', connectionGeneration: owned.$1, gattInstanceId: owned.$2);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1288	ble_owner_transport	Future<bool> _waitForNativeRelease(_NativeReleaseWait pending) async {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1303	ble_owner_transport	Future<void> _retryBlockedRelease(String reason) async {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1306	ble_owner_transport	await _recordConnectionDiagnostic(eventType: 'gatt_release_retry_requested', operationName: 'disconnect', resultCode: 'explicit_retry', connectionGeneration: owned?.$1, gattInstanceId: owned?.$2);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1315	ble_owner_transport	await _releaseKnownGatt(owned, reason);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1317	ble_owner_transport	await _recordConnectionDiagnostic(eventType: 'gatt_release_confirmed', operationName: 'disconnect', resultCode: 'native_disconnect_and_close_confirmed', connectionGeneration: owned.$1, gattInstanceId: owned.$2);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1324	ble_owner_transport	await _recordConnectionDiagnostic(eventType: 'gatt_release_recovered', operationName: 'disconnect', resultCode: 'adapter_disabled_and_native_absent', connectionGeneration: owned.$1, gattInstanceId: owned.$2);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1329	ble_owner_transport	_markDisconnected('explicit_release_recovery');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1332	ble_owner_transport	..capture(original, null, method: 'disconnect', expectedState: 'release_confirmed', currentState: 'release_failed');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1334	ble_owner_transport	await _recordConnectionDiagnostic(eventType: 'gatt_release_retry_blocked', operationName: 'disconnect', resultCode: 'new_confirmation_required', failure: failure, connectionGeneration: owned?.$1, gattInstanceId: owned?.$2);
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1372	ble_owner_transport	await run.wait(_releasePublicGatt(run, previous.connectionGeneration, previous.gattInstanceId, 'preflight_replace_connection'));
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1405	ble_owner_transport	await run.wait(_releasePublicGatt(run, gatt.connectionGeneration, gatt.gattInstanceId, 'preflight_service_cache'));
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1434	ble_owner_transport	await run.wait(_releasePublicGatt(run, reset.connectionGeneration, reset.gattInstanceId, 'pairing_reset'));
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1452	ble_owner_transport	await run.wait(_releasePublicGatt(run, gatt.connectionGeneration, gatt.gattInstanceId, 'preflight_service_cache'));
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1461	ble_owner_transport	await run.wait(_releasePublicGatt(run, generation, instance, 'preflight_retry'));
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1470	ble_owner_transport	_markDisconnected('public_owner_mismatch');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1474	ble_owner_transport	_markDisconnected('public_release_unconfirmed');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1489	ble_owner_transport	await _teardownPlatformSession(reason: 'preflight_failed');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1566	ble_owner_transport	_markDisconnected('native_gatt_retiring');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1640	ble_owner_transport	Future<void> _releasePublicGatt(_PublicPreparation run, int generation, int instance, String reason) async {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	1662	ble_owner_transport	_markDisconnected('controlled_preflight_release');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2131	ble_owner_transport	void _handleDisconnect([BleDisconnectEvent? event]) {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2137	ble_owner_transport	unawaited(_recordConnectionDiagnostic(eventType: 'stale_disconnect_ignored', operationName: 'disconnect', resultCode: 'foreign_gatt_instance', connectionGeneration: eventGeneration, gattInstanceId: instance));
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2143	ble_owner_transport	_markDisconnected('release_requested');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2158	ble_owner_transport	_markDisconnected('expected_pairing_reset');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2170	ble_owner_transport	operationName: 'disconnect',
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2182	ble_owner_transport	operationName: 'disconnect',
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2196	ble_owner_transport	operationName: 'disconnect',
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2201	ble_owner_transport	_markDisconnected(event?.reason ?? 'unknown');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2206	ble_owner_transport	void _markDisconnected([String reason = 'unknown']) {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2232	ble_owner_transport	_activeCommandFailure?.capture(error, StackTrace.current, method: 'disconnect', expectedState: 'matching_response', currentState: 'disconnected');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2241	ble_owner_transport	Future<void> dispose() async {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2253	ble_owner_transport	await _teardownPlatformSession(reason: 'disposed');
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2260	ble_owner_transport	await _platform.dispose();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2261	ble_owner_transport	await _events.close();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2262	ble_owner_transport	await _disconnects.close();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2263	ble_owner_transport	await _scanDiagnostics.close();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2264	ble_owner_transport	await _pairingProgress.close();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2267	ble_owner_transport	void _checkNotDisposed() {
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2274	ble_owner_transport	_checkNotDisposed();
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2296	ble_owner_transport	operationName: 'disconnect',
+lib/bird_companion/features/connection/data/ble/platform_birdbox_ble_data_source.dart	2434	ble_owner_transport	_NativeReleaseWait(this.owned, this.traceId);
+lib/bird_companion/features/connection/data/connection_api.dart	139	business_session	Future<void> disconnect() async {
+lib/bird_companion/features/connection/data/connection_repository_impl.dart	198	business_session	Future<void> disconnect() => _api.disconnect();
+lib/bird_companion/features/connection/data/connection_repository_impl.dart	204	business_session	await _api.disconnect();
+lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart	42	wifi_native_or_bridge	Future<void> releaseNetwork();
+lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart	44	wifi_native_or_bridge	Future<void> dispose();
+lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart	125	wifi_native_or_bridge	Future<void> releaseNetwork() async {
+lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart	126	wifi_native_or_bridge	await _invoke<void>('releaseNetwork');
+lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart	131	wifi_native_or_bridge	Future<void> dispose() async {
+lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart	135	wifi_native_or_bridge	await _invoke<void>('dispose');
+lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart	139	wifi_native_or_bridge	await _networkLosses.close();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	236	provisioning_repository	Object claimSession() {
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	238	provisioning_repository	if (!sessionReleasePending && !sessionReleaseFailed) _nativeSessionOwner = _bleControl?.claimSession();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	245	provisioning_repository	Future<void> endSession(Object owner) => ownsSession(owner) ? _releaseSession() : Future.value();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	247	provisioning_repository	Future<void> _releaseSession() {
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	253	provisioning_repository	_performSessionRelease().then(
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	269	provisioning_repository	Future<void> _performSessionRelease() async {
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	273	provisioning_repository	await control.endSession(nativeOwner);
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	275	provisioning_repository	await _ble.stopScan();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	276	provisioning_repository	await _ble.disconnect();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	279	provisioning_repository	await _wifi.releaseNetwork();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	285	provisioning_repository	Future<void> waitForSessionRelease() async {
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	290	provisioning_repository	_checkNotDisposed();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	291	provisioning_repository	_nativeSessionOwner ??= _bleControl?.claimSession();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	298	provisioning_repository	await waitForSessionRelease();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	304	provisioning_repository	await _ble.stopScan();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	311	provisioning_repository	await waitForSessionRelease();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	320	provisioning_repository	await waitForSessionRelease();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	327	provisioning_repository	await waitForSessionRelease();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	369	provisioning_repository	_checkNotDisposed();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	371	provisioning_repository	await waitForSessionRelease();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	383	provisioning_repository	Future<void> stopDiscovery() => _ble.stopScan();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	387	provisioning_repository	_checkNotDisposed();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	393	provisioning_repository	await waitForSessionRelease();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	438	provisioning_repository	await _releaseSession();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	451	provisioning_repository	Future<void> disconnect() async {
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	452	provisioning_repository	await _releaseSession();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	527	provisioning_repository	await _wifi.releaseNetwork();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	782	provisioning_repository	await _wifi.releaseNetwork();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	811	provisioning_repository	await _wifi.releaseNetwork();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	898	provisioning_repository	await _wifi.releaseNetwork();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	905	provisioning_repository	await _wifi.releaseNetwork();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	933	provisioning_repository	await _wifi.releaseNetwork();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	1102	provisioning_repository	_checkNotDisposed();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	1132	provisioning_repository	void _checkNotDisposed() {
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	1137	provisioning_repository	Future<void> dispose() async {
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	1139	provisioning_repository	await disconnect();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	1144	provisioning_repository	await _wifi.dispose();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	1146	provisioning_repository	await _ble.dispose();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	1147	provisioning_repository	await _events.close();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	1148	provisioning_repository	await _disconnects.close();
+lib/bird_companion/features/connection/data/provisioning_repository_impl.dart	1149	provisioning_repository	await _wifiScanResults.close();
+lib/bird_companion/features/connection/domain/ble_pairing_progress.dart	15	application_or_auxiliary_cleanup	Object claimSession();
+lib/bird_companion/features/connection/domain/ble_pairing_progress.dart	17	application_or_auxiliary_cleanup	Future<void> endSession(Object owner);
+lib/bird_companion/features/connection/domain/ble_pairing_progress.dart	31	application_or_auxiliary_cleanup	Future<void> waitForSessionRelease();
+lib/bird_companion/features/connection/domain/connection_repository.dart	20	application_or_auxiliary_cleanup	Future<void> disconnect();
+lib/bird_companion/features/connection/domain/provisioning_repository.dart	29	application_or_auxiliary_cleanup	Future<void> stopDiscovery();
+lib/bird_companion/features/connection/domain/provisioning_repository.dart	31	application_or_auxiliary_cleanup	Future<void> disconnect();
+lib/bird_companion/features/connection/domain/provisioning_repository.dart	45	application_or_auxiliary_cleanup	Future<void> dispose();
+lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart	117	simulation_only	Future<void> stopDiscovery() async => calls.add('stopDiscovery');
+lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart	128	simulation_only	Future<void> disconnect() async {
+lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart	129	simulation_only	calls.add('disconnect');
+lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart	405	simulation_only	Future<void> dispose() async {
+lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart	407	simulation_only	await _events.close();
+lib/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart	408	simulation_only	await _disconnects.close();
+lib/bird_companion/features/connection/presentation/connection_cubit.dart	172	page_or_cubit_lifetime	if (!preserveExistingSession) _sessionCubit.disconnected();
+lib/bird_companion/features/connection/presentation/connection_cubit.dart	184	page_or_cubit_lifetime	_sessionCubit.disconnected('连接盒子失败。');
+lib/bird_companion/features/connection/presentation/connection_cubit.dart	225	page_or_cubit_lifetime	_sessionCubit.disconnected('配对失败。');
+lib/bird_companion/features/connection/presentation/connection_cubit.dart	259	page_or_cubit_lifetime	if (!preserveExistingSession) _sessionCubit.disconnected();
+lib/bird_companion/features/connection/presentation/connection_cubit.dart	282	page_or_cubit_lifetime	if (!preserveExistingSession) _sessionCubit.disconnected();
+lib/bird_companion/features/connection/presentation/connection_cubit.dart	307	page_or_cubit_lifetime	Future<void> close() {
+lib/bird_companion/features/connection/presentation/connection_cubit.dart	312	page_or_cubit_lifetime	if (!preserveExistingSession) _sessionCubit.disconnected();
+lib/bird_companion/features/connection/presentation/connection_cubit.dart	314	page_or_cubit_lifetime	return super.close();
+lib/bird_companion/features/connection/presentation/connection_page.dart	244	page_or_cubit_lifetime	void dispose() {
+lib/bird_companion/features/connection/presentation/connection_page.dart	251	page_or_cubit_lifetime	unawaited(_handoff?.close());
+lib/bird_companion/features/connection/presentation/connection_page.dart	252	page_or_cubit_lifetime	unawaited(_provisioningCubit.close());
+lib/bird_companion/features/connection/presentation/connection_page.dart	253	page_or_cubit_lifetime	unawaited(_networkCubit.close());
+lib/bird_companion/features/connection/presentation/connection_page.dart	254	page_or_cubit_lifetime	super.dispose();
+lib/bird_companion/features/connection/presentation/connection_page.dart	415	page_or_cubit_lifetime	ProvisioningPhase.disconnecting => const _BleDisconnectingView(),
+lib/bird_companion/features/connection/presentation/connection_page.dart	885	page_or_cubit_lifetime	const _BleDisconnectingView();
+lib/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart	300	page_or_cubit_lifetime	Future<void> close() async {
+lib/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart	309	page_or_cubit_lifetime	return super.close();
+lib/bird_companion/features/connection/presentation/network_provisioning_cubit.dart	1074	page_or_cubit_lifetime	Future<void> close() async {
+lib/bird_companion/features/connection/presentation/network_provisioning_cubit.dart	1079	page_or_cubit_lifetime	return super.close();
+lib/bird_companion/features/connection/presentation/pages/b7_simulated_demo_page.dart	31	simulation_only	void dispose() {
+lib/bird_companion/features/connection/presentation/pages/b7_simulated_demo_page.dart	32	simulation_only	if (widget.repository == null) unawaited(_repository.dispose());
+lib/bird_companion/features/connection/presentation/pages/b7_simulated_demo_page.dart	33	simulation_only	super.dispose();
+lib/bird_companion/features/connection/presentation/pages/wifi_qr_scanner_page.dart	54	page_or_cubit_lifetime	void dispose() {
+lib/bird_companion/features/connection/presentation/pages/wifi_qr_scanner_page.dart	56	page_or_cubit_lifetime	unawaited(_controller.dispose());
+lib/bird_companion/features/connection/presentation/pages/wifi_qr_scanner_page.dart	57	page_or_cubit_lifetime	super.dispose();
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	90	page_or_cubit_lifetime	_owner = _control!.claimSession();
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	181	page_or_cubit_lifetime	await _repository.stopDiscovery();
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	234	page_or_cubit_lifetime	Future<void> _disconnectOwned() async {
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	238	page_or_cubit_lifetime	await _control!.endSession(owner);
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	239	page_or_cubit_lifetime	if (!_closing && !isClosed && identical(_owner, owner) && _control!.ownsSession(owner)) _owner = _control!.claimSession();
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	241	page_or_cubit_lifetime	await _repository.disconnect();
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	256	page_or_cubit_lifetime	await guard.waitForSessionRelease();
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	260	page_or_cubit_lifetime	await _repository.stopDiscovery();
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	305	page_or_cubit_lifetime	await _repository.stopDiscovery();
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	311	page_or_cubit_lifetime	await guard.waitForSessionRelease();
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	427	page_or_cubit_lifetime	await _disconnectOwned();
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	474	page_or_cubit_lifetime	await _disconnectOwned();
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	542	page_or_cubit_lifetime	Future<void> close() async {
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	549	page_or_cubit_lifetime	? _control!.endSession(_owner!).catchError((Object error, StackTrace stack) {
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	563	page_or_cubit_lifetime	await _repository.stopDiscovery();
+lib/bird_companion/features/connection/presentation/provisioning_cubit.dart	565	page_or_cubit_lifetime	return super.close();
+lib/bird_companion/features/connection/presentation/qr_connection_scanner_page.dart	33	page_or_cubit_lifetime	void dispose() {
+lib/bird_companion/features/connection/presentation/qr_connection_scanner_page.dart	34	page_or_cubit_lifetime	unawaited(_controller.dispose());
+lib/bird_companion/features/connection/presentation/qr_connection_scanner_page.dart	35	page_or_cubit_lifetime	super.dispose();
+lib/bird_companion/features/connection/presentation/widgets/manual_address_form.dart	27	page_or_cubit_lifetime	void dispose() {
+lib/bird_companion/features/connection/presentation/widgets/manual_address_form.dart	28	page_or_cubit_lifetime	_addressController.dispose();
+lib/bird_companion/features/connection/presentation/widgets/manual_address_form.dart	29	page_or_cubit_lifetime	super.dispose();
+lib/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart	46	page_or_cubit_lifetime	void dispose() {
+lib/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart	47	page_or_cubit_lifetime	_controller.dispose();
+lib/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart	48	page_or_cubit_lifetime	_focusNode.dispose();
+lib/bird_companion/features/connection/presentation/widgets/pairing_code_form.dart	49	page_or_cubit_lifetime	super.dispose();
+lib/bird_companion/features/connection/presentation/widgets/sta_network_form.dart	48	page_or_cubit_lifetime	void dispose() {
+lib/bird_companion/features/connection/presentation/widgets/sta_network_form.dart	50	page_or_cubit_lifetime	_passwordController.dispose();
+lib/bird_companion/features/connection/presentation/widgets/sta_network_form.dart	51	page_or_cubit_lifetime	_ssidController.dispose();
+lib/bird_companion/features/connection/presentation/widgets/sta_network_form.dart	52	page_or_cubit_lifetime	super.dispose();
+lib/bird_companion/features/settings/presentation/pages/network_settings_page.dart	90	page_or_cubit_lifetime	void dispose() {
+lib/bird_companion/features/settings/presentation/pages/network_settings_page.dart	94	page_or_cubit_lifetime	unawaited(_handoff?.close());
+lib/bird_companion/features/settings/presentation/pages/network_settings_page.dart	96	page_or_cubit_lifetime	unawaited(_cubit.close());
+lib/bird_companion/features/settings/presentation/pages/network_settings_page.dart	97	page_or_cubit_lifetime	super.dispose();

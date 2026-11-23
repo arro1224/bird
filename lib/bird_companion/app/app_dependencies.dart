@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/features/connection/data/direct_ap_profile_store.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:aves/bird_companion/core/diagnostics/app_build_identity.dart';
@@ -184,6 +185,7 @@ class BirdCompanionDependencies {
   final BleScanDiagnosticStore bleScanDiagnosticStore;
   final BleConnectionDiagnosticStore bleConnectionDiagnosticStore;
   final bleDiagnosticFilePlatform = const MethodChannelBirdBoxBleDiagnosticFilePlatform();
+
   /// Task-2 additions: phone Wi-Fi name prefill and gallery QR import. UI hints only.
   final phoneWifi = const MethodChannelPhoneWifiPlatform();
   final appBuildIdentity = AppBuildIdentity();
@@ -199,6 +201,7 @@ class BirdCompanionDependencies {
     bool connectEnvironmentTestEndpoint = true,
     bool restoreSavedSession = true,
     DirectApAuthorizationStore? directApAuthorizationStore,
+    DirectApProfileStore? directApProfileStore,
     ClientIdentityStore? clientIdentityStore,
     ProvisioningRepository? provisioningRepositoryOverride,
     ConnectivityMonitor? connectivityMonitorOverride,
@@ -225,6 +228,8 @@ class BirdCompanionDependencies {
       cache,
       CompositeDeviceDiscoverySource([MdnsDeviceDiscoverySource(), KnownDeviceDiscoverySource(() async => const [])]),
     );
+    final phoneDiagnostics = PhoneDiagnosticRecorder(cache);
+    final connectionAttempts = ConnectionAttemptRecorder(cache, bleConnectionDiagnosticStore, mirror: phoneDiagnostics.record);
     final provisioningRepository =
         provisioningRepositoryOverride ??
         ProvisioningRepositoryImpl(
@@ -233,10 +238,12 @@ class BirdCompanionDependencies {
             connectionDiagnosticSink: bleConnectionDiagnosticStore,
           ),
           wifi: MethodChannelBirdBoxWifiPlatform(),
+          diagnostic: connectionAttempts.record,
           dpp: MethodChannelBirdBoxDppPlatform(),
           clientIdentityStore: clientIdentityStore ?? AndroidKeystoreClientIdentityStore(),
           credentialStore: secureSessionStore,
           directApAuthorizationStore: directApAuthorizationStore ?? const EncryptedDirectApAuthorizationStore(),
+          directApProfileStore: directApProfileStore ?? DirectApProfileStore(const EncryptedDirectApAuthorizationStore(namespace: 'direct-ap-profile:v1')),
           healthApi: HealthApi(apiClient),
           pairingApi: pairingApi,
           sessionCoordinator: sessionCoordinator,
@@ -281,8 +288,7 @@ class BirdCompanionDependencies {
       (photo) => reviewRepository.acceptSyncedPhoto(photo),
       photoRepository.acceptSyncedBatchTags,
     );
-    final phoneDiagnostics = PhoneDiagnosticRecorder(cache);
-    final connectionAttempts = ConnectionAttemptRecorder(cache, bleConnectionDiagnosticStore, mirror: phoneDiagnostics.record);
+    late final MediaAssetService mediaAssetService;
     deviceSessionCubit = DeviceSessionCubit(
       connectionRepository,
       connectivityMonitor,
@@ -294,6 +300,20 @@ class BirdCompanionDependencies {
       connectionFailures: apiClient.connectionFailures,
       connectionFailureDetails: apiClient.connectionFailureDetails,
       probeReachability: apiClient.probeReachability,
+      directApLosses: provisioningRepository is SavedDirectApRecovery ? (provisioningRepository as SavedDirectApRecovery).directApNetworkLosses : null,
+      prepareSavedNetwork: provisioningRepository is SavedDirectApRecovery
+          ? (device, attempt) async {
+              final changed = await (provisioningRepository as SavedDirectApRecovery).restoreSavedDirectApNetwork(device.id, attempt.id, attempt.token, userInitiated: attempt.intent == 'explicit_reconnect');
+              attempt.check();
+              if (changed) {
+                await sessionCoordinator.clearMemory();
+                attempt.check();
+                apiClient.resetNetworkConnections();
+                mediaAssetService.resetNetworkConnections();
+              }
+            }
+          : null,
+      onSavedNetworkVerified: provisioningRepository is DirectApNetworkPreparation ? (id) => (provisioningRepository as DirectApNetworkPreparation).confirmDirectApNetwork(id) : null,
       onConnectionRecovered: () async {
         await birdSyncService.synchronize();
       },
@@ -311,7 +331,7 @@ class BirdCompanionDependencies {
       activeDeviceId: activeDeviceId,
       cacheInvalidator: mediaAssetCache,
     );
-    final mediaAssetService = MediaAssetService(
+    mediaAssetService = MediaAssetService(
       httpClient: MediaAssetHttpClient(headersForUri: apiClient.mediaHeaders, diagnostics: apiClient.httpDiagnostics),
       cache: mediaAssetCache,
       coordinator: mediaAssetCoordinator,
@@ -393,8 +413,16 @@ class BirdCompanionDependencies {
       dependencies.connectionAttempts.record({'event': 'global_session_state', 'attempt_id': state.attemptId, 'operation_id': state.operationId, 'device_id': state.device?.id, 'phase': state.phase.name});
       // 换盒子就把 SmartFollow 的会话快照与能力缓存丢掉：session_id/能力属于某台盒子。
       final deviceId = state.device?.id.trim();
-      if (deviceId != null && deviceId.isNotEmpty && deviceId != dependencies._traceDeviceId) {
-        dependencies._traceDeviceId = deviceId;
+      final deviceChanged = deviceId != dependencies._traceDeviceId;
+      dependencies._traceDeviceId = deviceId;
+      if (deviceChanged && provisioningRepository is DirectApNetworkPreparation) {
+        unawaited(
+          (provisioningRepository as DirectApNetworkPreparation).selectDirectApDevice(deviceId).catchError((Object error) {
+            connectionAttempts.record({'event': 'device_network_release_failed', ...ConnectionAttempt.errorFields(error)});
+          }),
+        );
+      }
+      if (deviceChanged && deviceId != null && deviceId.isNotEmpty) {
         dependencies.smartFollowRepository.resetForDeviceChange();
       }
     });
@@ -492,6 +520,9 @@ class BirdCompanionDependencies {
     if (repository is DirectApHttpPreparation) await attempt.run('authorization', () => (repository as DirectApHttpPreparation).prepareDirectApHttp(pending.completion, token));
     token.throwIfCancellationRequested();
     await completeProvisioning(pending.completion, cancelToken: token);
+    if (!pending.isSta && repository is DirectApNetworkPreparation) {
+      (repository as DirectApNetworkPreparation).confirmDirectApNetwork(pending.attemptId!);
+    }
     connectionAttempts.record({
       'event': 'authenticated_http_ws_verified',
       'attempt_id': pending.attemptId,
@@ -520,12 +551,36 @@ class BirdCompanionDependencies {
     return PendingDirectAp(deviceId: info.deviceId, baseUri: endpoint, operationId: snapshot.operationId ?? 'existing-network', networkMode: snapshot.activeMode, attemptId: SecureRequestIdFactory().create());
   }
 
+  Future<void> prepareHandoffNetwork(PendingDirectAp pending, CancelToken token, {bool manualRescue = false}) async {
+    void checkCurrent() {
+      token.throwIfCancellationRequested();
+      if (!deviceSessionCubit.acceptsNetworkIntent(pending.attemptId!)) throw StateError('Network intent superseded');
+    }
+
+    checkCurrent();
+    final repository = provisioningRepository;
+    if (repository is! DirectApNetworkPreparation) return;
+    final changed =
+        pending.isSta || await (repository as DirectApNetworkPreparation).prepareDirectApNetwork(pending.completion, operationId: pending.operationId, attemptId: pending.attemptId!, cancelToken: token, manualRescue: manualRescue);
+    checkCurrent();
+    if (changed) {
+      await sessionCoordinator.clearMemory();
+      checkCurrent();
+      apiClient.resetNetworkConnections();
+      mediaAssetService.resetNetworkConnections();
+      connectionAttempts.record({'event': 'local_network_clients_reset', 'attempt_id': pending.attemptId});
+    }
+  }
+
   DirectApHandoffCubit createDirectApHandoff() {
     final owner = Object();
     String? ownedIntentId;
-    return DirectApHandoffCubit(
+    late final DirectApHandoffCubit handoff;
+    return handoff = DirectApHandoffCubit(
       store: cache,
       verify: completeDirectApHandoff,
+      prepareNetwork: prepareHandoffNetwork,
+      prepareManualNetwork: (pending, token) => prepareHandoffNetwork(pending, token, manualRescue: true),
       onBegin: (pending, restored) {
         final id = pending.attemptId!;
         if (restored) {
@@ -538,7 +593,16 @@ class BirdCompanionDependencies {
       },
       isIntentCurrent: (pending) => deviceSessionCubit.acceptsNetworkIntent(pending.attemptId!),
       onVerificationStopped: (message) {
-        if (ownedIntentId != null && deviceSessionCubit.acceptsNetworkIntent(ownedIntentId!)) deviceSessionCubit.disconnected(message ?? '盒子连接验证暂未完成，可以继续验证。');
+        if (ownedIntentId != null && deviceSessionCubit.acceptsNetworkIntent(ownedIntentId!)) {
+          // Persistence can be retried on the same authenticated network. Do
+          // not invalidate its verifier token and release the lease here.
+          if (handoff.state.lastError == 'ProvisioningCredentialSaveException') return;
+          final repository = provisioningRepository;
+          if (repository is DirectApNetworkPreparation) {
+            unawaited((repository as DirectApNetworkPreparation).releaseDirectApNetwork(ownedIntentId!, reason: 'verification_stopped'));
+          }
+          deviceSessionCubit.disconnected(message ?? '盒子连接验证暂未完成，可以继续验证。');
+        }
       },
       activeChanged: (active) {
         deviceSessionCubit.setHandoffActive(owner, active);
@@ -547,6 +611,9 @@ class BirdCompanionDependencies {
       },
       onCancel: (id) async {
         final repository = provisioningRepository;
+        if (repository is DirectApNetworkPreparation && ownedIntentId != null) {
+          await (repository as DirectApNetworkPreparation).releaseDirectApNetwork(ownedIntentId!, reason: 'cancelled');
+        }
         if (repository is DirectApHttpPreparation) await (repository as DirectApHttpPreparation).cancelDirectApHttp(id);
       },
       diagnostic: (event) {

@@ -1,0 +1,65 @@
+{
+  "captured_at": "2026-11-23T13:27:17.549823+08:00",
+  "flutter": {
+    "source": "Successful elevated cached flutter_tools.snapshot --version --machine",
+    "version": {
+      "frameworkVersion": "3.44.5",
+      "channel": "stable",
+      "repositoryUrl": "https://github.com/flutter/flutter.git",
+      "frameworkRevision": "f94f4fc76b4d74543ed9b085bbd75341ef65de22",
+      "frameworkCommitDate": "2026-07-06 11:19:24 -0700",
+      "engineRevision": "83675ed27633283e7fc296c8bca22e841224c096",
+      "engineCommitDate": "2026-06-30 16:59:03.000Z",
+      "engineContentHash": "d3a3293399556a85388faf8c6f0723a7a5597aa8",
+      "engineBuildDate": "2026-07-01 02:58:16.871",
+      "dartSdkVersion": "3.12.2",
+      "devToolsVersion": "2.57.0",
+      "flutterVersion": "3.44.5"
+    }
+  },
+  "dart": {
+    "command": [
+      "D:/flutter344/flutter/bin/cache/dart-sdk/bin/dart.exe",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "Dart SDK version: 3.12.2 (stable) (Tue Jun 9 01:11:39 2026 -0700) on \"windows_x64\"",
+    "stderr": ""
+  },
+  "java": {
+    "command": [
+      "C:/Program Files/Android/Android Studio/jbr/bin/java.exe",
+      "-version"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "openjdk version \"21.0.10\" 2026-01-20\nOpenJDK Runtime Environment (build 21.0.10+-14961533-b1163.108)\nOpenJDK 64-Bit Server VM (build 21.0.10+-14961533-b1163.108, mixed mode)"
+  },
+  "adb_version": {
+    "command": [
+      "D:/Androidstudio2/platform-tools/adb.exe",
+      "version"
+    ],
+    "exit_code": 0,
+    "stdout": "Android Debug Bridge version 1.0.41\nVersion 37.0.1-15733141\nInstalled as D:\\Androidstudio2\\platform-tools\\adb.exe\nRunning on Windows 10.0.26200",
+    "stderr": ""
+  },
+  "git": {
+    "command": [
+      "git",
+      "--version"
+    ],
+    "exit_code": 0,
+    "stdout": "git version 2.53.0.windows.2",
+    "stderr": ""
+  },
+  "python": "3.9.7 (default, Sep 16 2021, 16:59:28) [MSC v.1916 64 bit (AMD64)]",
+  "host": "Windows-10-10.0.26200-SP0",
+  "adb_devices_observation": {
+    "source": "Successful elevated adb devices -l in this B0 run",
+    "exit_code": 0,
+    "stdout": "List of devices attached\n\n",
+    "device_count": 0,
+    "physical_availability": "unknown; no device connected, not proof of absence"
+  }
+}

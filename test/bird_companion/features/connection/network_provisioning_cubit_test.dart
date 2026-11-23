@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
@@ -9,6 +10,86 @@ import 'package:flutter_test/flutter_test.dart';
 import 'fakes/fake_provisioning_repository.dart';
 
 void main() {
+  group('T1 B4 stopped network reconciliation', () {
+    test('original-page BLE refresh resumes a stop terminal without resending stop', () async {
+      final repository = _StopReconciliationRepository();
+      final cubit = NetworkProvisioningCubit(repository, reconcileStop: true, pollInterval: const Duration(milliseconds: 5), reconciliationWindow: const Duration(milliseconds: 30));
+      addTearDown(() async {
+        await cubit.close();
+        await repository.dispose();
+      });
+      await cubit.resumeAfterBleReconnect(_deviceInfo(), verifyBusiness: false);
+      await cubit.stopDirectAp();
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      repository.networkStatus = _networkStatus(mode: ProvisioningNetworkMode.none, operationState: NetworkOperationState.idle, operationId: 'op_stop_reconcile', baseUri: Uri.parse('http://192.0.2.2'));
+      await cubit.resumeAfterBleReconnect(_deviceInfo(), handoffDirectAp: false, verifyBusiness: false);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(cubit.state.phase, NetworkProvisioningPhase.stopped);
+      expect(cubit.state.stoppedStaRestored, false);
+      expect(repository.calls.where((c) => c == 'stopDirectAp'), hasLength(1));
+      expect(repository.verifications, 0);
+      expect(repository.cleanups, 1);
+    });
+    test('stop is single-flight and only matching terminal status releases AP', () async {
+      final repository = _StopReconciliationRepository();
+      final cubit = NetworkProvisioningCubit(repository, reconcileStop: true, pollInterval: const Duration(milliseconds: 5), reconciliationWindow: const Duration(seconds: 1));
+      addTearDown(() async {
+        await cubit.close();
+        await repository.dispose();
+      });
+      await cubit.resumeAfterBleReconnect(_deviceInfo(), verifyBusiness: false);
+      await Future.wait(List.generate(10, (_) => cubit.stopDirectAp()));
+      repository.networkStatus = _networkStatus(mode: ProvisioningNetworkMode.infrastructureSta, operationState: NetworkOperationState.staConnected, operationId: 'op_other', baseUri: Uri.parse('http://192.0.2.2'));
+      await Future<void>.delayed(const Duration(milliseconds: 15));
+      expect(repository.cleanups, 0);
+      expect(repository.verifications, 0);
+      expect(cubit.state.phase, NetworkProvisioningPhase.stoppingDirectAp);
+      repository.networkStatus = _networkStatus(mode: ProvisioningNetworkMode.infrastructureSta, operationState: NetworkOperationState.staConnected, operationId: 'op_stop_reconcile', baseUri: Uri.parse('http://192.0.2.2'));
+      await cubit.stream.firstWhere((s) => s.phase == NetworkProvisioningPhase.success).timeout(const Duration(seconds: 1));
+      expect(repository.calls.where((c) => c == 'stopDirectAp'), hasLength(1));
+      expect(repository.cleanups, 1);
+      expect(repository.verifications, 1);
+      expect(cubit.state.stoppedStaRestored, true);
+    });
+
+    test('no old STA and missing terminal are distinct from business success', () async {
+      final repository = _StopReconciliationRepository();
+      final cubit = NetworkProvisioningCubit(repository, reconcileStop: true, pollInterval: const Duration(milliseconds: 5), reconciliationWindow: const Duration(milliseconds: 35));
+      addTearDown(() async {
+        await cubit.close();
+        await repository.dispose();
+      });
+      await cubit.resumeAfterBleReconnect(_deviceInfo(), verifyBusiness: false);
+      await cubit.stopDirectAp();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(cubit.state.phase, NetworkProvisioningPhase.failure);
+      expect(cubit.state.stoppedStaRestored, isNull);
+      expect(repository.cleanups, 0);
+      repository.networkStatus = _networkStatus(mode: ProvisioningNetworkMode.none, operationState: NetworkOperationState.idle, operationId: 'op_stop_reconcile', baseUri: Uri.parse('http://192.0.2.2'));
+      await cubit.retryStoppedNetwork();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(cubit.state.phase, NetworkProvisioningPhase.stopped);
+      expect(cubit.state.stoppedStaRestored, false);
+      expect(repository.verifications, 0);
+      expect(repository.calls.where((c) => c == 'stopDirectAp'), hasLength(1));
+    });
+
+    test('cancelled control status read cannot replace the original page state', () async {
+      final repository = _PendingControlStatusRepository();
+      final cubit = NetworkProvisioningCubit(repository);
+      addTearDown(() async {
+        await cubit.close();
+        await repository.dispose();
+      });
+      final token = CancelToken();
+      final read = cubit.resumeAfterBleReconnect(_deviceInfo(), verifyBusiness: false, cancelToken: token);
+      token.cancel('user cancelled');
+      repository.pending.complete(_networkStatus(mode: ProvisioningNetworkMode.directAp, operationState: NetworkOperationState.apReady, operationId: 'op_late', baseUri: Uri.parse('http://192.0.2.1')));
+      await read;
+      expect(cubit.state.phase, NetworkProvisioningPhase.idle);
+      expect(cubit.state.activeOperationId, isNull);
+    });
+  });
   group('NetworkProvisioningCubit direct AP', () {
     test('gates unsupported direct AP without issuing a command', () async {
       final repository = FakeProvisioningRepository();
@@ -1194,6 +1275,32 @@ void main() {
       expect(cubit.state.baseUri, isNull);
     });
   });
+}
+
+class _PendingControlStatusRepository extends FakeProvisioningRepository {
+  final pending = Completer<ProvisioningNetworkStatus>();
+  @override
+  Future<ProvisioningNetworkStatus> getNetworkStatus() => pending.future;
+}
+
+class _StopReconciliationRepository extends FakeProvisioningRepository implements StoppedDirectApCleanup, ProvisioningNetworkStatusVerifier {
+  _StopReconciliationRepository()
+    : super(
+        networkStatus: _networkStatus(mode: ProvisioningNetworkMode.directAp, operationState: NetworkOperationState.apReady, operationId: 'op_direct', baseUri: Uri.parse('http://192.0.2.1')),
+        stopDirectApResult: const CommandAccepted(operationId: 'op_stop_reconcile', desiredMode: ProvisioningNetworkMode.infrastructureSta),
+      );
+  int cleanups = 0, verifications = 0;
+  @override
+  Future<void> confirmStoppedNetwork(String deviceId, String operationId) async {
+    expect(deviceId, _deviceInfo().deviceId);
+    expect(operationId, 'op_stop_reconcile');
+    cleanups++;
+  }
+
+  @override
+  Future<void> verifyNetworkStatus(ProvisioningNetworkStatus status) async {
+    verifications++;
+  }
 }
 
 final class _PendingNetworkStatusRepository implements ProvisioningRepository {

@@ -1,0 +1,173 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_profile_store_test.dart
+00:00 +0: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_profile_store_test.dart: encrypted AP profile survives single-use authorization deletion
+00:00 +1: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_profile_store_test.dart: serialized cancellation persists across a new store instance
+00:00 +2: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_profile_store_test.dart: rejects swapped identity and unknown version without poisoning later reads
+00:00 +3: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: T1 B3 saved AP and B4 control recovery cold repository restores encrypted AP without pairing or HTTP precondition
+00:00 +4: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: T1 B3 saved AP and B4 control recovery cancelled AP intent stays suspended after repository restart
+00:00 +5: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: T1 B3 saved AP and B4 control recovery unavailable request is not repeated by automatic foreground recovery
+00:00 +6: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: T1 B3 saved AP and B4 control recovery ten control recoveries coalesce and require no HTTP or pairing
+00:00 +7: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership STA terminal evidence survives BLE teardown while phone routing is released
+00:00 +8: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP handoff survives BLE disconnect before authorization exchange
+00:00 +9: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership deferred HTTP persistence retry needs no new network command
+00:00 +10: D:/Androidstudio2/project/4/test/bird_companion/features/connection/network_provisioning_cubit_test.dart: T1 B4 stopped network reconciliation stop is single-flight and only matching terminal status releases AP
+00:00 +11: D:/Androidstudio2/project/4/test/bird_companion/features/connection/network_provisioning_cubit_test.dart: T1 B4 stopped network reconciliation stop is single-flight and only matching terminal status releases AP
+00:00 +12: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership same operation with stale request and duplicate terminal have no side effects
+00:00 +13: D:/Androidstudio2/project/4/test/bird_companion/features/connection/network_provisioning_cubit_test.dart: T1 B4 stopped network reconciliation no old STA and missing terminal are distinct from business success
+00:00 +14: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership superseded operation cannot redeem or overwrite the current one
+00:00 +15: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership superseded operation cannot redeem or overwrite the current one
+00:00 +16: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership superseded operation cannot redeem or overwrite the current one
+00:00 +17: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership superseded operation cannot redeem or overwrite the current one
+00:00 +18: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership superseded operation cannot redeem or overwrite the current one
+00:00 +19: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership superseded operation cannot redeem or overwrite the current one
+00:00 +20: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership superseded operation cannot redeem or overwrite the current one
+00:00 +21: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership superseded operation cannot redeem or overwrite the current one
+00:00 +22: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership superseded operation cannot redeem or overwrite the current one
+00:00 +23: D:/Androidstudio2/project/4/test/bird_companion/features/connection/network_provisioning_cubit_test.dart: NetworkProvisioningCubit direct AP resumes an accepted stop operation from authoritative status
+00:00 +24: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP failure requires fresh authorization instead of replaying session
+00:00 +25: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP failure requires fresh authorization instead of replaying session
+00:00 +26: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP failure requires fresh authorization instead of replaying session
+00:00 +27: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP failure requires fresh authorization instead of replaying session
+00:00 +28: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP failure requires fresh authorization instead of replaying session
+00:00 +29: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP failure requires fresh authorization instead of replaying session
+00:00 +30: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP failure requires fresh authorization instead of replaying session
+00:00 +31: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP failure requires fresh authorization instead of replaying session
+00:00 +32: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP failure requires fresh authorization instead of replaying session
+00:00 +33: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP failure requires fresh authorization instead of replaying session
+00:00 +34: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP failure requires fresh authorization instead of replaying session
+00:00 +35: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP identity mismatch fails before redemption
+00:00 +36: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP identity mismatch fails before redemption
+00:00 +37: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP identity mismatch fails before redemption
+00:00 +38: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP identity mismatch fails before redemption
+00:00 +39: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP identity mismatch fails before redemption
+00:00 +40: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP identity mismatch fails before redemption
+00:00 +41: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP identity mismatch fails before redemption
+00:00 +42: D:/Androidstudio2/project/4/test/bird_companion/features/connection/network_provisioning_cubit_test.dart: NetworkProvisioningCubit STA and DPP maps unavailable phone DPP to a dedicated safe phase
+00:00 +43: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership saved credential reconnects without a second HTTP redemption
+00:00 +44: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership saved credential reconnects without a second HTTP redemption
+00:00 +45: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership saved credential reconnects without a second HTTP redemption
+00:00 +46: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership saved credential reconnects without a second HTTP redemption
+00:00 +47: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership saved credential reconnects without a second HTTP redemption
+00:00 +48: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership saved credential reconnects without a second HTTP redemption
+00:00 +49: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership saved credential reconnects without a second HTTP redemption
+00:00 +50: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership unsolicited stale status and stale business failure cannot revive an operation
+00:01 +51: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A3 pairing ownership pairing code stays on BLE and session is cleared on disconnect
+00:01 +52: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A3 pairing ownership does not stack a repository retry on the BLE security retry
+00:01 +53: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow real repository page owner release preserves an online Wi-Fi lease
+00:01 +54: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow cancel during automatic join blocks credentials and a late network callback
+00:01 +55: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow already reachable exact device is verified and reused without starting another AP
+00:01 +56: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow normal AP joins once before HTTP authorization; repeated intent reuses its request
+00:01 +57: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow scan batches aggregate out of order and STA config reuses token
+00:01 +58: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow native Direct AP loss reaches the repository as a retryable error
+00:01 +59: D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: requires BLE reconnect when there is no trusted BLE session
+00:02 +60: D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: loads Direct AP state and treats BLE loss as resumable
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _TextWidgetFinder:<Found 0 widgets with text "蓝牙控制已断开": []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart:72:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart line 72
+The test description was:
+  loads Direct AP state and treats BLE loss as resumable
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +60 -1: D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: loads Direct AP state and treats BLE loss as resumable [E]
+  Test failed. See exception logs above.
+  The test description was: loads Direct AP state and treats BLE loss as resumable
+  
+00:03 +60 -1: D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: ten taps recover control once in place without HTTP verification
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with text "恢复当前盒子蓝牙控制": []" (used in a call to "tap()") could not find
+any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart:91:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  ten taps recover control once in place without HTTP verification
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +60 -2: D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: ten taps recover control once in place without HTTP verification [E]
+  Test failed. See exception logs above.
+  The test description was: ten taps recover control once in place without HTTP verification
+  
+00:03 +60 -2: D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: cancel and page exit ignore late BLE recovery, allowing retry
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with text "恢复当前盒子蓝牙控制": []" (used in a call to "tap()") could not find
+any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart:118:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  cancel and page exit ignore late BLE recovery, allowing retry
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +60 -3: D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: cancel and page exit ignore late BLE recovery, allowing retry [E]
+  Test failed. See exception logs above.
+  The test description was: cancel and page exit ignore late BLE recovery, allowing retry
+  
+00:03 +60 -3: D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: BLE recovery failure stays on settings and can retry
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with text "恢复当前盒子蓝牙控制": []" (used in a call to "tap()") could not find
+any matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart:151:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  BLE recovery failure stays on settings and can retry
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +60 -4: D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: BLE recovery failure stays on settings and can retry [E]
+  Test failed. See exception logs above.
+  The test description was: BLE recovery failure stays on settings and can retry
+  
+00:03 +60 -4: Some tests failed.
+
+Failing tests:
+  D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: BLE recovery failure stays on settings and can retry
+  D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: cancel and page exit ignore late BLE recovery, allowing retry
+  D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: loads Direct AP state and treats BLE loss as resumable
+  D:/Androidstudio2/project/4/test/bird_companion/settings/network_settings_page_test.dart: ten taps recover control once in place without HTTP verification

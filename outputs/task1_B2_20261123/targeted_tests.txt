@@ -1,0 +1,54 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart
+00:00 +0: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: slow pending cleanup cannot turn verified success into a timeout
+00:00 +1: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: pending cleanup failure stays connected and records cleanup separately
+00:00 +2: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: old cleanup serializes with a new page pending record
+00:00 +3: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: superseded page ignores late success and cannot clear new pending metadata
+00:00 +4: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: already ready AP is reused without a second start command
+00:00 +5: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: local credential persistence can be retried explicitly, not automatically
+00:00 +6: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: transient first error waits, resume continues, one verification in flight
+00:00 +7: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: permanent deviceIdMismatch stops without retry
+00:00 +8: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: permanent protocolVersionUnsupported stops without retry
+00:00 +9: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: permanent http_401 stops without retry
+00:00 +10: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: permanent http_403 stops without retry
+00:00 +11: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: permanent http_500 stops without retry
+00:00 +12: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: permanent StateError stops without retry
+00:00 +13: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: timeout bounds even an uncooperative request; continue is HTTP only
+00:00 +14: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: timeout bounds even an uncooperative request; continue is HTTP only
+00:00 +15: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: timeout bounds even an uncooperative request; continue is HTTP only
+00:00 +16: D:/Androidstudio2/project/4/test/bird_companion/features/connection/birdbox_wifi_platform_test.dart: rejects malformed network events at the Dart boundary
+00:00 +17: D:/Androidstudio2/project/4/test/bird_companion/features/connection/birdbox_wifi_platform_test.dart: rejects malformed network events at the Dart boundary
+00:00 +18: D:/Androidstudio2/project/4/test/bird_companion/features/connection/birdbox_wifi_platform_test.dart: maps process binding failure to a retryable network switch error
+00:00 +19: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: cold restore keeps non-secret endpoint and uses no BLE rediscovery
+00:00 +20: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: invalid persisted URI cannot dispatch a request
+00:00 +21: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: normal AP panel describes automatic joining without a manual WLAN entry
+00:00 +22: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: normal AP panel describes automatic joining without a manual WLAN entry
+00:00 +23: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: normal AP panel describes automatic joining without a manual WLAN entry
+00:01 +24: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_handoff_test.dart: normal AP panel describes automatic joining without a manual WLAN entry
+00:01 +25: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership save failure retries persistence without redeeming a consumed session
+00:01 +26: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership save failure retries persistence without redeeming a consumed session
+00:01 +27: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership save failure retries persistence without redeeming a consumed session
+00:01 +28: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership save failure retries persistence without redeeming a consumed session
+00:01 +29: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership same operation with stale request and duplicate terminal have no side effects
+00:01 +30: D:/Androidstudio2/project/4/test/bird_companion/features/connection/network_operation_resume_test.dart: BLE reconnect queries status and ignores every stale operation event
+00:01 +31: D:/Androidstudio2/project/4/test/bird_companion/features/connection/network_operation_resume_test.dart: BLE reconnect queries status and ignores every stale operation event
+00:01 +32: D:/Androidstudio2/project/4/test/bird_companion/features/connection/network_operation_resume_test.dart: BLE reconnect queries status and ignores every stale operation event
+00:01 +33: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP identity mismatch fails before redemption
+00:01 +34: D:/Androidstudio2/project/4/test/bird_companion/features/connection/network_operation_resume_test.dart: stop direct AP always requests previous STA restoration
+00:01 +35: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership saved credential reconnects without a second HTTP redemption
+00:01 +36: D:/Androidstudio2/project/4/test/bird_companion/features/connection/network_operation_resume_test.dart: failed STA recovery rejoins the returned AP and relocates session
+00:01 +37: D:/Androidstudio2/project/4/test/bird_companion/features/connection/network_operation_resume_test.dart: failed STA recovery rejoins the returned AP and relocates session
+00:01 +38: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A3 pairing ownership pairing code stays on BLE and session is cleared on disconnect
+00:01 +39: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A3 pairing ownership does not stack a repository retry on the BLE security retry
+00:01 +40: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow real repository page owner release preserves an online Wi-Fi lease
+00:01 +41: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow cancel during automatic join blocks credentials and a late network callback
+00:01 +42: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow normal AP joins once before HTTP authorization; repeated intent reuses its request
+00:01 +43: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow scan batches aggregate out of order and STA config reuses token
+00:01 +44: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow native Direct AP loss reaches the repository as a retryable error
+00:01 +45: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_connection_coordinator_test.dart: same intent shares the native join future; online survives page token disposal
+00:01 +46: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_connection_coordinator_test.dart: explicit exit releases once and stale cancellation cannot release a new intent
+00:01 +47: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_connection_coordinator_test.dart: cancelled pending join cannot bind a late onAvailable
+00:01 +48: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_connection_coordinator_test.dart: binding failure releases the native request and does not retry the same intent
+00:01 +49: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_connection_coordinator_test.dart: different device waits for old release before requesting a new network
+00:01 +50: D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_connection_coordinator_test.dart: native loss invalidates the lease and stale callbacks cannot promote it online
+00:01 +51: All tests passed!

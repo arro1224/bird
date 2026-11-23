@@ -1,3 +1,4 @@
+import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'dart:async';
 import 'package:aves/bird_companion/core/diagnostics/http_request_diagnostics.dart';
 
@@ -31,10 +32,26 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     Stream<void>? connectionFailures,
     Stream<ApiConnectionFailure>? connectionFailureDetails,
     this.probeReachability,
+    this.prepareSavedNetwork,
+    this.onSavedNetworkVerified,
+    Stream<void>? directApLosses,
   }) : super(const DeviceSessionState()) {
+    _directApLossSubscription = directApLosses?.listen(
+      (_) {
+        if (isClosed || provisioningHandoffActive || state.device?.networkMode != NetworkMode.directAp || _restoring != null) return;
+        emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '盒子直连已断开，正在恢复原设备连接。'));
+        _apLossRetry ??= Timer(retryDelay, () {
+          _apLossRetry = null;
+          if (!isClosed && !provisioningHandoffActive && state.device?.networkMode == NetworkMode.directAp) unawaited(verifySavedSession(intent: 'direct_ap_lost'));
+        });
+      },
+      onError: (Object _, StackTrace _) {
+        /* A malformed event is not evidence of network loss. */
+      },
+    );
     _requestFailureSubscription = connectionFailureDetails != null ? connectionFailureDetails.listen(reportUnreachable) : connectionFailures?.listen((_) => reportUnreachable());
     _networkSubscription = _connectivityMonitor.onNetworkChanged.listen((available) {
-      if (isClosed || provisioningHandoffActive) return;
+      if (isClosed || provisioningHandoffActive || _activeAttempt?.stage == 'direct_ap_restore') return;
       // v10 返修问题 8：Wi-Fi 断开不能让首页/设备页继续显示"已连接"。
       // 断网即刻进入重连态（保留设备身份），子页面据此显示断开/重连中；
       // 网络恢复后由既有 verify 流程转回 connected。
@@ -50,7 +67,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       if (!state.isConnected && state.device != null) unawaited(verifySavedSession(intent: 'network_recovered'));
     });
     _transportSubscription = transportChanges?.listen((_) async {
-      if (isClosed || provisioningHandoffActive || state.device == null || state.phase == DeviceSessionPhase.connecting) return;
+      if (isClosed || provisioningHandoffActive || state.device == null || state.phase == DeviceSessionPhase.connecting || _activeAttempt?.stage == 'direct_ap_restore') return;
       // v10 问题 8：移动数据仍开时关 Wi-Fi，onNetworkChanged 仍是 true；
       // 必须按“Wi-Fi 是否还在”判断，盒子只可能经 Wi-Fi 访问。
       final generation = ++_transportGeneration;
@@ -127,6 +144,10 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   final void Function(Map<String, dynamic>)? diagnostic;
   final Duration retryDelay;
   final Future<bool> Function(Uri baseUri, CancelToken cancelToken)? probeReachability;
+  final Future<void> Function(DeviceConnection device, ConnectionAttempt attempt)? prepareSavedNetwork;
+  final void Function(String attemptId)? onSavedNetworkVerified;
+  StreamSubscription<void>? _directApLossSubscription;
+  Timer? _apLossRetry;
   static const _reachabilityBudget = Duration(seconds: 3);
   CancelToken? _reachabilityProbe;
   String? _reachabilityCheckId;
@@ -251,6 +272,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       operationId: operationId,
       isCurrent: () => !isClosed && generation == _connectionGeneration,
       diagnostic: diagnostic,
+      intent: intent,
       onStage: (stage) {
         if (isClosed || generation != _connectionGeneration) return;
         final message = switch (stage) {
@@ -342,21 +364,38 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
 
   Future<bool> _restoreSavedSession(ConnectionAttempt attempt, {required Duration timeout, String? expectedDeviceId}) async {
     attempt.record('connection_budget', {'deadline_ms': timeout.inMilliseconds});
-    final timer = Timer(timeout, () {
-      if (attempt.isCurrent() && !attempt.committed) {
-        attempt.record('connection_deadline', {'timeout_ms': timeout.inMilliseconds, 'final_trigger': 'deadline'});
-        attempt.token.cancel(TimeoutException('Connection verification deadline'));
-      }
-    });
+    final elapsed = Stopwatch()..start();
+    Timer? timer;
+    void schedule(Duration budget) {
+      timer?.cancel();
+      timer = Timer(budget > elapsed.elapsed ? budget - elapsed.elapsed : Duration.zero, () {
+        if (attempt.isCurrent() && !attempt.committed) {
+          attempt.record('connection_deadline', {'timeout_ms': timeout.inMilliseconds, 'final_trigger': 'deadline'});
+          attempt.token.cancel(TimeoutException('Connection verification deadline'));
+        }
+      });
+    }
+
+    schedule(timeout);
     try {
       return await Future.any<bool>([
-        _runSavedVerification(attempt, expectedDeviceId: expectedDeviceId),
+        _runSavedVerification(
+          attempt,
+          expectedDeviceId: expectedDeviceId,
+          onApPreparation: () {
+            final budget = timeout < const Duration(seconds: 90) ? const Duration(seconds: 90) : timeout;
+            attempt.record('direct_ap_restore_budget', {'deadline_ms': budget.inMilliseconds});
+            schedule(budget);
+          },
+        ),
         attempt.token.whenCancel.then<bool>((error) => throw error),
       ]);
     } catch (error) {
       if (!isClosed && attempt.isCurrent() && !attempt.committed) {
         attempt.record('connection_failed', {'final_trigger': 'verification_failed', ...ConnectionAttempt.errorFields(error)});
-        final message = error is PairingRequiredException || error is ApiException && {401, 403}.contains(error.statusCode)
+        final message = error is DirectApRestoreSuspended
+            ? '自动直连已停止。可在确认后重试原设备，不会反复弹出系统连接请求。'
+            : error is PairingRequiredException || error is ApiException && {401, 403}.contains(error.statusCode)
             ? '盒子可达，但手机授权已失效。请重新安全授权，无需重复配网。'
             : error is ProvisioningException && error.code == ProvisioningErrorCode.deviceIdMismatch
             ? '设备身份不一致，已停止恢复。当前内容为手机缓存。'
@@ -367,11 +406,11 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       }
       return false;
     } finally {
-      timer.cancel();
+      timer?.cancel();
     }
   }
 
-  Future<bool> _runSavedVerification(ConnectionAttempt attempt, {String? expectedDeviceId}) async {
+  Future<bool> _runSavedVerification(ConnectionAttempt attempt, {String? expectedDeviceId, void Function()? onApPreparation}) async {
     final device = await attempt.run('saved_device', _repository.savedDevice);
     attempt.record('saved_device_loaded', {'saved_device_present': device != null, if (device != null) 'base_uri': device.baseUri.toString(), 'endpoint_source': 'saved'});
     if (device == null || (expectedDeviceId != null && device.id != expectedDeviceId)) {
@@ -381,7 +420,12 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     attempt.deviceId = device.id;
     final wasConnected = state.isConnected && state.device?.id == device.id;
     if (!wasConnected) emit(DeviceSessionState(phase: DeviceSessionPhase.reconnecting, device: device, attemptId: attempt.id, verificationStage: 'connectivity', message: '正在恢复上次的盒子连接，当前相册为手机缓存。'));
-    var hasNetwork = await attempt.run('connectivity', () => _connectivityMonitor.hasNetwork);
+    final localAp = device.networkMode == NetworkMode.directAp && prepareSavedNetwork != null;
+    if (localAp) {
+      onApPreparation?.call();
+      await attempt.run('direct_ap_restore', () => prepareSavedNetwork!(device, attempt));
+    }
+    var hasNetwork = localAp || await attempt.run('connectivity', () => _connectivityMonitor.hasNetwork);
     attempt.record('network_checked', {'has_network': hasNetwork});
     if (!hasNetwork) {
       // The OS may briefly report none while Wi-Fi is settling after startup.
@@ -401,6 +445,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
         final status = await _repository.reconnect(cancelToken: attempt.token);
         attempt.check();
         await setConnectedFromStatus(status, attempt: attempt);
+        if (localAp) onSavedNetworkVerified?.call(attempt.id);
         return true;
       } catch (error) {
         attempt.check();
@@ -533,6 +578,8 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   @override
   Future<void> close() async {
     _invalidateConnection();
+    _apLossRetry?.cancel();
+    await _directApLossSubscription?.cancel();
     await _networkSubscription.cancel();
     await _transportSubscription?.cancel();
     await _requestFailureSubscription?.cancel();

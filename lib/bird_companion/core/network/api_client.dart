@@ -6,6 +6,7 @@ import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 
 class ApiBinaryResponse {
   const ApiBinaryResponse({
@@ -32,7 +33,10 @@ class SignedAssetDownloadException implements Exception {
 
 class ApiClient {
   ApiClient({Dio? dio, Dio? publicDio, Dio? assetDio})
-    : _dio =
+    : _ownsDio = dio == null,
+      _ownsPublicDio = publicDio == null,
+      _ownsAssetDio = assetDio == null,
+      _dio =
           dio ??
           Dio(
             BaseOptions(
@@ -73,6 +77,20 @@ class ApiClient {
   final Dio _dio;
   final Dio _publicDio;
   final Dio _assetDio;
+  final bool _ownsDio, _ownsPublicDio, _ownsAssetDio;
+
+  /// Discard sockets created before Android changed the process network. Keep
+  /// Dio options/interceptors and caller-owned test/custom adapters intact.
+  void resetNetworkConnections() {
+    _sessionGeneration++;
+    for (final (client, owned) in [(_dio, _ownsDio), (_publicDio, _ownsPublicDio), (_assetDio, _ownsAssetDio)]) {
+      if (owned && client.httpClientAdapter is IOHttpClientAdapter) {
+        client.httpClientAdapter.close(force: true);
+        client.httpClientAdapter = IOHttpClientAdapter();
+      }
+    }
+  }
+
   final httpDiagnostics = HttpRequestDiagnostics();
   final _connectionFailureDetails = StreamController<ApiConnectionFailure>.broadcast(sync: true);
   final _authenticationFailures = StreamController<int>.broadcast();

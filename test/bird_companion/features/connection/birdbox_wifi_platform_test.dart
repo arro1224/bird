@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:aves/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -12,6 +13,22 @@ void main() {
   final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
   tearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+  test('passes exact AP security and distinguishes unavailable from explicit cancellation', () async {
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return call.method == 'joinDirectAp' ? {'outcome': 'unavailable', 'errorCode': 'wifi_request_unavailable'} : null;
+    });
+    final platform = MethodChannelBirdBoxWifiPlatform(channel: channel, networkEvents: const Stream.empty());
+    final result = await platform.joinDirectAp(ssid: 'Exact-Box', passphrase: 'TEST_ONLY_PASSWORD', security: WifiSecurity.wpa3Personal);
+    expect(result.outcome, WifiJoinOutcome.unavailable);
+    expect(calls.single.arguments['ssid'], 'Exact-Box');
+    expect(calls.single.arguments['security'], 'wpa3_personal');
+    await platform.releaseNetwork(reason: 'sta_connected');
+    expect(calls.last.arguments, {'reason': 'sta_connected'});
+    await platform.dispose();
+  });
 
   test('reports native network loss and clears matching bound network', () async {
     final nativeEvents = StreamController<Object?>.broadcast(sync: true);

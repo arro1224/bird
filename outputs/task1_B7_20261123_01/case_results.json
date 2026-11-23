@@ -1,0 +1,318 @@
+{
+  "date": "2026-11-23",
+  "client": {
+    "client_alias": "vivo_client_01",
+    "manufacturer": "vivo",
+    "model": "vivo X20",
+    "android_release": "8.1.0",
+    "sdk_int": 27,
+    "transport": "USB ADB",
+    "initial_apk_sha256": "b388c52d3159c2dcb81aafd37cdce53725c3618eb36d59a04003fca751e8782f",
+    "keyguard_showing": false,
+    "original_stay_on_while_plugged_in": "0",
+    "peripheral_app_reported_by_user": "拍鸟模拟盒子",
+    "peripheral_role": "Huawei phone as simulated box",
+    "peripheral_installed_build_verified": false,
+    "real_box": false,
+    "generated_at_utc": "2026-11-23T10:04:39.4470851+00:00"
+  },
+  "candidate": {
+    "schema_version": 1,
+    "generated_at_utc": "2026-11-23T09:54:05.5980342+00:00",
+    "mode": "Normal",
+    "delivery_role": "app_board_backend_integration",
+    "official_delivery_flavor": "bird",
+    "source": {
+      "git_sha": "28aeae2a0ba5edf4c19dca584117345d26762e05",
+      "working_tree_clean": false,
+      "build_dirty": true,
+      "build_id": "ble-20261123T095328618Z-56fb4f811179",
+      "source_fingerprint": "56fb4f8111794e08603f2260828f2c25fa545ab5e020befa24f37aa18684b1c1",
+      "build_input_source_fingerprint": "56fb4f8111794e08603f2260828f2c25fa545ab5e020befa24f37aa18684b1c1",
+      "build_input_file_count": 1199,
+      "version_name": "1.14.11",
+      "version_code": 176
+    },
+    "releasable": false,
+    "artifacts": [
+      {
+        "file": "BirdBox-1.14.11-176-debug.apk",
+        "package_id": "deckers.thibault.aves.bird",
+        "flavor": "bird",
+        "build_type": "debug",
+        "target": "lib/main.dart",
+        "scan_permission_policy": "never_for_location",
+        "scan_strategy_fallback_enabled": true,
+        "bytes": 255192312,
+        "sha256": "684e38a5aaa8e66276492e5b9cb839581ba4a7a47c21cb175da40122d5b81a2e",
+        "signing_certificate_sha256": "542da17c96faff1e6c346e9eca9546b09331633b9bfb9ae60c36675e320081b8"
+      }
+    ]
+  },
+  "scope": "real vivo client with independent Huawei simulated peripheral",
+  "formal_acceptance_complete": false,
+  "cases": [
+    {
+      "case_id": "T1-01",
+      "scenario": "首次自动直连",
+      "current_topology_result": "条件不足",
+      "observed_and_limits": "当前模拟盒子不提供 AP，vivo API27 不支持现实现的系统请求；已保存认证的 STA 连接不算首次 AP",
+      "evidence": [
+        "environment.json",
+        "final_inspection.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-02",
+      "scenario": "同盒退出再进至少三次",
+      "current_topology_result": "条件不足",
+      "observed_and_limits": "执行的是三轮查找/重扫/返回；没有执行三轮 AP 退出和重新接入",
+      "evidence": [
+        "a15_r2_rounds.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-03",
+      "scenario": "重开 App 与重启盒子",
+      "current_topology_result": "待补测",
+      "observed_and_limits": "本轮未安排受控盒子重启或 App 冷启动验收；WLAN 故障后的手机重启不代替该例",
+      "evidence": [
+        "vivo_wifi_after_reboot.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-04",
+      "scenario": "相册→任务→设备",
+      "current_topology_result": "当前拓扑子集通过",
+      "observed_and_limits": "真实候选切页和大图显示正常，HTTP/WS 验证成功；没有 AP 请求可验证其释放计数，成功媒体请求未完整保留",
+      "evidence": [
+        "ui_actions.jsonl",
+        "final_inspection.json",
+        "screenshots/media_photo_initial.png"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-05",
+      "scenario": "拒绝/取消/撤权限/忘记网络",
+      "current_topology_result": "条件不足",
+      "observed_and_limits": "没有 AP 系统请求，不删除现有网络、配对或权限来制造首次条件",
+      "evidence": [
+        "environment.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-06",
+      "scenario": "无互联网 AP 与默认路由/VPN",
+      "current_topology_result": "条件不足",
+      "observed_and_limits": "本轮为同 LAN，未建立无互联网盒子 AP、蜂窝或 VPN 对照",
+      "evidence": [
+        "environment.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-07",
+      "scenario": "OPPO 自开热点冲突",
+      "current_topology_result": "未执行指定机型",
+      "observed_and_limits": "无 OPPO 客户端，vivo 不替代 OPPO 专项",
+      "evidence": [
+        "environment.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-08",
+      "scenario": "连点/迟到回调/离页/切设备",
+      "current_topology_result": "待补测",
+      "observed_and_limits": "真实候选仅做正常导航；模拟 UI 用例不能代替系统请求并发与迟到回调",
+      "evidence": [
+        "integration_results.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-09",
+      "scenario": "AP关闭/DHCP/错误设备",
+      "current_topology_result": "条件不足",
+      "observed_and_limits": "外设不提供 AP，未注入真实 DHCP 或身份不符环境",
+      "evidence": [
+        "environment.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-10",
+      "scenario": "后台/锁屏/进程回收",
+      "current_topology_result": "当前拓扑部分通过",
+      "observed_and_limits": "仅 HOME 约3秒后回前台，PID一致、GATT1/1复用；锁屏及系统进程回收未执行",
+      "evidence": [
+        "foreground.json",
+        "final_inspection.json",
+        "screenshots/lifecycle_after.png"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-11",
+      "scenario": "Wi-Fi在线时原页恢复断开的BLE",
+      "current_topology_result": "未形成有效断链",
+      "observed_and_limits": "关闭命令和系统开关尝试后系统仍 ON；未确认断链，不计原页恢复通过；也没有 AP 状态",
+      "evidence": [
+        "ble_cut.json",
+        "ble_actual_cut.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-12",
+      "scenario": "HTTP不通而BLE可用",
+      "current_topology_result": "待补测",
+      "observed_and_limits": "没有独立阻断 HTTP 的可控外设；早期波动不代替定向场景",
+      "evidence": [
+        "baseline_inspection.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-13",
+      "scenario": "恢复控制连点/取消/离页/重试",
+      "current_topology_result": "待补测",
+      "observed_and_limits": "没有形成可确认的断链前置，不计恢复交互通过",
+      "evidence": [
+        "ble_actual_cut.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-14",
+      "scenario": "停止AP与两端恢复旧网",
+      "current_topology_result": "条件不足",
+      "observed_and_limits": "模拟盒子不支持切模式或旧网恢复，不能发送不存在的 AP 停止主线",
+      "evidence": [
+        "environment.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-15",
+      "scenario": "查找/重扫/重进/前后台",
+      "current_topology_result": "当前拓扑通过",
+      "observed_and_limits": "3轮、6次实际扫描；每轮当前卡片唯一且业务/BLE在线；前台同步复用GATT1/1，窗口关键事件无丢失且未记录拆链；首次配网不在本轮",
+      "evidence": [
+        "a15_r2_rounds.json",
+        "discovery_diagnostics.json",
+        "foreground.json",
+        "final_inspection.json",
+        "screenshots/a15_r2_3_after.png"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-16",
+      "scenario": "停广告及历史断链区分",
+      "current_topology_result": "待真外设对照",
+      "observed_and_limits": "未独立停止广播同时保留 HTTP/GATT；集成模拟场景仅证明 widget 行为",
+      "evidence": [
+        "integration_results.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-17",
+      "scenario": "任务二入口与恢复三态",
+      "current_topology_result": "设备集成范围见结果",
+      "observed_and_limits": "设备测试使用真实SSID通道/二维码解码与模拟repository；不包含真盒子入路由器、另一手机热点与真实恢复三态",
+      "evidence": [
+        "integration_results.json"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    },
+    {
+      "case_id": "T1-18",
+      "scenario": "已有持续复制详情",
+      "current_topology_result": "前置条件未满足",
+      "observed_and_limits": "任务页显示无运行中的盒子任务；未执行持续复制对照",
+      "evidence": [
+        "ui_actions.jsonl"
+      ],
+      "formal_matrix": {
+        "OPPO_PMA110_client": "not_run",
+        "Huawei_MIS_AL00_client": "not_run"
+      },
+      "formal_case_accepted": false
+    }
+  ]
+}

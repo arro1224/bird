@@ -10,20 +10,21 @@ abstract interface class DirectApAuthorizationStore {
 
 /// Short-lived provisioning secrets use a separate Keystore namespace, never Hive.
 final class EncryptedDirectApAuthorizationStore implements DirectApAuthorizationStore {
-  const EncryptedDirectApAuthorizationStore();
+  const EncryptedDirectApAuthorizationStore({this.namespace = 'direct-ap'});
+  final String namespace;
   static const _channel = MethodChannel('bird_companion/secure_session');
 
   @override
   Future<Map<String, dynamic>?> load(String deviceId) async {
-    final raw = await _channel.invokeMethod<String>('read', {'deviceId': 'direct-ap:$deviceId'});
+    final raw = await _channel.invokeMethod<String>('read', {'deviceId': '$namespace:$deviceId'});
     return raw == null ? null : Map<String, dynamic>.from(jsonDecode(raw) as Map);
   }
 
   @override
-  Future<void> write(String key, Map<String, dynamic> value) => _channel.invokeMethod<void>('write', {'deviceId': 'direct-ap:$key', 'payload': jsonEncode(value)});
+  Future<void> write(String key, Map<String, dynamic> value) => _channel.invokeMethod<void>('write', {'deviceId': '$namespace:$key', 'payload': jsonEncode(value)});
 
   @override
-  Future<void> remove(String key) => _channel.invokeMethod<void>('delete', {'deviceId': 'direct-ap:$key'});
+  Future<void> remove(String key) => _channel.invokeMethod<void>('delete', {'deviceId': '$namespace:$key'});
 }
 
 final class MemoryDirectApAuthorizationStore implements DirectApAuthorizationStore {

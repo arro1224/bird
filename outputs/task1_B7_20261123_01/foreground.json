@@ -1,0 +1,9 @@
+{
+  "pid_after": "10481",
+  "background_wait_seconds": 3,
+  "returned_at_utc": "2026-11-23T10:47:36.0385548Z",
+  "pid_before": "10481",
+  "same_process": true,
+  "scenario": "home_then_foreground_on_discovery",
+  "started_at_utc": "2026-11-23T10:47:32.0531328Z"
+}

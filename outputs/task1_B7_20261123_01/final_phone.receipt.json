@@ -1,0 +1,11 @@
+{
+  "file": "final_phone.zip",
+  "source_file": "BirdBox_Phone_1.14.11_176_vivo_X20_20261123_105330_338b4601-cdd3-42f2-815b-dcf4dcdf78c3_8ae28581.zip",
+  "bytes": 146025,
+  "sha256": "c662865f427069b3b1ebb384e76f992806dcbaf0d255d8295401ef746307239b",
+  "expected_hash_source": "independently observed App final-file SHA256 in UI hierarchy",
+  "receipt_capture": "build/task1_B7_20261123_01/private/final_receipt_hash_ui.xml",
+  "receipt_xml_sha256": "76bb7ab433c02b32de8db949808444572c982a8aad937c0b2a103910e4dbcd73",
+  "transport": "ADB run-as of own Debug App; native file picker cancelled; no external share",
+  "received_hash_and_size_match_ui": true
+}

@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:dio/dio.dart';
+import 'package:aves/bird_companion/features/connection/domain/connection_cancellation.dart';
 import 'package:crypto/crypto.dart';
 import 'package:aves/bird_companion/features/connection/domain/request_id_factory.dart';
 import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
@@ -49,6 +51,7 @@ final class NetworkProvisioningState {
     this.confirmedMode,
     this.recoveredMode,
     this.directApStopReason,
+    this.stoppedStaRestored,
     this.dppAvailability,
     this.dppAvailabilityChecking = false,
     this.error,
@@ -67,11 +70,13 @@ final class NetworkProvisioningState {
   final ProvisioningNetworkMode? confirmedMode;
   final ProvisioningNetworkMode? recoveredMode;
   final String? directApStopReason;
+  final bool? stoppedStaRestored;
   final DppAvailability? dppAvailability;
   final bool dppAvailabilityChecking;
   final Object? error;
   final bool canCancel;
   final String? directApSsid;
+
   /// Set only when the failure came from joining the target Wi-Fi.
   final NetworkProvisioningFailureOrigin? failureOrigin;
 
@@ -86,6 +91,7 @@ final class NetworkProvisioningState {
     ProvisioningNetworkMode? confirmedMode,
     ProvisioningNetworkMode? recoveredMode,
     String? directApStopReason,
+    bool? stoppedStaRestored,
     DppAvailability? dppAvailability,
     bool? dppAvailabilityChecking,
     Object? error,
@@ -112,6 +118,7 @@ final class NetworkProvisioningState {
     confirmedMode: clearConfirmedMode ? null : confirmedMode ?? this.confirmedMode,
     recoveredMode: clearRecoveredMode ? null : recoveredMode ?? this.recoveredMode,
     directApStopReason: clearDirectApStopReason ? null : directApStopReason ?? this.directApStopReason,
+    stoppedStaRestored: clearDirectApStopReason ? null : stoppedStaRestored ?? this.stoppedStaRestored,
     dppAvailability: clearDppAvailability ? null : dppAvailability ?? this.dppAvailability,
     dppAvailabilityChecking: dppAvailabilityChecking ?? this.dppAvailabilityChecking,
     error: clearError ? null : error ?? this.error,
@@ -126,6 +133,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     this._repository, {
     this.directApHandoff,
     this.resolveStaEndpoint,
+    this.reconcileStop = false,
     this.diagnostic,
     this.onIntentStarted,
     this.onIntentEnded,
@@ -139,6 +147,10 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   final ProvisioningRepository _repository;
+  final bool reconcileStop;
+  Timer? _stopPoll, _stopDeadline;
+  bool _readingStop = false;
+  String? _lastStopOperationId;
   final DirectApHandoffCubit? directApHandoff;
   final Future<Uri?> Function(String deviceId)? resolveStaEndpoint;
   final void Function(Map<String, dynamic>)? diagnostic;
@@ -162,6 +174,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   @override
   void emit(NetworkProvisioningState state) {
     super.emit(state);
+    if (reconcileStop && state.phase == NetworkProvisioningPhase.stopped && state.stoppedStaRestored == true && state.error == null) return;
     if (const {
       NetworkProvisioningPhase.failure,
       NetworkProvisioningPhase.cancelled,
@@ -270,6 +283,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       return;
     }
     final generation = ++_generation;
+    if (reconcileStop) _beginIntent('stop_ap_intent_started');
     emit(
       state.copyWith(
         phase: NetworkProvisioningPhase.stoppingDirectAp,
@@ -286,6 +300,8 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       final accepted = await _repository.stopDirectAp();
       if (isClosed || generation != _generation) return;
       emit(state.copyWith(activeOperationId: accepted.operationId));
+      _lastStopOperationId = accepted.operationId;
+      if (reconcileStop) _startStopReconciliation(generation);
     } catch (error) {
       if (isClosed || generation != _generation) return;
       emit(
@@ -303,7 +319,8 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   /// This is used after BLE reconnect. An accepted operation continues on the
   /// box while the transport is down, so local phase memory must not be used as
   /// the source of truth.
-  Future<void> resumeAfterBleReconnect(ProvisioningDeviceInfo info, {bool handoffDirectAp = true}) async {
+  Future<void> resumeAfterBleReconnect(ProvisioningDeviceInfo info, {bool handoffDirectAp = true, bool verifyBusiness = true, CancelToken? cancelToken}) async {
+    cancelToken?.throwIfCancellationRequested();
     _resumeConsumed = true;
     if (directApHandoff?.state.active == true) return;
     final generation = ++_generation;
@@ -317,7 +334,14 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     );
     try {
       final status = await _repository.getNetworkStatus();
-      if (isClosed || generation != _generation) return;
+      cancelToken?.throwIfCancellationRequested();
+      if (isClosed || generation != _generation || cancelToken?.isCancelled == true) return;
+      if (reconcileStop && _lastStopOperationId != null && status.operationId == _lastStopOperationId && !status.busy && status.activeMode != ProvisioningNetworkMode.directAp) {
+        _beginIntent('resume_stop_terminal');
+        emit(state.copyWith(phase: NetworkProvisioningPhase.stoppingDirectAp, activeOperationId: status.operationId, operationState: status.operationState, canCancel: false));
+        _startStopReconciliation(generation);
+        return;
+      }
       if (status.busy && status.operationId != null) {
         emit(
           state.copyWith(
@@ -328,6 +352,11 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
             clearError: true,
           ),
         );
+        if (reconcileStop && status.operationState == NetworkOperationState.stoppingAp) {
+          _beginIntent('resume_stop_intent');
+          _lastStopOperationId = status.operationId;
+          _startStopReconciliation(generation);
+        }
         return;
       }
       if (status.activeMode == ProvisioningNetworkMode.directAp && status.operationState == NetworkOperationState.apReady && status.baseUri != null) {
@@ -335,7 +364,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
           _directApReady(status.baseUri!, status.operationId ?? 'existing-direct-ap', status.directAp.ssid);
           return;
         }
-        await _verifyResumedTerminal(status);
+        if (verifyBusiness) await _verifyResumedTerminal(status);
         if (isClosed || generation != _generation) return;
         emit(
           state.copyWith(
@@ -354,7 +383,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
           _staReady(status.baseUri!, status.operationId ?? 'existing-sta');
           return;
         }
-        await _verifyResumedTerminal(status);
+        if (verifyBusiness) await _verifyResumedTerminal(status);
         if (isClosed || generation != _generation) return;
         emit(
           state.copyWith(
@@ -395,7 +424,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       // the normal connection-method chooser.
       _endIntent();
     } catch (error) {
-      if (isClosed || generation != _generation) return;
+      if (isClosed || generation != _generation || cancelToken?.isCancelled == true) return;
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.failure,
@@ -411,9 +440,86 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     await verifier?.verifyNetworkStatus(status);
   }
 
+  void acceptVerifiedHandoff(ProvisioningCompletion completion, String operationId) {
+    if (isClosed || state.trustedDeviceId != completion.deviceId || state.activeOperationId != operationId) return;
+    emit(state.copyWith(phase: NetworkProvisioningPhase.success, baseUri: completion.baseUri, confirmedMode: completion.networkMode, clearError: true));
+  }
+
+  void _stopStopReconciliation() {
+    _stopPoll?.cancel();
+    _stopDeadline?.cancel();
+    _stopPoll = _stopDeadline = null;
+  }
+
+  Future<void> retryStoppedNetwork() async {
+    if (!reconcileStop || _lastStopOperationId == null || _readingStop) return;
+    _beginIntent('retry_stopped_network');
+    _startStopReconciliation(_generation);
+  }
+
+  void _startStopReconciliation(int generation) {
+    _stopStopReconciliation();
+    _stopPoll = Timer.periodic(pollInterval, (_) => unawaited(_pollStoppedNetwork(generation)));
+    _stopDeadline = Timer(reconciliationWindow, () {
+      _stopStopReconciliation();
+      if (isClosed || generation != _generation) return;
+      emit(state.copyWith(phase: state.phase == NetworkProvisioningPhase.stopped ? NetworkProvisioningPhase.stopped : NetworkProvisioningPhase.failure, error: const NetworkStatusConfirmationException(), canCancel: false));
+    });
+    unawaited(_pollStoppedNetwork(generation));
+  }
+
+  Future<void> _pollStoppedNetwork(int generation) async {
+    if (isClosed || generation != _generation || _readingStop || _lastStopOperationId == null) return;
+    _readingStop = true;
+    try {
+      ProvisioningNetworkStatus? status;
+      try {
+        status = await _repository.getNetworkStatus();
+      } catch (_) {
+        /* BLE may drop during AP stop. */
+      }
+      if (isClosed || generation != _generation) return;
+      if (status?.operationId == _lastStopOperationId && status?.busy == false) {
+        if (status!.activeMode != ProvisioningNetworkMode.directAp && _repository is StoppedDirectApCleanup) {
+          await (_repository as StoppedDirectApCleanup).confirmStoppedNetwork(state.trustedDeviceId!, _lastStopOperationId!);
+          if (isClosed || generation != _generation) return;
+        }
+        if (status.activeMode == ProvisioningNetworkMode.infrastructureSta && status.operationState == NetworkOperationState.staConnected && status.baseUri != null) {
+          if (directApHandoff != null) {
+            _staReady(status.baseUri!, _lastStopOperationId!);
+          } else {
+            await _verifyResumedTerminal(status);
+            if (isClosed || generation != _generation) return;
+            _stopStopReconciliation();
+            emit(state.copyWith(phase: NetworkProvisioningPhase.success, baseUri: status.baseUri, confirmedMode: ProvisioningNetworkMode.infrastructureSta, stoppedStaRestored: true, clearError: true));
+          }
+          return;
+        }
+        if (status.activeMode == ProvisioningNetworkMode.none) {
+          _stopStopReconciliation();
+          emit(state.copyWith(phase: NetworkProvisioningPhase.stopped, stoppedStaRestored: false, canCancel: false));
+          return;
+        }
+      }
+      // A correlated stop terminal is required before endpoint discovery can
+      // complete an operation whose BLE result disappeared with the AP.
+      if (state.phase == NetworkProvisioningPhase.stopped && state.stoppedStaRestored == true) {
+        final id = state.trustedDeviceId;
+        final endpoint = id == null ? null : await resolveStaEndpoint?.call(id).timeout(const Duration(seconds: 5));
+        if (!isClosed && generation == _generation && endpoint != null && directApHandoff != null) _staReady(endpoint, _lastStopOperationId!);
+      }
+    } catch (error, stack) {
+      if (!isClosed && generation == _generation) _trace('stop_network_verification_pending', error: error, stack: stack);
+    } finally {
+      _readingStop = false;
+    }
+  }
+
   void backToMethodSelection() {
     _endIntent();
     _stopStaReconciliation();
+    _stopStopReconciliation();
+    _lastStopOperationId = null;
     if (directApHandoff?.state.active == true) unawaited(directApHandoff!.cancel());
     _generation++;
     _clearScanAccumulator();
@@ -445,6 +551,8 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   void openWifiProvisioning(ProvisioningDeviceInfo info) {
+    _stopStopReconciliation();
+    _lastStopOperationId = null;
     final generation = ++_generation;
     _clearScanAccumulator();
     emit(
@@ -750,9 +858,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
             phase: NetworkProvisioningPhase.failure,
             operationState: payload.operationState,
             error: const NetworkOperationFailedException(),
-            failureOrigin: state.phase == NetworkProvisioningPhase.configuringSta
-                ? NetworkProvisioningFailureOrigin.wifiJoin
-                : null,
+            failureOrigin: state.phase == NetworkProvisioningPhase.configuringSta ? NetworkProvisioningFailureOrigin.wifiJoin : null,
             canCancel: false,
           ),
         );
@@ -775,10 +881,18 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
           clearBaseUri: true,
           clearConfirmedMode: true,
           directApStopReason: payload.reason,
+          stoppedStaRestored: payload.restoredSta,
           canCancel: false,
           clearError: true,
         ),
       );
+      if (reconcileStop) {
+        if (!payload.restoredSta) {
+          _stopStopReconciliation();
+        } else {
+          unawaited(_pollStoppedNetwork(_generation));
+        }
+      }
       return;
     }
     if (payload is DppBootstrapReady && state.phase == NetworkProvisioningPhase.preparingDpp) {
@@ -811,6 +925,10 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       return;
     }
     if (payload is NetworkRecovered) {
+      if (reconcileStop && state.phase == NetworkProvisioningPhase.stoppingDirectAp && payload.recoveredMode == ProvisioningNetworkMode.infrastructureSta && payload.baseUri != null) {
+        _staReady(payload.baseUri!, payload.operationId);
+        return;
+      }
       final acceptsRecovery = switch (state.phase) {
         NetworkProvisioningPhase.startingDirectAp || NetworkProvisioningPhase.stoppingDirectAp || NetworkProvisioningPhase.configuringSta || NetworkProvisioningPhase.preparingDpp || NetworkProvisioningPhase.failure => true,
         _ => false,
@@ -849,6 +967,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   void _staReady(Uri baseUri, String operationId) {
     _stopStaReconciliation();
+    _stopStopReconciliation();
     emit(
       state.copyWith(
         phase: NetworkProvisioningPhase.confirmingNetwork,
@@ -856,6 +975,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
         activeOperationId: operationId,
         baseUri: baseUri,
         confirmedMode: ProvisioningNetworkMode.infrastructureSta,
+        stoppedStaRestored: _lastStopOperationId == operationId ? true : null,
         clearError: true,
         canCancel: false,
       ),
@@ -1072,6 +1192,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   @override
   Future<void> close() async {
+    _stopStopReconciliation();
     _endIntent();
     _stopStaReconciliation();
     _generation++;

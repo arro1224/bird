@@ -1,0 +1,1 @@
+PASS birdbox-v1@1.0.0: OpenAPI, refs, schemas and fixtures are valid.

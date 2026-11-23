@@ -1,0 +1,74 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_discovery_lifecycle_test.dart
+00:00 +0: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_discovery_lifecycle_test.dart: reopening observes trusted GATT without claims, advertisements or teardown
+00:00 +1: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_discovery_lifecycle_test.dart: rescan preserves current box and merges candidates only by opaque transport
+00:00 +2: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_discovery_lifecycle_test.dart: foreground return restarts one scan and leaves GATT intact
+00:00 +3: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_discovery_lifecycle_test.dart: disconnected current box is removed and cannot be used from cached identity
+00:00 +4: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_discovery_lifecycle_test.dart: explicit switch invalidates the old page without old cleanup claiming the new owner
+00:00 +5: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_discovery_lifecycle_test.dart: late scan result from a superseded round cannot populate the new list
+00:00 +6: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +7: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +8: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +9: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +10: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +11: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +12: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +13: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +14: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +15: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +16: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +17: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +18: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +19: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +20: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +21: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +22: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +23: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +24: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +25: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current trusted box survives rescan, reentry and foreground without advertising
+00:01 +26: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_batch2_lifecycle_test.dart: location return scans once only after our settings departure
+00:01 +27: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_batch2_lifecycle_test.dart: return with location disabled keeps guidance and does not scan
+00:01 +28: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current advertisement is not duplicated and lost control is removed
+00:01 +29: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current advertisement is not duplicated and lost control is removed
+00:01 +30: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current advertisement is not duplicated and lost control is removed
+00:02 +31: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current advertisement is not duplicated and lost control is removed
+00:02 +32: D:/Androidstudio2/project/4/test/bird_companion/features/connection/task1_ui_lifecycle_test.dart: T1 A15 current advertisement is not duplicated and lost control is removed
+00:02 +33: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_batch2_lifecycle_test.dart: location error button opens settings and renders privacy guidance
+00:02 +34: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_batch2_lifecycle_test.dart: location error button opens settings and renders privacy guidance
+00:02 +35: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_batch2_lifecycle_test.dart: pairing progress shows each native stage and allows owned cancel
+00:03 +36: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: Bluetooth unavailable offers another scan rather than returning to device selection
+00:03 +37: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE connection page shows discovered boxes before network methods
+00:03 +38: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: T1 B5 real repository rediscovery observes owner and preserves online AP
+00:04 +39: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: T1 B5 real repository rediscovery observes owner and preserves online AP
+00:04 +40: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: empty BLE result exposes a secret-safe support diagnostic id
+00:04 +41: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: empty BLE result exposes a secret-safe support diagnostic id
+00:04 +42: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: empty BLE result exposes a secret-safe support diagnostic id
+00:04 +43: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: T1 B3 saved AP and B4 control recovery explicit retry refreshes changed AP credentials over authorized BLE
+00:04 +44: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE failure exposes the diagnostic JSON copy action
+00:04 +45: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE failure exposes the diagnostic JSON copy action
+00:04 +46: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE failure exposes the diagnostic JSON copy action
+00:04 +47: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE failure exposes the diagnostic JSON copy action
+00:04 +48: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE failure exposes the diagnostic JSON copy action
+00:04 +49: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE failure exposes the diagnostic JSON copy action
+00:04 +50: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE failure exposes the diagnostic JSON copy action
+00:04 +51: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership deferred HTTP persistence retry needs no new network command
+00:04 +52: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: pairing and completed pages keep the trace export action
+00:04 +53: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: pairing and completed pages keep the trace export action
+00:04 +54: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: pairing and completed pages keep the trace export action
+00:04 +55: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: pairing and completed pages keep the trace export action
+00:04 +56: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: pairing and completed pages keep the trace export action
+00:04 +57: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: BLE-21 redemption and event ownership HTTP identity mismatch fails before redemption
+00:04 +58: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE page provides and renders Direct AP provisioning
+00:04 +59: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE page provides and renders Direct AP provisioning
+00:04 +60: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE page provides and renders Direct AP provisioning
+00:04 +61: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE page provides and renders Direct AP provisioning
+00:04 +62: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE page provides and renders Direct AP provisioning
+00:04 +63: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: BLE page provides and renders Direct AP provisioning
+00:04 +64: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow cancel during automatic join blocks credentials and a late network callback
+00:04 +65: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: leaving unfinished BLE provisioning releases transport and network binding
+00:04 +66: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: leaving unfinished BLE provisioning releases transport and network binding
+00:04 +67: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: leaving unfinished BLE provisioning releases transport and network binding
+00:04 +68: D:/Androidstudio2/project/4/test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart: A4 AP/STA platform flow scan batches aggregate out of order and STA config reuses token
+00:04 +69: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: successful Direct AP hand-off keeps binding and opens the app shell
+00:04 +70: D:/Androidstudio2/project/4/test/bird_companion/features/connection/ble_connection_page_test.dart: successful Direct AP hand-off keeps binding and opens the app shell
+00:04 +71: All tests passed!

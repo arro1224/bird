@@ -1,9 +1,10 @@
 import 'dart:async';
 
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:flutter/services.dart';
 
-enum WifiJoinOutcome { joined, userCancelled, deniedNoInternet, systemDenied, failed }
+enum WifiJoinOutcome { joined, userCancelled, deniedNoInternet, systemDenied, unavailable, failed }
 
 final class BirdBoxWifiNetwork {
   const BirdBoxWifiNetwork({required this.handle, required this.ssid});
@@ -37,9 +38,9 @@ final class WifiNetworkLoss {
 abstract interface class BirdBoxWifiPlatform {
   Stream<WifiNetworkLoss> get networkLosses;
   Future<bool> ensurePermissions();
-  Future<WifiJoinResult> joinDirectAp({required String ssid, required String passphrase});
+  Future<WifiJoinResult> joinDirectAp({required String ssid, required String passphrase, WifiSecurity security = WifiSecurity.wpa2Personal});
   Future<void> bindProcessToNetwork(BirdBoxWifiNetwork network);
-  Future<void> releaseNetwork();
+  Future<void> releaseNetwork({String reason = 'user_cancelled'});
   BirdBoxWifiNetwork? get boundNetwork;
   Future<void> dispose();
 }
@@ -80,10 +81,12 @@ final class MethodChannelBirdBoxWifiPlatform implements BirdBoxWifiPlatform {
   Future<WifiJoinResult> joinDirectAp({
     required String ssid,
     required String passphrase,
+    WifiSecurity security = WifiSecurity.wpa2Personal,
   }) async {
     final raw = await _invoke<Map<Object?, Object?>>('joinDirectAp', {
       'ssid': ssid,
       'passphrase': passphrase,
+      'security': security.wireValue,
     });
     if (raw == null) {
       throw const ProvisioningException(
@@ -96,6 +99,7 @@ final class MethodChannelBirdBoxWifiPlatform implements BirdBoxWifiPlatform {
       'user_cancelled' => WifiJoinOutcome.userCancelled,
       'denied_no_internet' => WifiJoinOutcome.deniedNoInternet,
       'system_denied' => WifiJoinOutcome.systemDenied,
+      'unavailable' => WifiJoinOutcome.unavailable,
       _ => WifiJoinOutcome.failed,
     };
     final handle = raw['handle'];
@@ -122,8 +126,8 @@ final class MethodChannelBirdBoxWifiPlatform implements BirdBoxWifiPlatform {
   }
 
   @override
-  Future<void> releaseNetwork() async {
-    await _invoke<void>('releaseNetwork');
+  Future<void> releaseNetwork({String reason = 'user_cancelled'}) async {
+    await _invoke<void>('releaseNetwork', {'reason': reason});
     _boundNetwork = null;
   }
 
@@ -172,6 +176,7 @@ final class MethodChannelBirdBoxWifiPlatform implements BirdBoxWifiPlatform {
           'wifi_unsupported' => ProvisioningErrorCode.capabilityUnsupported,
           'wifi_join_denied' => ProvisioningErrorCode.systemWifiJoinDenied,
           'wifi_bind_failed' => ProvisioningErrorCode.networkSwitchFailed,
+          'wifi_security_unsupported' => ProvisioningErrorCode.wifiSecurityUnsupported,
           'invalid_request' => ProvisioningErrorCode.invalidRequest,
           _ => ProvisioningErrorCode.networkInternalError,
         },

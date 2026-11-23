@@ -1,3 +1,6 @@
+import 'package:aves/bird_companion/features/connection/data/ble/ble_protocol_constants.dart';
+import 'package:aves/bird_companion/features/connection/data/direct_ap_profile_store.dart';
+import 'package:aves/bird_companion/features/connection/data/direct_ap_connection_coordinator.dart';
 import 'package:aves/bird_companion/features/connection/domain/ble_pairing_progress.dart';
 import 'package:aves/bird_companion/features/connection/domain/ble_attempt_failure.dart';
 import 'dart:async';
@@ -28,10 +31,15 @@ final class ProvisioningRepositoryImpl
         ProvisioningRepository,
         DppAvailabilityRepository,
         ProvisioningSessionRepository,
+        ReusableBleSession,
         ProvisioningNetworkStatusVerifier,
         BleScanDiagnosticsRepository,
         BleProvisioningControl,
         DirectApHttpPreparation,
+        DirectApNetworkPreparation,
+        SavedDirectApRecovery,
+        BleControlRecovery,
+        StoppedDirectApCleanup,
         ProvisioningHttpAuthorizationReadiness,
         ProvisioningEndpointSnapshot,
         BleFailureDiagnostics,
@@ -54,6 +62,8 @@ final class ProvisioningRepositoryImpl
     RequestIdFactory? requestIds,
     DateTime Function()? clock,
     DirectApAuthorizationStore? directApAuthorizationStore,
+    DirectApProfileStore? directApProfileStore,
+    void Function(Map<String, dynamic>)? diagnostic,
   }) => ProvisioningRepositoryImpl._(
     ble,
     wifi,
@@ -67,6 +77,8 @@ final class ProvisioningRepositoryImpl
     requestIds ?? SecureRequestIdFactory(),
     clock ?? DateTime.now,
     directApAuthorizationStore ?? MemoryDirectApAuthorizationStore(),
+    DirectApConnectionCoordinator(wifi, diagnostic: diagnostic),
+    directApProfileStore ?? DirectApProfileStore(MemoryDirectApAuthorizationStore()),
   );
 
   ProvisioningRepositoryImpl._(
@@ -82,6 +94,8 @@ final class ProvisioningRepositoryImpl
     this._requestIds,
     this._clock,
     this._directApAuthorizationStore,
+    this.directApConnection,
+    this._apProfiles,
   ) {
     _bleEventSubscription = _ble.events.asyncMap(_processBleEvent).where((event) => event != null).cast<ProvisioningEvent>().listen(_events.add, onError: _processBleError);
     _disconnectSubscription = _ble.disconnects.listen((_) {
@@ -104,6 +118,17 @@ final class ProvisioningRepositoryImpl
 
   final BirdBoxBleDataSource _ble;
   final BirdBoxWifiPlatform _wifi;
+  final DirectApConnectionCoordinator directApConnection;
+  final DirectApProfileStore _apProfiles;
+  final Map<String, ProvisioningDevice> _bleDevices = {};
+  final _sessionChanges = StreamController<void>.broadcast();
+  @override
+  Stream<void> get sessionChanges => _sessionChanges.stream;
+  final Map<String, String> _profileAttempts = {};
+  final Set<String> _automaticJoinBlocked = {};
+  Future<ProvisioningDeviceInfo>? _controlRecovery;
+  String? _controlRecoveryDevice, _expectedRecoveryDevice;
+
   final BirdBoxDppPlatform _dpp;
   final ClientIdentityStore _clientIdentityStore;
   final SecureSessionStore _credentialStore;
@@ -120,6 +145,249 @@ final class ProvisioningRepositoryImpl
   final DateTime Function() _clock;
   final DirectApAuthorizationStore _directApAuthorizationStore;
   final Map<String, SessionCredential> _directApUnsavedCredentials = {};
+  _DirectApNetworkConfiguration? _readyAp;
+  String? _readyApDeviceId;
+
+  @override
+  Future<bool> prepareDirectApNetwork(ProvisioningCompletion completion, {required String operationId, required String attemptId, required CancelToken cancelToken, bool manualRescue = false}) async {
+    cancelToken.throwIfCancellationRequested();
+    _profileAttempts[completion.deviceId] = attemptId;
+    if (_readyApDeviceId != completion.deviceId || _readyAp == null) {
+      final stored = await _apProfiles.load(completion.deviceId);
+      cancelToken.throwIfCancellationRequested();
+      if (stored != null) _useProfile(stored);
+    }
+    final ready = _readyApDeviceId == completion.deviceId ? _readyAp : null;
+    _profileAttempts[completion.deviceId] = attemptId;
+    if (completion.networkMode != ProvisioningNetworkMode.directAp) return false;
+    if (manualRescue || ready == null) {
+      if (manualRescue) await directApConnection.release(reason: 'manual_rescue', intentId: attemptId);
+      // Reuse a genuinely reachable current AP, not a cached SSID/approval.
+      // This probe is public and sends no pairing material or bearer token.
+      final health = await _healthApi.read(completion.baseUri, cancellation: cancelToken);
+      cancelToken.throwIfCancellationRequested();
+      if (health.deviceId != completion.deviceId) throw const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false);
+      return manualRescue; // A manual switch must also rebuild old sockets.
+    }
+    if (_readyApDeviceId != completion.deviceId || ready.baseUri != completion.baseUri || (ready.operationId != operationId && !operationId.startsWith('existing-'))) throw const DirectApConfigurationUnavailable();
+    await _apProfiles.setEnabled(completion.deviceId, true);
+    cancelToken.throwIfCancellationRequested();
+    final before = directApConnection.networkGeneration;
+    await directApConnection.connect(deviceId: completion.deviceId, operationId: operationId, intentId: attemptId, ssid: ready.ssid, passphrase: ready.passphrase, security: ready.security, cancelToken: cancelToken);
+    cancelToken.throwIfCancellationRequested();
+    return before != directApConnection.networkGeneration;
+  }
+
+  @override
+  void confirmDirectApNetwork(String attemptId) => directApConnection.markOnline(attemptId);
+
+  @override
+  Future<void> releaseDirectApNetwork(String attemptId, {required String reason}) async {
+    final ids = _profileAttempts.entries.where((e) => e.value == attemptId).map((e) => e.key).toList();
+    final release = directApConnection.release(reason: reason, intentId: attemptId);
+    if (reason == 'cancelled') {
+      for (final id in ids) {
+        await _apProfiles.setEnabled(id, false);
+        _automaticJoinBlocked.add(id);
+      }
+    }
+    await release;
+  }
+
+  @override
+  Future<void> selectDirectApDevice(String? deviceId) => directApConnection.selectDevice(deviceId);
+
+  void _useProfile(DirectApProfile profile) {
+    _readyApDeviceId = profile.deviceId;
+    _readyAp = _DirectApNetworkConfiguration(profile.operationId, profile.ssid, profile.passphrase, profile.security, profile.baseUri);
+  }
+
+  @override
+  Stream<void> get directApNetworkLosses => _wifi.networkLosses.map((_) {});
+
+  @override
+  Future<bool> restoreSavedDirectApNetwork(String deviceId, String attemptId, CancelToken token, {bool userInitiated = false}) async {
+    token.throwIfCancellationRequested();
+    _profileAttempts[deviceId] = attemptId;
+    var profile = await _apProfiles.load(deviceId);
+    token.throwIfCancellationRequested();
+    if (!userInitiated && (_automaticJoinBlocked.contains(deviceId) || profile?.automaticRestore == false)) throw const DirectApRestoreSuspended();
+    _profileAttempts[deviceId] = attemptId;
+    if (userInitiated && (profile == null || !profile.automaticRestore || _automaticJoinBlocked.contains(deviceId))) {
+      try {
+        profile = await _refreshApProfile(deviceId, token);
+      } catch (_) {
+        if (_profileAttempts[deviceId] == attemptId) _automaticJoinBlocked.add(deviceId);
+        rethrow;
+      }
+      if (profile == null) return true; // BLE confirmed that the box is on STA.
+    }
+    if (profile == null) throw const DirectApConfigurationUnavailable();
+    _useProfile(profile);
+    final before = directApConnection.networkGeneration;
+    try {
+      await directApConnection.connect(deviceId: deviceId, operationId: profile.operationId, intentId: attemptId, ssid: profile.ssid, passphrase: profile.passphrase, security: profile.security, cancelToken: token);
+      token.throwIfCancellationRequested();
+      await _rememberDynamicAddress?.call(deviceId, profile.baseUri, ProvisioningNetworkMode.directAp);
+      token.throwIfCancellationRequested();
+      if (userInitiated) await _apProfiles.setEnabled(deviceId, true);
+      token.throwIfCancellationRequested();
+      if (_profileAttempts[deviceId] == attemptId) _automaticJoinBlocked.remove(deviceId);
+      return before != directApConnection.networkGeneration;
+    } catch (error) {
+      // onUnavailable may mean user denial. Do not issue another OS prompt
+      // merely because a transport/foreground event arrives in this process.
+      if (_profileAttempts[deviceId] == attemptId) {
+        _automaticJoinBlocked.add(deviceId);
+        if (error is ProvisioningException && error.code == ProvisioningErrorCode.userCancelledWifiDialog) await _apProfiles.setEnabled(deviceId, false);
+      }
+      rethrow;
+    }
+  }
+
+  Future<DirectApProfile?> _refreshApProfile(String deviceId, CancelToken token) async {
+    await recoverBleControl(deviceId, token);
+    token.throwIfCancellationRequested();
+    final status = await getNetworkStatus();
+    token.throwIfCancellationRequested();
+    if (status.busy) throw const ProvisioningException(code: ProvisioningErrorCode.networkOperationBusy, retryable: true);
+    if (status.activeMode == ProvisioningNetworkMode.infrastructureSta && status.baseUri != null) {
+      await directApConnection.release(reason: 'sta_confirmed', deviceId: deviceId);
+      await _apProfiles.setEnabled(deviceId, false);
+      await _rememberDynamicAddress?.call(deviceId, status.baseUri!, ProvisioningNetworkMode.infrastructureSta);
+      return null;
+    }
+    // The existing authorized start command requests current AP configuration.
+    // It is never retried automatically; firmware idempotence remains a real-
+    // hardware gate. No new wire command or guessed password is introduced.
+    String? operationId;
+    final ready = Completer<void>();
+    final subscription = events.listen(
+      (event) {
+        if (event.payload is DirectApReady && event.deviceId == deviceId && event.operationId == operationId && !ready.isCompleted) ready.complete();
+      },
+      onError: (Object error, StackTrace stack) {
+        if (!ready.isCompleted) ready.completeError(error, stack);
+      },
+    );
+    // Observe a possible early error even before the command is accepted.
+    final observed = ready.future;
+    unawaited(observed.then<void>((_) {}, onError: (Object _, StackTrace _) {}));
+    var completed = false;
+    try {
+      final accepted = await startDirectAp();
+      operationId = accepted.operationId;
+      token.throwIfCancellationRequested();
+      if (_readyApDeviceId != deviceId || _readyAp?.operationId != operationId) {
+        await Future.any<void>([observed.timeout(const Duration(seconds: 20)), token.whenCancel.then<void>((e) => throw e)]);
+      }
+      token.throwIfCancellationRequested();
+      final profile = await _apProfiles.load(deviceId);
+      token.throwIfCancellationRequested();
+      completed = true;
+      return profile;
+    } finally {
+      if (!completed && operationId != null) {
+        _operations.remove(operationId);
+        _operationRequests.remove(operationId);
+      }
+      await subscription.cancel();
+    }
+  }
+
+  @override
+  Future<ProvisioningDeviceInfo> recoverBleControl(String deviceId, CancelToken cancelToken) {
+    cancelToken.throwIfCancellationRequested();
+    if (_controlRecovery != null) {
+      if (_controlRecoveryDevice != deviceId) return Future.error(const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: true));
+      return Future.any([_controlRecovery!, cancelToken.whenCancel.then<ProvisioningDeviceInfo>((e) => throw e)]);
+    }
+    if (_deviceInfo != null && _ble.isConnected) {
+      if (_deviceInfo!.deviceId != deviceId) return Future.error(const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false));
+      return Future.value(_deviceInfo!);
+    }
+    final future = _recoverBleControl(deviceId, cancelToken);
+    _controlRecoveryDevice = deviceId;
+    _controlRecovery = future;
+    unawaited(
+      future.then<void>(
+        (_) {
+          if (identical(_controlRecovery, future)) _controlRecovery = null;
+        },
+        onError: (Object _, StackTrace _) {
+          if (identical(_controlRecovery, future)) _controlRecovery = null;
+        },
+      ),
+    );
+    return future;
+  }
+
+  Future<ProvisioningDeviceInfo> _recoverBleControl(String deviceId, CancelToken token) async {
+    if (_connectActive) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: true);
+    final profile = await _apProfiles.load(deviceId);
+    token.throwIfCancellationRequested();
+    var candidate = _bleDevices[deviceId];
+    if (candidate == null && profile?.blePlatformId != null) {
+      candidate = ProvisioningDevice(
+        scanId: profile!.blePlatformId!,
+        advertisement: BirdBoxAdvertisement(localName: profile.bleName ?? '', serviceUuids: const [BleProtocolConstants.serviceUuid], rssi: 0, platformDeviceId: profile.blePlatformId),
+      );
+    }
+    if (_nativeSessionOwner == null || _bleControl?.ownsSession(_nativeSessionOwner!) == false) claimSession();
+    final owner = _sessionOwner;
+    final deadline = Timer(const Duration(seconds: 30), () => token.cancel(TimeoutException('BLE control recovery deadline')));
+    var cancelled = false, active = true;
+    unawaited(
+      token.whenCancel.then((_) async {
+        if (!active) return;
+        cancelled = true;
+        if (identical(_sessionOwner, owner)) {
+          _sessionOwner = Object();
+          try {
+            await _releaseSession();
+          } catch (_) {
+            /* Native release guard preserves the failure. */
+          }
+        }
+      }),
+    );
+    try {
+      if (candidate == null && profile?.bleName != null) {
+        candidate = await Future.any<ProvisioningDevice>([
+          discoverDevices(timeout: const Duration(seconds: 10)).firstWhere((d) => d.advertisement.localName == profile!.bleName),
+          token.whenCancel.then<ProvisioningDevice>((e) => throw e),
+        ]);
+      }
+      token.throwIfCancellationRequested();
+      if (candidate == null) throw const DirectApConfigurationUnavailable();
+      _expectedRecoveryDevice = deviceId;
+      ProvisioningDeviceInfo info;
+      try {
+        info = await Future.any<ProvisioningDeviceInfo>([connect(candidate), token.whenCancel.then<ProvisioningDeviceInfo>((e) => throw e)]);
+      } on ProvisioningException catch (error) {
+        // Opaque Android IDs are hints and can expire. One bounded scan may
+        // replace that hint; the public device identity is still mandatory.
+        if (!error.retryable || token.isCancelled || sessionReleaseFailed || profile?.bleName == null) rethrow;
+        final previousScanId = candidate.scanId;
+        final refreshed = await Future.any<ProvisioningDevice>([
+          discoverDevices(timeout: const Duration(seconds: 10)).firstWhere((d) => d.scanId != previousScanId && d.advertisement.localName == profile!.bleName),
+          token.whenCancel.then<ProvisioningDevice>((e) => throw e),
+        ]);
+        token.throwIfCancellationRequested();
+        info = await Future.any<ProvisioningDeviceInfo>([connect(refreshed), token.whenCancel.then<ProvisioningDeviceInfo>((e) => throw e)]);
+      }
+      token.throwIfCancellationRequested();
+      if (info.deviceId != deviceId) throw const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false);
+      // A valid saved credential is restored by connect; no pairing dialog or
+      // generic HTTP verification is started by this control-only entry.
+      return info;
+    } finally {
+      active = false;
+      deadline.cancel();
+      _expectedRecoveryDevice = null;
+      if (!cancelled && identical(_sessionOwner, owner)) await stopDiscovery();
+    }
+  }
 
   @override
   Future<bool> hasHttpAuthorization(String deviceId) async {
@@ -236,7 +504,9 @@ final class ProvisioningRepositoryImpl
   Object claimSession() {
     // Do not invalidate the releasing native owner when a new page appears.
     if (!sessionReleasePending && !sessionReleaseFailed) _nativeSessionOwner = _bleControl?.claimSession();
-    return _sessionOwner = Object();
+    final owner = _sessionOwner = Object();
+    _sessionChanges.add(null);
+    return owner;
   }
 
   @override
@@ -276,7 +546,7 @@ final class ProvisioningRepositoryImpl
       await _ble.disconnect();
     }
     _clearTransientState();
-    await _wifi.releaseNetwork();
+    // BLE control lifetime is independent from the application Wi-Fi lease.
     _nativeSessionOwner = null;
     _sessionReleaseError = null;
   }
@@ -362,6 +632,22 @@ final class ProvisioningRepositoryImpl
   ProvisioningDeviceInfo? get connectedDeviceInfo => sessionReleasePending || sessionReleaseFailed ? null : _deviceInfo;
 
   @override
+  Object? get observableSessionOwner {
+    if (_disposed || sessionReleasePending || sessionReleaseFailed) return null;
+    final control = _bleControl;
+    if (control != null) return _nativeSessionOwner != null && control.ownsSession(_nativeSessionOwner!) ? _sessionOwner : null;
+    return _deviceInfo != null && _ble.isConnected ? _sessionOwner : null;
+  }
+
+  @override
+  ProvisioningDevice? get currentBleDevice {
+    final info = connectedDeviceInfo;
+    if (info == null || !_ble.isConnected || _connectActive || observableSessionOwner == null) return null;
+    final candidate = _bleDevices[info.deviceId];
+    return candidate == null ? null : ProvisioningDevice(scanId: candidate.scanId, advertisement: candidate.advertisement, deviceInfo: info);
+  }
+
+  @override
   bool get networkStatusResumeRequired => _networkStatusResumeRequired;
 
   @override
@@ -407,6 +693,16 @@ final class ProvisioningRepositoryImpl
         if (info.capabilities.pairingPreflightV1) throw const ProvisioningException(code: ProvisioningErrorCode.blePairingPreflightUnavailable, retryable: false);
       }
       _checkOwner(owner);
+      if (_expectedRecoveryDevice != null && _expectedRecoveryDevice != info.deviceId) {
+        throw const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false);
+      }
+      if (_lastTrustedDeviceId != null && _lastTrustedDeviceId != info.deviceId) {
+        await directApConnection.release(reason: 'device_changed');
+        _readyAp = null;
+        _readyApDeviceId = null;
+        _checkOwner(owner);
+      }
+      _bleDevices[info.deviceId] = device;
       _deviceInfo = info;
       _clientId = clientId;
       final stored = await _credentialStore.read(info.deviceId);
@@ -444,6 +740,7 @@ final class ProvisioningRepositoryImpl
       Error.throwWithStackTrace(failure.exception, stack);
     } finally {
       _connectActive = false;
+      if (!_disposed) _sessionChanges.add(null);
     }
   }
 
@@ -506,8 +803,22 @@ final class ProvisioningRepositoryImpl
     }
     final status = event.payload as ProvisioningNetworkStatus;
     _lastNetworkSnapshot = status;
+    if (!status.busy && _operations[status.operationId] == BleCommandType.stopDirectAp && status.activeMode != ProvisioningNetworkMode.directAp) {
+      await confirmStoppedNetwork(_requireDeviceInfo().deviceId, status.operationId!);
+    }
     _resumeOperation(status);
     return status;
+  }
+
+  @override
+  Future<void> confirmStoppedNetwork(String deviceId, String operationId) async {
+    final status = _lastNetworkSnapshot;
+    if (_requireDeviceInfo().deviceId != deviceId || status == null || status.operationId != operationId || status.busy || status.activeMode == ProvisioningNetworkMode.directAp) {
+      throw const ProvisioningProtocolException('network_status', 'stop is not confirmed by the current device');
+    }
+    _automaticJoinBlocked.add(deviceId);
+    await _apProfiles.setEnabled(deviceId, false);
+    await directApConnection.release(reason: 'stop_confirmed', deviceId: deviceId);
   }
 
   @override
@@ -524,7 +835,7 @@ final class ProvisioningRepositoryImpl
       );
     }
     if (status.activeMode == ProvisioningNetworkMode.infrastructureSta) {
-      await _wifi.releaseNetwork();
+      await directApConnection.release(reason: 'network_mode_changed', force: true);
     }
     await _validateAndExchange(baseUri, status.activeMode);
   }
@@ -773,13 +1084,29 @@ final class ProvisioningRepositoryImpl
     try {
       switch (event.payload) {
         case DirectApReady ready:
-          // AP readiness is not phone WLAN readiness. Forward immediately; the
-          // cancellable HTTP handoff owns waiting, manual join and authorization.
+          // Retain this trusted configuration across BLE loss. The handoff
+          // requests the system network before any HTTP identity/auth traffic.
+          _readyAp = _DirectApNetworkConfiguration(ready.operationId, ready.ssid, ready.passphrase, ready.security, ready.baseUri);
+          _readyApDeviceId = info.deviceId;
+          final hint = _bleDevices[info.deviceId]?.advertisement;
+          await _apProfiles.save(
+            DirectApProfile(
+              deviceId: info.deviceId,
+              operationId: ready.operationId,
+              ssid: ready.ssid,
+              passphrase: ready.passphrase,
+              security: ready.security,
+              baseUri: ready.baseUri,
+              blePlatformId: hint?.platformDeviceId,
+              bleName: hint?.localName,
+            ),
+          );
+          _automaticJoinBlocked.remove(info.deviceId);
           await _saveDirectApAuthorization();
           final saved = await _directApAuthorizationStore.load(info.deviceId) ?? <String, dynamic>{};
-          await _directApAuthorizationStore.write(info.deviceId, {...saved, 'ssid': ready.ssid, 'passphrase': ready.passphrase});
+          await _directApAuthorizationStore.write(info.deviceId, {...saved, 'ssid': ready.ssid, 'passphrase': ready.passphrase, 'security': ready.security.wireValue});
         case StaConnected _:
-          await _wifi.releaseNetwork();
+          await directApConnection.release(reason: 'network_mode_changed', force: true);
           // Readiness is evidence, not a UI session. The shared HTTP handoff
           // verifies identity/auth and promotes the global session independently
           // of BLE lifetime. Do not establish WS here then fail a second BLE read.
@@ -808,7 +1135,9 @@ final class ProvisioningRepositoryImpl
         case NetworkRecovered recovered:
           await _applyRecovery(recovered);
         case DirectApStopped _:
-          await _wifi.releaseNetwork();
+          _automaticJoinBlocked.add(info.deviceId);
+          await _apProfiles.setEnabled(info.deviceId, false);
+          await directApConnection.release(reason: 'network_mode_changed', force: true);
         default:
           break;
       }
@@ -881,10 +1210,28 @@ final class ProvisioningRepositoryImpl
             'direct_ap recovery requires ssid, passphrase and base_uri',
           );
         }
+        if (recovered.security == null) throw const ProvisioningProtocolException('network_recovered.security', 'is required for direct AP recovery');
+        _readyApDeviceId = _requireDeviceInfo().deviceId;
+        _readyAp = _DirectApNetworkConfiguration(recovered.operationId, ssid, passphrase, recovered.security!, baseUri);
+        final hint = _bleDevices[_readyApDeviceId]?.advertisement;
+        await _apProfiles.save(
+          DirectApProfile(
+            deviceId: _readyApDeviceId!,
+            operationId: recovered.operationId,
+            ssid: ssid,
+            passphrase: passphrase,
+            security: recovered.security!,
+            baseUri: baseUri,
+            automaticRestore: _operations[recovered.operationId] != BleCommandType.stopDirectAp,
+            blePlatformId: hint?.platformDeviceId,
+            bleName: hint?.localName,
+          ),
+        );
         await _joinAndValidateDirectApRecovery(
           ssid: ssid,
           passphrase: passphrase,
           baseUri: baseUri,
+          security: recovered.security,
         );
         return;
       case ProvisioningNetworkMode.infrastructureSta:
@@ -895,14 +1242,20 @@ final class ProvisioningRepositoryImpl
             'is required for infrastructure_sta recovery',
           );
         }
-        await _wifi.releaseNetwork();
+        await directApConnection.release(reason: 'network_mode_changed', force: true);
+        if (_operations[recovered.operationId] == BleCommandType.stopDirectAp) {
+          final deviceId = _requireDeviceInfo().deviceId;
+          _automaticJoinBlocked.add(deviceId);
+          await _apProfiles.setEnabled(deviceId, false);
+          return; // The independent settings handoff verifies business reachability.
+        }
         await _validateAndExchange(
           baseUri,
           ProvisioningNetworkMode.infrastructureSta,
         );
         return;
       case ProvisioningNetworkMode.none:
-        await _wifi.releaseNetwork();
+        await directApConnection.release(reason: 'network_mode_changed', force: true);
         return;
     }
   }
@@ -911,26 +1264,17 @@ final class ProvisioningRepositoryImpl
     required String ssid,
     required String passphrase,
     required Uri baseUri,
+    required WifiSecurity? security,
   }) async {
-    if (!await _wifi.ensurePermissions()) {
-      throw const ProvisioningException(
-        code: ProvisioningErrorCode.localNetworkPermissionDenied,
-        retryable: false,
-      );
-    }
-    final result = await _wifi.joinDirectAp(
-      ssid: ssid,
-      passphrase: passphrase,
-    );
-    if (!result.joined) throw _wifiJoinError(result.outcome);
-    await _wifi.bindProcessToNetwork(result.network!);
+    if (security == null) throw const ProvisioningProtocolException('network_recovered.security', 'is required for automatic direct AP recovery');
+    final info = _requireDeviceInfo();
+    final intentId = 'recovery:$_connectionEpoch:${_lastNetworkSnapshot?.operationId ?? "network"}';
+    await directApConnection.connect(deviceId: info.deviceId, operationId: _lastNetworkSnapshot?.operationId ?? 'recovery', intentId: intentId, ssid: ssid, passphrase: passphrase, security: security, cancelToken: CancelToken());
     try {
-      await _validateAndExchange(
-        baseUri,
-        ProvisioningNetworkMode.directAp,
-      );
+      await _validateAndExchange(baseUri, ProvisioningNetworkMode.directAp);
+      directApConnection.markOnline(intentId);
     } catch (_) {
-      await _wifi.releaseNetwork();
+      await directApConnection.release(reason: 'validation_failed', intentId: intentId);
       rethrow;
     }
   }
@@ -1088,16 +1432,6 @@ final class ProvisioningRepositoryImpl
     }
   }
 
-  ProvisioningException _wifiJoinError(WifiJoinOutcome outcome) => ProvisioningException(
-    code: switch (outcome) {
-      WifiJoinOutcome.userCancelled => ProvisioningErrorCode.userCancelledWifiDialog,
-      WifiJoinOutcome.deniedNoInternet => ProvisioningErrorCode.phoneRejectedNoInternetNetwork,
-      WifiJoinOutcome.systemDenied => ProvisioningErrorCode.systemWifiJoinDenied,
-      _ => ProvisioningErrorCode.networkSwitchFailed,
-    },
-    retryable: outcome == WifiJoinOutcome.failed,
-  );
-
   ProvisioningDeviceInfo _requireDeviceInfo() {
     _checkNotDisposed();
     final info = _deviceInfo;
@@ -1141,11 +1475,13 @@ final class ProvisioningRepositoryImpl
     await _bleEventSubscription.cancel();
     await _disconnectSubscription.cancel();
     await _wifiLossSubscription.cancel();
+    await directApConnection.dispose();
     await _wifi.dispose();
     await _clearDppTransientUri();
     await _ble.dispose();
     await _events.close();
     await _disconnects.close();
+    await _sessionChanges.close();
     await _wifiScanResults.close();
   }
 }
@@ -1155,4 +1491,12 @@ final class _TransientPairingSession {
 
   final String value;
   final DateTime expiresAt;
+}
+
+/// Trusted current AP configuration, kept in memory only. No secret string output.
+final class _DirectApNetworkConfiguration {
+  const _DirectApNetworkConfiguration(this.operationId, this.ssid, this.passphrase, this.security, this.baseUri);
+  final String operationId, ssid, passphrase;
+  final WifiSecurity security;
+  final Uri baseUri;
 }

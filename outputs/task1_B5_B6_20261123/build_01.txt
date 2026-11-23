@@ -1,0 +1,9 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Running Gradle task 'assembleBirdDebug'...                      
+注: D:\Androidstudio2\project\4\android\app\src\main\java\deckers\thibault\aves\BirdBoxBleChannel.java使用或覆盖了已过时的 API。
+注: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
+Running Gradle task 'assembleBirdDebug'...                         31.7s
+√ Built build\app\outputs\flutter-apk\app-bird-debug.apk
+build_complete
+manifest=D:\Androidstudio2\project\4\build\delivery\task1_B6_20261123_01\build-manifest.json

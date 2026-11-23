@@ -1,0 +1,787 @@
+{
+  "source_parent_commit": "e79f8552e0176f3d549e9c59ed92280da346210b",
+  "full_suite_90_seconds": {
+    "artifact": "verified_test_events.jsonl",
+    "counts": {
+      "success": 1978,
+      "skipped": 9
+    },
+    "done": {
+      "success": true,
+      "type": "done",
+      "time": 346345
+    },
+    "skipped_cases": [
+      {
+        "id": 681,
+        "name": "repeated real HTTP business timeouts no longer downgrade a reachable box",
+        "suiteID": 665,
+        "groupIDs": [
+          680
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Start serve_disconnect_reproduction.py on loopback first."
+        },
+        "line": 22,
+        "column": 3,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/business_http_disconnect_reproduction_test.dart"
+      },
+      {
+        "id": 747,
+        "name": "real Python directAp RC4 redemption, authenticated REST/WS handoff and restored reuse after transient failure",
+        "suiteID": 740,
+        "groupIDs": [
+          746
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Set BIRDBOX_DIRECT_AP_BASE and run tool/direct_ap_python_fixture.py; real HTTP not configured."
+        },
+        "line": 27,
+        "column": 5,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_python_backend_test.dart"
+      },
+      {
+        "id": 748,
+        "name": "real Python infrastructureSta RC4 redemption, authenticated REST/WS handoff and restored reuse after transient failure",
+        "suiteID": 740,
+        "groupIDs": [
+          746
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Set BIRDBOX_DIRECT_AP_BASE and run tool/direct_ap_python_fixture.py; real HTTP not configured."
+        },
+        "line": 27,
+        "column": 5,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_python_backend_test.dart"
+      },
+      {
+        "id": 1532,
+        "name": "real Python: atomic create, same-token replay, preference CAS and copied-file hashes agree",
+        "suiteID": 1529,
+        "groupIDs": [
+          1531
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Requires separate loopback Python atomic-create fixture."
+        },
+        "line": 10,
+        "column": 3,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/copy/python_atomic_creation_test.dart"
+      },
+      {
+        "id": 1537,
+        "name": "actual Python HTTP: RC3 DTOs, export failures and >1000 event replay",
+        "suiteID": 1533,
+        "groupIDs": [
+          1536
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Requires the separately started Python HTTP contract fixture."
+        },
+        "line": 12,
+        "column": 3,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/copy/python_backend_contract_test.dart"
+      },
+      {
+        "id": 1541,
+        "name": "real Python: SmartFollow and ordinary CopyJob update metadata without recopy",
+        "suiteID": 1538,
+        "groupIDs": [
+          1540
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Requires isolated production Python metadata fixture."
+        },
+        "line": 16,
+        "column": 3,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/copy/python_metadata_backend_test.dart"
+      },
+      {
+        "id": 1542,
+        "name": "real Python page: preview then explicit confirmation and settled report",
+        "suiteID": 1538,
+        "groupIDs": [
+          1540
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": null
+        },
+        "line": 174,
+        "column": 5,
+        "url": "package:flutter_test/src/widget_tester.dart",
+        "root_line": 81,
+        "root_column": 3,
+        "root_url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/copy/python_metadata_backend_test.dart"
+      },
+      {
+        "id": 2341,
+        "name": "current Python: import, incremental Pipeline, one continuous task, pages and hashes",
+        "suiteID": 2337,
+        "groupIDs": [
+          2340
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Requires loopback current-backend fixture."
+        },
+        "line": 9,
+        "column": 3,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/smart_follow/python_continuous_backend_test.dart"
+      },
+      {
+        "id": 2345,
+        "name": "actual Python HTTP: pause, committed backlog, frozen finish and verified RC3 files",
+        "suiteID": 2342,
+        "groupIDs": [
+          2344
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Start the isolated Python SmartFollow control fixture first."
+        },
+        "line": 10,
+        "column": 3,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/smart_follow/python_control_backend_test.dart"
+      }
+    ],
+    "errors": []
+  },
+  "final_connection_regression": {
+    "artifact": "final_connection_events.jsonl",
+    "counts": {
+      "success": 535,
+      "skipped": 3
+    },
+    "done": {
+      "success": true,
+      "type": "done",
+      "time": 35386
+    },
+    "skipped_cases": [
+      {
+        "id": 279,
+        "name": "repeated real HTTP business timeouts no longer downgrade a reachable box",
+        "suiteID": 238,
+        "groupIDs": [
+          278
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Start serve_disconnect_reproduction.py on loopback first."
+        },
+        "line": 22,
+        "column": 3,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/business_http_disconnect_reproduction_test.dart"
+      },
+      {
+        "id": 342,
+        "name": "real Python directAp RC4 redemption, authenticated REST/WS handoff and restored reuse after transient failure",
+        "suiteID": 287,
+        "groupIDs": [
+          341
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Set BIRDBOX_DIRECT_AP_BASE and run tool/direct_ap_python_fixture.py; real HTTP not configured."
+        },
+        "line": 27,
+        "column": 5,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_python_backend_test.dart"
+      },
+      {
+        "id": 343,
+        "name": "real Python infrastructureSta RC4 redemption, authenticated REST/WS handoff and restored reuse after transient failure",
+        "suiteID": 287,
+        "groupIDs": [
+          341
+        ],
+        "metadata": {
+          "skip": true,
+          "skipReason": "Set BIRDBOX_DIRECT_AP_BASE and run tool/direct_ap_python_fixture.py; real HTTP not configured."
+        },
+        "line": 27,
+        "column": 5,
+        "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_python_backend_test.dart"
+      }
+    ],
+    "errors": []
+  },
+  "earlier_default_timeout_runs": [
+    {
+      "artifact": "full_test_events.jsonl",
+      "counts": {
+        "success": 1970,
+        "error": 3,
+        "skipped": 9
+      },
+      "done": {
+        "success": false,
+        "type": "done",
+        "time": 7377467
+      },
+      "skipped_cases": [
+        {
+          "id": 690,
+          "name": "repeated real HTTP business timeouts no longer downgrade a reachable box",
+          "suiteID": 660,
+          "groupIDs": [
+            689
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Start serve_disconnect_reproduction.py on loopback first."
+          },
+          "line": 22,
+          "column": 3,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/business_http_disconnect_reproduction_test.dart"
+        },
+        {
+          "id": 740,
+          "name": "real Python directAp RC4 redemption, authenticated REST/WS handoff and restored reuse after transient failure",
+          "suiteID": 714,
+          "groupIDs": [
+            739
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Set BIRDBOX_DIRECT_AP_BASE and run tool/direct_ap_python_fixture.py; real HTTP not configured."
+          },
+          "line": 27,
+          "column": 5,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_python_backend_test.dart"
+        },
+        {
+          "id": 741,
+          "name": "real Python infrastructureSta RC4 redemption, authenticated REST/WS handoff and restored reuse after transient failure",
+          "suiteID": 714,
+          "groupIDs": [
+            739
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Set BIRDBOX_DIRECT_AP_BASE and run tool/direct_ap_python_fixture.py; real HTTP not configured."
+          },
+          "line": 27,
+          "column": 5,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_python_backend_test.dart"
+        },
+        {
+          "id": 1530,
+          "name": "real Python: atomic create, same-token replay, preference CAS and copied-file hashes agree",
+          "suiteID": 1507,
+          "groupIDs": [
+            1529
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Requires separate loopback Python atomic-create fixture."
+          },
+          "line": 10,
+          "column": 3,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/copy/python_atomic_creation_test.dart"
+        },
+        {
+          "id": 1534,
+          "name": "actual Python HTTP: RC3 DTOs, export failures and >1000 event replay",
+          "suiteID": 1523,
+          "groupIDs": [
+            1533
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Requires the separately started Python HTTP contract fixture."
+          },
+          "line": 12,
+          "column": 3,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/copy/python_backend_contract_test.dart"
+        },
+        {
+          "id": 1538,
+          "name": "real Python: SmartFollow and ordinary CopyJob update metadata without recopy",
+          "suiteID": 1527,
+          "groupIDs": [
+            1537
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Requires isolated production Python metadata fixture."
+          },
+          "line": 16,
+          "column": 3,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/copy/python_metadata_backend_test.dart"
+        },
+        {
+          "id": 1539,
+          "name": "real Python page: preview then explicit confirmation and settled report",
+          "suiteID": 1527,
+          "groupIDs": [
+            1537
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": null
+          },
+          "line": 174,
+          "column": 5,
+          "url": "package:flutter_test/src/widget_tester.dart",
+          "root_line": 81,
+          "root_column": 3,
+          "root_url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/copy/python_metadata_backend_test.dart"
+        },
+        {
+          "id": 2323,
+          "name": "current Python: import, incremental Pipeline, one continuous task, pages and hashes",
+          "suiteID": 2312,
+          "groupIDs": [
+            2322
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Requires loopback current-backend fixture."
+          },
+          "line": 9,
+          "column": 3,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/smart_follow/python_continuous_backend_test.dart"
+        },
+        {
+          "id": 2338,
+          "name": "actual Python HTTP: pause, committed backlog, frozen finish and verified RC3 files",
+          "suiteID": 2325,
+          "groupIDs": [
+            2337
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Start the isolated Python SmartFollow control fixture first."
+          },
+          "line": 10,
+          "column": 3,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/smart_follow/python_control_backend_test.dart"
+        }
+      ],
+      "errors": [
+        {
+          "test": {
+            "id": 288,
+            "name": "RC3 复制任务闭环：capabilities/预检拒绝全量备份/创建→轮询部分完成/动作版本冲突/安全移除",
+            "suiteID": 245,
+            "groupIDs": [
+              266
+            ],
+            "metadata": {
+              "skip": false,
+              "skipReason": null
+            },
+            "line": 315,
+            "column": 3,
+            "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/core/mock_box_server_test.dart"
+          },
+          "error": "TimeoutException after 0:00:30.000000: Test timed out after 30 seconds. See https://pub.dev/packages/test#timeouts"
+        },
+        {
+          "test": {
+            "id": 288,
+            "name": "RC3 复制任务闭环：capabilities/预检拒绝全量备份/创建→轮询部分完成/动作版本冲突/安全移除",
+            "suiteID": 245,
+            "groupIDs": [
+              266
+            ],
+            "metadata": {
+              "skip": false,
+              "skipReason": null
+            },
+            "line": 315,
+            "column": 3,
+            "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/core/mock_box_server_test.dart"
+          },
+          "error": "ApiException(code: null, statusCode: null, retryable: true, message: The connection errored: 远程计算机拒绝网络连接。 This indicates an error which most likely cannot be solved by the library.)"
+        },
+        {
+          "test": {
+            "id": 2848,
+            "name": "任务完成后当前任务卡片不得二次爬坡（2026-11-18 演示反馈）",
+            "suiteID": 2843,
+            "groupIDs": [
+              2847
+            ],
+            "metadata": {
+              "skip": false,
+              "skipReason": null
+            },
+            "line": 105,
+            "column": 3,
+            "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/tasks/current_task_progress_regression_test.dart"
+          },
+          "error": "TimeoutException after 0:00:30.000000: Test timed out after 30 seconds. See https://pub.dev/packages/test#timeouts"
+        },
+        {
+          "test": {
+            "id": 2848,
+            "name": "任务完成后当前任务卡片不得二次爬坡（2026-11-18 演示反馈）",
+            "suiteID": 2843,
+            "groupIDs": [
+              2847
+            ],
+            "metadata": {
+              "skip": false,
+              "skipReason": null
+            },
+            "line": 105,
+            "column": 3,
+            "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/tasks/current_task_progress_regression_test.dart"
+          },
+          "error": "Expected: <100>\n  Actual: <4>\n完成任务返回主页后进度不得回退或二次爬坡\n"
+        },
+        {
+          "test": {
+            "id": 2927,
+            "name": "WS 断连期间 REST 轮询接管，进度单调收敛不回退",
+            "suiteID": 2919,
+            "groupIDs": [
+              2926
+            ],
+            "metadata": {
+              "skip": false,
+              "skipReason": null
+            },
+            "line": 94,
+            "column": 3,
+            "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/tasks/ws_disconnect_progress_recovery_test.dart"
+          },
+          "error": "TimeoutException after 0:00:30.000000: Test timed out after 30 seconds. See https://pub.dev/packages/test#timeouts"
+        }
+      ]
+    },
+    {
+      "artifact": "full_test_final_events.jsonl",
+      "counts": {
+        "success": 1973,
+        "skipped": 9,
+        "error": 2
+      },
+      "done": {
+        "success": false,
+        "type": "done",
+        "time": 347145
+      },
+      "skipped_cases": [
+        {
+          "id": 686,
+          "name": "repeated real HTTP business timeouts no longer downgrade a reachable box",
+          "suiteID": 665,
+          "groupIDs": [
+            685
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Start serve_disconnect_reproduction.py on loopback first."
+          },
+          "line": 22,
+          "column": 3,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/business_http_disconnect_reproduction_test.dart"
+        },
+        {
+          "id": 745,
+          "name": "real Python directAp RC4 redemption, authenticated REST/WS handoff and restored reuse after transient failure",
+          "suiteID": 738,
+          "groupIDs": [
+            744
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Set BIRDBOX_DIRECT_AP_BASE and run tool/direct_ap_python_fixture.py; real HTTP not configured."
+          },
+          "line": 27,
+          "column": 5,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_python_backend_test.dart"
+        },
+        {
+          "id": 746,
+          "name": "real Python infrastructureSta RC4 redemption, authenticated REST/WS handoff and restored reuse after transient failure",
+          "suiteID": 738,
+          "groupIDs": [
+            744
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Set BIRDBOX_DIRECT_AP_BASE and run tool/direct_ap_python_fixture.py; real HTTP not configured."
+          },
+          "line": 27,
+          "column": 5,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/connection/direct_ap_python_backend_test.dart"
+        },
+        {
+          "id": 1529,
+          "name": "real Python: atomic create, same-token replay, preference CAS and copied-file hashes agree",
+          "suiteID": 1526,
+          "groupIDs": [
+            1528
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Requires separate loopback Python atomic-create fixture."
+          },
+          "line": 10,
+          "column": 3,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/copy/python_atomic_creation_test.dart"
+        },
+        {
+          "id": 1534,
+          "name": "actual Python HTTP: RC3 DTOs, export failures and >1000 event replay",
+          "suiteID": 1530,
+          "groupIDs": [
+            1533
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Requires the separately started Python HTTP contract fixture."
+          },
+          "line": 12,
+          "column": 3,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/copy/python_backend_contract_test.dart"
+        },
+        {
+          "id": 1538,
+          "name": "real Python: SmartFollow and ordinary CopyJob update metadata without recopy",
+          "suiteID": 1535,
+          "groupIDs": [
+            1537
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Requires isolated production Python metadata fixture."
+          },
+          "line": 16,
+          "column": 3,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/copy/python_metadata_backend_test.dart"
+        },
+        {
+          "id": 1539,
+          "name": "real Python page: preview then explicit confirmation and settled report",
+          "suiteID": 1535,
+          "groupIDs": [
+            1537
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": null
+          },
+          "line": 174,
+          "column": 5,
+          "url": "package:flutter_test/src/widget_tester.dart",
+          "root_line": 81,
+          "root_column": 3,
+          "root_url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/copy/python_metadata_backend_test.dart"
+        },
+        {
+          "id": 2338,
+          "name": "current Python: import, incremental Pipeline, one continuous task, pages and hashes",
+          "suiteID": 2333,
+          "groupIDs": [
+            2337
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Requires loopback current-backend fixture."
+          },
+          "line": 9,
+          "column": 3,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/smart_follow/python_continuous_backend_test.dart"
+        },
+        {
+          "id": 2342,
+          "name": "actual Python HTTP: pause, committed backlog, frozen finish and verified RC3 files",
+          "suiteID": 2339,
+          "groupIDs": [
+            2341
+          ],
+          "metadata": {
+            "skip": true,
+            "skipReason": "Start the isolated Python SmartFollow control fixture first."
+          },
+          "line": 10,
+          "column": 3,
+          "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/features/smart_follow/python_control_backend_test.dart"
+        }
+      ],
+      "errors": [
+        {
+          "test": {
+            "id": 2854,
+            "name": "任务完成后当前任务卡片不得二次爬坡（2026-11-18 演示反馈）",
+            "suiteID": 2849,
+            "groupIDs": [
+              2853
+            ],
+            "metadata": {
+              "skip": false,
+              "skipReason": null
+            },
+            "line": 105,
+            "column": 3,
+            "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/tasks/current_task_progress_regression_test.dart"
+          },
+          "error": "TimeoutException after 0:00:30.000000: Test timed out after 30 seconds. See https://pub.dev/packages/test#timeouts"
+        },
+        {
+          "test": {
+            "id": 2854,
+            "name": "任务完成后当前任务卡片不得二次爬坡（2026-11-18 演示反馈）",
+            "suiteID": 2849,
+            "groupIDs": [
+              2853
+            ],
+            "metadata": {
+              "skip": false,
+              "skipReason": null
+            },
+            "line": 105,
+            "column": 3,
+            "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/tasks/current_task_progress_regression_test.dart"
+          },
+          "error": "Expected: <100>\n  Actual: <4>\n完成任务返回主页后进度不得回退或二次爬坡\n"
+        },
+        {
+          "test": {
+            "id": 2952,
+            "name": "WS 断连期间 REST 轮询接管，进度单调收敛不回退",
+            "suiteID": 2949,
+            "groupIDs": [
+              2951
+            ],
+            "metadata": {
+              "skip": false,
+              "skipReason": null
+            },
+            "line": 94,
+            "column": 3,
+            "url": "file:///D:/Androidstudio2/project/4/test/bird_companion/tasks/ws_disconnect_progress_recovery_test.dart"
+          },
+          "error": "TimeoutException after 0:00:30.000000: Test timed out after 30 seconds. See https://pub.dev/packages/test#timeouts"
+        }
+      ]
+    }
+  ],
+  "full_suite_command": "flutter test --no-pub --reporter json --timeout 90s --concurrency 2",
+  "scope_note": "Full suite followed by final connection/settings/route regression after cancellation/intent guards. Only the test runner timeout changed; business timeouts and assertions did not.",
+  "real_device_wifi_acceptance": "pending",
+  "instrumentation_execution": "not_run",
+  "delivery_apk_built": false,
+  "analyze_final": {
+    "exit_code": 0
+  },
+  "production_integrity": {
+    "exit_code": 0
+  },
+  "contracts": {
+    "exit_code": 0
+  },
+  "android_final": {
+    "exit_code": 0
+  },
+  "android_unit_tests": {
+    "tests": 248,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "android_instrumentation_compile": {
+    "exit_code": 0,
+    "executed_on_device": false
+  },
+  "task2_preservation": {
+    "unchanged": true,
+    "paths": [
+      "android/app/src/main/AndroidManifest.xml",
+      "lib/bird_companion/features/connection/data/platform/phone_wifi_platform.dart",
+      "lib/bird_companion/features/connection/domain/wifi_qr_import.dart",
+      "lib/bird_companion/features/connection/presentation/pages/network_provisioning_page.dart",
+      "lib/bird_companion/features/connection/presentation/pages/wifi_qr_scanner_page.dart",
+      "lib/bird_companion/features/connection/presentation/widgets/sta_network_form.dart",
+      "tool/release/verify_production_integrity.dart",
+      "integration_test/task2_provisioning_test.dart",
+      "integration_test/task2_qr_fixtures.dart"
+    ]
+  },
+  "source_files": [
+    {
+      "path": "android/app/src/androidTest/java/deckers/thibault/aves/BirdBoxWifiChannelTest.java",
+      "sha256": "06f8608efc30b65c8164afa779765885cc2b6d5520862c36b625a2caa2be934c"
+    },
+    {
+      "path": "android/app/src/main/java/deckers/thibault/aves/BirdBoxWifiChannel.java",
+      "sha256": "849bd3b065f979bbbe43f8ea33aa6f118b33f41ca9c46c51c861bf65686687a7"
+    },
+    {
+      "path": "lib/bird_companion/app/app_dependencies.dart",
+      "sha256": "7a32f29c428c703e2ed2e40946815ade69ba169910f7f47291bdb4c3e06140e1"
+    },
+    {
+      "path": "lib/bird_companion/core/media/media_asset_http_client.dart",
+      "sha256": "7ac64f106110423c3cbec5a12bdf17c0669903275fd986d7af5ab6901a0054fd"
+    },
+    {
+      "path": "lib/bird_companion/core/media/media_asset_service.dart",
+      "sha256": "d860460576c3edbe571d4f91e7c9cca31fbaa237d41fb578aaed5053369c8609"
+    },
+    {
+      "path": "lib/bird_companion/core/network/api_client.dart",
+      "sha256": "e8e655b08e4680bb0fd53f0921a2ecdf46fc0b4a9beb16799b8df3d65af703c8"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/direct_ap_connection_coordinator.dart",
+      "sha256": "d24b8925e5dddc5e324004cd66c2a27fc3ef7886ae96d8ebc3fcd952fe318f3e"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/platform/birdbox_wifi_platform.dart",
+      "sha256": "3b1514e56ce13c21d2b7f3c92fceb34823534212a5e8e42b494bbccb2793ce2b"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/data/provisioning_repository_impl.dart",
+      "sha256": "aee9e08a9c494fec278c853a46135945cf5169636eabc2a7242f1781a80f710d"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/domain/provisioning_repository.dart",
+      "sha256": "e1a1148d1421df97e014acb2270bcadfa159b0a5bffc9f715c0200f37b94632d"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart",
+      "sha256": "dc07b9a57c6eba72160e27dd6cf1870d3ac6fba5a387ece666298e3badf340e5"
+    },
+    {
+      "path": "lib/bird_companion/features/connection/presentation/pages/direct_ap_handoff_panel.dart",
+      "sha256": "338edf2c5b890df5ff516d92c3ed0e729f0e0909124193ce4ed03e0b7d5def49"
+    },
+    {
+      "path": "test/bird_companion/features/connection/birdbox_wifi_platform_test.dart",
+      "sha256": "bfca2f0faab332059d9e2a8fb766296d0656135e2da5ed1419102eba20fbc786"
+    },
+    {
+      "path": "test/bird_companion/features/connection/direct_ap_connection_coordinator_test.dart",
+      "sha256": "f6bcfc1cedb26c9b8bb66bacfe2af72a37f784975537751cebeda07654bf464e"
+    },
+    {
+      "path": "test/bird_companion/features/connection/direct_ap_handoff_test.dart",
+      "sha256": "632ab4a8a4a41c1cd1f1f4764791fba74b589f0c6a6a77729396c0f82dc13443"
+    },
+    {
+      "path": "test/bird_companion/features/connection/direct_ap_network_clients_test.dart",
+      "sha256": "e98cdac28cdea2349c377a202f992b55137bcffb5a4be706cb456451e2bdf589"
+    },
+    {
+      "path": "test/bird_companion/features/connection/fakes/fake_birdbox_wifi_platform.dart",
+      "sha256": "4c3ddb892acdccc7c5d35fad4f469c65c9916739a454ae4b99651fe57acc7e4d"
+    },
+    {
+      "path": "test/bird_companion/features/connection/provisioning_repository_a3_a4_test.dart",
+      "sha256": "648ee9b62c5c3f7f1ad157998862601501f4273cb4e865805e941378e63c9082"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:aves/bird_companion/features/connection/domain/connection_attempt.dart';
 
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
@@ -16,6 +17,100 @@ import 'package:flutter_test/flutter_test.dart';
 /// 关闭手机 Wi-Fi 后首页/设备页必须同步显示"断开/重连中"，不再长期
 /// 显示"已连接"；子页面请求失败可通过 reportUnreachable 回写全局状态。
 void main() {
+  group('T1 B3 local AP session restore', () {
+    final ap = _savedDevice.copyWith(networkMode: NetworkMode.directAp);
+    final status = DeviceStatus(connection: ap, card: const CardStatus(inserted: true));
+    test('local-only AP is prepared before HTTP even when internet monitor says none', () async {
+      final monitor = _ManualConnectivityMonitor()..networkAvailable = false;
+      final repository = _RecoveryRepository(saved: ap, reconnectStatus: status);
+      final join = Completer<void>();
+      var prepared = 0, committed = 0;
+      final session = _session(
+        monitor,
+        repository,
+        prepareSavedNetwork: (device, attempt) async {
+          expect(device.id, ap.id);
+          expect(attempt.intent, 'cold_restore');
+          prepared++;
+          await join.future;
+        },
+        onSavedNetworkVerified: (_) => committed++,
+      );
+      addTearDown(session.close);
+      final restore = session.restoreSavedSession();
+      await Future<void>.delayed(Duration.zero);
+      expect(prepared, 1);
+      expect(repository.reconnectCalls, 0);
+      monitor.add(false);
+      await Future<void>.delayed(Duration.zero);
+      join.complete();
+      expect(await restore, true);
+      expect(repository.reconnectCalls, 1);
+      expect(committed, 1);
+      expect(session.state.isConnected, true);
+    });
+    test('late AP preparation after cancellation cannot start HTTP or commit', () async {
+      final repository = _RecoveryRepository(saved: ap, reconnectStatus: status);
+      final join = Completer<void>();
+      CancelToken? token;
+      final session = _session(
+        _ManualConnectivityMonitor(),
+        repository,
+        prepareSavedNetwork: (_, attempt) {
+          token = attempt.token;
+          return join.future;
+        },
+      );
+      addTearDown(session.close);
+      final restore = session.restoreSavedSession();
+      await Future<void>.delayed(Duration.zero);
+      session.beginNetworkIntent('new-network');
+      expect(token?.isCancelled, true);
+      join.complete();
+      expect(await restore, false);
+      expect(repository.reconnectCalls, 0);
+      expect(session.state.isConnected, false);
+    });
+    test('native loss burst schedules one selected-device recovery', () async {
+      final repository = _RecoveryRepository(saved: ap, reconnectStatus: status);
+      final losses = StreamController<void>.broadcast();
+      var joins = 0;
+      final session = _session(
+        _ManualConnectivityMonitor(),
+        repository,
+        directApLosses: losses.stream,
+        retryDelay: const Duration(milliseconds: 5),
+        prepareSavedNetwork: (_, _) async {
+          joins++;
+        },
+      );
+      addTearDown(() async {
+        await session.close();
+        await losses.close();
+      });
+      await session.setConnectedFromStatus(status);
+      for (var i = 0; i < 10; i++) {
+        losses.add(null);
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(joins, 1);
+      expect(repository.reconnectCalls, 1);
+      expect(session.state.isConnected, true);
+    });
+    test('STA startup does not request a direct AP network', () async {
+      var joins = 0;
+      final session = _session(
+        _ManualConnectivityMonitor(),
+        _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status()),
+        prepareSavedNetwork: (_, _) async {
+          joins++;
+        },
+      );
+      addTearDown(session.close);
+      expect(await session.restoreSavedSession(), true);
+      expect(joins, 0);
+    });
+  });
   test('Wi-Fi 断开：connected 立即转为 reconnecting 并保留设备身份', () async {
     final monitor = _ManualConnectivityMonitor();
     final session = _session(monitor, _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status()));
@@ -192,10 +287,14 @@ void main() {
     final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status());
     final result = Completer<bool>();
     var probes = 0;
-    final session = _session(_ManualConnectivityMonitor(), repository, probeReachability: (_, _) {
-      probes++;
-      return result.future;
-    });
+    final session = _session(
+      _ManualConnectivityMonitor(),
+      repository,
+      probeReachability: (_, _) {
+        probes++;
+        return result.future;
+      },
+    );
     addTearDown(session.close);
     await session.setConnectedFromStatus(_status());
     for (var i = 0; i < 6; i++) {
@@ -213,15 +312,24 @@ void main() {
     final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status());
     final result = Completer<bool>();
     CancelToken? activeProbe;
-    final session = _session(_ManualConnectivityMonitor(), repository, probeReachability: (_, token) {
-      activeProbe = token;
-      return result.future;
-    });
+    final session = _session(
+      _ManualConnectivityMonitor(),
+      repository,
+      probeReachability: (_, token) {
+        activeProbe = token;
+        return result.future;
+      },
+    );
     addTearDown(session.close);
     await session.setConnectedFromStatus(_status());
     session.reportUnreachable();
     final newAddress = Uri.parse('http://192.0.2.11:8080');
-    await session.setConnectedFromStatus(DeviceStatus(connection: _savedDevice.copyWith(baseUri: newAddress), card: const CardStatus(inserted: false)));
+    await session.setConnectedFromStatus(
+      DeviceStatus(
+        connection: _savedDevice.copyWith(baseUri: newAddress),
+        card: const CardStatus(inserted: false),
+      ),
+    );
     expect(activeProbe?.isCancelled, true);
     result.complete(false);
     await Future<void>.delayed(Duration.zero);
@@ -233,10 +341,14 @@ void main() {
   test('an unanswered health probe is bounded and enters recovery', () async {
     final repository = _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status());
     CancelToken? token;
-    final session = _session(_ManualConnectivityMonitor(), repository, probeReachability: (_, current) {
-      token = current;
-      return Completer<bool>().future;
-    });
+    final session = _session(
+      _ManualConnectivityMonitor(),
+      repository,
+      probeReachability: (_, current) {
+        token = current;
+        return Completer<bool>().future;
+      },
+    );
     addTearDown(session.close);
     await session.setConnectedFromStatus(_status());
     final reconnecting = session.stream.firstWhere((state) => state.phase == DeviceSessionPhase.reconnecting);
@@ -248,7 +360,11 @@ void main() {
 
   test('配网交接期间 reportUnreachable 不打断交接', () async {
     final monitor = _ManualConnectivityMonitor();
-    final session = _session(monitor, _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status()), probeReachability: (_, _) async => false);
+    final session = _session(
+      monitor,
+      _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status()),
+      probeReachability: (_, _) async => false,
+    );
     addTearDown(session.close);
     await session.setConnectedFromStatus(_status());
     session.provisioningHandoffActive = true;
@@ -258,10 +374,30 @@ void main() {
   });
 }
 
-DeviceSessionCubit _session(_ManualConnectivityMonitor monitor, _RecoveryRepository repository, {Stream<void>? transportChanges, Future<bool> Function(Uri, CancelToken)? probeReachability}) {
+DeviceSessionCubit _session(
+  _ManualConnectivityMonitor monitor,
+  _RecoveryRepository repository, {
+  Stream<void>? transportChanges,
+  Future<bool> Function(Uri, CancelToken)? probeReachability,
+  Future<void> Function(DeviceConnection, ConnectionAttempt)? prepareSavedNetwork,
+  void Function(String)? onSavedNetworkVerified,
+  Stream<void>? directApLosses,
+  Duration retryDelay = const Duration(seconds: 1),
+}) {
   final events = EventClient();
   final refresh = SessionRefreshCoordinator();
-  final session = DeviceSessionCubit(repository, monitor, events, refresh, transportChanges: transportChanges, probeReachability: probeReachability);
+  final session = DeviceSessionCubit(
+    repository,
+    monitor,
+    events,
+    refresh,
+    transportChanges: transportChanges,
+    probeReachability: probeReachability,
+    prepareSavedNetwork: prepareSavedNetwork,
+    onSavedNetworkVerified: onSavedNetworkVerified,
+    directApLosses: directApLosses,
+    retryDelay: retryDelay,
+  );
   return session;
 }
 
@@ -278,12 +414,13 @@ DeviceStatus _status() => DeviceStatus(connection: _savedDevice, card: const Car
 final class _ManualConnectivityMonitor extends ConnectivityMonitor {
   final _controller = StreamController<bool>.broadcast();
   bool wifiAvailable = true;
+  bool networkAvailable = true;
   Future<bool> Function()? wifiRead;
   @override
   Stream<bool> get onNetworkChanged => _controller.stream;
   void add(bool available) => _controller.add(available);
   @override
-  Future<bool> get hasNetwork async => true;
+  Future<bool> get hasNetwork async => networkAvailable;
   @override
   Future<bool> get hasWifi async => wifiRead == null ? wifiAvailable : await wifiRead!();
 }

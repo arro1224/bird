@@ -1,0 +1,7 @@
+{
+  "source_file": "BirdBox_Phone_1.14.11_176_vivo_X20_20261123_103443_6e18457d-9fe0-4f09-95e1-785aab6e59b7_6852979b.zip",
+  "bytes": 114304,
+  "sha256": "d77a3b379ee4658657fd9bf9792b540d743df16673bf6d32e12dadab1c70ad06",
+  "expected_hash_source": "device sha256sum; not an independently copied App UI hash",
+  "transport": "ADB run-as of own Debug App"
+}

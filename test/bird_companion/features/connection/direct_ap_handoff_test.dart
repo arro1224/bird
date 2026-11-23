@@ -273,7 +273,7 @@ void main() {
     expect(await cubit.restore(), isFalse);
   });
 
-  testWidgets('waiting panel opens WLAN, resumes one HTTP flow and supports back', (tester) async {
+  testWidgets('normal AP panel describes automatic joining without a manual WLAN entry', (tester) async {
     final store = MemoryHandoffStorage();
     final completion = Completer<void>();
     final cubit = DirectApHandoffCubit(store: store, verify: (_, _) => completion.future);
@@ -297,13 +297,13 @@ void main() {
         ),
       ),
     );
-    expect(find.textContaining('BirdBox-7A533A6F'), findsOneWidget);
-    await tester.tap(find.text('打开 WLAN 设置'));
-    await tester.pump();
-    expect(calls, ['openWifiSettings']);
+    expect(find.textContaining('App 正在自动连接'), findsOneWidget);
+    expect(find.text('打开 WLAN 设置'), findsNothing);
+    expect(find.text('故障备用：打开 WLAN 设置'), findsNothing);
+    expect(find.text('查看盒子热点密码'), findsNothing);
     cubit.lifecycleChanged(resumed: true);
-    await tester.tap(find.text('我已连接，继续验证'));
     await tester.pump();
+    expect(calls, isEmpty);
     expect(cubit.state.attempt, 1);
     await tester.tap(find.text('返回连接方式'));
     await tester.pump();
@@ -312,6 +312,82 @@ void main() {
     completion.complete();
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.runAsync(cubit.close);
+  });
+
+  test('failed system join never verifies HTTP or retries on foreground/network signals', () async {
+    var joins = 0, verifies = 0;
+    final cubit = DirectApHandoffCubit(
+      store: MemoryHandoffStorage(),
+      prepareNetwork: (_, _) async {
+        joins++;
+        throw const ProvisioningException(code: ProvisioningErrorCode.networkSwitchFailed, retryable: false);
+      },
+      verify: (_, _) async {
+        verifies++;
+      },
+    );
+    await cubit.begin(pending);
+    await until(() => cubit.state.phase == DirectApHandoffPhase.failure);
+    cubit.lifecycleChanged(resumed: true);
+    cubit.networkChanged();
+    await Future<void>.delayed(Duration.zero);
+    expect(joins, 1);
+    expect(verifies, 0);
+    expect(cubit.state.message, contains('连接未建立'));
+    await cubit.close();
+  });
+
+  test('manual rescue is explicit after failure and remains separately identified', () async {
+    var native = 0, manual = 0, verified = 0;
+    final diagnostics = <Map<String, dynamic>>[];
+    final cubit = DirectApHandoffCubit(
+      store: MemoryHandoffStorage(),
+      diagnostic: diagnostics.add,
+      prepareNetwork: (_, _) async {
+        native++;
+        throw const ProvisioningException(code: ProvisioningErrorCode.networkSwitchFailed, retryable: false);
+      },
+      prepareManualNetwork: (_, _) async {
+        manual++;
+      },
+      verify: (_, _) async {
+        verified++;
+      },
+    );
+    await cubit.begin(pending);
+    await until(() => cubit.state.phase == DirectApHandoffPhase.failure);
+    expect(manual, 0);
+    await cubit.continueAfterManualJoin();
+    expect(native, 1);
+    expect(manual, 1);
+    expect(verified, 1);
+    expect(diagnostics.lastWhere((e) => e['event'] == 'direct_ap_http_verified')['connection_path'], 'manual_rescue');
+    await cubit.close();
+  });
+
+  test('system joining precedes HTTP verification and resume does not duplicate it', () async {
+    final ready = Completer<void>();
+    var joins = 0, verifies = 0;
+    final cubit = DirectApHandoffCubit(
+      store: MemoryHandoffStorage(),
+      prepareNetwork: (_, _) {
+        joins++;
+        return ready.future;
+      },
+      verify: (_, _) async {
+        verifies++;
+      },
+    );
+    await cubit.begin(pending);
+    await until(() => cubit.state.phase == DirectApHandoffPhase.joiningPhoneAp);
+    cubit.lifecycleChanged(resumed: true);
+    cubit.networkChanged();
+    expect(joins, 1);
+    expect(verifies, 0);
+    ready.complete();
+    await until(() => cubit.state.phase == DirectApHandoffPhase.directApConnected);
+    expect(verifies, 1);
+    await cubit.close();
   });
 
   test('transport retry classification does not treat HTTP responses as network loss', () {
