@@ -1,6 +1,7 @@
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/features/review/presentation/version_history_page.dart';
+import 'package:aves/bird_companion/features/review/presentation/review_edit_page.dart';
 import 'package:aves/bird_companion/features/review/presentation/widgets/recognition_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,7 +18,7 @@ void main() {
         ),
       ),
     );
-    expect(find.text('42%'), findsNothing);
+    expect(find.text('42.0%'), findsNothing);
     expect(find.textContaining('需联网刷新'), findsOneWidget);
     expect(find.byKey(const ValueKey('recognition-current-species')), findsOneWidget);
   });
@@ -49,11 +50,32 @@ void main() {
       ),
     );
     expect(find.text('人工修正'), findsOneWidget);
-    expect(find.text('42%'), findsOneWidget);
-    expect(find.text('37%'), findsOneWidget);
+    expect(find.text('42.0%'), findsOneWidget);
+    expect(find.text('37.0%'), findsOneWidget);
     expect(tester.getTopLeft(find.byKey(const ValueKey('ai-candidate-confidence-0'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('ai-candidate-confidence-1'))).dy));
     expect(find.textContaining('没有模型置信度'), findsOneWidget);
     expect(tester.takeException(), null);
+  });
+
+  testWidgets('N07 编辑页区分当前 AI 结果与未保存的人工候选', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: ReviewEditPage(keepState: KeepState.pending, species: '', score: '', tags: '',
+        initialCandidates: [
+          SpeciesCandidate(name: '血雉', confidence: .873478),
+          SpeciesCandidate(name: '山鹧鸪', confidence: .000825),
+        ],
+      ),
+    ));
+    expect(find.text('AI 原始结果：血雉'), findsOneWidget);
+    expect(find.text('AI 候选概率：87.3%'), findsWidgets);
+    expect(find.text('待确认鸟种'), findsNothing);
+    expect(tester.widget<TextField>(find.byType(TextField).first).controller!.text, isEmpty);
+    final other = find.text('山鹧鸪');
+    await tester.ensureVisible(other);
+    await tester.tap(other);
+    await tester.pump();
+    expect(find.text('AI 原始结果：血雉'), findsOneWidget);
+    expect(find.text('拟修改为：山鹧鸪'), findsOneWidget);
   });
 
   testWidgets('history explains manual fields and clears in Chinese', (tester) async {

@@ -173,6 +173,7 @@ final class MethodChannelBirdBoxWifiPlatform implements BirdBoxWifiPlatform {
       throw ProvisioningException(
         code: switch (error.code) {
           'wifi_permission_denied' => ProvisioningErrorCode.localNetworkPermissionDenied,
+          'wifi_change_network_state_missing' => ProvisioningErrorCode.localNetworkPermissionMisconfigured,
           'wifi_unsupported' => ProvisioningErrorCode.capabilityUnsupported,
           'wifi_join_denied' => ProvisioningErrorCode.systemWifiJoinDenied,
           'wifi_bind_failed' => ProvisioningErrorCode.networkSwitchFailed,

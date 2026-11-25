@@ -109,17 +109,19 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            if (widget.photo?.preview.previewUri != null || widget.previewUri != null)
-              _CurrentResultCard(
-                uri: widget.previewUri ?? widget.photo!.preview.previewUri!,
-                photo: widget.photo,
-                mediaAssetLoader: widget.mediaAssetLoader,
-                mediaAssetCoordinator: widget.mediaAssetCoordinator,
-                deviceNamespace: widget.deviceNamespace,
-                allowNetworkFallback: widget.allowNetworkFallback,
-                species: _species.text,
-                candidate: _selectedCandidate,
-              ),
+            _CurrentResultCard(
+              uri: widget.previewUri ?? widget.photo?.preview.previewUri,
+              photo: widget.photo,
+              mediaAssetLoader: widget.mediaAssetLoader,
+              mediaAssetCoordinator: widget.mediaAssetCoordinator,
+              deviceNamespace: widget.deviceNamespace,
+              allowNetworkFallback: widget.allowNetworkFallback,
+              manualSpecies: widget.species.trim(),
+              aiCandidate: widget.photo?.recognition?.isOriginalVerified == false
+                  ? null
+                  : widget.initialCandidates.where((item) => item.name.trim().isNotEmpty).firstOrNull,
+              draft: _species.text.trim(),
+            ),
             const SizedBox(height: AppSpacing.lg),
             Text('可能的鸟种', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
             const SizedBox(height: AppSpacing.sm),
@@ -182,10 +184,6 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
       ),
     ),
   );
-
-  SpeciesCandidate? get _selectedCandidate {
-    return _candidateForName(_species.text);
-  }
 
   SpeciesCandidate? _candidateForName(String value) {
     for (final candidate in _candidates) {
@@ -273,23 +271,24 @@ class _ReviewEditPageState extends State<ReviewEditPage> {
 class _CurrentResultCard extends StatelessWidget {
   const _CurrentResultCard({
     required this.uri,
-    required this.species,
+    required this.manualSpecies,
+    required this.draft,
     this.photo,
     this.mediaAssetLoader,
     this.mediaAssetCoordinator,
     this.deviceNamespace,
     this.allowNetworkFallback = true,
-    this.candidate,
+    this.aiCandidate,
   });
 
-  final Uri uri;
-  final String species;
+  final Uri? uri;
+  final String manualSpecies, draft;
   final PhotoSummary? photo;
   final MediaAssetLoader? mediaAssetLoader;
   final MediaAssetCoordinator? mediaAssetCoordinator;
   final String? deviceNamespace;
   final bool allowNetworkFallback;
-  final SpeciesCandidate? candidate;
+  final SpeciesCandidate? aiCandidate;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -302,12 +301,14 @@ class _CurrentResultCard extends StatelessWidget {
             child: SizedBox(
               width: 112,
               height: 112,
-              child: photo == null
+              child: photo == null && uri == null
+                  ? const _EditPhotoPlaceholder()
+                  : photo == null
                   ? CachedNetworkImage(
-                      imageUrl: uri.toString(),
+                      imageUrl: uri!.toString(),
                       cacheKey: mediaCacheIdentity(
-                        uri: uri,
-                        mediaId: uri.path,
+                        uri: uri!,
+                        mediaId: uri!.path,
                         variant: 'review-edit-preview',
                       ),
                       fit: BoxFit.cover,
@@ -335,13 +336,16 @@ class _CurrentResultCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(species.isEmpty ? candidate?.name ?? '待确认鸟种' : species, style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
-                if (candidate != null) ...[
+                Text(manualSpecies.isNotEmpty ? '人工结果：$manualSpecies' : aiCandidate == null ? '暂无鸟种结果' : 'AI 原始结果：${aiCandidate!.name}',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.brandDark)),
+                if (manualSpecies.isEmpty && aiCandidate != null) ...[
                   const SizedBox(height: AppSpacing.xs),
-                  Text('AI 候选概率：${UserFacingText.recognitionPercent(candidate!.confidence)}', style: const TextStyle(color: AppColors.inkMuted)),
+                  Text('AI 候选概率：${UserFacingText.recognitionPercent(aiCandidate!.confidence)}', style: const TextStyle(color: AppColors.inkMuted)),
                 ],
-                const SizedBox(height: AppSpacing.sm),
-                const Chip(label: Text('当前结果')),
+                if (draft != manualSpecies) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(draft.isNotEmpty ? '拟修改为：$draft' : '拟清除人工鸟种'),
+                ],
               ],
             ),
           ),

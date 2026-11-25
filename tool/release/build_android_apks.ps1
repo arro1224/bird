@@ -90,6 +90,10 @@ $apksignerPath = Get-ChildItem -LiteralPath (Join-Path $androidSdk "build-tools"
 if ([string]::IsNullOrWhiteSpace($apksignerPath)) {
     throw "apksigner.bat was not found under $androidSdk\\build-tools."
 }
+$aaptPath = Join-Path (Split-Path -Parent $apksignerPath) "aapt.exe"
+if (-not (Test-Path -LiteralPath $aaptPath)) {
+    throw "aapt.exe was not found in the Android build-tools."
+}
 
 function Get-ApkCertificateSha256([string]$ApkPath) {
     # Recent JDKs print native-access warnings on stderr. Capture them with a non-terminating
@@ -277,6 +281,16 @@ try {
         if (-not (Test-Path -LiteralPath $sourcePath)) {
             throw "Expected APK was not produced: $sourcePath"
         }
+        # Use a relative APK filename: Windows aapt cannot open some absolute
+        # non-ASCII paths even though PowerShell and Flutter can.
+        Push-Location -LiteralPath (Split-Path -Parent $sourcePath)
+        try {
+            $apkPermissions = & $aaptPath dump permissions (Split-Path -Leaf $sourcePath)
+            $aaptExitCode = $LASTEXITCODE
+        } finally { Pop-Location }
+        if ($aaptExitCode -ne 0 -or ($apkPermissions -join "`n") -notmatch "(?m)^uses-permission: name='android\.permission\.CHANGE_NETWORK_STATE'\s*$") {
+            throw "APK does not declare CHANGE_NETWORK_STATE for Android direct hotspot join: $sourcePath"
+        }
         # Verify flavor-scoped samples from the actual APK, not just pubspec text.
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $archive = [IO.Compression.ZipFile]::OpenRead($sourcePath)
@@ -301,6 +315,7 @@ try {
             target = $variant.target
             scan_permission_policy = $variant.scan_permission_policy
             scan_strategy_fallback_enabled = $variant.scan_strategy_fallback_enabled
+            manifest_change_network_state_verified = $true
             bytes = $file.Length
             sha256 = Get-Sha256Hex $destinationPath
             signing_certificate_sha256 = Get-ApkCertificateSha256 $destinationPath

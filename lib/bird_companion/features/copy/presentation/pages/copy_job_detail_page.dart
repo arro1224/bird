@@ -540,7 +540,7 @@ class _ProgressCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final terminal = detail.state.isTerminal;
     final reportHasCounts = report != null && [report!.actualFileCount, report!.copiedFiles, report!.failedFiles, report!.skippedFiles, report!.notApplicableFiles].any((value) => value != null);
-    final progress = terminal && reportHasCounts ? CopyTaskProgress.fromReport(report!) : CopyTaskProgress.fromStats(detail.stats, detail.state);
+    final progress = terminal && reportHasCounts ? CopyTaskProgress.fromReport(report!, state: detail.state) : CopyTaskProgress.fromStats(detail.stats, detail.state);
     final timing = CopyTaskTiming.forTask(detail, terminal ? report : null);
     return Padding(
       padding: const EdgeInsets.only(top: 12),
@@ -551,7 +551,7 @@ class _ProgressCard extends StatelessWidget {
             const TaskSectionTitle('任务处理情况'),
             if (progress.percent != null) ...[
               LinearProgressIndicator(key: const Key('copy-job-progress-bar'), value: progress.percent, minHeight: 9, color: AppColors.forestPrimary, backgroundColor: AppColors.forestSoft),
-              Text('${(progress.percent! * 100).toStringAsFixed(0)}%', key: const Key('copy-job-progress-percent')),
+              Text('${detail.state.wire == 'cancelled' ? '取消时已处理 ' : ''}${(progress.percent! * 100).toStringAsFixed(0)}%', key: const Key('copy-job-progress-percent')),
             ] else
               const Text('进度百分比暂不可用', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
             const SizedBox(height: 6),
@@ -561,13 +561,13 @@ class _ProgressCard extends StatelessWidget {
               style: const TextStyle(fontSize: 12.5, color: AppColors.inkMuted),
             ),
             if (progress.total != null) Text('盒子文件总数：${progress.total}', style: const TextStyle(fontSize: 12, color: AppColors.inkMuted)),
-            if (terminal && progress.unprocessed != null && progress.unprocessed != 0)
+            if (progress.hasUnexpectedRemainder(detail.state))
               Text(
                 progress.unprocessed! > 0 ? '统计未守恒：${progress.unprocessed} 项未归类（已处理 ${progress.processed} / 总数 ${progress.total}）' : '统计异常：已处理数超过盒子文件总数',
                 key: const Key('copy-job-unclassified'),
                 style: const TextStyle(fontSize: 12, color: AppColors.danger),
               ),
-            if (!terminal && progress.copiedBytes != null) Text('已复制字节：${formatBytes(progress.copiedBytes!)}'),
+            if ((!terminal || report == null) && progress.copiedBytes != null) Text('已复制字节：${formatBytes(progress.copiedBytes!)}'),
             const SizedBox(height: 6),
             Text('${timing.elapsedTitle}：${timing.elapsedLabel}', key: const Key('copy-job-elapsed')),
             Text('${timing.speedTitle}：${timing.speedLabel}', key: const Key('copy-job-speed')),
@@ -899,13 +899,15 @@ class _ReportCard extends StatelessWidget {
               ),
             ],
           ),
-          Text(CopyTaskProgress.fromReport(report).summary(taskState), key: const Key('copy-report-outcomes')),
+          Text(CopyTaskProgress.fromReport(report, state: taskState).summary(taskState), key: const Key('copy-report-outcomes')),
           _metric('实际文件数', '${report.actualFileCount ?? '—'}'),
           _metric('已复制', '${report.copiedFiles ?? '—'}'),
           _metric('失败', '${report.failedFiles ?? '—'}', danger: (report.failedFiles ?? 0) > 0),
           _metric('同名跳过', '${report.skippedFiles ?? '—'}'),
           _metric('不适用', '${report.notApplicableFiles ?? '—'}'),
-          if (report.totalBytes != null) _metric('总字节数', _bytes(report.totalBytes!)),
+          if (report.totalBytes != null) _metric('计划总字节', _bytes(report.totalBytes!)),
+          if (report.copiedBytes != null || taskState.wire == 'cancelled')
+            _metric('实际已复制字节', report.copiedBytes == null ? '暂不可用' : formatBytes(report.copiedBytes!)),
           _metric(timing.elapsedTitle, timing.elapsedLabel),
           _metric(timing.speedTitle, timing.speedLabel),
           Text('统计来源：${timing.source}', style: const TextStyle(fontSize: 11, color: AppColors.inkMuted)),

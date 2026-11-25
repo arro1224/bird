@@ -44,6 +44,38 @@ class _Repository implements CopyJobRepository {
 CopyJobDetail completed({CopyJobStats? progress}) => CopyJobDetail(copyJobId: 'job', state: CopyJobState.completed, stateVersion: 1, eventSeq: 0, allowedActions: const [], stats: progress ?? stats());
 
 void main() {
+  testWidgets('N13 取消任务显示 3/10 和真实复制字节，不误报剩余项', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1600);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final report = CopyReport.fromJson({
+      'copy_job_id': 'job', 'actual_file_count': 10, 'copied_files': 3, 'skipped_files': 0,
+      'failed_files': 0, 'not_applicable_files': 0, 'total_bytes': 6000, 'copied_bytes': 1200,
+    });
+    final detail = CopyJobDetail(copyJobId: 'job', state: CopyJobState.cancelled, stateVersion: 2,
+      eventSeq: 0, allowedActions: const [], stats: stats(total: 10, copied: 3, skipped: 0, percent: 1));
+    await tester.pumpWidget(MaterialApp(home: CopyJobDetailPage(copyJobId: 'job',
+      repository: _Repository(detail, report), deviceReader: () async => const CopyDeviceList(devices: []))));
+    await tester.pumpAndSettle();
+    expect(find.text('取消时已处理 30%'), findsOneWidget);
+    expect(find.text('已复制 3 项，取消后未复制 7 项，共 10 项'), findsWidgets);
+    expect(find.byKey(const Key('copy-job-unclassified')), findsNothing);
+    await tester.scrollUntilVisible(find.text('实际已复制字节'), 300);
+    expect(find.text('计划总字节'), findsOneWidget);
+    expect(find.text('1.2 KB'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  test('N13 取消并不掩盖超量统计，也不猜测缺失字段', () {
+    final invalid = CopyTaskProgress.fromStats(stats(total: 2, copied: 3), CopyJobState.cancelled);
+    expect(invalid.hasUnexpectedRemainder(CopyJobState.cancelled), isTrue);
+    expect(invalid.percent, isNull);
+    final missing = CopyTaskProgress.fromReport(const CopyReport(copiedFiles: 3), state: CopyJobState.cancelled);
+    expect(missing.unprocessed, isNull);
+    expect(missing.copiedBytes, isNull);
+  });
+
   test('v10-11 终态处理数达到文件总数时显示 100%，计数全部来自后端', () {
     expect(CopyTaskProgress.fromStats(stats(percent: .8), CopyJobState.completed).percent, 1);
     expect(CopyTaskProgress.fromStats(stats(copied: 2, failed: 1, skipped: 1, notApplicable: 1), CopyJobState.completedWithErrors).percent, 1);

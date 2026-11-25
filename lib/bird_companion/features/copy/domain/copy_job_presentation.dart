@@ -19,7 +19,9 @@ class CopyTaskProgress {
     final notApplicable = count('not_applicable_files', stats.notApplicableFiles);
     final processed = [copied, failed, skipped, notApplicable].any((value) => value == null) ? null : copied! + failed! + skipped! + notApplicable!;
     var percent = stats.effectiveProgressPercent;
-    if (state.isTerminal) {
+    if (state.wire == 'cancelled') {
+      percent = _cancelledPercent(total, processed);
+    } else if (state.isTerminal) {
       // v10 问题 11：终态已处理数达到盒子文件总数时显示 100%；
       // 否则隐藏过期分数，避免"已完成却显示 80%"。计数来自后端，不做本地累加。
       if (percent != 1) percent = null;
@@ -36,7 +38,7 @@ class CopyTaskProgress {
     );
   }
 
-  factory CopyTaskProgress.fromReport(CopyReport report) {
+  factory CopyTaskProgress.fromReport(CopyReport report, {CopyJobState? state}) {
     final total = _count(report.actualFileCount);
     final copied = _count(report.copiedFiles);
     final failed = _count(report.failedFiles);
@@ -44,16 +46,30 @@ class CopyTaskProgress {
     final notApplicable = _count(report.notApplicableFiles);
     final processed = [copied, failed, skipped, notApplicable].any((value) => value == null) ? null : copied! + failed! + skipped! + notApplicable!;
     // 终态报告：处理总数达到实际文件数即 100%（含失败/跳过/不适用）。
-    final percent = total != null && processed != null && total > 0 && processed >= total ? 1.0 : null;
-    return CopyTaskProgress(total: total, copied: copied, failed: failed, skipped: skipped, notApplicable: notApplicable, percent: percent);
+    final percent = state?.wire == 'cancelled'
+        ? _cancelledPercent(total, processed)
+        : total != null && processed != null && total > 0 && processed >= total ? 1.0 : null;
+    return CopyTaskProgress(total: total, copied: copied, failed: failed, skipped: skipped, notApplicable: notApplicable, copiedBytes: _count(report.copiedBytes), percent: percent);
   }
+
+  static double? _cancelledPercent(int? total, int? processed) =>
+      total != null && total > 0 && processed != null && processed >= 0 && processed <= total ? processed / total : null;
 
   int? get processed => [copied, failed, skipped, notApplicable].any((count) => count == null) ? null : copied! + failed! + skipped! + notApplicable!;
 
   /// 未归类项 = 盒子文件总数 − 已处理数（v10 问题 2 统计守恒检查）。
   int? get unprocessed => total == null || processed == null ? null : total! - processed!;
 
+  bool hasUnexpectedRemainder(CopyJobState state) {
+    final remaining = unprocessed;
+    return state.isTerminal && remaining != null && (remaining < 0 || (remaining > 0 && state.wire != 'cancelled'));
+  }
+
   String summary(CopyJobState state) {
+    if (state.wire == 'cancelled' && unprocessed != null && unprocessed! >= 0) {
+      final other = [if (skipped! > 0) '同名跳过 $skipped 项', if (failed! > 0) '失败 $failed 项', if (notApplicable! > 0) '不适用 $notApplicable 项'];
+      return ['已复制 $copied 项', ...other, '取消后未复制 $unprocessed 项', '共 $total 项'].join('，');
+    }
     final verb = switch (state.wire) {
       'completed' || 'completed_with_errors' => '处理完成',
       _ => '已处理',

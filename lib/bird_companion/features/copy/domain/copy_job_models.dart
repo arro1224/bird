@@ -713,6 +713,7 @@ class CopyReport {
     this.videoCount,
     this.companionCount,
     this.totalBytes,
+    this.copiedBytes,
     this.elapsedSeconds,
     this.bytesPerSecond,
     this.xmpCount,
@@ -739,6 +740,7 @@ class CopyReport {
   final int? videoCount;
   final int? companionCount;
   final int? totalBytes;
+  final int? copiedBytes;
   final num? elapsedSeconds;
   final num? bytesPerSecond;
   final int? xmpCount;
@@ -772,6 +774,7 @@ class CopyReport {
       videoCount: _nonNegativeCount(json['video_count']),
       companionCount: _nonNegativeCount(json['companion_count']),
       totalBytes: _nonNegativeCount(json['total_bytes']),
+      copiedBytes: _nonNegativeCount(json['copied_bytes']),
       elapsedSeconds: _timingNumber(json, 'elapsed_seconds'),
       bytesPerSecond: _timingNumber(json, 'bytes_per_second'),
       xmpCount: _nonNegativeCount(json['xmp_count']),

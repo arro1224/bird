@@ -76,6 +76,7 @@ enum ProvisioningErrorCode {
   bluetoothUnavailable,
   locationServicesDisabled,
   localNetworkPermissionDenied,
+  localNetworkPermissionMisconfigured,
   systemWifiJoinDenied,
   phoneDppNotSupported,
   systemDppActivityUnavailable,
@@ -159,6 +160,7 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.bluetoothUnavailable => 'BLUETOOTH_UNAVAILABLE',
     ProvisioningErrorCode.locationServicesDisabled => 'LOCATION_SERVICES_DISABLED',
     ProvisioningErrorCode.localNetworkPermissionDenied => 'LOCAL_NETWORK_PERMISSION_DENIED',
+    ProvisioningErrorCode.localNetworkPermissionMisconfigured => 'LOCAL_NETWORK_PERMISSION_MISCONFIGURED',
     ProvisioningErrorCode.systemWifiJoinDenied => 'SYSTEM_WIFI_JOIN_DENIED',
     ProvisioningErrorCode.phoneDppNotSupported => 'PHONE_DPP_NOT_SUPPORTED',
     ProvisioningErrorCode.systemDppActivityUnavailable => 'SYSTEM_DPP_ACTIVITY_UNAVAILABLE',
@@ -198,6 +200,7 @@ extension ProvisioningErrorCodeWireValue on ProvisioningErrorCode {
     ProvisioningErrorCode.bleEncryptedRetryFailed ||
     ProvisioningErrorCode.pairingOpenTimeout ||
     ProvisioningErrorCode.localNetworkPermissionDenied ||
+    ProvisioningErrorCode.localNetworkPermissionMisconfigured ||
     ProvisioningErrorCode.systemWifiJoinDenied ||
     ProvisioningErrorCode.phoneDppNotSupported ||
     ProvisioningErrorCode.systemDppActivityUnavailable ||

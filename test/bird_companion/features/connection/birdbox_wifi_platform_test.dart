@@ -14,6 +14,23 @@ void main() {
 
   tearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
+  test('N06 distinguishes an APK configuration error from permission denial', () async {
+    var code = 'wifi_change_network_state_missing';
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'joinDirectAp') throw PlatformException(code: code);
+      return null;
+    });
+    final platform = MethodChannelBirdBoxWifiPlatform(channel: channel, networkEvents: const Stream.empty());
+    Future<WifiJoinResult> join() => platform.joinDirectAp(ssid: 'Exact-Box', passphrase: 'TEST_ONLY_PASSWORD', security: WifiSecurity.wpa2Personal);
+    await expectLater(join(), throwsA(isA<ProvisioningException>()
+      .having((error) => error.code, 'code', ProvisioningErrorCode.localNetworkPermissionMisconfigured)
+      .having((error) => error.code.origin, 'origin', ProvisioningErrorOrigin.app)));
+    code = 'wifi_permission_denied';
+    await expectLater(join(), throwsA(isA<ProvisioningException>()
+      .having((error) => error.code, 'code', ProvisioningErrorCode.localNetworkPermissionDenied)));
+    await platform.dispose();
+  });
+
   test('passes exact AP security and distinguishes unavailable from explicit cancellation', () async {
     final calls = <MethodCall>[];
     messenger.setMockMethodCallHandler(channel, (call) async {

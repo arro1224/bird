@@ -1,7 +1,7 @@
 /// Converts values used by the box and recognition service into language that
 /// a photographer can understand without knowing algorithm terminology.
 abstract final class UserFacingText {
-  static String recognitionPercent(double value) => '${(value * 100).round()}%';
+  static String recognitionPercent(double value) => '${(value * 100).toStringAsFixed(1)}%';
 
   static String recognitionCertainty(double value) {
     if (value >= .85) return '很有把握';

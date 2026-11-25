@@ -532,6 +532,8 @@ abstract final class UserMessageMapper {
           message: '盒子未返回配对确认。',
           actionLabel: '重试',
         );
+      case ProvisioningErrorCode.localNetworkPermissionMisconfigured:
+        return const UserMessage(title: '请更新 App', message: '当前安装包缺少自动连接热点所需的系统权限。');
       case ProvisioningErrorCode.localNetworkPermissionDenied:
         return const UserMessage(
           title: '需要本地网络权限',

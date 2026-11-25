@@ -382,6 +382,11 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
             result.error("wifi_unsupported", "Connectivity service is unavailable.", null);
             return;
         }
+        // Normal permission: only the packaged manifest can grant it.
+        if (ContextCompat.checkSelfPermission(activity, Manifest.permission.CHANGE_NETWORK_STATE) != PackageManager.PERMISSION_GRANTED) {
+            result.error("wifi_change_network_state_missing", "APK missing android.permission.CHANGE_NETWORK_STATE.", null);
+            return;
+        }
         if (pendingJoinResult != null) {
             result.error("invalid_state", "A Wi-Fi join request is already active.", null);
             return;

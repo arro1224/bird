@@ -375,6 +375,8 @@ String directApErrorMessage(Object error) {
         return '手机与盒子热点的连接未建立。可能是系统未批准、热点不可见或请求超时，请检查后重试。';
       case ProvisioningErrorCode.localNetworkPermissionDenied:
         return '缺少连接本地 Wi-Fi 所需权限，请授权后返回重试。';
+      case ProvisioningErrorCode.localNetworkPermissionMisconfigured:
+        return '当前安装包缺少自动连接热点所需的系统权限，请更新 App。';
       case ProvisioningErrorCode.wifiSecurityUnsupported:
         return '当前手机不支持盒子热点的安全类型，请检查设备配置。';
       case ProvisioningErrorCode.authorizationRequired:
