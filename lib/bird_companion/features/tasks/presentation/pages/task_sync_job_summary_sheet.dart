@@ -16,9 +16,9 @@ class TaskSyncJobSummarySheet extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Row(
+          Row(
             children: [
-              CircleAvatar(
+              const CircleAvatar(
                 radius: 25,
                 backgroundColor: AppColors.forestSoft,
                 child: Icon(
@@ -27,11 +27,11 @@ class TaskSyncJobSummarySheet extends StatelessWidget {
                   size: 28,
                 ),
               ),
-              SizedBox(width: 14),
+              const SizedBox(width: 14),
               Expanded(
                 child: Text(
-                  '同步任务摘要',
-                  style: TextStyle(
+                  task.photoPreparation ? '图片准备摘要' : '同步任务摘要',
+                  style: const TextStyle(
                     color: AppColors.forestDeep,
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
@@ -62,9 +62,9 @@ class TaskSyncJobSummarySheet extends StatelessWidget {
               color: AppColors.amberLight,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Text(
-              '盒子当前没有提供可按任务恢复的逐项同步结果；这里仅显示任务详情中的权威汇总，不推断冲突或待处理项。',
-              style: TextStyle(color: AppColors.ink, height: 1.4),
+            child: Text(
+              task.photoPreparation ? '这里显示盒子准备浏览图片的任务汇总，与离线审阅修改回写分别记录。' : '盒子当前没有提供可按任务恢复的逐项同步结果；这里仅显示任务详情中的权威汇总，不推断冲突或待处理项。',
+              style: const TextStyle(color: AppColors.ink, height: 1.4),
             ),
           ),
           const SizedBox(height: 18),

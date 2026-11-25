@@ -203,8 +203,13 @@ final class BirdBoxWifiChannel implements MethodChannel.MethodCallHandler {
         try {
             final WifiManager manager = (WifiManager) activity.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             final WifiInfo info = manager == null ? null : manager.getConnectionInfo();
-            final String ssid = normalizeSsid(info == null ? null : info.getSSID());
-            if (ssid == null) {
+            final boolean connected = info != null && info.getNetworkId() >= 0
+                    && info.getSupplicantState() == android.net.wifi.SupplicantState.COMPLETED;
+            final String ssid = connected ? normalizeSsid(info.getSSID()) : null;
+            if (!connected) {
+                // No client association says nothing about whether this phone is providing a hotspot.
+                response.put("reason", "not_connected");
+            } else if (ssid == null) {
                 response.put("reason", "unavailable");
             } else {
                 response.put("ssid", ssid);

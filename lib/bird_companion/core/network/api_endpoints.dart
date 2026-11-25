@@ -9,6 +9,8 @@ abstract final class ApiEndpoints {
   // birdbox-v1@1.0.0 endpoint inventory remains exactly frozen.
   static const apiV1Prefix = '/api/v1';
   static const recognitionCapabilities = '$apiV1Prefix/recognition-capabilities';
+  static const importAnalysisStatusTemplate = '$apiV1Prefix/projects/{project_id}/import-analysis';
+  static String importAnalysisStatus(String projectId) => '$apiV1Prefix/projects/${Uri.encodeComponent(projectId)}/import-analysis';
   static String recognitionEvents(String jobId) => '$apiV1Prefix/jobs/$jobId/recognition-events';
   static String startSmartFollow(String jobId) => '$apiV1Prefix/jobs/$jobId/smart-follow-sessions';
   static String smartFollowSession(String sessionId) => '$apiV1Prefix/smart-follow-sessions/$sessionId';

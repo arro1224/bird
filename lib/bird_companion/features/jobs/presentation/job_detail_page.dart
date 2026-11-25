@@ -6,6 +6,7 @@ import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_page.dart';
+import 'package:aves/bird_companion/features/jobs/domain/import_analysis_models.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/production_task_result_page.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/pages/task_detail_page.dart';
@@ -48,6 +49,7 @@ class _JobDetailPageState extends State<JobDetailPage> {
       eventClient: dependencies.eventClient,
       deviceSessionCubit: dependencies.deviceSessionCubit,
       pendingOperationStore: dependencies.pendingOperationStore,
+      importAnalysis: dependencies.jobRepository is ImportWorkflowRepository ? dependencies.importAnalysisService : null,
     );
     _controller = controller;
     unawaited(_initializeController(controller));

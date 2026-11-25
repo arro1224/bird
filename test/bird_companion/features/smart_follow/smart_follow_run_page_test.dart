@@ -84,8 +84,8 @@ void main() {
     backend.waitForTarget();
     await tester.pumpWidget(host(repository, backend));
     await tester.pumpAndSettle();
-    expect(tester.widget<Text>(find.byKey(const Key('smart-follow-stage-label'))).data, '等待目标盘');
-    expect(find.textContaining('识别仍在继续'), findsWidgets);
+    expect(tester.widget<Text>(find.byKey(const Key('smart-follow-stage-label'))).data, '存储受阻，等待处理');
+    expect(find.textContaining('不据此判断目标盘已拔出'), findsOneWidget);
     expect(find.byKey(const Key('smart-follow-action-pause')), findsOneWidget);
     expect(find.byKey(const Key('smart-follow-action-stop_following')), findsOneWidget);
     expect(find.byKey(const Key('smart-follow-action-finish_current_results')), findsNothing);
@@ -133,7 +133,11 @@ void main() {
 
   testWidgets('加载失败时显示可读文案而不是空白页', (tester) async {
     final failing = _FailingRepository();
-    await tester.pumpWidget(MaterialApp(home: SmartFollowRunPage(repository: failing, sessionId: 'sf_missing')));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SmartFollowRunPage(repository: failing, sessionId: 'sf_missing'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.textContaining('盒子'), findsWidgets);
   });

@@ -1316,6 +1316,9 @@ class _GalleryCountsNotice extends StatelessWidget {
   final bool offline;
   @override
   Widget build(BuildContext context) {
+    if (state.countsFromLocalCache) {
+      return Text(state.pendingOperationCount > 0 ? '手机缓存内统计（含待同步修改）' : '手机缓存内统计', style: const TextStyle(fontSize: 12, color: AppColors.inkMuted));
+    }
     final time = state.countsUpdatedAt?.toLocal();
     final stamp = time == null ? '时间未记录' : '${time.month}/${time.day} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     return Column(
@@ -1358,7 +1361,7 @@ class _QuickFilters extends StatelessWidget {
       ('已跳过', 'filtered', filteredCount, null, null),
       ('已保留', 'keep', keepCount, AppColors.brand, Icons.circle),
       ('已弃选', 'discard', discardCount, AppColors.danger, Icons.circle),
-      if (!offline) ('精选', 'featured', null, AppColors.amber, Icons.star_rounded),
+      ('精选', 'featured', null, AppColors.amber, Icons.star_rounded),
     ];
     final selected = query.recommendedOnly ? '__ai__' : query.recognitionState ?? (query.analysisState == 'skipped' ? 'filtered' : query.keepState);
     final chips = SingleChildScrollView(

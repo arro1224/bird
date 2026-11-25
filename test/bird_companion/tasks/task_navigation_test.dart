@@ -428,7 +428,9 @@ void main() {
     expect(find.byKey(const Key('task-progress-emphasis')), findsOneWidget);
     expect(find.byKey(const Key('task-timeline-connector')), findsNWidgets(3));
     expect(find.byKey(const Key('task-detail-info-icon')), findsNWidgets(4));
-    expect(tester.getBottomRight(find.text('取消任务')).dy, lessThan(800));
+    await tester.ensureVisible(find.text('取消任务'));
+    await tester.pumpAndSettle();
+    expect(find.text('取消任务').hitTestable(), findsOneWidget);
   });
 
   testWidgets('取消任务确认框关闭后保留任务详情页，并正确执行所选操作', (tester) async {

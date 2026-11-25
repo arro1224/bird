@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
+import 'package:aves/bird_companion/core/models/job_models.dart';
+import 'package:aves/bird_companion/features/jobs/domain/import_analysis_models.dart';
 import 'package:aves/bird_companion/features/recognition/recognition_widgets.dart';
 import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_task_tile.dart';
 import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_entry_section.dart';
@@ -42,7 +44,7 @@ class TaskExperienceRoot extends StatefulWidget {
 
 class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBindingObserver {
   RepositoryTaskExperienceController? _controller;
-  StreamSubscription<String>? _analysisSubscription;
+  StreamSubscription<BirdJobStatus>? _analysisSubscription;
   StreamSubscription<String>? _copySubscription;
   var _autoOpeningReport = false;
   final Set<String> _openingReportJobs = {};
@@ -52,6 +54,8 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
   bool _openingHistory = false;
   bool _visible = false;
   int? _followDiscoveryGeneration;
+  bool get _canAutoNavigate => mounted && _visible && !_openingTask && !_openingCopy && !_openingHistory && !_syncing && _controller?.acting != true && (ModalRoute.isCurrentOf(context) ?? true);
+  bool _stillCompleted(String jobId) => _controller?.jobs.any((job) => job.id == jobId && job.state == BirdJobState.completed) == true;
 
   @override
   void initState() {
@@ -110,11 +114,16 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
       recognitionRepository: dependencies.recognitionRepository,
       smartFollowCreation: dependencies.smartFollowCreation,
       smartFollowConfiguration: (batch) => smartFollowConfigurationReader(dependencies, batch),
+      importSmartFollowConfiguration: () => smartFollowConfigurationReader(dependencies, null),
+      importAnalysis: dependencies.jobRepository is ImportWorkflowRepository ? dependencies.importAnalysisService : null,
     );
     _controller = controller;
     controller.addListener(_discoverFollow);
-    _analysisSubscription = controller.analysisCompletedProjects.listen(
-      (projectId) async {
+    _analysisSubscription = controller.analysisCompletedJobs.listen(
+      (completedJob) async {
+        final projectId = completedJob.sourceProjectId;
+        if (projectId == null || !_stillCompleted(completedJob.id)) return;
+        if (!_canAutoNavigate || controller.activeBatchId != projectId || controller.connectionState != TaskConnectionState.connected) return;
         final device = dependencies.smartFollowCreation.contextKey();
         if (dependencies.smartFollowCreation.hasStaged(projectId) || dependencies.smartFollowCreation.hasPending(projectId)) return;
         try {
@@ -127,7 +136,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
         } catch (_) {
           return; // Do not present recognition completion as follow completion.
         }
-        if (!mounted || dependencies.smartFollowCreation.contextKey() != device) return;
+        if (!_canAutoNavigate || !_stillCompleted(completedJob.id) || controller.activeBatchId != projectId || controller.connectionState != TaskConnectionState.connected || dependencies.smartFollowCreation.contextKey() != device) return;
         final onAnalysisCompleted = widget.onAnalysisCompleted;
         if (onAnalysisCompleted != null) {
           onAnalysisCompleted(projectId);
@@ -137,7 +146,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
       },
     );
     _copySubscription = controller.copyCompletedJobs.listen((jobId) {
-      if (!mounted || _autoOpeningReport || !dependencies.settingsStore.read().autoOpenReport) {
+      if (!_canAutoNavigate || _autoOpeningReport || !dependencies.settingsStore.read().autoOpenReport) {
         return;
       }
       String? sourceProjectId;
@@ -174,13 +183,40 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
     if (controller == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    return TaskHomePage(
-      controller: controller,
-      onOpenSdCard: _openSdCard,
-      onOpenTask: _openTask,
-      onStartTask: _startTask,
-      onOpenCopyJobs: _openCopyJobs,
-      copyRecoveryBanner: _buildCopyOverview(context),
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) => Column(
+        children: [
+          if (controller.pendingImportStart)
+            MaterialBanner(
+              content: const Text('上次开始结果待确认，请恢复原请求，避免重复创建批次。'),
+              actions: [
+                TextButton(
+                  onPressed: controller.acting || controller.connectionState != TaskConnectionState.connected
+                      ? null
+                      : () async {
+                          try {
+                            await controller.resumePendingImport();
+                          } catch (error) {
+                            if (context.mounted) _showError(context, error);
+                          }
+                        },
+                  child: const Text('查询并恢复原开始'),
+                ),
+              ],
+            ),
+          Expanded(
+            child: TaskHomePage(
+              controller: controller,
+              onOpenSdCard: _openSdCard,
+              onOpenTask: _openTask,
+              onStartTask: _startTask,
+              onOpenCopyJobs: _openCopyJobs,
+              copyRecoveryBanner: _buildCopyOverview(context),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -325,6 +361,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
 
   void _openSdCard() {
     final controller = _controller!;
+    controller.beginImportConfiguration();
     Map<String, dynamic>? selected;
     SmartFollowConfiguredIntent? selectedIntent;
     final configurationReady = ValueNotifier(true);
@@ -512,13 +549,13 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
           allowDemoCompletion: false,
           onControl: _control,
           onExportLog: _exportTaskLog,
-          onShowResult: switch ((refreshedTask.type, refreshedTask.state)) {
-            (TaskType.aiAnalysis, TaskRunState.completed) when sourceProjectId != null => () => widget.onOpenGallery(GalleryArgs(sourceProjectId)),
-            (TaskType.copy, TaskRunState.completed) => () => unawaited(
+          onShowResult: switch (refreshedTask.type) {
+            TaskType.aiAnalysis when sourceProjectId != null => () => widget.onOpenGallery(GalleryArgs(sourceProjectId)),
+            TaskType.copy => () => unawaited(
               _openReport(taskId, sourceProjectId),
             ),
-            (TaskType.sync, TaskRunState.completed) => () => unawaited(
-              _showSyncJobSummary(refreshedTask),
+            TaskType.sync => () => unawaited(
+              _showSyncJobSummary(controller.taskById(taskId)),
             ),
             _ => null,
           },
@@ -540,6 +577,9 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
     String? sourceProjectId, {
     bool automatic = false,
   }) async {
+    final contextKey = BirdCompanionScope.of(context).smartFollowCreation.contextKey();
+    if (automatic && (sourceProjectId == null || sourceProjectId.isEmpty)) return;
+    if (automatic && (!_canAutoNavigate || !_stillCompleted(jobId) || sourceProjectId != _controller?.activeBatchId)) return;
     if (!_openingReportJobs.add(jobId)) return;
     if (automatic) {
       if (_autoOpeningReport) {
@@ -560,7 +600,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
           failureError = error;
         }
       }
-      if (!mounted) return;
+      if (!mounted || BirdCompanionScope.of(context).smartFollowCreation.contextKey() != contextKey || (automatic && (!_canAutoNavigate || !_stillCompleted(jobId) || sourceProjectId != _controller?.activeBatchId))) return;
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
           builder: (_) => ProductionTaskResultPage(

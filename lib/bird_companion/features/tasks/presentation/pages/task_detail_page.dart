@@ -117,7 +117,7 @@ class TaskDetailPage extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    task.type.label,
+                    task.photoPreparation ? task.title : task.type.label,
                     style: const TextStyle(color: AppColors.forestDeep, fontSize: 21, fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -125,28 +125,39 @@ class TaskDetailPage extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 13),
-            RichText(
-              key: const Key('task-progress-emphasis'),
-              text: TextSpan(
-                style: const TextStyle(fontSize: 20, color: AppColors.mutedInk),
-                children: [
-                  TextSpan(
-                    text: _count(task.processed),
-                    style: const TextStyle(color: AppColors.forestPrimary, fontSize: 31, fontWeight: FontWeight.w700),
-                  ),
-                  TextSpan(text: ' / ${_count(task.total)} 张'),
-                ],
+            if (task.waitingForImport)
+              const Text('等待导入完成', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700))
+            else ...[
+              RichText(
+                key: const Key('task-progress-emphasis'),
+                text: TextSpan(
+                  style: const TextStyle(fontSize: 20, color: AppColors.mutedInk),
+                  children: [
+                    TextSpan(
+                      text: _count(task.processed),
+                      style: const TextStyle(color: AppColors.forestPrimary, fontSize: 31, fontWeight: FontWeight.w700),
+                    ),
+                    TextSpan(text: ' / ${_count(task.total)} 张'),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              '${task.progressPercent}%',
-              style: const TextStyle(color: AppColors.forestPrimary, fontSize: 42, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 5),
-            LinearProgressIndicator(value: task.progressPercent / 100, minHeight: 7),
+              const SizedBox(height: 3),
+              Text(
+                '${task.progressPercent}%',
+                style: const TextStyle(color: AppColors.forestPrimary, fontSize: 42, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 5),
+              LinearProgressIndicator(value: task.progressPercent / 100, minHeight: 7),
+            ],
             const SizedBox(height: 11),
-            Text('预计剩余 ${task.remainingMinutes} 分钟', style: const TextStyle(color: AppColors.mutedInk)),
+            Text(task.etaLabel, style: const TextStyle(color: AppColors.mutedInk)),
+            if (task.updatedAt != null || task.connectionState != null)
+              Text(
+                task.freshnessFor(controller.connectionState),
+                key: const Key('task-progress-updated-at'),
+                style: const TextStyle(color: AppColors.mutedInk),
+              ),
+            if (task.photoPreparation) const Text('盒子自动准备缩略图与预览，按本任务进度显示；不支持暂停、继续、取消或跳过。'),
           ],
         ),
       ],
@@ -156,10 +167,10 @@ class TaskDetailPage extends StatelessWidget {
   Widget _timeline(TaskSummary task) {
     final labels = switch (task.type) {
       TaskType.importIndex => const ['读取照片', '建立索引', '生成缩略图', '准备分析'],
-      TaskType.aiAnalysis => const ['读取批次', 'AI 识别分析', '质量评分', '生成结果'],
+      TaskType.aiAnalysis => task.waitingForImport ? const ['等待导入完成', 'AI 识别分析', '质量评分', '生成结果'] : const ['读取批次', 'AI 识别分析', '质量评分', '生成结果'],
       TaskType.copy => const ['确认复制范围', '复制照片', '校验文件', '生成报告'],
       TaskType.fullBackup => const ['扫描摄影资料', '复制文件', '校验文件', '生成报告'],
-      TaskType.sync => const ['准备同步', '同步结果', '校验差异', '完成同步'],
+      TaskType.sync => task.photoPreparation ? const ['读取照片', '生成缩略图', '生成预览', '完成准备'] : const ['准备同步', '同步结果', '校验差异', '完成同步'],
     };
     final position = _workflowPosition(task);
     final currentIndex = position.index;
@@ -197,6 +208,7 @@ class TaskDetailPage extends StatelessWidget {
       (TaskType.importIndex, 'scanning') => 0,
       (TaskType.importIndex, 'importing') => 1,
       (TaskType.aiAnalysis, 'analyzing') => 1,
+      (TaskType.aiAnalysis, 'waiting_import') => 0,
       (TaskType.aiAnalysis, 'awaiting_review') => 3,
       (TaskType.aiAnalysis, 'reviewing') => 3,
       (TaskType.copy, 'awaiting_copy') => 0,
@@ -212,7 +224,7 @@ class TaskDetailPage extends StatelessWidget {
         task.workflowStage == null ||
         switch ((task.type, task.workflowStage)) {
           (TaskType.importIndex, 'scanning' || 'importing') => true,
-          (TaskType.aiAnalysis, 'analyzing' || 'awaiting_review' || 'reviewing') => true,
+          (TaskType.aiAnalysis, 'waiting_import' || 'analyzing' || 'awaiting_review' || 'reviewing') => true,
           (TaskType.copy, 'awaiting_copy' || 'copying' || 'verifying' || 'exporting_xmp') => true,
           (TaskType.sync, 'scanning' || 'importing' || 'verifying') => true,
           _ => false,
@@ -272,7 +284,7 @@ class TaskDetailPage extends StatelessWidget {
   );
 
   Widget _actions(BuildContext context, TaskSummary task) {
-    final actions = task.availableActions;
+    final actions = task.photoPreparation ? task.availableActions.intersection({TaskAction.exportLog}) : task.availableActions;
     final enabled = controller.canSubmitTaskWrites;
     return Wrap(
       spacing: 10,
@@ -322,10 +334,10 @@ class TaskDetailPage extends StatelessWidget {
             enabled ? () => _performAction(task, TaskAction.skipFailed) : null,
             filled: false,
           ),
-        if (actions.contains(TaskAction.cancel))
+        if (actions.contains(TaskAction.cancel) || task.pendingCancellation)
           _actionButton(
-            '取消任务',
-            enabled ? () => _confirmCancel(context, task) : null,
+            task.pendingCancellation ? '核对取消结果' : '取消任务',
+            enabled ? () => task.pendingCancellation ? _performAction(task, TaskAction.cancel) : _confirmCancel(context, task) : null,
             filled: false,
           ),
         if (actions.contains(TaskAction.exportLog))
@@ -342,7 +354,7 @@ class TaskDetailPage extends StatelessWidget {
 
   String _resultLabel(TaskSummary task) => switch (task.type) {
     TaskType.copy => '查看复制结果',
-    TaskType.sync => '查看同步摘要',
+    TaskType.sync => task.photoPreparation ? '查看图片准备摘要' : '查看同步摘要',
     TaskType.aiAnalysis => '查看相册结果',
     TaskType.importIndex => '查看任务结果',
     TaskType.fullBackup => '查看备份结果',
@@ -500,14 +512,20 @@ class TaskDetailPage extends StatelessWidget {
     if (approved == true) _performAction(task, TaskAction.cancel);
   }
 
-  String _stateLabel(TaskSummary task) => switch (task.state) {
-    TaskRunState.queued => '等待中',
-    TaskRunState.running => '进行中',
-    TaskRunState.paused => '已暂停',
-    TaskRunState.failed => _failureLabel(task),
-    TaskRunState.completed => '已完成',
-    TaskRunState.cancelled => '已取消',
-  };
+  String _stateLabel(TaskSummary task) => task.pendingCancellation
+      ? '取消待确认'
+      : task.waitingForImport
+      ? '等待导入完成'
+      : task.isFinishing
+      ? '正在收尾'
+      : switch (task.state) {
+          TaskRunState.queued => '等待中',
+          TaskRunState.running => '进行中',
+          TaskRunState.paused => '已暂停',
+          TaskRunState.failed => _failureLabel(task),
+          TaskRunState.completed => '已完成',
+          TaskRunState.cancelled => '已取消',
+        };
 
   /// 任务级失败可能没有任何逐文件失败项；不要显示误导性的“失败 0 项”。
   String _failureLabel(TaskSummary task) {

@@ -51,12 +51,13 @@ class NetworkProvisioningPage extends StatefulWidget {
 }
 
 class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
-  WifiScanNetwork? _selectedNetwork;
   PhoneWifiPlatform? _phoneWifi;
-  String? _prefillSsid;
-  String? _prefillHint;
+  PhoneWifiSsid? _phoneSnapshot;
+  StaNetworkKind _initialNetworkKind = StaNetworkKind.router;
+  int _phoneReadGeneration = 0;
   bool _readingPhoneWifi = false;
   bool _openingQrScanner = false;
+  bool _openingOptions = false;
 
   @override
   void didChangeDependencies() {
@@ -66,7 +67,7 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
 
   Future<PhoneWifiSsid> _readPhoneWifi() async {
     try {
-      return await _phoneWifi?.currentSsid() ?? const PhoneWifiSsid.unreadable(PhoneWifiReadFailure.unsupported);
+      return await _phoneWifi?.currentSsid().timeout(const Duration(seconds: 8)) ?? const PhoneWifiSsid.unreadable(PhoneWifiReadFailure.unsupported);
     } catch (_) {
       return const PhoneWifiSsid.unreadable(PhoneWifiReadFailure.unavailable);
     }
@@ -83,40 +84,67 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
     }
   }
 
-  /// Reads the phone's Wi-Fi name and opens the manual form pre-filled with it.
-  ///
-  /// The read is a hint only: it never selects a network, never supplies a password and
-  /// never blocks the user from typing a different name.
+  void _openManualForm(NetworkProvisioningCubit cubit, {StaNetworkKind kind = StaNetworkKind.router}) {
+    _phoneReadGeneration++;
+    setState(() {
+      _phoneSnapshot = null;
+      _readingPhoneWifi = false;
+      _initialNetworkKind = kind;
+    });
+    cubit.showManualWifi();
+  }
+
+  bool _canReadPhoneWifi(NetworkProvisioningCubit cubit, int generation, String? deviceId) =>
+      mounted &&
+      !cubit.isClosed &&
+      generation == _phoneReadGeneration &&
+      identical(context.read<NetworkProvisioningCubit>(), cubit) &&
+      cubit.state.trustedDeviceId == deviceId &&
+      const {
+        NetworkProvisioningPhase.enteringWifiManually,
+        NetworkProvisioningPhase.scanningWifi,
+        NetworkProvisioningPhase.choosingWifiNetwork,
+        NetworkProvisioningPhase.failure,
+        NetworkProvisioningPhase.cancelled,
+      }.contains(cubit.state.phase);
+
+  /// Open immediately so a slow platform read cannot block typing. Only the form
+  /// decides whether the resulting name may still prefill its unchanged draft.
   Future<void> _connectCurrentPhoneWifi(NetworkProvisioningCubit cubit) async {
+    if (cubit.state.phase == NetworkProvisioningPhase.choosingWifiMethod) _openManualForm(cubit);
     if (_readingPhoneWifi) return;
+    final generation = ++_phoneReadGeneration;
+    final deviceId = cubit.state.trustedDeviceId;
     setState(() => _readingPhoneWifi = true);
     var hint = await _readPhoneWifi();
+    if (!_canReadPhoneWifi(cubit, generation, deviceId)) return;
     if (hint.failure == PhoneWifiReadFailure.permissionDenied || hint.failure == PhoneWifiReadFailure.approximateLocation) {
       // Without precise location access the name cannot be read at all: ask once and retry.
       // On Android 12+ this is also the request that offers upgrading "approximate" to "precise".
       final granted = await (widget.requestLocationPermission ?? _requestLocationOnce)();
+      if (!_canReadPhoneWifi(cubit, generation, deviceId)) return;
       if (granted) hint = await _readPhoneWifi();
     }
-    if (!mounted || cubit.isClosed) return;
+    if (!_canReadPhoneWifi(cubit, generation, deviceId)) return;
     setState(() {
       _readingPhoneWifi = false;
-      _prefillSsid = hint.isReadable ? hint.ssid : null;
-      _prefillHint = hint.isReadable ? null : hint.hint;
+      _phoneSnapshot = PhoneWifiSsid(ssid: hint.ssid, failure: hint.failure, readAt: hint.readAt ?? DateTime.now());
     });
-    cubit.showManualWifi();
   }
 
   /// Opens the QR page (camera or gallery) and submits the confirmed target exactly once.
   Future<void> _openWifiQrScanner(NetworkProvisioningCubit cubit) async {
     if (_openingQrScanner) return;
     _openingQrScanner = true;
+    final deviceId = cubit.state.trustedDeviceId;
+    final phase = cubit.state.phase;
     try {
       final credentials = await Navigator.of(context).push<WifiQrCredentials>(
         MaterialPageRoute<WifiQrCredentials>(
           builder: (_) => WifiQrScannerPage(phoneWifi: _phoneWifi),
         ),
       );
-      if (credentials != null && !cubit.isClosed) {
+      if (credentials != null && mounted && !cubit.isClosed && identical(context.read<NetworkProvisioningCubit>(), cubit) && cubit.state.trustedDeviceId == deviceId && cubit.state.phase == phase) {
         await cubit.submitWifiQrCredentials(credentials);
       }
     } finally {
@@ -124,9 +152,10 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
     }
   }
 
-  void _showConventionalWifiOptions(DeviceCapabilities? capabilities, NetworkProvisioningCubit cubit) {
-    if (capabilities == null) return;
-    showModalBottomSheet<void>(
+  Future<void> _showConventionalWifiOptions(DeviceCapabilities? capabilities, NetworkProvisioningCubit cubit) async {
+    if (capabilities == null || _openingOptions) return;
+    _openingOptions = true;
+    await showModalBottomSheet<void>(
       context: context,
       builder: (sheetContext) => SafeArea(
         child: Padding(
@@ -141,6 +170,12 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
                 onPressed: capabilities.wifiScan
                     ? () {
                         Navigator.of(sheetContext).pop();
+                        _phoneReadGeneration++;
+                        setState(() {
+                          _phoneSnapshot = null;
+                          _readingPhoneWifi = false;
+                          _initialNetworkKind = StaNetworkKind.router;
+                        });
                         unawaited(cubit.scanWifi());
                       }
                     : null,
@@ -152,14 +187,7 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
                 onPressed: capabilities.wifiManual
                     ? () {
                         Navigator.of(sheetContext).pop();
-                        if (mounted) {
-                          setState(() {
-                            // This entry is a blank form, not the phone-Wi-Fi prefill.
-                            _prefillSsid = null;
-                            _prefillHint = null;
-                          });
-                        }
-                        cubit.showManualWifi();
+                        _openManualForm(cubit);
                       }
                     : null,
                 icon: const Icon(Icons.edit_rounded),
@@ -170,94 +198,101 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
         ),
       ),
     );
+    _openingOptions = false;
   }
 
   @override
   Widget build(BuildContext context) => BlocBuilder<NetworkProvisioningCubit, NetworkProvisioningState>(
     builder: (context, state) {
       final cubit = context.read<NetworkProvisioningCubit>();
-      if (_selectedNetwork != null && state.phase == NetworkProvisioningPhase.choosingWifiNetwork) {
-        return StaNetworkForm(
-          selectedNetwork: _selectedNetwork,
-          onSubmit: (configuration) {
-            _selectedNetwork = null;
-            unawaited(cubit.submitStaConfiguration(configuration));
-          },
-        );
-      }
-      final content = switch (state.phase) {
-        NetworkProvisioningPhase.choosingWifiMethod => _WifiMethodView(
-          state: state,
-          readingPhoneWifi: _readingPhoneWifi,
-          onConnectPhoneWifi: () => unawaited(_connectCurrentPhoneWifi(cubit)),
-          onScanWifiQr: () => unawaited(_openWifiQrScanner(cubit)),
-          onChooseNetwork: () => _showConventionalWifiOptions(state.capabilities, cubit),
-        ),
-        NetworkProvisioningPhase.scanningWifi => const _ProgressView(
-          icon: Icons.wifi_find_rounded,
-          title: '正在搜索 Wi-Fi',
-          message: '盒子正在扫描附近网络，请稍候。',
-        ),
-        NetworkProvisioningPhase.choosingWifiNetwork => _WifiScanView(
-          networks: state.wifiNetworks,
-          onSelected: (network) => setState(() => _selectedNetwork = network),
-          onRescan: () => unawaited(cubit.scanWifi()),
-        ),
-        NetworkProvisioningPhase.enteringWifiManually => StaNetworkForm(
-          initialSsid: _prefillSsid,
-          initialHint: _prefillHint,
-          onSubmit: (configuration) {
-            _prefillSsid = null;
-            _prefillHint = null;
-            unawaited(cubit.submitStaConfiguration(configuration));
-          },
-        ),
-        NetworkProvisioningPhase.success => _SuccessView(
-          mode: state.confirmedMode,
-          baseUri: state.baseUri,
-          onCompleted: widget.onCompleted,
-          completing: widget.completing,
-          onStopDirectAp: state.confirmedMode == ProvisioningNetworkMode.directAp ? () => unawaited(_confirmStopDirectAp(context, cubit)) : null,
-          onChangeWifi: state.confirmedMode == ProvisioningNetworkMode.infrastructureSta ? widget.onChangeWifi : null,
-        ),
-        NetworkProvisioningPhase.recovered => _RecoveredView(
-          mode: state.recoveredMode,
-          onBack: widget.onBack,
-        ),
-        NetworkProvisioningPhase.stopped => _StoppedView(
-          reason: state.directApStopReason,
-          onBack: widget.onBack,
-        ),
-        NetworkProvisioningPhase.failure => _FailureView(
-          error: state.error,
-          failureOrigin: state.failureOrigin,
-          onBack: widget.onBack,
-          onRetry: _canRetryDpp(state) ? () => unawaited(cubit.startDppProvisioning()) : null,
-          onRetrySave: () => unawaited(cubit.retryCredentialSave()),
-          onReauthorize: widget.onReauthorize,
-          onScanWifiQr: () => unawaited(_openWifiQrScanner(cubit)),
-          onChooseNetwork: () => _showConventionalWifiOptions(state.capabilities, cubit),
-        ),
-        NetworkProvisioningPhase.dppUnavailable => _MessageView(
-          icon: Icons.phonelink_erase_rounded,
-          title: '手机暂不支持 DPP 配网',
-          message: '请选择扫描 Wi-Fi 二维码，或选择/手动输入网络。',
-          actionLabel: '选择其他方式',
-          onAction: cubit.returnToWifiMethodSelection,
-        ),
-        NetworkProvisioningPhase.methodUnavailable => _UnavailableView(
-          onBack: widget.onBack,
-        ),
-        NetworkProvisioningPhase.cancelled => _CancelledView(
-          onBack: widget.onBack,
-        ),
-        _ => _ProgressView(
-          icon: _phaseIcon(state.phase),
-          title: _phaseTitle(state.phase),
-          message: _operationMessage(state.operationState),
-          onCancel: state.canCancel ? () => unawaited(cubit.cancelActiveOperation()) : null,
-        ),
-      };
+      final formPhase =
+          const {NetworkProvisioningPhase.enteringWifiManually, NetworkProvisioningPhase.scanningWifi, NetworkProvisioningPhase.choosingWifiNetwork}.contains(state.phase) ||
+          (state.failureOrigin == NetworkProvisioningFailureOrigin.wifiScan && const {NetworkProvisioningPhase.failure, NetworkProvisioningPhase.cancelled}.contains(state.phase));
+      final content = formPhase
+          ? StaNetworkForm(
+              key: ValueKey('wifi-form-${state.trustedDeviceId}'),
+              initialNetworkKind: _initialNetworkKind,
+              phoneWifi: _phoneSnapshot,
+              readingPhoneWifi: _readingPhoneWifi,
+              onRefreshPhoneWifi: state.capabilities?.wifiManual == true ? () => unawaited(_connectCurrentPhoneWifi(cubit)) : null,
+              manualSupported: state.capabilities?.wifiManual == true,
+              savedNetwork: cubit.savedStaSnapshot,
+              networks: state.wifiNetworks,
+              scanStatus: switch (state.phase) {
+                NetworkProvisioningPhase.scanningWifi => WifiFormScanStatus.scanning,
+                NetworkProvisioningPhase.choosingWifiNetwork => WifiFormScanStatus.complete,
+                NetworkProvisioningPhase.failure => WifiFormScanStatus.failed,
+                NetworkProvisioningPhase.cancelled => WifiFormScanStatus.cancelled,
+                _ => WifiFormScanStatus.idle,
+              },
+              onScan: state.capabilities?.wifiScan == true ? () => unawaited(cubit.scanWifi()) : null,
+              onCancelScan: state.canCancel ? () => unawaited(cubit.cancelWifiScan()) : null,
+              onSubmit: (configuration) {
+                _phoneReadGeneration++;
+                _readingPhoneWifi = false;
+                unawaited(cubit.submitStaConfiguration(configuration));
+              },
+            )
+          : switch (state.phase) {
+              NetworkProvisioningPhase.choosingWifiMethod => _WifiMethodView(
+                state: state,
+                readingPhoneWifi: false,
+                onConnectPhoneWifi: () => unawaited(_connectCurrentPhoneWifi(cubit)),
+                onConnectHotspot: () => _openManualForm(cubit, kind: StaNetworkKind.thisPhoneHotspot),
+                onScanWifiQr: () => unawaited(_openWifiQrScanner(cubit)),
+                onChooseNetwork: () => _showConventionalWifiOptions(state.capabilities, cubit),
+              ),
+              NetworkProvisioningPhase.scanningWifi => const _ProgressView(
+                icon: Icons.wifi_find_rounded,
+                title: '正在搜索 Wi-Fi',
+                message: '盒子正在扫描附近网络，请稍候。',
+              ),
+              NetworkProvisioningPhase.success => _SuccessView(
+                mode: state.confirmedMode,
+                baseUri: state.baseUri,
+                onCompleted: widget.onCompleted,
+                completing: widget.completing,
+                onStopDirectAp: state.confirmedMode == ProvisioningNetworkMode.directAp ? () => unawaited(_confirmStopDirectAp(context, cubit)) : null,
+                onChangeWifi: state.confirmedMode == ProvisioningNetworkMode.infrastructureSta ? widget.onChangeWifi : null,
+              ),
+              NetworkProvisioningPhase.recovered => _RecoveredView(
+                mode: state.recoveredMode,
+                onBack: widget.onBack,
+              ),
+              NetworkProvisioningPhase.stopped => _StoppedView(
+                reason: state.directApStopReason,
+                onBack: widget.onBack,
+              ),
+              NetworkProvisioningPhase.failure => _FailureView(
+                error: state.error,
+                failureOrigin: state.failureOrigin,
+                onBack: widget.onBack,
+                onRetry: _canRetryDpp(state) ? () => unawaited(cubit.startDppProvisioning()) : null,
+                onRetrySave: () => unawaited(cubit.retryCredentialSave()),
+                onReauthorize: widget.onReauthorize,
+                onScanWifiQr: () => unawaited(_openWifiQrScanner(cubit)),
+                onChooseNetwork: () => _showConventionalWifiOptions(state.capabilities, cubit),
+              ),
+              NetworkProvisioningPhase.dppUnavailable => _MessageView(
+                icon: Icons.phonelink_erase_rounded,
+                title: '手机暂不支持 DPP 配网',
+                message: '请选择扫描 Wi-Fi 二维码，或选择/手动输入网络。',
+                actionLabel: '选择其他方式',
+                onAction: cubit.returnToWifiMethodSelection,
+              ),
+              NetworkProvisioningPhase.methodUnavailable => _UnavailableView(
+                onBack: widget.onBack,
+              ),
+              NetworkProvisioningPhase.cancelled => _CancelledView(
+                onBack: widget.onBack,
+              ),
+              _ => _ProgressView(
+                icon: _phaseIcon(state.phase),
+                title: _phaseTitle(state.phase),
+                message: _operationMessage(state.operationState),
+                onCancel: state.canCancel ? () => unawaited(cubit.cancelActiveOperation()) : null,
+              ),
+            };
       return Column(
         children: [
           Expanded(child: content),
@@ -273,6 +308,7 @@ class _WifiMethodView extends StatelessWidget {
     required this.state,
     required this.readingPhoneWifi,
     required this.onConnectPhoneWifi,
+    required this.onConnectHotspot,
     required this.onScanWifiQr,
     required this.onChooseNetwork,
   });
@@ -280,6 +316,7 @@ class _WifiMethodView extends StatelessWidget {
   final NetworkProvisioningState state;
   final bool readingPhoneWifi;
   final VoidCallback onConnectPhoneWifi;
+  final VoidCallback onConnectHotspot;
   final VoidCallback onScanWifiQr;
   final VoidCallback onChooseNetwork;
 
@@ -306,9 +343,13 @@ class _WifiMethodView extends StatelessWidget {
           description: '可自动填入当前 Wi-Fi 名称，首次连接请填写密码。',
           badge: '推荐',
           onTap: manualSupported && !readingPhoneWifi ? onConnectPhoneWifi : null,
-          disabledReason: readingPhoneWifi
-              ? '正在读取手机当前 Wi-Fi…'
-              : (manualSupported ? null : '此盒子不支持手动配置 Wi-Fi'),
+          disabledReason: readingPhoneWifi ? '正在读取手机当前 Wi-Fi…' : (manualSupported ? null : '此盒子不支持手动配置 Wi-Fi'),
+        ),
+        const Text('读取名称需要定位权限；拒绝后仍可手动填写或让盒子搜索。'),
+        TextButton.icon(
+          onPressed: manualSupported ? onConnectHotspot : null,
+          icon: const Icon(Icons.wifi_tethering_rounded),
+          label: const Text('使用这台手机的热点'),
         ),
         const SizedBox(height: AppSpacing.sm),
         ProvisioningMethodCard(
@@ -328,51 +369,6 @@ class _WifiMethodView extends StatelessWidget {
       ],
     );
   }
-}
-
-class _WifiScanView extends StatelessWidget {
-  const _WifiScanView({
-    required this.networks,
-    required this.onSelected,
-    required this.onRescan,
-  });
-
-  final List<WifiScanNetwork> networks;
-  final ValueChanged<WifiScanNetwork> onSelected;
-  final VoidCallback onRescan;
-
-  @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(AppSpacing.pageHorizontal),
-    children: [
-      Text('选择 Wi-Fi', style: Theme.of(context).textTheme.headlineSmall),
-      const SizedBox(height: AppSpacing.md),
-      for (final network in networks) ...[
-        BirdCard(
-          onTap: network.unsupported ? null : () => onSelected(network),
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(
-              network.unsupported ? Icons.block_rounded : Icons.wifi_rounded,
-              color: network.unsupported ? AppColors.inkMuted : AppColors.brand,
-            ),
-            title: Text(network.ssid),
-            subtitle: Text(
-              network.unsupported ? '当前不支持此网络的安全类型' : _securityLabel(network.security),
-            ),
-            trailing: Text('${network.rssiDbm} dBm'),
-          ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-      ],
-      BirdButton(
-        label: '重新搜索',
-        onPressed: onRescan,
-        variant: BirdButtonVariant.outlined,
-        icon: const Icon(Icons.refresh_rounded),
-      ),
-    ],
-  );
 }
 
 class _ProgressView extends StatelessWidget {
@@ -670,13 +666,6 @@ String _operationMessage(NetworkOperationState? state) => switch (state) {
   _ => '请保持手机靠近盒子，当前操作完成前不要关闭蓝牙。',
 };
 
-String _securityLabel(WifiSecurity security) => switch (security) {
-  WifiSecurity.open => '开放网络',
-  WifiSecurity.wpa2Personal => 'WPA2',
-  WifiSecurity.wpa3Personal => 'WPA3',
-  WifiSecurity.wpa2Wpa3Transition => 'WPA2/WPA3',
-};
-
 bool _canRetryDpp(NetworkProvisioningState state) => switch (state.error) {
   ProvisioningException(
     code: ProvisioningErrorCode.systemDppFailed || ProvisioningErrorCode.dppTimeout,
@@ -712,4 +701,3 @@ Future<void> _confirmStopDirectAp(
     await cubit.stopDirectAp();
   }
 }
-

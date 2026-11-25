@@ -7,6 +7,7 @@ import 'package:aves/bird_companion/features/jobs/domain/job_create_requests.dar
 import 'package:aves/bird_companion/features/jobs/domain/job_report.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_page.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_read_diagnostics.dart';
+import 'package:aves/bird_companion/features/jobs/domain/import_analysis_models.dart';
 
 class JobApi {
   JobApi(this._c, {this.diagnostics});
@@ -59,8 +60,31 @@ class JobApi {
       .post(
         ApiEndpoints.projectImports.replaceFirst('{projectId}', projectId),
         data: request.toJson(),
+        idempotencyKey: request.idempotencyKey,
       )
       .then(BirdJobStatus.fromJson);
+
+  Future<ImportStartResult> startImportWorkflow(String project, Map<String, dynamic> request, String key) async {
+    _validateId(project, 'projectId');
+    if (request['auto_analysis'] is! Map || key.isEmpty) throw ArgumentError('自动识别配置及原请求键不能为空');
+    return ImportStartResult.fromEnvelope(
+      await _c.postEnvelope(ApiEndpoints.projectImports.replaceFirst('{projectId}', Uri.encodeComponent(project)), data: request, idempotencyKey: key),
+      projectId: project,
+    );
+  }
+
+  Future<ImportStartResult> importWorkflow(String project) async {
+    _validateId(project, 'projectId');
+    return ImportStartResult.fromSnapshot(await _c.get(ApiEndpoints.importAnalysisStatus(project)), projectId: project);
+  }
+
+  Future<BirdJobStatus> controlWorkflowJob(String id, String action, int version, String key) async {
+    _validateId(id, 'jobId');
+    if (!jobControlActions.contains(action) || version < 0 || key.isEmpty) throw ArgumentError('无效任务动作');
+    final job = BirdJobStatus.fromJson(await _c.post(ApiEndpoints.taskControl.replaceFirst('{jobId}', Uri.encodeComponent(id)), data: {'action': action, 'version': version}, idempotencyKey: key));
+    if (job.id != id) throw const ProtocolCompatibilityException('job_id', '动作返回了其他任务');
+    return job;
+  }
 
   Future<BirdJobStatus> createAnalysis(
     String projectId,

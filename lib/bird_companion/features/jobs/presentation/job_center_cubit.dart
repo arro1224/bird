@@ -5,6 +5,7 @@ import 'package:aves/bird_companion/core/network/event_client.dart';
 import 'package:aves/bird_companion/core/data/app_data_change_bus.dart';
 import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_repository.dart';
+import 'package:aves/bird_companion/features/jobs/data/import_analysis_service.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class JobCenterState {
@@ -29,17 +30,20 @@ class JobCenterState {
 }
 
 class JobCenterCubit extends Cubit<JobCenterState> {
-  JobCenterCubit(this._repository, [SessionRefreshCoordinator? refreshCoordinator, EventClient? eventClient, AppDataChangeBus? dataChanges]) : _dataChanges = dataChanges, super(const JobCenterState()) {
+  JobCenterCubit(this._repository, [SessionRefreshCoordinator? refreshCoordinator, EventClient? eventClient, AppDataChangeBus? dataChanges, this.importAnalysis]) : _dataChanges = dataChanges, super(const JobCenterState()) {
     _refreshSubscription = refreshCoordinator?.changes.listen((_) => load());
     _eventSubscription = eventClient?.events.where((event) => event.type == 'job_updated' || event.type == 'job_progress' || event.type == 'job_state_changed').listen((event) => _mergeEvent(event.payload));
     _dataSubscription = dataChanges?.changes.where((change) => change.affects(AppDataResource.jobs)).listen((_) => load());
   }
   final JobRepository _repository;
+  final ImportAnalysisService? importAnalysis;
+  bool cancellationPending(String id) => importAnalysis?.cancelPending(id) == true;
   final AppDataChangeBus? _dataChanges;
   StreamSubscription<int>? _refreshSubscription;
   StreamSubscription<DeviceEvent>? _eventSubscription;
   StreamSubscription<AppDataChange>? _dataSubscription;
   bool _loadInFlight = false;
+  bool _authorityReady = false;
 
   void _mergeEvent(Map<String, dynamic> payload) {
     try {
@@ -54,7 +58,7 @@ class JobCenterCubit extends Cubit<JobCenterState> {
       } else {
         final current = jobs[index];
         // 事件可能乱序/重放；旧版本不得覆盖列表里较新的快照。
-        if (current.version != null && updated.version != null && updated.version! < current.version!) return;
+        if (!updated.canReplace(current)) return;
         jobs[index] = updated;
       }
       emit(state.copyWith(jobs: jobs, clearError: true));
@@ -66,15 +70,25 @@ class JobCenterCubit extends Cubit<JobCenterState> {
   Future<void> load() async {
     if (_loadInFlight) return;
     _loadInFlight = true;
+    _authorityReady = false;
     emit(state.copyWith(loading: true, clearError: true));
     try {
       final page = await _repository.page();
-      emit(state.copyWith(loading: false, jobs: page.items, hasMore: page.hasMore && page.nextCursor != null, nextCursor: page.nextCursor, clearCursor: page.nextCursor == null));
+      if (isClosed) return;
+      for (final project in page.items.map((job) => job.sourceProjectId).whereType<String>().toSet()) {
+        await importAnalysis?.ensureOwner(project);
+        if (isClosed) return;
+      }
+      final current = {for (final job in state.jobs) job.id: job};
+      final jobs = page.items.map((job) => current[job.id] != null && !job.canReplace(current[job.id]!) ? current[job.id]! : job).toList();
+      _authorityReady = true;
+      emit(state.copyWith(loading: false, jobs: jobs, hasMore: page.hasMore && page.nextCursor != null, nextCursor: page.nextCursor, clearCursor: page.nextCursor == null));
     } catch (error) {
+      if (isClosed) return;
       emit(
         state.copyWith(
           loading: false,
-          jobs: const [],
+          jobs: state.jobs,
           hasMore: false,
           clearCursor: true,
           error: error,
@@ -114,6 +128,7 @@ class JobCenterCubit extends Cubit<JobCenterState> {
 
   Future<void> control(String jobId, String action) async {
     if (state.actingJobId != null) return;
+    if (!_authorityReady || _loadInFlight) return;
     final current = state.jobs.where((job) => job.id == jobId).firstOrNull;
     if (current == null) {
       emit(
@@ -124,7 +139,7 @@ class JobCenterCubit extends Cubit<JobCenterState> {
       return;
     }
     final wireAction = action == 'retry' ? 'retry_failed' : action;
-    if (!jobControlActions.contains(wireAction) || !current.availableActions.contains(wireAction)) {
+    if (!jobControlActions.contains(wireAction) || (!current.allowsControl(wireAction) && !(wireAction == 'cancel' && cancellationPending(jobId)))) {
       emit(
         state.copyWith(
           error: StateError('$wireAction is unavailable for $jobId'),
@@ -143,21 +158,28 @@ class JobCenterCubit extends Cubit<JobCenterState> {
     }
     emit(state.copyWith(actingJobId: jobId, clearError: true));
     try {
-      final updated = await _repository.control(
-        jobId,
-        wireAction,
-        version: version,
-      );
-      final jobs = state.jobs.map((job) => job.id == jobId ? updated : job).toList();
+      final project = current.sourceProjectId;
+      final managed = project != null && await importAnalysis?.ensureOwner(project) == true;
+      if (managed && current.type == BirdJobType.import) throw StateError('请通过原识别任务取消后续识别');
+      final updated = managed && current.type == BirdJobType.analysis
+          ? await importAnalysis!.controlAnalysis(project, wireAction, version)
+          : await _repository.control(
+              jobId,
+              wireAction,
+              version: version,
+            );
+      final jobs = state.jobs.map((job) => job.id == jobId && updated.canReplace(job) ? updated : job).toList();
       _dataChanges?.publish({AppDataResource.jobs, AppDataResource.device}, reason: 'job_$action');
       emit(state.copyWith(jobs: jobs, clearActing: true));
     } catch (error) {
-      emit(state.copyWith(error: error, clearActing: true));
+      final snapshots = <String, BirdJobStatus>{for (final result in importAnalysis?.snapshots ?? []) result.analysisJob.id: result.analysisJob};
+      emit(state.copyWith(jobs: state.jobs.map((job) => snapshots[job.id]?.canReplace(job) == true ? snapshots[job.id]! : job).toList(), error: error, clearActing: true));
     }
   }
 
   Future<void> delete(String jobId) async {
     if (state.actingJobId != null) return;
+    if (!_authorityReady || _loadInFlight) return;
     final current = state.jobs.where((job) => job.id == jobId).firstOrNull;
     if (current?.canDelete != true) {
       emit(

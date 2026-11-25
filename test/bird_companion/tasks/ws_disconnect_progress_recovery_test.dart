@@ -112,8 +112,7 @@ void main() {
     for (final entry in seen.entries) {
       final series = entry.value;
       for (var i = 1; i < series.length; i++) {
-        expect(series[i], greaterThanOrEqualTo(series[i - 1]),
-            reason: '任务 ${entry.key} 的轮询采样序列不得回退：$series');
+        expect(series[i], greaterThanOrEqualTo(series[i - 1]), reason: '任务 ${entry.key} 的轮询采样序列不得回退：$series');
       }
       expect(series.last, 100, reason: '任务 ${entry.key} 40 秒后必须收敛到 100：$series');
     }
@@ -129,17 +128,20 @@ void main() {
     while (DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
       final tasks = controller.tasks;
-      if (tasks.isNotEmpty && tasks.every((t) => t.state == TaskRunState.completed)) break;
+      // Import completion is observable before the asynchronous legacy
+      // analysis POST returns. Wait for the analysis as well, otherwise this
+      // test disconnects at the import-only gap and calls the newly created
+      // analysis a terminal-state regression.
+      if (tasks.any((t) => t.type == TaskType.aiAnalysis) && tasks.every((t) => t.state == TaskRunState.completed)) break;
     }
     expect(controller.tasks, isNotEmpty);
-    expect(controller.tasks.every((t) => t.state == TaskRunState.completed), isTrue,
-        reason: 'WS 正常时任务应通过事件流收敛到 completed');
+    expect(controller.tasks.any((t) => t.type == TaskType.aiAnalysis), isTrue, reason: '必须等识别任务也存在，不能只用导入终态判断整条流程完成');
+    expect(controller.tasks.every((t) => t.state == TaskRunState.completed), isTrue, reason: 'WS 正常时任务应通过事件流收敛到 completed');
 
     // 断开 WS 后再多轮 REST 轮询：已完成状态不得被旧快照回退。
     await eventClient.disconnect();
     await Future<void>.delayed(const Duration(seconds: 2));
-    expect(controller.tasks.every((t) => t.state == TaskRunState.completed), isTrue,
-        reason: 'REST 快照不会把 completed 任务回退为 running（mock 端任务已终态）');
+    expect(controller.tasks.every((t) => t.state == TaskRunState.completed), isTrue, reason: 'REST 快照不会把 completed 任务回退为 running（mock 端任务已终态）');
   });
 }
 

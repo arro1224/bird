@@ -58,6 +58,8 @@ final class PhoneDiagnosticRecorder {
 
   static const _fields = {
     'event',
+    'candidate_count',
+    'candidate_source',
     'device_id',
     'attempt_id',
     'generation',

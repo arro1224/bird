@@ -1,5 +1,16 @@
 enum ProvisioningErrorOrigin { box, app, protocol }
 
+enum BleControlRecoveryFailure { notFound, timeout }
+
+/// App-only recovery result, not a new box protocol error.
+final class BleControlRecoveryException implements Exception {
+  const BleControlRecoveryException(this.reason);
+  final BleControlRecoveryFailure reason;
+  String get code => reason == BleControlRecoveryFailure.notFound ? 'BLE_CONTROL_NOT_FOUND' : 'BLE_CONTROL_RECOVERY_TIMEOUT';
+  @override
+  String toString() => code;
+}
+
 /// Local storage stage; never serialized as a box protocol error code.
 final class ProvisioningCredentialSaveException implements Exception {
   const ProvisioningCredentialSaveException();

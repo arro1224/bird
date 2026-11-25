@@ -79,10 +79,13 @@ class JobDetailCubit extends Cubit<JobDetailState> {
     _connectionSubscription = _events.connectionStates.listen((_) {
       final job = state.job;
       if (job != null) _configurePolling(job);
+      if (_events.currentState == EventConnectionState.connected && job != null) unawaited(load());
     });
     _deviceSessionSubscription = _deviceSessionCubit?.stream.listen((session) {
       if (!isClosed) {
         final recovered = session.isConnected && state.connectionPhase != DeviceSessionPhase.connected;
+        if (session.phase != state.connectionPhase) _readEpoch++;
+        if (!session.isConnected) _awaitingRecovery = true;
         emit(
           state.copyWith(
             connectionPhase: session.phase,
@@ -105,10 +108,17 @@ class JobDetailCubit extends Cubit<JobDetailState> {
   StreamSubscription<DeviceSessionState>? _deviceSessionSubscription;
   Timer? _pollTimer;
   bool _loadInFlight = false;
+  bool _awaitingRecovery = false;
+  bool _reloadRequested = false;
+  int _readEpoch = 0;
 
   Future<void> load() async {
-    if (_loadInFlight) return;
+    if (_loadInFlight) {
+      _reloadRequested = true;
+      return;
+    }
     _loadInFlight = true;
+    final epoch = _readEpoch;
     emit(
       state.copyWith(
         loading: true,
@@ -118,8 +128,19 @@ class JobDetailCubit extends Cubit<JobDetailState> {
       ),
     );
     try {
-      final job = await _repository.detail(jobId);
+      final incoming = await _repository.detail(jobId);
+      if (isClosed) return;
+      if (epoch != _readEpoch || _deviceSessionCubit?.state.isConnected == false) return;
+      if (incoming.id != jobId) throw StateError('返回任务与当前请求不一致');
+      final current = state.job;
+      final job = current != null && !incoming.canReplace(current) ? current : incoming;
       final outcome = await _readOutcome(job);
+      if (isClosed) return;
+      if (epoch != _readEpoch || _deviceSessionCubit?.state.isConnected == false) return;
+      if (state.job != null && !job.canReplace(state.job!)) {
+        emit(state.copyWith(loading: false, authorityReady: true));
+        return;
+      }
       emit(
         state.copyWith(
           loading: false,
@@ -131,7 +152,9 @@ class JobDetailCubit extends Cubit<JobDetailState> {
         ),
       );
       _configurePolling(job);
+      _awaitingRecovery = false;
     } catch (error) {
+      if (isClosed) return;
       emit(
         state.copyWith(
           loading: false,
@@ -141,6 +164,10 @@ class JobDetailCubit extends Cubit<JobDetailState> {
       );
     } finally {
       _loadInFlight = false;
+      if (_reloadRequested && !isClosed && _deviceSessionCubit?.state.isConnected != false) {
+        _reloadRequested = false;
+        unawaited(load());
+      }
     }
   }
 
@@ -176,7 +203,7 @@ class JobDetailCubit extends Cubit<JobDetailState> {
       return;
     }
     final wireAction = action == 'retry' ? 'retry_failed' : action;
-    if (!jobControlActions.contains(wireAction) || !current.availableActions.contains(wireAction)) {
+    if (!jobControlActions.contains(wireAction) || !current.allowsControl(wireAction)) {
       emit(
         state.copyWith(
           error: StateError('$wireAction is unavailable for $jobId'),
@@ -202,15 +229,14 @@ class JobDetailCubit extends Cubit<JobDetailState> {
         wireAction,
         version: version,
       );
-      final outcome = await _readOutcome(updated);
-      emit(
-        state.copyWith(
-          job: updated,
-          report: outcome.report,
-          clearReport: outcome.report == null,
-          failures: outcome.failures,
-        ),
-      );
+      if (isClosed) return;
+      final latest = state.job;
+      final accepted = latest != null && !updated.canReplace(latest) ? latest : updated;
+      final outcome = await _readOutcome(accepted);
+      if (isClosed) return;
+      if (state.job == null || accepted.canReplace(state.job!)) {
+        emit(state.copyWith(job: accepted, report: outcome.report, clearReport: outcome.report == null, failures: outcome.failures));
+      }
       _refreshCoordinator?.requestRefresh();
       _dataChanges?.publish({AppDataResource.jobs, AppDataResource.device}, reason: 'job_$action');
       emit(
@@ -220,6 +246,7 @@ class JobDetailCubit extends Cubit<JobDetailState> {
         ),
       );
     } catch (error) {
+      if (isClosed) return;
       emit(state.copyWith(controlling: false, error: error));
     }
   }
@@ -267,6 +294,11 @@ class JobDetailCubit extends Cubit<JobDetailState> {
   }
 
   void _onEvent(DeviceEvent event) {
+    if (isClosed || _deviceSessionCubit?.state.isConnected == false) return;
+    if (_awaitingRecovery) {
+      unawaited(load());
+      return;
+    }
     try {
       final raw = event.payload['job'];
       final payload = raw is Map ? Map<String, dynamic>.from(raw) : event.payload;
@@ -274,7 +306,7 @@ class JobDetailCubit extends Cubit<JobDetailState> {
       if (update.id.isEmpty || update.id != jobId) return;
       final current = state.job;
       // 事件可能乱序/重放；旧版本不得覆盖已经读到的新快照。
-      if (current?.version != null && update.version != null && update.version! < current!.version!) return;
+      if (current != null && !update.canReplace(current)) return;
       emit(state.copyWith(job: update, clearError: true));
       _configurePolling(update);
       if (_isTerminal(update)) {
@@ -308,7 +340,7 @@ class JobDetailCubit extends Cubit<JobDetailState> {
 
   Future<void> _refreshOutcome(BirdJobStatus job) async {
     final outcome = await _readOutcome(job);
-    if (isClosed || state.job?.id != job.id) return;
+    if (isClosed || state.job?.id != job.id || !job.canReplace(state.job!)) return;
     emit(
       state.copyWith(
         report: outcome.report,

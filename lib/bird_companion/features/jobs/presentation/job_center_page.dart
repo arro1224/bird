@@ -7,6 +7,7 @@ import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/core/widgets/empty_state.dart';
 import 'package:aves/bird_companion/features/jobs/presentation/job_center_cubit.dart';
 import 'package:aves/bird_companion/features/jobs/presentation/widgets/job_card.dart';
+import 'package:aves/bird_companion/features/jobs/domain/import_analysis_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -25,6 +26,7 @@ class JobCenterPage extends StatelessWidget {
         dependencies.refreshCoordinator,
         dependencies.eventClient,
         dependencies.dataChangeBus,
+        dependencies.jobRepository is ImportWorkflowRepository ? dependencies.importAnalysisService : null,
       )..load(),
       child: const _JobCenterView(),
     );
@@ -105,6 +107,8 @@ class _JobCenterViewState extends State<_JobCenterView> {
                     child: JobCard(
                       job: job,
                       busy: state.actingJobId == job.id,
+                      stale: state.loading || state.error != null,
+                      pendingCancellation: context.read<JobCenterCubit>().cancellationPending(job.id),
                       onTap: () => Navigator.of(context).pushNamed(BirdRoutes.jobDetail, arguments: JobDetailArgs(job.id)),
                       onControl: (action) => context.read<JobCenterCubit>().control(job.id, action),
                       onDelete: job.canDelete ? () => _confirmDelete(context, job.id) : null,

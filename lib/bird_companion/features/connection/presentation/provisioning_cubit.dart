@@ -179,6 +179,35 @@ final class ProvisioningCubit extends Cubit<ProvisioningState> {
     _borrowedSession = false;
   }
 
+  /// Transfer scan presentation to settings without ending the BLE owner.
+  Future<void> pauseForControlSettings() async {
+    if (!_alive || !_inDiscovery || state.releaseBlocked) return;
+    final generation = _nextAction();
+    await _discoverySubscription?.cancel();
+    if (!_current(generation)) return;
+    await _repository.stopDiscovery();
+    if (_current(generation)) {
+      // Settings/repository now own the recovered control link. Leaving this
+      // discovery page must not tear it down; selecting another peer takes
+      // explicit ownership again through _takeControl.
+      if (_control != null && _owner != null) _borrowedSession = true;
+      emit(state.copyWith(phase: ProvisioningPhase.discovered));
+    }
+  }
+
+  Future<void> resumeFromControlSettings(String deviceId) async {
+    if (_closing || isClosed) return;
+    final repository = _repository;
+    if (repository is ReusableBleSession) {
+      final session = repository as ReusableBleSession;
+      if (session.currentBleDevice?.deviceInfo?.deviceId == deviceId && session.observableSessionOwner != null) {
+        _owner = session.observableSessionOwner;
+        _borrowedSession = true;
+      }
+    }
+    await discover();
+  }
+
   Future<void> useCurrentDevice() async {
     if (!_alive || state.releaseBlocked || _connectionActionActive || !_inDiscovery) return;
     _syncCurrentDevice();

@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/features/connection/data/direct_ap_profile_store.dart';
+import 'package:aves/bird_companion/features/connection/data/ble_peer_hint_store.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:aves/bird_companion/core/diagnostics/app_build_identity.dart';
@@ -80,6 +81,8 @@ import 'package:aves/bird_companion/features/jobs/data/job_api.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_read_diagnostics.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_repository_impl.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_repository.dart';
+import 'package:aves/bird_companion/features/jobs/domain/import_analysis_models.dart';
+import 'package:aves/bird_companion/features/jobs/data/import_analysis_service.dart';
 import 'package:aves/bird_companion/features/settings/data/settings_store.dart';
 import 'package:aves/bird_companion/features/storage/data/storage_api.dart';
 import 'package:aves/bird_companion/features/storage/data/storage_repository_impl.dart';
@@ -143,6 +146,15 @@ class BirdCompanionDependencies {
     cache: cache,
     deviceId: () => deviceSessionCubit.state.device?.id,
     contextKey: () => deviceSessionCubit.state.isConnected ? '${deviceSessionCubit.state.device?.id}|${apiClient.baseUri}|${smartFollowRepository.deviceGeneration}' : null,
+    boxOwnsBatch: (batch) => importAnalysisService.ensureOwner(batch),
+  );
+  late final importAnalysisService = ImportAnalysisService(
+    repository: jobRepository as ImportWorkflowRepository,
+    batches: batchRepository,
+    cache: cache,
+    readCapabilities: recognitionRepository.capabilities,
+    deviceId: () => deviceSessionCubit.state.device?.id,
+    contextKey: () => deviceSessionCubit.state.isConnected ? '${deviceSessionCubit.state.device?.id}|${apiClient.baseUri}|${smartFollowRepository.deviceGeneration}' : null,
   );
   final EventClient eventClient;
   final ConnectivityMonitor connectivityMonitor;
@@ -202,6 +214,7 @@ class BirdCompanionDependencies {
     bool restoreSavedSession = true,
     DirectApAuthorizationStore? directApAuthorizationStore,
     DirectApProfileStore? directApProfileStore,
+    BlePeerHintStore? blePeerHintStore,
     ClientIdentityStore? clientIdentityStore,
     ProvisioningRepository? provisioningRepositoryOverride,
     ConnectivityMonitor? connectivityMonitorOverride,
@@ -244,6 +257,7 @@ class BirdCompanionDependencies {
           credentialStore: secureSessionStore,
           directApAuthorizationStore: directApAuthorizationStore ?? const EncryptedDirectApAuthorizationStore(),
           directApProfileStore: directApProfileStore ?? DirectApProfileStore(const EncryptedDirectApAuthorizationStore(namespace: 'direct-ap-profile:v1')),
+          blePeerHintStore: blePeerHintStore ?? BlePeerHintStore(const EncryptedDirectApAuthorizationStore(namespace: 'ble-peer-hint:v1')),
           healthApi: HealthApi(apiClient),
           pairingApi: pairingApi,
           sessionCoordinator: sessionCoordinator,
@@ -278,6 +292,7 @@ class BirdCompanionDependencies {
       activeDeviceNamespace,
       activeDeviceId,
       (ids) => reviewRepository.invalidateBatchVersions(ids),
+      () => deviceSessionCubit.state.isConnected,
     );
     final birdSyncService = BirdSyncService(
       connectivityMonitor,

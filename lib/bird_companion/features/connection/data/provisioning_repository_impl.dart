@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/features/connection/data/ble/ble_protocol_constants.dart';
+import 'package:aves/bird_companion/features/connection/data/ble_peer_hint_store.dart';
 import 'package:aves/bird_companion/features/connection/data/direct_ap_profile_store.dart';
 import 'package:aves/bird_companion/features/connection/data/direct_ap_connection_coordinator.dart';
 import 'package:aves/bird_companion/features/connection/domain/ble_pairing_progress.dart';
@@ -63,6 +64,9 @@ final class ProvisioningRepositoryImpl
     DateTime Function()? clock,
     DirectApAuthorizationStore? directApAuthorizationStore,
     DirectApProfileStore? directApProfileStore,
+    BlePeerHintStore? blePeerHintStore,
+    Duration controlRecoveryTimeout = const Duration(seconds: 30),
+    Duration controlScanTimeout = const Duration(seconds: 10),
     void Function(Map<String, dynamic>)? diagnostic,
   }) => ProvisioningRepositoryImpl._(
     ble,
@@ -79,6 +83,10 @@ final class ProvisioningRepositoryImpl
     directApAuthorizationStore ?? MemoryDirectApAuthorizationStore(),
     DirectApConnectionCoordinator(wifi, diagnostic: diagnostic),
     directApProfileStore ?? DirectApProfileStore(MemoryDirectApAuthorizationStore()),
+    blePeerHintStore ?? BlePeerHintStore(MemoryDirectApAuthorizationStore()),
+    controlRecoveryTimeout,
+    controlScanTimeout,
+    diagnostic,
   );
 
   ProvisioningRepositoryImpl._(
@@ -96,6 +104,10 @@ final class ProvisioningRepositoryImpl
     this._directApAuthorizationStore,
     this.directApConnection,
     this._apProfiles,
+    this._bleHints,
+    this._controlRecoveryTimeout,
+    this._controlScanTimeout,
+    this._diagnostic,
   ) {
     _bleEventSubscription = _ble.events.asyncMap(_processBleEvent).where((event) => event != null).cast<ProvisioningEvent>().listen(_events.add, onError: _processBleError);
     _disconnectSubscription = _ble.disconnects.listen((_) {
@@ -120,6 +132,11 @@ final class ProvisioningRepositoryImpl
   final BirdBoxWifiPlatform _wifi;
   final DirectApConnectionCoordinator directApConnection;
   final DirectApProfileStore _apProfiles;
+  final BlePeerHintStore _bleHints;
+  final Duration _controlRecoveryTimeout, _controlScanTimeout;
+  final void Function(Map<String, dynamic>)? _diagnostic;
+  int _controlRecoverySequence = 0;
+  CancelToken? _activeControlToken;
   final Map<String, ProvisioningDevice> _bleDevices = {};
   final _sessionChanges = StreamController<void>.broadcast();
   @override
@@ -297,12 +314,13 @@ final class ProvisioningRepositoryImpl
 
   @override
   Future<ProvisioningDeviceInfo> recoverBleControl(String deviceId, CancelToken cancelToken) {
+    _checkNotDisposed();
     cancelToken.throwIfCancellationRequested();
     if (_controlRecovery != null) {
       if (_controlRecoveryDevice != deviceId) return Future.error(const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: true));
       return Future.any([_controlRecovery!, cancelToken.whenCancel.then<ProvisioningDeviceInfo>((e) => throw e)]);
     }
-    if (_deviceInfo != null && _ble.isConnected) {
+    if (_deviceInfo != null && _ble.isConnected && !_connectActive && !sessionReleasePending && !sessionReleaseFailed) {
       if (_deviceInfo!.deviceId != deviceId) return Future.error(const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false));
       return Future.value(_deviceInfo!);
     }
@@ -322,70 +340,213 @@ final class ProvisioningRepositoryImpl
     return future;
   }
 
-  Future<ProvisioningDeviceInfo> _recoverBleControl(String deviceId, CancelToken token) async {
-    if (_connectActive) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: true);
-    final profile = await _apProfiles.load(deviceId);
-    token.throwIfCancellationRequested();
-    var candidate = _bleDevices[deviceId];
-    if (candidate == null && profile?.blePlatformId != null) {
-      candidate = ProvisioningDevice(
-        scanId: profile!.blePlatformId!,
-        advertisement: BirdBoxAdvertisement(localName: profile.bleName ?? '', serviceUuids: const [BleProtocolConstants.serviceUuid], rssi: 0, platformDeviceId: profile.blePlatformId),
-      );
+  void _recordControl(Map<String, dynamic> event) {
+    try {
+      _diagnostic?.call(event);
+    } catch (_) {
+      /* Diagnostics cannot change recovery. */
     }
+  }
+
+  bool _retryableControlError(ProvisioningException error) =>
+      error.retryable &&
+      const {
+        ProvisioningErrorCode.bleGattNotReady,
+        ProvisioningErrorCode.bleGattOperationFailed,
+        ProvisioningErrorCode.bleGattRecoveryFailed,
+        ProvisioningErrorCode.bleCommandResponseTimeout,
+      }.contains(error.code);
+
+  Future<ProvisioningDeviceInfo> _recoverBleControl(String deviceId, CancelToken callerToken) async {
+    if (_connectActive) throw const ProvisioningException(code: ProvisioningErrorCode.bleOperationBusy, retryable: true);
     if (_nativeSessionOwner == null || _bleControl?.ownsSession(_nativeSessionOwner!) == false) claimSession();
     final owner = _sessionOwner;
-    final deadline = Timer(const Duration(seconds: 30), () => token.cancel(TimeoutException('BLE control recovery deadline')));
-    var cancelled = false, active = true;
+    final token = CancelToken();
+    _activeControlToken = token;
+    var active = true, timedOut = false, attempts = 0;
+    final watch = Stopwatch()..start();
+    final generation = ++_controlRecoverySequence;
+    final recoveryId = 'ble-control-${SecureRequestIdFactory().create()}';
+    void trace(String event, {String? source, String? outcome, String? code, int? count}) => _recordControl({
+      'event': event,
+      'device_id': deviceId,
+      'attempt_id': recoveryId,
+      'generation': generation,
+      'candidate_source': source,
+      'candidate_count': count,
+      'attempt': attempts,
+      'outcome': outcome,
+      'error_code': code,
+      'elapsed_ms': watch.elapsedMilliseconds,
+      'timeout_ms': _controlRecoveryTimeout.inMilliseconds,
+    });
+    final deadline = Timer(_controlRecoveryTimeout, () {
+      timedOut = true;
+      token.cancel('BLE control recovery deadline');
+    });
     unawaited(
-      token.whenCancel.then((_) async {
-        if (!active) return;
-        cancelled = true;
-        if (identical(_sessionOwner, owner)) {
-          _sessionOwner = Object();
-          try {
-            await _releaseSession();
-          } catch (_) {
-            /* Native release guard preserves the failure. */
-          }
+      callerToken.whenCancel.then((error) {
+        if (active) {
+          final reason = error.error;
+          if (reason is BleControlRecoveryException && reason.reason == BleControlRecoveryFailure.timeout) timedOut = true;
+          token.cancel(error);
         }
       }),
     );
+    unawaited(
+      token.whenCancel.then((_) async {
+        if (!active || !identical(_sessionOwner, owner)) return;
+        _sessionOwner = Object(); // Reject late GATT and storage results.
+        try {
+          await _releaseSession();
+        } catch (_) {
+          /* Native release remains guarded. */
+        }
+      }),
+    );
+    Future<T> bounded<T>(Future<T> work) => Future.any([work, token.whenCancel.then<T>((error) => throw error)]);
+    void check() {
+      token.throwIfCancellationRequested();
+      _checkOwner(owner);
+    }
+
+    trace('ble_control_recovery_started');
     try {
-      if (candidate == null && profile?.bleName != null) {
-        candidate = await Future.any<ProvisioningDevice>([
-          discoverDevices(timeout: const Duration(seconds: 10)).firstWhere((d) => d.advertisement.localName == profile!.bleName),
-          token.whenCancel.then<ProvisioningDevice>((e) => throw e),
-        ]);
-      }
-      token.throwIfCancellationRequested();
-      if (candidate == null) throw const DirectApConfigurationUnavailable();
-      _expectedRecoveryDevice = deviceId;
-      ProvisioningDeviceInfo info;
+      check();
+      BlePeerHint? hint;
       try {
-        info = await Future.any<ProvisioningDeviceInfo>([connect(candidate), token.whenCancel.then<ProvisioningDeviceInfo>((e) => throw e)]);
-      } on ProvisioningException catch (error) {
-        // Opaque Android IDs are hints and can expire. One bounded scan may
-        // replace that hint; the public device identity is still mandatory.
-        if (!error.retryable || token.isCancelled || sessionReleaseFailed || profile?.bleName == null) rethrow;
-        final previousScanId = candidate.scanId;
-        final refreshed = await Future.any<ProvisioningDevice>([
-          discoverDevices(timeout: const Duration(seconds: 10)).firstWhere((d) => d.scanId != previousScanId && d.advertisement.localName == profile!.bleName),
-          token.whenCancel.then<ProvisioningDevice>((e) => throw e),
-        ]);
-        token.throwIfCancellationRequested();
-        info = await Future.any<ProvisioningDeviceInfo>([connect(refreshed), token.whenCancel.then<ProvisioningDeviceInfo>((e) => throw e)]);
+        hint = await bounded(_bleHints.load(deviceId));
+      } on DioException {
+        rethrow;
+      } catch (_) {
+        trace('ble_control_hint_read_failed');
       }
-      token.throwIfCancellationRequested();
-      if (info.deviceId != deviceId) throw const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false);
-      // A valid saved credential is restored by connect; no pairing dialog or
-      // generic HTTP verification is started by this control-only entry.
-      return info;
+      check();
+      String? hintName = hint?.name;
+      var candidate = _bleDevices[deviceId];
+      var source = candidate == null ? 'stored_hint' : 'memory';
+      if (candidate == null && hint?.platformId != null) {
+        candidate = ProvisioningDevice(
+          scanId: hint!.platformId!,
+          advertisement: BirdBoxAdvertisement(localName: hint.name ?? '', serviceUuids: const [BleProtocolConstants.serviceUuid], rssi: 0, platformDeviceId: hint.platformId),
+        );
+      }
+      if (candidate == null && hint == null) {
+        // Read legacy AP transport hints only as a migration fallback. STA-only
+        // devices do not need an AP profile to discover or recover BLE.
+        DirectApProfile? legacy;
+        try {
+          legacy = await bounded(_apProfiles.load(deviceId));
+        } on DioException {
+          rethrow;
+        } catch (_) {
+          trace('ble_control_hint_read_failed');
+        }
+        check();
+        hintName = legacy?.bleName;
+        if (legacy?.blePlatformId != null) {
+          source = 'legacy_ap_hint';
+          candidate = ProvisioningDevice(
+            scanId: legacy!.blePlatformId!,
+            advertisement: BirdBoxAdvertisement(localName: legacy.bleName ?? '', serviceUuids: const [BleProtocolConstants.serviceUuid], rssi: 0, platformDeviceId: legacy.blePlatformId),
+          );
+        }
+      }
+      _expectedRecoveryDevice = deviceId;
+      final tried = <String, int>{};
+      ProvisioningException? lastError;
+      Future<ProvisioningDeviceInfo> attempt(ProvisioningDevice device, String from) async {
+        check();
+        attempts++;
+        tried.update(device.scanId, (value) => value + 1, ifAbsent: () => 1);
+        trace('ble_control_candidate_connecting', source: from);
+        final info = await bounded(connect(device));
+        check();
+        if (info.deviceId != deviceId) throw const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false);
+        trace('ble_control_recovery_finished', source: from, outcome: 'connected');
+        return info;
+      }
+
+      if (candidate != null) {
+        try {
+          return await attempt(candidate, source);
+        } on ProvisioningException catch (error) {
+          if (token.isCancelled || sessionReleaseFailed || (!_retryableControlError(error) && error.code != ProvisioningErrorCode.deviceIdMismatch)) rethrow;
+          lastError = error;
+          trace('ble_control_candidate_failed', source: source, code: error.code.wireValue);
+        }
+      }
+      check();
+      trace('ble_control_scan_started', source: 'scan');
+      final candidates = <String, ProvisioningDevice>{};
+      final completed = Completer<List<ProvisioningDevice>>();
+      void finish() {
+        if (!completed.isCompleted) completed.complete(candidates.values.toList());
+      }
+
+      final subscription = discoverDevices(timeout: _controlScanTimeout).listen(
+        (device) {
+          if (!device.advertisement.hasBirdBoxService) return;
+          candidates[device.scanId] = device;
+          if (candidates.length >= 16) finish();
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!completed.isCompleted) completed.completeError(error, stack);
+        },
+        onDone: finish,
+      );
+      final scanDeadline = Timer(_controlScanTimeout, finish);
+      late final List<ProvisioningDevice> discovered;
+      try {
+        discovered = await bounded(completed.future);
+      } finally {
+        scanDeadline.cancel();
+        await bounded(subscription.cancel());
+        if (identical(_sessionOwner, owner)) await bounded(stopDiscovery());
+      }
+      check();
+      trace('ble_control_scan_finished', source: 'scan', count: discovered.length);
+      final expectedName = hintName ?? (deviceId.startsWith('bbx-') && deviceId.length >= 12 ? 'BirdBox-${deviceId.substring(4, 12).toUpperCase()}' : '');
+      discovered.sort((a, b) {
+        final preferredA = a.advertisement.localName == expectedName, preferredB = b.advertisement.localName == expectedName;
+        if (preferredA != preferredB) return preferredA ? -1 : 1;
+        return b.advertisement.rssi.compareTo(a.advertisement.rssi);
+      });
+      for (var index = 0; index < discovered.length && attempts < 3; index++) {
+        final device = discovered[index];
+        if ((tried[device.scanId] ?? 0) >= 2) continue;
+        try {
+          return await attempt(device, 'scan');
+        } on ProvisioningException catch (error) {
+          if (token.isCancelled || sessionReleaseFailed || (!_retryableControlError(error) && error.code != ProvisioningErrorCode.deviceIdMismatch)) rethrow;
+          lastError = error;
+          trace('ble_control_candidate_failed', source: 'scan', code: error.code.wireValue);
+          if (_retryableControlError(error) && tried[device.scanId] == 1) discovered.add(device);
+        }
+      }
+      if (lastError != null) throw lastError;
+      throw const BleControlRecoveryException(BleControlRecoveryFailure.notFound);
+    } catch (error) {
+      final reported = timedOut ? const BleControlRecoveryException(BleControlRecoveryFailure.timeout) : error;
+      trace(
+        'ble_control_recovery_finished',
+        outcome: timedOut
+            ? 'timeout'
+            : token.isCancelled
+            ? 'cancelled'
+            : 'failed',
+        code: reported is ProvisioningException
+            ? reported.code.wireValue
+            : reported is BleControlRecoveryException
+            ? reported.code
+            : reported.runtimeType.toString(),
+      );
+      throw reported;
     } finally {
       active = false;
       deadline.cancel();
       _expectedRecoveryDevice = null;
-      if (!cancelled && identical(_sessionOwner, owner)) await stopDiscovery();
+      if (identical(_activeControlToken, token)) _activeControlToken = null;
     }
   }
 
@@ -723,6 +884,12 @@ final class ProvisioningRepositoryImpl
       final status = reconnecting && ble is! BirdBoxPairingPreparation ? await _networkStatusAfterReconnect() : await _ble.readNetworkStatus();
       _lastNetworkSnapshot = status;
       _resumeOperation(status);
+      _checkOwner(owner);
+      try {
+        await _bleHints.save(BlePeerHint(deviceId: info.deviceId, platformId: device.advertisement.platformDeviceId, name: device.advertisement.localName, verifiedAt: _clock()));
+      } catch (_) {
+        _recordControl({'event': 'ble_control_hint_save_failed', 'device_id': info.deviceId});
+      }
       _checkOwner(owner);
       return info;
     } catch (error, stack) {
@@ -1470,6 +1637,7 @@ final class ProvisioningRepositoryImpl
   @override
   Future<void> dispose() async {
     if (_disposed) return;
+    _activeControlToken?.cancel('Provisioning repository disposed');
     await disconnect();
     _disposed = true;
     await _bleEventSubscription.cancel();

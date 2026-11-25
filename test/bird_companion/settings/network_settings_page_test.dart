@@ -3,6 +3,7 @@ import 'package:aves/bird_companion/features/connection/domain/provisioning_repo
 import 'package:dio/dio.dart';
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/network_settings_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +11,75 @@ import 'package:flutter_test/flutter_test.dart';
 import '../features/connection/fakes/fake_provisioning_repository.dart';
 
 void main() {
+  testWidgets('an explicit recovery entry starts once and does not verify or change business networking', (tester) async {
+    final repository = _ColdControlRepository();
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: NetworkSettingsPage(repository: repository, deviceId: _deviceInfo.deviceId, recoverBleOnOpen: true),
+      ),
+    );
+    await tester.pump();
+    expect(repository.recoveries, 1);
+    repository.result.complete(_deviceInfo);
+    await tester.pumpAndSettle();
+    expect(repository.verifications, 0);
+    expect(repository.calls, isNot(contains('setStaConfig')));
+    expect(repository.calls, isNot(contains('startDirectAp')));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+  testWidgets('opening network settings alone does not automatically recover BLE', (tester) async {
+    final repository = _ColdControlRepository();
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NetworkSettingsPage(repository: repository, deviceId: _deviceInfo.deviceId),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.recoveries, 0);
+    expect(find.text('恢复当前盒子蓝牙控制'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+  for (final error in <Object>[
+    const ProvisioningException(code: ProvisioningErrorCode.bluetoothPermissionDenied, retryable: true),
+    const BleControlRecoveryException(BleControlRecoveryFailure.notFound),
+  ]) {
+    testWidgets('recovery presents the classified ${error.runtimeType} result', (tester) async {
+      final repository = _ColdControlRepository();
+      addTearDown(repository.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NetworkSettingsPage(repository: repository, deviceId: _deviceInfo.deviceId, recoverBleOnOpen: true),
+        ),
+      );
+      await tester.pump();
+      repository.result.completeError(error);
+      await tester.pumpAndSettle();
+      expect(find.textContaining(error is ProvisioningException ? '需要蓝牙权限' : '未找到当前盒子蓝牙'), findsOneWidget);
+      expect(repository.verifications, 0);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+  testWidgets('a stalled recovery exits with timeout text rather than a user-cancel claim', (tester) async {
+    final repository = _ColdControlRepository();
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NetworkSettingsPage(repository: repository, deviceId: _deviceInfo.deviceId, recoverBleOnOpen: true),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 31));
+    expect(find.textContaining('蓝牙恢复超时'), findsOneWidget);
+    expect(repository.token?.isCancelled, true);
+    expect(repository.token?.cancelError?.error, isA<BleControlRecoveryException>());
+    repository.result.complete(_deviceInfo);
+    await tester.pumpAndSettle();
+    expect(find.text('蓝牙控制已断开'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   testWidgets('requires BLE reconnect when there is no trusted BLE session', (
     tester,
   ) async {
@@ -183,6 +253,11 @@ class _ControlRepository extends FakeProvisioningRepository implements BleContro
     verifications++;
     throw StateError('HTTP unavailable');
   }
+}
+
+class _ColdControlRepository extends _ControlRepository {
+  @override
+  ProvisioningDeviceInfo? get connectedDeviceInfo => null;
 }
 
 const _deviceInfo = ProvisioningDeviceInfo(
