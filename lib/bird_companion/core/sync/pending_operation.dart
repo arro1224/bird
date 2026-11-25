@@ -18,6 +18,10 @@ class PendingOperation extends Equatable {
     this.fileId,
     this.status = PendingOperationStatus.pending,
     this.failureReason,
+    this.schemaVersion = 0,
+    this.versionScope,
+    this.requestSent = false,
+    this.batchReceipt,
   });
 
   final String id;
@@ -32,6 +36,22 @@ class PendingOperation extends Equatable {
   final String? fileId;
   final PendingOperationStatus status;
   final String? failureReason;
+  final int schemaVersion;
+  final String? versionScope;
+  final bool requestSent;
+  final Map<String, dynamic>? batchReceipt;
+
+  bool get isProjectVersionBatch => type == PendingOperationType.batchReview && schemaVersion == 2 && versionScope == 'project';
+
+  List<String> get remainingFileIds {
+    if (type != PendingOperationType.batchReview) {
+      final id = fileId ?? payload['file_id']?.toString();
+      return [?id];
+    }
+    final ids = (payload['file_ids'] as List? ?? const []).map((id) => id.toString()).toSet();
+    final confirmed = isProjectVersionBatch && batchReceipt?['version'] is int ? (batchReceipt?['succeeded_ids'] as List? ?? const []).map((id) => id.toString()).toSet() : const <String>{};
+    return ids.difference(confirmed).toList(growable: false);
+  }
 
   PendingOperation copyWith({
     String? id,
@@ -40,12 +60,15 @@ class PendingOperation extends Equatable {
     PendingOperationStatus? status,
     String? failureReason,
     bool clearFailureReason = false,
+    int? version,
+    bool? requestSent,
+    Map<String, dynamic>? batchReceipt,
   }) => PendingOperation(
     id: id ?? this.id,
     type: type,
     payload: payload ?? this.payload,
     createdAt: createdAt,
-    version: version,
+    version: version ?? this.version,
     retryCount: retryCount ?? this.retryCount,
     source: source,
     deviceId: deviceId,
@@ -53,6 +76,10 @@ class PendingOperation extends Equatable {
     fileId: fileId,
     status: status ?? this.status,
     failureReason: clearFailureReason ? null : failureReason ?? this.failureReason,
+    schemaVersion: schemaVersion,
+    versionScope: versionScope,
+    requestSent: requestSent ?? this.requestSent,
+    batchReceipt: batchReceipt ?? this.batchReceipt,
   );
 
   Map<String, dynamic> toJson() => {
@@ -68,6 +95,10 @@ class PendingOperation extends Equatable {
     'file_id': fileId,
     'status': status.name,
     'failure_reason': failureReason,
+    'schema_version': schemaVersion,
+    'version_scope': versionScope,
+    'request_sent': requestSent,
+    if (batchReceipt != null) 'batch_receipt': batchReceipt,
   };
 
   factory PendingOperation.fromJson(Map<String, dynamic> json) {
@@ -103,6 +134,10 @@ class PendingOperation extends Equatable {
         orElse: () => PendingOperationStatus.pending,
       ),
       failureReason: json['failure_reason']?.toString(),
+      schemaVersion: json['schema_version'] is int ? json['schema_version'] as int : 0,
+      versionScope: json['version_scope']?.toString(),
+      requestSent: json['request_sent'] == true,
+      batchReceipt: json['batch_receipt'] is Map ? Map<String, dynamic>.from(json['batch_receipt'] as Map) : null,
     );
   }
 
@@ -128,5 +163,9 @@ class PendingOperation extends Equatable {
     fileId,
     status,
     failureReason,
+    schemaVersion,
+    versionScope,
+    requestSent,
+    batchReceipt,
   ];
 }

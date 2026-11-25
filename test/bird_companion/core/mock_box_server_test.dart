@@ -124,13 +124,13 @@ void main() {
       'mock-batch-current',
       const ['photo-0005', 'photo-0006'],
       'keep',
-      version: 1,
+      version: before!.projectVersion!,
     );
     final after = await batchApi.current();
     final reviewPage = await batchApi.page(state: 'review');
 
     expect(outcome.succeededIds, ['photo-0005', 'photo-0006']);
-    expect(after?.pendingReviewCount, before!.pendingReviewCount - 2);
+    expect(after?.pendingReviewCount, before.pendingReviewCount - 2);
     expect(after?.keepCount, before.keepCount + 2);
     expect(reviewPage.items.single.pendingReviewCount, after?.pendingReviewCount);
     expect(reviewPage.items.single.keepCount, after?.keepCount);
@@ -465,10 +465,7 @@ void main() {
 
     // 进度事件：完整 Job 形状（含 version 递增）。
     await Future<void>.delayed(const Duration(seconds: 3));
-    final progressEvents = events
-        .where((event) => event['event_type'] == 'job_updated')
-        .where((event) => (event['payload'] as Map)['job_id'] == response['job_id'])
-        .toList();
+    final progressEvents = events.where((event) => event['event_type'] == 'job_updated').where((event) => (event['payload'] as Map)['job_id'] == response['job_id']).toList();
     expect(progressEvents, isNotEmpty);
     final versions = progressEvents.map((event) => (event['payload'] as Map)['version']).toList();
     expect(versions, everyElement(isA<num>()));
@@ -597,10 +594,7 @@ void main() {
   );
 }
 
-Future<BirdJobStatus> pollUntil(
-  Future<BirdJobStatus> Function() fetch,
-  bool Function(BirdJobStatus job) done,
-  {required Duration timeout}) async {
+Future<BirdJobStatus> pollUntil(Future<BirdJobStatus> Function() fetch, bool Function(BirdJobStatus job) done, {required Duration timeout}) async {
   final deadline = DateTime.now().add(timeout);
   while (DateTime.now().isBefore(deadline)) {
     final job = await fetch();

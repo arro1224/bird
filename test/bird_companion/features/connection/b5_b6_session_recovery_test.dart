@@ -73,7 +73,7 @@ void main() {
     expect(session.state.isConnected, true);
   });
 
-  test('offline startup retains the saved device without reconnecting', () async {
+  test('offline startup retains the saved device after local verification fails', () async {
     final repository = _RecoveryRepository(saved: _savedDevice);
     final events = EventClient();
     final refresh = SessionRefreshCoordinator();
@@ -98,7 +98,7 @@ void main() {
     final restored = await session.restoreSavedSession();
 
     expect(restored, isFalse);
-    expect(repository.reconnectCalls, 0);
+    expect(repository.reconnectCalls, 1, reason: 'an OS network hint cannot exclude a local hotspot link');
     expect(session.state.device, _savedDevice);
     expect(session.state.isConnected, isFalse);
   });

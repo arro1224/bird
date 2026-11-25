@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_recorder.dart';
 import 'package:aves/bird_companion/features/connection/data/connection_attempt_recorder.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_connection_diagnostic_store.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_scan_diagnostic_store.dart';
@@ -7,6 +8,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'ble_diagnostic_snapshot_test.dart' show MemoryStorage, OfflineFiles, scan;
 
 void main() {
+  test('N10 cancellation and successor metadata survive both diagnostic exports without secrets', () async {
+    final events = BleConnectionDiagnosticStore(MemoryStorage());
+    final phone = PhoneDiagnosticRecorder(MemoryStorage());
+    final recorder = ConnectionAttemptRecorder(MemoryStorage(), events, mirror: phone.record);
+    recorder.record({
+      'event': 'connection_superseded',
+      'attempt_id': 'old-attempt',
+      'cancel_source': 'transport_changed',
+      'successor_action': 'verify_saved_session',
+      'successor_attempt_id': 'new-attempt',
+      'previous_generation': 1,
+      'next_generation': 2,
+      'recovery_elapsed_ms': 750,
+      'network_role': 'local_link_unconfirmed',
+      'password': 'never-export-this',
+    });
+    await events.flush();
+    for (final output in [events.exportJson(), jsonEncode(await phone.snapshot())]) {
+      for (final field in ['cancel_source', 'successor_action', 'successor_attempt_id', 'previous_generation', 'next_generation', 'recovery_elapsed_ms', 'network_role']) {
+        expect(output, contains(field));
+      }
+      expect(output, contains('new-attempt'));
+      expect(output, isNot(contains('never-export-this')));
+    }
+    await events.dispose();
+    await phone.dispose();
+  });
+
   test('AP and cold restore adopt intent ids while late phase callbacks keep the newer intent current', () async {
     final storage = MemoryStorage(), events = BleConnectionDiagnosticStore(MemoryStorage());
     final recorder = ConnectionAttemptRecorder(storage, events);

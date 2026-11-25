@@ -11,7 +11,8 @@ class ConnectivityMonitor {
 
   Future<bool> get hasNetwork async => !(await _connectivity.checkConnectivity()).contains(ConnectivityResult.none);
 
-  /// 盒子只能经 Wi-Fi 访问；移动数据可用不代表盒子可达（v10 问题 8）。
+  /// Client Wi-Fi is only a transport hint. A phone hosting a hotspot can
+  /// reach its box while this is false; cellular availability proves neither.
   Future<bool> get hasWifi async => (await _connectivity.checkConnectivity()).contains(ConnectivityResult.wifi);
 }
 

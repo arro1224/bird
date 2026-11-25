@@ -28,4 +28,20 @@ class BatchApi {
   }
 
   Future<void> resume(String batchId) => _client.post(ApiEndpoints.batchResume.replaceFirst('{batchId}', batchId));
+
+  /// Uses only existing reads. No speculative project-detail route or write.
+  Future<BatchSummary> project(String projectId) async {
+    final active = await current();
+    if (active?.id == projectId) return active!;
+    String? cursor;
+    final visited = <String>{};
+    for (var index = 0; index < 30; index++) {
+      final result = await page(sort: 'created_at_desc', cursor: cursor);
+      final found = result.items.where((item) => item.id == projectId).firstOrNull;
+      if (found != null) return found;
+      if (!result.hasMore || result.nextCursor == null || !visited.add(result.nextCursor!)) break;
+      cursor = result.nextCursor;
+    }
+    throw StateError('无法读取此批次的权威状态，请刷新后重试');
+  }
 }

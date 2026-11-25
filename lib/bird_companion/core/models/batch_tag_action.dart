@@ -18,7 +18,7 @@ class BatchTagActionResult {
     final succeeded = succeededIds.toSet();
     failed = {
       for (final id in requested)
-        if (!succeeded.contains(id)) id: reportedFailures[id] ?? '盒子未确认标签修改',
+        if (!succeeded.contains(id)) id: reportedFailures[id] ?? '盒子未确认该照片的批量修改',
     };
   }
 

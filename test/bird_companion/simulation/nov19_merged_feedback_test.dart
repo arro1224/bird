@@ -58,6 +58,7 @@ void main() {
         data: {
           'file_ids': [for (var i = 1; i <= profile.total; i++) 'photo-${i.toString().padLeft(4, '0')}'],
           'operation': 'discard',
+          'version': (await current(client))['version'],
         },
       );
       await check();

@@ -181,8 +181,8 @@ void main() {
       );
       expect(current.data, '东方大苇莺');
       expect(find.text('人工修正'), findsOneWidget);
-      expect(find.text('11%'), findsOneWidget);
-      expect(find.text('89%'), findsOneWidget);
+      expect(find.text('11.0%'), findsOneWidget);
+      expect(find.text('89.0%'), findsOneWidget);
       expect(find.text('很有把握'), findsNothing);
       expect(find.text('仅供参考'), findsNothing);
     });

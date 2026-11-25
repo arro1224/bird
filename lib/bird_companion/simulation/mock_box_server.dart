@@ -164,6 +164,9 @@ class MockBoxServer {
   final Map<String, _CachedHttpResponse> _idempotentResponses = {};
   final Map<String, Completer<_CachedHttpResponse>> _idempotentInFlight = {};
   final Map<HttpRequest, String> _idempotencyByRequest = {};
+  final Map<HttpRequest, Map<String, dynamic>> _bufferedBatchBodies = {};
+  final Map<String, String> _batchIdempotentParameters = {};
+  final Map<String, int> _projectVersions = {};
   final Set<WebSocket> _eventSockets = {};
   final Map<String, int> _assetRevisions = {};
   Future<void> _stateWrite = Future<void>.value();
@@ -831,7 +834,7 @@ class MockBoxServer {
 
     final projectActions = RegExp(r'^/api/v1/projects/([^/]+)/files/actions$').firstMatch(path);
     if (method == 'POST' && projectActions != null) {
-      await _applyBatchAction(request);
+      await _applyBatchAction(request, projectActions.group(1)!);
       return;
     }
 
@@ -2052,6 +2055,7 @@ class MockBoxServer {
     final id = 'project-${(++_projectSequence).toString().padLeft(4, '0')}';
     final project = <String, dynamic>{
       'project_id': id,
+      'version': 0,
       'name': name,
       'created_at': _clock().toUtc().toIso8601String(),
       'state': 'created',
@@ -2363,6 +2367,7 @@ class MockBoxServer {
   Map<String, dynamic> _currentBatch() {
     return {
       'project_id': 'mock-batch-current',
+      'version': _projectVersions['mock-batch-current'] ?? 0,
       'name': acceptanceProfile == null ? '2026.07.16 崇明东滩' : '返修验收 ${acceptanceProfile!.total} 张',
       'created_at': '2026-07-16T06:12:00Z',
       'state': 'ready_to_review',
@@ -2379,6 +2384,7 @@ class MockBoxServer {
   List<Map<String, dynamic>> _historyBatches() => [
     {
       'project_id': 'mock-batch-history-01',
+      'version': _projectVersions['mock-batch-history-01'] ?? 0,
       'name': '杭州湾湿地',
       'created_at': '2026-07-10T06:30:00Z',
       'state': 'completed',
@@ -2667,6 +2673,8 @@ class MockBoxServer {
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
     _decisions[fileId] = updated;
+    _advanceProjectVersion('mock-batch-current');
+    if (_currentCreatedProjectId != null) _advanceProjectVersion(_currentCreatedProjectId!);
     photo['keep_state'] = updated['keep_state'] ?? photo['keep_state'];
     photo['user_tags'] = updated['user_tags'] ?? photo['user_tags'];
     photo['version'] = version;
@@ -2681,9 +2689,32 @@ class MockBoxServer {
     await _json(request, HttpStatus.ok, {'decision': updated});
   }
 
-  Future<void> _applyBatchAction(HttpRequest request) async {
+  void _advanceProjectVersion(String projectId) {
+    final next = (_projectVersions[projectId] ?? 0) + 1;
+    _projectVersions[projectId] = next;
+    _createdProjects[projectId]?['version'] = next;
+  }
+
+  Future<void> _applyBatchAction(HttpRequest request, String projectId) async {
     final body = await _requestJson(request);
-    final ids = (body['file_ids'] as List? ?? const []).map((id) => id.toString()).toList();
+    if (!_isKnownBatch(projectId)) {
+      await _notFound(request, 'Unknown project: $projectId');
+      return;
+    }
+    final currentVersion = _projectVersions[projectId] ?? 0;
+    if (body['version'] is! int || (body['version'] as int) < 0) {
+      await _json(request, HttpStatus.unprocessableEntity, {'error_code': 'project_version_required', 'error_message': 'A project version is required.'}, envelope: false);
+      return;
+    }
+    if (body['version'] != currentVersion) {
+      await _json(request, HttpStatus.conflict, {
+        'error_code': 'VERSION_CONFLICT',
+        'error_message': 'The project changed.',
+        'details': {'current_version': currentVersion, 'version_scope': 'project'},
+      }, envelope: false);
+      return;
+    }
+    final ids = (body['file_ids'] as List? ?? const []).map((id) => id.toString()).toSet().toList();
     final operation = body['operation']?.toString() ?? '';
     final value = body['value'];
     final succeeded = <String>[];
@@ -2724,9 +2755,11 @@ class MockBoxServer {
       succeeded.add(id);
     }
     _syncCreatedProjectCounts();
+    if (succeeded.isNotEmpty) _advanceProjectVersion(projectId);
     await _json(request, HttpStatus.ok, {
       'succeeded_ids': succeeded,
       'failed': failed,
+      'version': _projectVersions[projectId] ?? 0,
     });
   }
 
@@ -3737,7 +3770,18 @@ class MockBoxServer {
     });
   }
 
+  Object? _canonicalBatchParameters(Object? value) {
+    if (value is Map) {
+      final keys = value.keys.map((key) => key.toString()).toList()..sort();
+      return {for (final key in keys) key: _canonicalBatchParameters(value[key])};
+    }
+    if (value is List) return value.map(_canonicalBatchParameters).toList();
+    return value;
+  }
+
   Future<Map<String, dynamic>> _requestJson(HttpRequest request) async {
+    final buffered = _bufferedBatchBodies.remove(request);
+    if (buffered != null) return buffered;
     final raw = await utf8.decoder.bind(request).join();
     if (raw.trim().isEmpty) return {};
     final value = jsonDecode(raw);
@@ -3789,13 +3833,32 @@ class MockBoxServer {
       return true;
     }
     final cacheKey = '${request.method} ${request.uri.path} $key';
+    if (RegExp(r'^/api/v1/projects/[^/]+/files/actions$').hasMatch(request.uri.path)) {
+      final body = await _requestJson(request);
+      _bufferedBatchBodies[request] = body;
+      final fingerprint = jsonEncode(_canonicalBatchParameters(body));
+      final previous = _batchIdempotentParameters[cacheKey];
+      if (previous == null && _idempotentResponses.containsKey(cacheKey)) {
+        _bufferedBatchBodies.remove(request);
+        await _json(request, HttpStatus.conflict, {'error_code': 'IDEMPOTENCY_PARAMETERS_UNAVAILABLE', 'error_message': 'Legacy batch parameters cannot be verified.'}, envelope: false);
+        return true;
+      }
+      if (previous != null && previous != fingerprint) {
+        _bufferedBatchBodies.remove(request);
+        await _json(request, HttpStatus.conflict, {'error_code': 'IDEMPOTENCY_CONFLICT', 'error_message': 'The same key cannot change batch parameters.'}, envelope: false);
+        return true;
+      }
+      _batchIdempotentParameters[cacheKey] = fingerprint;
+    }
     final cached = _idempotentResponses[cacheKey];
     if (cached != null) {
+      _bufferedBatchBodies.remove(request);
       await _sendCachedResponse(request, cached);
       return true;
     }
     final pending = _idempotentInFlight[cacheKey];
     if (pending != null) {
+      _bufferedBatchBodies.remove(request);
       await _sendCachedResponse(request, await pending.future);
       return true;
     }
@@ -3832,9 +3895,25 @@ class MockBoxServer {
       throw const FormatException('Mock state belongs to a different acceptance profile. Use a separate state file.');
     }
     _projectSequence = (state['project_sequence'] as num?)?.toInt() ?? 0;
+    if (state['project_versions'] is Map) {
+      for (final entry in (state['project_versions'] as Map).entries) {
+        if (entry.value is int) _projectVersions[entry.key.toString()] = entry.value as int;
+      }
+    }
+    if (state['batch_idempotent_parameters'] is Map) {
+      for (final entry in (state['batch_idempotent_parameters'] as Map).entries) {
+        _batchIdempotentParameters[entry.key.toString()] = entry.value.toString();
+      }
+    }
     _jobSequence = (state['job_sequence'] as num?)?.toInt() ?? 0;
     _currentCreatedProjectId = state['current_created_project_id']?.toString();
     _restoreMapOfMaps(state['created_projects'], _createdProjects);
+    for (final entry in _createdProjects.entries) {
+      final stored = entry.value['version'];
+      final version = _projectVersions[entry.key] ?? (stored is int && stored >= 0 ? stored : 0);
+      _projectVersions[entry.key] = version;
+      entry.value['version'] = version;
+    }
     _restoreMapOfMaps(state['jobs'], _jobs);
     _restoreMapOfMaps(state['copy_jobs'], _copyJobsV1);
     // JSON restores List<dynamic>; copy state transitions use typed item/event
@@ -3958,6 +4037,8 @@ class MockBoxServer {
       'acceptance_profile': acceptanceProfile?.id,
       if (_acceptanceWorkflow != null) 'acceptance_workflow': _acceptanceWorkflow.toJson(),
       'project_sequence': _projectSequence,
+      'project_versions': _projectVersions,
+      'batch_idempotent_parameters': _batchIdempotentParameters,
       'job_sequence': _jobSequence,
       'current_created_project_id': _currentCreatedProjectId,
       'created_projects': _createdProjects,

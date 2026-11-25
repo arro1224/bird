@@ -26,13 +26,14 @@ class DeviceSessionState {
     String? attemptId,
     String? operationId,
     String? verificationStage,
+    bool clearVerification = false,
   }) => DeviceSessionState(
     phase: phase ?? this.phase,
     device: clearDevice ? null : device ?? this.device,
     lastUpdatedAt: lastUpdatedAt ?? this.lastUpdatedAt,
     message: clearMessage ? null : message ?? this.message,
-    attemptId: attemptId ?? this.attemptId,
-    operationId: operationId ?? this.operationId,
-    verificationStage: verificationStage ?? this.verificationStage,
+    attemptId: clearVerification ? null : attemptId ?? this.attemptId,
+    operationId: clearVerification ? null : operationId ?? this.operationId,
+    verificationStage: clearVerification ? null : verificationStage ?? this.verificationStage,
   );
 }

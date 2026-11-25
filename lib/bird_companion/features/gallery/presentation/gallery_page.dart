@@ -15,6 +15,7 @@ import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
+import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/core/widgets/bird_feedback.dart';
 import 'package:aves/bird_companion/core/widgets/error_notice.dart';
 import 'package:aves/bird_companion/core/widgets/page_back_button.dart';
@@ -867,11 +868,11 @@ class _GalleryHeader extends StatelessWidget {
                 compact: rootMode,
                 pendingCount: state.pendingOperationCount,
                 conflictCount: state.conflictOperationCount,
-                onOpenConflict: state.firstConflictFileId == null
+                onOpenConflict: state.conflictOperationCount == 0
                     ? null
                     : () => _openConflictPhoto(
                         context,
-                        state.firstConflictFileId!,
+                        state.firstConflictFileId,
                       ),
               ),
               SizedBox(height: rootMode ? 4 : 12),
@@ -963,7 +964,17 @@ class _GalleryHeader extends StatelessWidget {
     },
   );
 
-  void _openConflictPhoto(BuildContext context, String fileId) {
+  void _openConflictPhoto(BuildContext context, String? fileId) {
+    final dependencies = BirdCompanionScope.of(context);
+    final deviceId = dependencies.deviceSessionCubit.state.device?.id;
+    final batchConflict = dependencies.pendingOperationStore.readAll().any(
+      (operation) => operation.deviceId == deviceId && operation.projectId == reviewContext.batchId && operation.type == PendingOperationType.batchReview && operation.status == PendingOperationStatus.conflict,
+    );
+    if (batchConflict) {
+      unawaited(guardBirdNavigation(context, () => Navigator.of(context).pushNamed(BirdRoutes.diagnostics)));
+      return;
+    }
+    if (fileId == null) return;
     final photoIds = state.items.map((item) => item.id).toList(growable: true);
     if (!photoIds.contains(fileId)) photoIds.insert(0, fileId);
     final photoContext = reviewContext.openPhotos(
@@ -1625,7 +1636,11 @@ Future<void> _batchAction(BuildContext context, String batchId, List<String> ids
   }
   if (!gallery.isClosed) await gallery.refresh();
   if (!context.mounted) return;
-  if (outcome.queued) {
+  if (outcome.conflict) {
+    BirdFeedback.error(context, '批次已有其他修改，未覆盖失败项；请先处理同步冲突，再重新确认');
+  } else if (outcome.errorCode == 'PROJECT_VERSION_UNAVAILABLE') {
+    BirdFeedback.error(context, '无法核实批次最新状态，修改未提交；请连接盒子刷新后再试');
+  } else if (outcome.queued) {
     BirdFeedback.queued(context, '修改已保存在手机上，重新连接后会自动更新');
   } else if (outcome.succeededIds.isEmpty) {
     BirdFeedback.error(context, '${outcome.failed.length} 张照片操作失败，请重试');
@@ -1712,20 +1727,26 @@ Future<void> _showTagDialog(BuildContext context, String batchId, List<String> i
   final succeeded = <String>[];
   final failed = <String, String>{};
   var queued = false;
+  var projectConflict = false, versionUnavailable = false;
   final undoActions = <BatchUndoAction>[];
   for (final group in change.groups) {
+    if (projectConflict || versionUnavailable) {
+      failed.addAll({for (final id in group.ids) id: '批次状态需要核对，此项尚未提交'});
+      continue;
+    }
     final result = await coordinator.apply(
       projectId: batchId,
       fileIds: group.ids,
       currentPhotos: group.photos,
       operation: operation,
       value: group.tags,
-      // An addition and its undo must use the tags and version from the same snapshot.
-      loadMissingVersions: remove,
+      // Business tag groups keep exact undo data; CAS is always project scoped.
     );
     succeeded.addAll(result.succeededIds);
     failed.addAll(result.failed);
     queued = queued || result.queued;
+    projectConflict = projectConflict || result.conflict;
+    versionUnavailable = versionUnavailable || result.errorCode == 'PROJECT_VERSION_UNAVAILABLE';
     if (result.succeededIds.isNotEmpty) {
       undoActions.add(BatchUndoAction(operation: remove ? 'add_tags' : 'remove_tags', ids: result.succeededIds, value: group.tags));
     }
@@ -1739,7 +1760,11 @@ Future<void> _showTagDialog(BuildContext context, String batchId, List<String> i
   if (!context.mounted) return;
   await context.read<GalleryCubit>().refresh();
   if (!context.mounted) return;
-  if (queued && failed.isNotEmpty) {
+  if (projectConflict) {
+    BirdFeedback.error(context, '批次已有其他修改，未继续提交其余标签；请处理同步冲突后重新确认');
+  } else if (versionUnavailable) {
+    BirdFeedback.error(context, '无法核实批次最新状态，其余标签未提交；请连接盒子刷新后再试');
+  } else if (queued && failed.isNotEmpty) {
     BirdFeedback.error(context, '有标签修改等待同步，${failed.length} 张照片操作失败');
   } else if (queued) {
     BirdFeedback.queued(context, '标签已保存在手机上，重新连接后会自动更新');
@@ -1772,7 +1797,12 @@ Future<void> _undoBatch(BuildContext context, String batchId) async {
   final succeeded = <String>[];
   final transitions = <ReviewStateTransition>[];
   var queued = false;
+  var projectConflict = false;
   for (final action in actions) {
+    if (projectConflict) {
+      failed.addAll({for (final id in action.ids) id: '批次状态需要核对，此项尚未撤销'});
+      continue;
+    }
     final outcome = await _batchOperationByPhotoVersion(
       context,
       batchId,
@@ -1783,6 +1813,7 @@ Future<void> _undoBatch(BuildContext context, String batchId) async {
     succeeded.addAll(outcome.succeededIds);
     failed.addAll(outcome.failed);
     queued = queued || outcome.queued;
+    projectConflict = projectConflict || outcome.conflict || outcome.errorCode == 'PROJECT_VERSION_UNAVAILABLE';
     final after = _keepStateForOperation(action.operation);
     final before = _keepStateForOperation(action.transitionFromOperation ?? '');
     if (after != null) {
@@ -1809,7 +1840,9 @@ Future<void> _undoBatch(BuildContext context, String batchId) async {
   selection.complete(succeededIds: succeeded, failed: failed);
   if (!gallery.isClosed) await gallery.refresh();
   if (!context.mounted) return;
-  if (queued) {
+  if (projectConflict) {
+    BirdFeedback.error(context, '批次状态需要核对，未继续撤销其余照片；请处理同步冲突后重新确认');
+  } else if (queued) {
     BirdFeedback.queued(context, '撤销已保存在手机上，重新连接后会自动更新');
   } else if (failed.isEmpty) {
     BirdFeedback.success(context, '已撤销最近一次批量操作');

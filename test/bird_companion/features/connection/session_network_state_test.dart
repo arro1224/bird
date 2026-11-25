@@ -113,7 +113,9 @@ void main() {
   });
   test('Wi-Fi 断开：connected 立即转为 reconnecting 并保留设备身份', () async {
     final monitor = _ManualConnectivityMonitor();
-    final session = _session(monitor, _RecoveryRepository(saved: _savedDevice, reconnectStatus: _status()));
+    final pending = Completer<DeviceStatus>();
+    final repository = _RecoveryRepository(saved: _savedDevice)..pendingReconnect = pending;
+    final session = _session(monitor, repository);
     addTearDown(session.close);
     await session.setConnectedFromStatus(_status());
     expect(session.state.phase, DeviceSessionPhase.connected);
@@ -123,6 +125,10 @@ void main() {
     expect(session.state.phase, DeviceSessionPhase.reconnecting, reason: '断网后首页不得继续显示已连接');
     expect(session.state.device?.id, _savedDevice.id, reason: '保留设备身份，恢复后可直接重连');
     expect(session.state.isConnected, false);
+    expect(repository.reconnectCalls, 1, reason: '网络标签变化后须有接替验证');
+    pending.completeError(StateError('local box is offline'));
+    await Future<void>.delayed(Duration.zero);
+    expect(session.state.phase, DeviceSessionPhase.disconnected, reason: '真实断链验证失败后结束重连状态');
   });
 
   test('Wi-Fi 断开但移动数据仍在：transport 变化立即进入 reconnecting', () async {
@@ -231,7 +237,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 1));
     }
     expect(session.state.isConnected, true);
-    expect(repository.reconnectCalls, 2);
+    expect(repository.reconnectCalls, 3, reason: '失去客户端 Wi-Fi 时仍须验证可能存在的本机热点链路');
     oldSocket.completeError(StateError('old transport failed late'));
     await Future<void>.delayed(Duration.zero);
     expect(session.state.isConnected, true);

@@ -201,6 +201,21 @@ void main() {
     await until(() => h.session.state.isConnected);
     await h.save('simulated_wifi_loss_mobile_remains');
   });
+
+  test('N10 cellular-only OS signal still verifies the same box over real HTTP and WS in foreground', () async {
+    final before = h.records.where((row) => row['event'] == 'connection_committed').length;
+    h.network.wifi = false;
+    h.network.transport.add(null);
+    await until(() => h.records.where((row) => row['event'] == 'connection_committed').length > before);
+    expect(h.session.state.isConnected, true);
+    expect(h.session.state.device?.id, h.server.deviceId);
+    expect(h.events.currentState, EventConnectionState.connected);
+    final committed = h.records.lastWhere((row) => row['event'] == 'connection_committed');
+    expect(committed['http_result'], 'protected_read_ok');
+    expect(committed['ws_state'], 'connected');
+    expect(committed['network_role'], 'local_link_verified_without_wifi_client');
+    await h.save('n10_cellular_label_local_box_verified');
+  });
 }
 
 Future<void> until(bool Function() ready, {Duration timeout = const Duration(seconds: 3)}) async {

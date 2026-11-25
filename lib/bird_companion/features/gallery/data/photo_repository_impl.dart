@@ -19,8 +19,10 @@ import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
 import 'package:aves/bird_companion/core/storage/pending_operation_store.dart';
 import 'package:aves/bird_companion/core/storage/local_cache.dart';
 import 'package:aves/bird_companion/core/sync/pending_operation.dart';
+import 'package:aves/bird_companion/core/sync/sync_coordinator.dart';
+import 'package:aves/bird_companion/features/connection/domain/request_id_factory.dart';
 
-class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionRepository {
+class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionRepository, ProjectBatchReviewRepository {
   PhotoRepositoryImpl(
     this._api,
     this._connectivity,
@@ -28,6 +30,7 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
     this._cache, [
     String Function()? cacheNamespace,
     String? Function()? deviceId,
+    this._invalidateReviewVersions,
   ]) : _cacheNamespace = cacheNamespace ?? (() => 'default'),
        _deviceId = deviceId ?? (() => null);
   final PhotoApi _api;
@@ -36,6 +39,8 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
   final LocalCache _cache;
   final String Function() _cacheNamespace;
   final String? Function() _deviceId;
+  final void Function(Iterable<String>)? _invalidateReviewVersions;
+  final _batchWrites = <_PhotoScope, Future<void>>{};
   final _reads = <(_PhotoScope, String), _PhotoRead>{};
   final _invalidations = <_PhotoScope, Future<void>>{};
   final _handledChanges = Expando<Set<_PhotoScope>>();
@@ -293,173 +298,316 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
     }
   }
 
+  void _ensureBatchScope(_PhotoScope scope, String deviceId) {
+    if (_cacheNamespace() != scope.$1 || _activeDeviceId != deviceId) throw StateError('批量修改所属盒子已切换');
+  }
+
+  Future<T> _serializeBatch<T>(_PhotoScope scope, Future<T> Function() action) async {
+    final previous = _batchWrites[scope] ?? Future<void>.value();
+    final result = previous.then((_) => action());
+    final tail = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    unawaited(_batchWrites[scope] = tail);
+    try {
+      return await result;
+    } finally {
+      if (identical(_batchWrites[scope], tail)) unawaited(_batchWrites.remove(scope));
+    }
+  }
+
+  String _projectVersionKey(_PhotoScope scope) => 'album:project-version:${scope.$1}:${scope.$2}';
+
+  int? _cachedProjectVersion(_PhotoScope scope) {
+    final versions = <int>[];
+    void collect(Map? raw) {
+      if (raw == null || raw['project_id'] != scope.$2) return;
+      final version = raw['version'];
+      if (version is int && version >= 0) versions.add(version);
+    }
+
+    collect(_cache.read<Map>(_projectVersionKey(scope)));
+    collect(_cache.read<Map>('album:batch-summary:${scope.$1}:${scope.$2}'));
+    for (final key in _cache.keysWithPrefix('album:batches:${scope.$1}:')) {
+      final raw = _cache.read<Map>(key);
+      collect(raw);
+      for (final item in (raw?['items'] as List? ?? const []).whereType<Map>()) {
+        collect(item);
+      }
+    }
+    return versions.isEmpty ? null : versions.reduce((a, b) => a > b ? a : b);
+  }
+
+  Future<void> _rememberProjectVersion(_PhotoScope scope, int version) async {
+    final previous = _cachedProjectVersion(scope);
+    if (previous != null && previous > version) return;
+    await _cache.write(_projectVersionKey(scope), {'project_id': scope.$2, 'version': version});
+  }
+
   @override
-  Future<BatchOperationOutcome> batchOperation(
-    String id,
-    List<String> ids,
-    String action, {
-    required int version,
-    Object? value,
-  }) async {
-    if (version < 0) {
-      throw const ProtocolCompatibilityException('version', '必须是非负整数');
-    }
-    final targetIds = ids.map((value) => value.trim()).where((value) => value.isNotEmpty).toSet().toList();
-    if (targetIds.isEmpty) return const BatchOperationOutcome(succeededIds: []);
-    final deviceId = _activeDeviceId;
-    if (deviceId == null) {
-      throw StateError('没有可用于隔离修改的设备身份');
-    }
-    final namespace = _cacheNamespace();
-    final operationId = 'batch-$id-${DateTime.now().microsecondsSinceEpoch}';
+  Future<int> readProjectVersion(String projectId) async {
+    final scope = _captureScope(projectId), deviceId = _activeDeviceId;
+    if (deviceId == null) throw StateError('没有可用于隔离修改的设备身份');
+    return _readProjectVersion(scope, deviceId);
+  }
+
+  Future<int> _readProjectVersion(_PhotoScope scope, String deviceId) async {
     try {
       if (await _connectivity.hasNetwork) {
-        final outcome = await _api.batchOperation(
-          id,
-          targetIds,
-          action,
-          version: version,
-          value: value,
-          idempotencyKey: operationId,
-        );
-        if (isBatchTagAction(action)) {
-          if (_activeDeviceId == deviceId && _cacheNamespace() == namespace) {
-            await acceptSyncedBatchTags(id, outcome.succeededIds, action, version, value);
-          }
-        } else {
-          await _updateCachedPhotos(id, outcome.succeededIds, action, value, namespace);
-          await invalidateLocalQueries(id);
-        }
-        return outcome;
+        _ensureBatchScope(scope, deviceId);
+        final version = await _api.projectVersion(scope.$2);
+        _ensureBatchScope(scope, deviceId);
+        await _rememberProjectVersion(scope, version);
+        return version;
       }
     } on ApiException catch (error) {
-      if (error.statusCode == 401 || error.statusCode == 403) rethrow;
+      if (error.statusCode != null && error.statusCode! < 500) rethrow;
+    }
+    _ensureBatchScope(scope, deviceId);
+    final cached = _cachedProjectVersion(scope);
+    if (cached == null) throw const ProtocolCompatibilityException('project.version', '尚无可核实的批次版本，请连接盒子刷新后再修改');
+    return cached;
+  }
+
+  @override
+  Future<BatchOperationOutcome> reviewBatch(String projectId, List<String> ids, String operation, {Object? value}) {
+    final scope = _captureScope(projectId), deviceId = _activeDeviceId;
+    if (deviceId == null) throw StateError('没有可用于隔离修改的设备身份');
+    return _serializeBatch(scope, () async {
+      final version = await _readProjectVersion(scope, deviceId);
+      return _newBatchOperation(scope, deviceId, ids, operation, version, value);
+    });
+  }
+
+  @override
+  Future<BatchOperationOutcome> batchOperation(String id, List<String> ids, String action, {required int version, Object? value}) {
+    final scope = _captureScope(id), deviceId = _activeDeviceId;
+    if (deviceId == null) throw StateError('没有可用于隔离修改的设备身份');
+    return _serializeBatch(scope, () => _newBatchOperation(scope, deviceId, ids, action, version, value));
+  }
+
+  Future<BatchOperationOutcome> _newBatchOperation(_PhotoScope scope, String deviceId, List<String> ids, String action, int projectVersion, Object? value) async {
+    _ensureBatchScope(scope, deviceId);
+    if (projectVersion < 0) throw const ProtocolCompatibilityException('project.version', '必须是非负整数');
+    if (!const {'pending', 'keep', 'discard', 'featured', 'add_tags', 'remove_tags'}.contains(action)) throw const ProtocolCompatibilityException('operation', '不支持的批量操作');
+    final targetIds = ids.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet().toList();
+    final existing = _pending.readAll().where((op) => op.deviceId == deviceId && op.projectId == scope.$2).expand((op) => op.remainingFileIds).toSet();
+    final failed = {for (final id in targetIds.where(existing.contains)) id: '该照片已有待同步修改或冲突，请先处理'};
+    final selected = targetIds.where((id) => !existing.contains(id)).toList();
+    if (selected.isEmpty) return BatchOperationOutcome(succeededIds: const [], failed: failed);
+    final operation = PendingOperation(
+      id: 'batch-${SecureRequestIdFactory().create()}',
+      type: PendingOperationType.batchReview,
+      payload: Map<String, dynamic>.from(jsonDecode(jsonEncode({'file_ids': selected, 'operation': action, 'value': value, 'version': projectVersion})) as Map),
+      createdAt: DateTime.now(),
+      version: projectVersion,
+      deviceId: deviceId,
+      projectId: scope.$2,
+      schemaVersion: 2,
+      versionScope: 'project',
+    );
+    // Persist the exact parameters before any POST, including an online write.
+    await _pending.save(operation);
+    _ensureBatchScope(scope, deviceId);
+    try {
+      if (await _connectivity.hasNetwork) {
+        final result = await _submitBatch(operation, scope, deviceId);
+        return BatchOperationOutcome(succeededIds: result.succeededIds, failed: {...failed, ...result.failed}, projectVersion: result.projectVersion);
+      }
+    } on ApiException catch (error) {
+      final acknowledged = _pending.read(operation.id)?.batchReceipt;
+      if (acknowledged != null) {
+        final result = BatchOperationOutcome.fromResponse(selected, acknowledged);
+        return BatchOperationOutcome(succeededIds: result.succeededIds, failed: {...failed, ...result.failed}, projectVersion: result.projectVersion);
+      }
       if (error.statusCode == 409) {
+        final retained = _pending.read(operation.id) ?? operation;
+        const message = '批次已有其他修改，请刷新并重新确认；本次未覆盖盒子内容';
+        await _pending.save(retained.copyWith(status: PendingOperationStatus.conflict, failureReason: message));
         return BatchOperationOutcome(
           succeededIds: const [],
-          failed: {
-            for (final fileId in targetIds) fileId: '照片版本已变化，请刷新后重试',
-          },
+          failed: {...failed, for (final id in selected) id: message},
+          conflict: true,
+          errorCode: error.code,
+          currentProjectVersion: ProtocolValidation.optionalNonNegativeInt(error.details, 'current_version'),
         );
       }
-      if (error.statusCode != null && !error.retryable) rethrow;
-      // A failed request is retained below and replayed after a reconnect.
-    }
-    final queuedIds = <String>[];
-    final failed = <String, String>{};
-    final alreadyPending = _pending
-        .readAll()
-        .where(
-          (operation) => operation.type == PendingOperationType.batchReview && operation.deviceId == deviceId && operation.projectId == id,
-        )
-        .expand(
-          (operation) => (operation.payload['file_ids'] as List? ?? const <Object>[]).map((fileId) => fileId.toString()),
-        )
-        .toSet();
-    for (final fileId in targetIds) {
-      if (alreadyPending.contains(fileId)) {
-        failed[fileId] = '该照片已有待同步修改，请先完成同步';
-      } else {
-        queuedIds.add(fileId);
+      if (error.statusCode == 401 || error.statusCode == 403) rethrow;
+      if (error.statusCode != null && !error.retryable) {
+        await _pending.save((_pending.read(operation.id) ?? operation).copyWith(status: PendingOperationStatus.conflict, failureReason: '盒子拒绝了这次批量修改，请核对后重新确认'));
+        rethrow;
       }
-    }
-    if (queuedIds.isEmpty) {
-      return BatchOperationOutcome(succeededIds: const [], failed: failed);
-    }
-    await _pending.save(
-      PendingOperation(
-        id: operationId,
-        type: PendingOperationType.batchReview,
-        payload: {
-          'file_ids': queuedIds,
-          'operation': action,
-          'value': value,
-          'version': version,
-        },
-        createdAt: DateTime.now(),
-        version: version,
-        deviceId: deviceId,
-        projectId: id,
-      ),
-    );
-    if (!isBatchTagAction(action)) {
-      await _updateCachedPhotos(id, queuedIds, action, value, namespace);
-      await invalidateLocalQueries(id);
-    }
-    return BatchOperationOutcome(
-      succeededIds: queuedIds,
-      failed: failed,
-      queued: true,
-    );
-  }
-
-  Future<void> acceptSyncedBatchTags(String batchId, List<String> ids, String action, int version, Object? value) async {
-    if (ids.isEmpty) return;
-    final namespace = _cacheNamespace();
-    try {
-      await _updateCachedPhotos(batchId, ids, action, value, namespace, tagVersion: version);
-      for (final id in ids) {
-        final key = 'album:detail:$namespace:$id';
-        final raw = _cache.read<Map>(key);
-        if (raw == null) continue;
-        final detail = Map<String, dynamic>.from(raw);
-        final file = detail['file'] is Map ? Map<String, dynamic>.from(detail['file'] as Map) : detail;
-        final decision = detail['decision'] is Map ? Map<String, dynamic>.from(detail['decision'] as Map) : null;
-        final currentVersion = decision?['version'] ?? file['version'];
-        if (currentVersion is num && currentVersion > version) continue;
-        final tags = _applyTagChange(decision?['user_tags'] ?? file['user_tags'], action, value);
-        file['user_tags'] = tags;
-        if (!identical(file, detail)) detail['file'] = file;
-        if (decision != null) detail['decision'] = {...decision, 'user_tags': tags};
-        await _cache.write(key, detail);
-      }
-      if (_cacheNamespace() == namespace) await invalidateLocalQueries(batchId);
     } catch (_) {
-      // Cache updates cannot change the outcome already confirmed by the box.
+      _ensureBatchScope(scope, deviceId);
+      final retained = _pending.read(operation.id);
+      if (retained?.batchReceipt != null) {
+        final result = BatchOperationOutcome.fromResponse(selected, retained!.batchReceipt!);
+        return BatchOperationOutcome(succeededIds: result.succeededIds, failed: {...failed, ...result.failed}, projectVersion: result.projectVersion);
+      }
+      // A malformed or lost response can follow a successful mutation. Keep
+      // its sent body and key; replay must not create another user action.
+    }
+    _ensureBatchScope(scope, deviceId);
+    if (!isBatchTagAction(action)) await _updateCachedPhotos(scope.$2, selected, action, value, scope.$1);
+    await invalidateLocalQueries(scope.$2);
+    return BatchOperationOutcome(succeededIds: selected, failed: failed, queued: true);
+  }
+
+  Future<void> replayBatchReview(PendingOperation operation) async {
+    if (!operation.isProjectVersionBatch) throw const PendingOperationConflict('旧版批量记录未注明项目版本作用域，已保留修改，请核对盒子状态后重新确认');
+    final projectId = operation.projectId;
+    final deviceId = operation.deviceId;
+    if (projectId == null || deviceId == null) throw const PendingOperationConflict('批量记录缺少盒子或批次身份，未重放');
+    final scope = _captureScope(projectId);
+    await _serializeBatch(scope, () async {
+      _ensureBatchScope(scope, deviceId);
+      final retained = _pending.read(operation.id);
+      if (retained == null) return; // An in-flight online submission finished.
+      if (retained.status == PendingOperationStatus.conflict) throw PendingOperationConflict(retained.failureReason ?? '请重新确认批量修改');
+      final outcome = await _submitBatch(retained, scope, deviceId);
+      if (outcome.failed.isNotEmpty) throw const PendingOperationConflict('部分照片未修改，已保留失败项，请核对后重新确认');
+    });
+  }
+
+  Future<BatchOperationOutcome> _submitBatch(PendingOperation operation, _PhotoScope scope, String deviceId) async {
+    _ensureBatchScope(scope, deviceId);
+    final payload = operation.payload;
+    final version = ProtocolValidation.optionalNonNegativeInt(payload, 'version');
+    if (!operation.isProjectVersionBatch || version == null || operation.version != version) throw const PendingOperationConflict('批量记录的版本作用域或参数不完整，未重放');
+    final ids = (payload['file_ids'] as List? ?? const []).map((id) => id.toString()).toList();
+    final repairingReceipt = operation.batchReceipt != null;
+    late BatchOperationOutcome outcome;
+    if (operation.batchReceipt != null) {
+      outcome = BatchOperationOutcome.fromResponse(ids, operation.batchReceipt!);
+    } else {
+      operation = operation.copyWith(requestSent: true);
+      await _pending.save(operation);
+      _ensureBatchScope(scope, deviceId);
+      outcome = await _api.batchOperation(scope.$2, ids, payload['operation'] as String, version: version, value: payload['value'], idempotencyKey: operation.id);
+      if (outcome.projectVersion! < version) throw const ProtocolCompatibilityException('project.version', '批量回包版本早于请求版本');
+      operation = operation.copyWith(
+        batchReceipt: outcome.toReceipt(),
+        status: outcome.failed.isEmpty ? PendingOperationStatus.pending : PendingOperationStatus.conflict,
+        failureReason: outcome.failed.isEmpty ? null : '部分照片未修改，已保留失败项，请核对后重新确认',
+      );
+      await _pending.save(operation);
+      await _advanceUnsentBatchVersions(operation, outcome.projectVersion!);
+    }
+    await _rememberProjectVersion(scope, outcome.projectVersion!);
+    _ensureBatchScope(scope, deviceId);
+    // A saved receipt may predate another confirmed user action. Cache repair
+    // reads current box state; it must not reapply the old action locally.
+    await _refreshBatchPhotos(scope, deviceId, outcome.succeededIds, action: repairingReceipt ? null : payload['operation'] as String, value: repairingReceipt ? null : payload['value']);
+    if (outcome.failed.isEmpty) await _pending.remove(operation.id);
+    return outcome;
+  }
+
+  Future<void> _advanceUnsentBatchVersions(PendingOperation confirmed, int nextVersion) async {
+    if (nextVersion == confirmed.version) return;
+    for (final pending in _pending.readAll()) {
+      if (pending.id == confirmed.id ||
+          !pending.isProjectVersionBatch ||
+          pending.requestSent ||
+          pending.batchReceipt != null ||
+          pending.status == PendingOperationStatus.conflict ||
+          pending.deviceId != confirmed.deviceId ||
+          pending.projectId != confirmed.projectId ||
+          pending.version != confirmed.version ||
+          pending.createdAt.isBefore(confirmed.createdAt)) {
+        continue;
+      }
+      // Only our acknowledged CAS advances an unsent draft. Sent requests,
+      // external conflicts and ambiguous legacy versions are never rebased.
+      await _pending.save(pending.copyWith(version: nextVersion, payload: {...pending.payload, 'version': nextVersion}));
     }
   }
 
-  Future<void> _updateCachedPhotos(
-    String batchId,
-    List<String> ids,
-    String operation,
-    Object? value,
-    String namespace, {
-    int? tagVersion,
-  }) async {
+  Future<void> acceptRemoteBatch(PendingOperation operation) async {
+    final projectId = operation.projectId, deviceId = operation.deviceId;
+    if (projectId == null || deviceId == null) throw StateError('批量记录缺少设备身份');
+    final scope = _captureScope(projectId);
+    await _serializeBatch(scope, () async {
+      for (final id in operation.remainingFileIds) {
+        try {
+          await _refreshBatchPhotos(scope, deviceId, [id]);
+        } on ApiException catch (error) {
+          if (error.statusCode != 404) rethrow;
+          _ensureBatchScope(scope, deviceId);
+          // Explicitly adopting box state also accepts a deleted photo. Only
+          // its local cached row is removed; no box file is touched.
+          for (final key in _cache.keysWithPrefix('$_photoPrefix${scope.$1}:${scope.$2}:')) {
+            final raw = _cache.read<Map>(key);
+            if (raw == null) continue;
+            final items = (raw['items'] as List? ?? const []).where((item) => item is! Map || item['file_id'] != id).toList();
+            await _cache.write(key, {...Map<String, dynamic>.from(raw), 'items': items});
+          }
+        }
+      }
+    });
+  }
+
+  Future<void> _refreshBatchPhotos(_PhotoScope scope, String deviceId, List<String> ids, {String? action, Object? value}) async {
+    _ensureBatchScope(scope, deviceId);
+    await invalidateLocalQueries(scope.$2);
+    _invalidateReviewVersions?.call(ids);
+    for (final id in ids) {
+      await _cache.remove('album:detail:${scope.$1}:$id');
+    }
+    for (final key in _cache.keysWithPrefix('album:groups:${scope.$1}:${scope.$2}:')) {
+      await _cache.remove(key);
+    }
+    await _updateCachedPhotos(scope.$2, ids, action, value, scope.$1, clearVersions: true);
+    for (var start = 0; start < ids.length; start += 4) {
+      final end = start + 4 < ids.length ? start + 4 : ids.length;
+      final snapshots = await Future.wait(
+        ids.sublist(start, end).map((id) async {
+          _ensureBatchScope(scope, deviceId);
+          final snapshot = await _api.photoSnapshot(id);
+          _ensureBatchScope(scope, deviceId);
+          return snapshot;
+        }),
+      );
+      // Serialize page merges; concurrent GETs must not overwrite one another's
+      // authoritative photo versions in a shared cached page.
+      for (final snapshot in snapshots) {
+        final id = snapshot.photo.id;
+        final detailKey = 'album:detail:${scope.$1}:$id';
+        final current = _cache.read<Map>(detailKey);
+        final currentFile = current?['file'];
+        final currentVersion = currentFile is Map ? currentFile['version'] : null;
+        if (currentVersion is! int || currentVersion <= snapshot.photo.version!) await _cache.write(detailKey, snapshot.detail);
+        for (final key in _cache.keysWithPrefix('$_photoPrefix${scope.$1}:${scope.$2}:')) {
+          final raw = _cache.read<Map>(key);
+          if (raw == null) continue;
+          final items = (raw['items'] as List? ?? const []).map((item) {
+            if (item is! Map || item['file_id'] != id) return item;
+            final old = item['version'];
+            return old is int && old > snapshot.photo.version! ? item : snapshot.photo.toJson();
+          }).toList();
+          await _cache.write(key, {...Map<String, dynamic>.from(raw), 'items': items});
+        }
+      }
+    }
+  }
+
+  Future<void> _updateCachedPhotos(String batchId, List<String> ids, String? action, Object? value, String namespace, {bool clearVersions = false}) async {
     final selected = ids.toSet();
-    final prefix = '$_photoPrefix$namespace:$batchId:';
-    for (final key in _cache.keysWithPrefix(prefix)) {
+    for (final key in _cache.keysWithPrefix('$_photoPrefix$namespace:$batchId:')) {
       final raw = _cache.read<Map>(key);
       if (raw == null) continue;
-      var changed = false;
       final items = (raw['items'] as List? ?? const []).map((item) {
-        if (item is! Map) return item;
+        if (item is! Map || !selected.contains(item['file_id'])) return item;
         final photo = Map<String, dynamic>.from(item);
-        if (!selected.contains(photo['file_id']?.toString())) return photo;
-        final currentVersion = photo['version'];
-        if (tagVersion != null && currentVersion is num && currentVersion > tagVersion) return photo;
-        changed = true;
-        if (const {'pending', 'keep', 'discard', 'featured'}.contains(operation)) {
-          photo['keep_state'] = operation;
-        } else if (isBatchTagAction(operation)) {
-          photo['user_tags'] = _applyTagChange(photo['user_tags'], operation, value);
+        if (const {'pending', 'keep', 'discard', 'featured'}.contains(action)) photo['keep_state'] = action;
+        if (action != null && isBatchTagAction(action)) {
+          final tags = (photo['user_tags'] as List? ?? const []).map((tag) => tag.toString()).toSet();
+          final changed = (value as List? ?? const []).map((tag) => tag.toString());
+          action == 'add_tags' ? tags.addAll(changed) : tags.removeAll(changed);
+          photo['user_tags'] = tags.toList();
         }
+        if (clearVersions) photo['version'] = null;
         return photo;
       }).toList();
-      if (changed) await _cache.write(key, {...Map<String, dynamic>.from(raw), 'items': items, 'cached_at': DateTime.now().toIso8601String()});
+      await _cache.write(key, {...Map<String, dynamic>.from(raw), 'items': items});
     }
-  }
-
-  List<String> _applyTagChange(Object? existing, String operation, Object? value) {
-    final tags = (existing as List? ?? const []).map((tag) => tag.toString()).toSet();
-    final changed = (value as List? ?? const []).map((tag) => tag.toString());
-    if (operation == 'add_tags') {
-      tags.addAll(changed);
-    } else {
-      tags.removeAll(changed);
-    }
-    return tags.toList();
   }
 
   String _queryKey(PhotoQuery query) {

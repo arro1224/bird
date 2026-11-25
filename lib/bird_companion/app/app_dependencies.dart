@@ -277,6 +277,7 @@ class BirdCompanionDependencies {
       cache,
       activeDeviceNamespace,
       activeDeviceId,
+      (ids) => reviewRepository.invalidateBatchVersions(ids),
     );
     final birdSyncService = BirdSyncService(
       connectivityMonitor,
@@ -286,7 +287,8 @@ class BirdCompanionDependencies {
       activeDeviceId,
       (fileId) => reviewRepository.acceptRemoteDecision(fileId),
       (photo) => reviewRepository.acceptSyncedPhoto(photo),
-      photoRepository.acceptSyncedBatchTags,
+      photoRepository.replayBatchReview,
+      photoRepository.acceptRemoteBatch,
     );
     late final MediaAssetService mediaAssetService;
     deviceSessionCubit = DeviceSessionCubit(

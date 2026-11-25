@@ -823,6 +823,7 @@ class GalleryCubit extends Cubit<GalleryState> {
         .where(
           (operation) => operation.type == PendingOperationType.updateReview || operation.type == PendingOperationType.batchReview,
         )
+        .where((operation) => operation.batchReceipt == null || operation.remainingFileIds.isNotEmpty)
         .toList(growable: false);
     final conflicts = operations.where((operation) => operation.status == PendingOperationStatus.conflict).toList(growable: false);
     return _OperationCounts(
@@ -837,12 +838,10 @@ class GalleryCubit extends Cubit<GalleryState> {
     for (final operation in operations) {
       final fileId = operation.fileId ?? operation.payload['file_id']?.toString();
       if (fileId != null && fileId.trim().isNotEmpty) ids.add(fileId.trim());
-      final rawIds = operation.payload['file_ids'];
-      if (rawIds is Iterable) {
-        for (final value in rawIds) {
-          final id = value.toString().trim();
-          if (id.isNotEmpty) ids.add(id);
-        }
+      final rawIds = operation.remainingFileIds;
+      for (final value in rawIds) {
+        final id = value.toString().trim();
+        if (id.isNotEmpty) ids.add(id);
       }
     }
     return ids.toList(growable: false);

@@ -169,7 +169,7 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
       await _completeConnection(status, generation);
     } on PairingRequiredException catch (error) {
       if (isClosed || generation != _connectionGeneration) return;
-      if (!preserveExistingSession) _sessionCubit.disconnected();
+      if (!preserveExistingSession) _sessionCubit.disconnected(null, false, 'pairing_required');
       emit(
         state.copyWith(
           phase: ConnectionPhase.pairing,
@@ -181,7 +181,7 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
     } catch (error) {
       if (isClosed || generation != _connectionGeneration) return;
       if (!preserveExistingSession) {
-        _sessionCubit.disconnected('连接盒子失败。');
+        _sessionCubit.disconnected('连接盒子失败。', false, 'connection_failed');
       }
       emit(
         state.copyWith(
@@ -222,7 +222,7 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
     } catch (error) {
       if (isClosed || generation != _connectionGeneration) return;
       if (!preserveExistingSession) {
-        _sessionCubit.disconnected('配对失败。');
+        _sessionCubit.disconnected('配对失败。', false, 'pairing_failed');
       }
       emit(
         state.copyWith(
@@ -256,7 +256,7 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
     _connectionGeneration++;
     _activeCancelToken?.cancel('Connection cancelled by the user.');
     _activeCancelToken = null;
-    if (!preserveExistingSession) _sessionCubit.disconnected();
+    if (!preserveExistingSession) _sessionCubit.disconnected(null, false, 'user_cancel');
     emit(
       state.copyWith(
         phase: ConnectionPhase.initial,
@@ -279,7 +279,7 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
 
   void resetPairing() {
     if (isClosed || state.phase != ConnectionPhase.pairing) return;
-    if (!preserveExistingSession) _sessionCubit.disconnected();
+    if (!preserveExistingSession) _sessionCubit.disconnected(null, false, 'pairing_dismissed');
     emit(
       state.copyWith(
         phase: ConnectionPhase.initial,
@@ -309,7 +309,7 @@ class ConnectionCubit extends Cubit<DeviceConnectionState> {
       _connectionGeneration++;
       _activeCancelToken?.cancel('Connection screen was closed.');
       _activeCancelToken = null;
-      if (!preserveExistingSession) _sessionCubit.disconnected();
+      if (!preserveExistingSession) _sessionCubit.disconnected(null, false, 'connection_page_closed');
     }
     return super.close();
   }

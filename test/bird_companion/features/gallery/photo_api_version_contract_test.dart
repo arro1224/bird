@@ -38,6 +38,6 @@ class _RecordingApiClient extends ApiClient {
   }) async {
     path = value;
     payload = data;
-    return const {'succeeded_ids': <String>[]};
+    return const {'version': 4, 'succeeded_ids': <String>[]};
   }
 }

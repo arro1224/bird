@@ -85,7 +85,7 @@ void main() {
     expect(client.lastData, isNot(contains('updated_at')));
   });
 
-  test('mixed photo versions are split and missing versions are isolated', () async {
+  test('mixed or missing photo versions use one authoritative project CAS', () async {
     final photos = _B5PhotoRepository();
     final reviews = _B5ReviewRepository();
     final coordinator = PhotoVersionBatchCoordinator(photos, reviews);
@@ -100,12 +100,12 @@ void main() {
       operation: 'keep',
     );
 
-    expect(photos.calls, <String>['1:file-1', '2:file-2,file-3']);
-    expect(result.succeededIds, <String>['file-1', 'file-2', 'file-3']);
-    expect(result.failed.keys, <String>['file-4']);
+    expect(photos.calls, <String>['42:file-1,file-2,file-3,file-4']);
+    expect(result.succeededIds, <String>['file-1', 'file-2', 'file-3', 'file-4']);
+    expect(result.failed, isEmpty);
   });
 
-  test('offline replay strips routing metadata and reuses operation ids', () async {
+  test('offline single replay keeps its key and ambiguous legacy batch stays retained', () async {
     final store = PendingOperationStore.memory();
     await store.save(
       PendingOperation(
@@ -152,37 +152,42 @@ void main() {
 
     final result = await service.synchronize();
 
-    expect(result.syncedCount, 2);
+    expect(result.syncedCount, 1);
+    expect(result.conflictCount, 1);
     expect(client.idempotencyKeys, <String>[
       'decision-op-b5',
-      'batch-op-b5',
     ]);
     expect(client.payloads[0], <String, dynamic>{
       'keep_state': 'keep',
       'version': 3,
     });
-    expect(client.payloads[1], <String, dynamic>{
-      'file_ids': <String>['file-2'],
-      'operation': 'add_tags',
-      'value': <String>['湿地'],
-      'version': 5,
-    });
+    expect(store.read('batch-op-b5')?.payload['version'], 5);
   });
   test('offline tag replay never acknowledges an empty success response', () async {
     final store = PendingOperationStore.memory();
-    await store.save(PendingOperation(
-      id: 'unconfirmed-tags', type: PendingOperationType.batchReview,
-      payload: const {'file_ids': ['file-2'], 'operation': 'add_tags', 'value': ['湿地'], 'version': 5},
-      createdAt: DateTime.utc(2026, 8, 10), deviceId: 'box-b5', projectId: 'project-b5',
-    ));
+    await store.save(
+      PendingOperation(
+        id: 'unconfirmed-tags',
+        type: PendingOperationType.batchReview,
+        payload: const {
+          'file_ids': ['file-2'],
+          'operation': 'add_tags',
+          'value': ['湿地'],
+          'version': 5,
+        },
+        createdAt: DateTime.utc(2026, 8, 10),
+        deviceId: 'box-b5',
+        projectId: 'project-b5',
+      ),
+    );
     final client = _B5ApiClient()..confirmTags = false;
     final service = BirdSyncService(ConnectivityMonitor(), SyncCoordinator(store), client, null, () => 'box-b5');
     final result = await service.synchronize();
     expect(result.syncedCount, 0);
     expect(result.failedOperations, hasLength(1));
-    expect(store.readAll().single.id, 'unconfirmed-tags-tag-retry-1');
+    expect(store.readAll().single.id, 'unconfirmed-tags');
     expect(store.readAll().single.payload['file_ids'], ['file-2']);
-    expect(store.readAll().single.status, PendingOperationStatus.failed);
+    expect(store.readAll().single.status, PendingOperationStatus.conflict);
   });
 }
 
@@ -244,8 +249,13 @@ PhotoSummary _photo(String id, {int? version}) => PhotoSummary(
   version: version,
 );
 
-class _B5PhotoRepository implements PhotoRepository {
+class _B5PhotoRepository implements PhotoRepository, ProjectBatchReviewRepository {
   final List<String> calls = <String>[];
+
+  @override
+  Future<int> readProjectVersion(String id) async => 42;
+  @override
+  Future<BatchOperationOutcome> reviewBatch(String id, List<String> ids, String operation, {Object? value}) => batchOperation(id, ids, operation, version: 42, value: value);
 
   @override
   Future<BatchOperationOutcome> batchOperation(

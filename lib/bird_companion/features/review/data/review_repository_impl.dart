@@ -31,6 +31,13 @@ class ReviewRepositoryImpl implements ReviewRepository, RemoteReviewConflictReso
   final AppDataChangeBus? _dataChanges;
   final Map<String, UserDecision> _optimisticDecisions = {};
 
+  void invalidateBatchVersions(Iterable<String> ids) {
+    for (final id in ids) {
+      final pending = _pending.readAll().any((op) => op.deviceId == _activeDeviceId && op.type == PendingOperationType.updateReview && op.remainingFileIds.contains(id));
+      if (!pending) _optimisticDecisions.remove(_optimisticKey(id));
+    }
+  }
+
   @override
   Future<List<BirdGroup>> groups(String id, {String? sceneId}) async {
     final namespace = _cacheNamespace();

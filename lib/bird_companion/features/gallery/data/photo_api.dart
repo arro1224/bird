@@ -1,16 +1,37 @@
-import 'package:aves/bird_companion/core/models/batch_tag_action.dart';
 import 'package:aves/bird_companion/core/models/photo_models.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/scene_models.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
+import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
 import 'package:aves/bird_companion/features/gallery/domain/gallery_timing.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
+import 'package:aves/bird_companion/features/batches/data/batch_api.dart';
 
 class PhotoApi {
   PhotoApi(this._client);
   final ApiClient _client;
+
+  Future<int> projectVersion(String projectId) async {
+    final project = await BatchApi(_client).project(projectId);
+    final version = project.projectVersion;
+    if (version == null) throw const ProtocolCompatibilityException('project.version', '无法核实批次最新状态，批量修改未提交');
+    return version;
+  }
+
+  Future<({PhotoSummary photo, Map<String, dynamic> detail})> photoSnapshot(String id) async {
+    final data = await _client.get(ApiEndpoints.photoDetail.replaceFirst('{fileId}', Uri.encodeComponent(id)));
+    final file = Map<String, dynamic>.from(data['file'] is Map ? data['file'] as Map : data);
+    final decision = data['decision'] is Map ? Map<String, dynamic>.from(data['decision'] as Map) : const <String, dynamic>{};
+    final version = ProtocolValidation.optionalNonNegativeInt(file, 'version') ?? ProtocolValidation.optionalNonNegativeInt(decision, 'version');
+    if (version == null) throw const ProtocolCompatibilityException('photo.version', '照片回包缺少权威版本');
+    file['version'] = version;
+    final photo = PhotoSummary.fromJson(file);
+    if (photo.id != id) throw const ProtocolCompatibilityException('file_id', '照片回包身份不一致');
+    return (photo: photo, detail: {...data, 'file': file, 'decision': data['decision']});
+  }
+
   Future<PhotoPage> page(String batchId, PhotoQuery q) async {
     final timing = GalleryTiming.current;
     final request = timing == null ? null : ++timing.requests;
@@ -77,26 +98,42 @@ class PhotoApi {
     if (version < 0) {
       throw const ProtocolCompatibilityException('version', '必须是非负整数');
     }
-    final data = await _client.post(
-      ApiEndpoints.batchPhotoOperation.replaceFirst('{batchId}', batchId),
-      data: {
-        'file_ids': normalizedIds,
-        'operation': operation,
-        'value': value,
-        'version': version,
-      },
-      idempotencyKey: idempotencyKey,
-    );
-    if (isBatchTagAction(operation)) {
-      final result = BatchTagActionResult.fromResponse(normalizedIds, data);
-      return BatchOperationOutcome(succeededIds: result.succeededIds, failed: result.failed);
+    final trace = {
+      ...?_client.httpDiagnostics.context?.call(),
+      'project_id': batchId,
+      'project_version_sent': version,
+      'file_count': normalizedIds.length,
+      'batch_operation': operation,
+      'batch_operation_id': idempotencyKey,
+      'version_scope': 'project',
+    };
+    _recordBatch({'event': 'batch_review_started', ...trace});
+    try {
+      final data = await _client.post(
+        ApiEndpoints.batchPhotoOperation.replaceFirst('{batchId}', batchId),
+        data: {
+          'file_ids': normalizedIds,
+          'operation': operation,
+          'value': value,
+          'version': version,
+        },
+        idempotencyKey: idempotencyKey,
+      );
+      final outcome = BatchOperationOutcome.fromResponse(normalizedIds, data);
+      _recordBatch({'event': 'batch_review_confirmed', ...trace, 'returned_project_version': outcome.projectVersion, 'succeeded_count': outcome.succeededIds.length, 'failed_count': outcome.failed.length});
+      return outcome;
+    } on ApiException catch (error) {
+      _recordBatch({'event': 'batch_review_failed', ...trace, 'http_status': error.statusCode, 'error_code': error.code, 'current_project_version': error.details['current_version'] is int ? error.details['current_version'] : null});
+      rethrow;
     }
-    final failed = <String, String>{};
-    for (final item in (data['failed'] as List? ?? const [])) {
-      if (item is Map) failed[item['file_id']?.toString() ?? 'unknown'] = item['reason']?.toString() ?? '操作失败';
+  }
+
+  void _recordBatch(Map<String, dynamic> event) {
+    try {
+      _client.httpDiagnostics.record?.call(event);
+    } catch (_) {
+      /* Recording cannot alter the mutation result. */
     }
-    final succeeded = (data['succeeded_ids'] as List? ?? normalizedIds.where((id) => !failed.containsKey(id)).toList()).map((id) => id.toString()).toList();
-    return BatchOperationOutcome(succeededIds: succeeded, failed: failed);
   }
 }
 

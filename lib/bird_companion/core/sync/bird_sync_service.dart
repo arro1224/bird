@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:aves/bird_companion/core/models/batch_tag_action.dart';
 import 'package:aves/bird_companion/core/network/api_client.dart';
 import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
 import 'package:aves/bird_companion/core/network/api_endpoints.dart';
@@ -22,7 +21,8 @@ class BirdSyncService {
     String? Function()? deviceId,
     this._acceptRemoteReview,
     this._acceptSyncedReview,
-    this._acceptSyncedBatchTags,
+    this._replayBatchReview,
+    this._acceptRemoteBatch,
   ]) : _deviceId = deviceId ?? (() => null);
   final ConnectivityMonitor _connectivity;
   final SyncCoordinator _coordinator;
@@ -31,7 +31,8 @@ class BirdSyncService {
   final String? Function() _deviceId;
   final Future<void> Function(String fileId)? _acceptRemoteReview;
   final Future<void> Function(PhotoSummary photo)? _acceptSyncedReview;
-  final Future<void> Function(String projectId, List<String> ids, String action, int version, Object? value)? _acceptSyncedBatchTags;
+  final Future<void> Function(PendingOperation operation)? _replayBatchReview;
+  final Future<void> Function(PendingOperation operation)? _acceptRemoteBatch;
   StreamSubscription<bool>? _subscription;
   Future<SyncResult>? _synchronizing;
   bool _synchronizeAgain = false;
@@ -123,24 +124,10 @@ class BirdSyncService {
             }
             return;
           case PendingOperationType.batchReview:
-            final projectId = (operation.projectId ?? operation.payload['project_id']?.toString() ?? operation.payload['batch_id']?.toString() ?? '').trim();
-            if (projectId.isEmpty) {
-              throw StateError('Offline batch review is missing project_id.');
-            }
-            final payload = _batchPayload(operation.payload);
-            final response = await _client.post(
-              ApiEndpoints.batchPhotoOperation.replaceFirst('{batchId}', projectId),
-              data: payload,
-              idempotencyKey: operation.id,
-            );
-            final action = payload['operation'] as String;
-            if (isBatchTagAction(action)) {
-              final result = BatchTagActionResult.fromResponse(payload['file_ids'] as List<String>, response);
-              if (result.succeededIds.isNotEmpty && _deviceId()?.trim() == activeDeviceId && _client.baseUri == activeBaseUri) {
-                await _acceptSyncedBatchTags?.call(projectId, result.succeededIds, action, payload['version'] as int, payload['value']);
-              }
-              if (result.failed.isNotEmpty) throw BatchTagSyncFailure(result.failed);
-            }
+            if (!operation.isProjectVersionBatch) throw const PendingOperationConflict('旧版批量记录未注明项目版本作用域，已保留修改，请核对后重新确认');
+            final replay = _replayBatchReview;
+            if (replay == null) throw const PendingOperationConflict('无法核实批量版本协议，修改已保留，尚未重放');
+            await replay(operation);
             return;
           case PendingOperationType.controlJob:
           case PendingOperationType.createCopyJob:
@@ -188,26 +175,6 @@ class BirdSyncService {
     return payload;
   }
 
-  Map<String, dynamic> _batchPayload(Map<String, dynamic> source) {
-    final ids = (source['file_ids'] as List? ?? const <Object>[]).map((value) => value.toString().trim()).where((value) => value.isNotEmpty).toSet().toList(growable: false);
-    if (ids.isEmpty) {
-      throw const ProtocolCompatibilityException('file_ids', '不能为空');
-    }
-    final operation = source['operation'];
-    if (operation is! String || !_batchOperations.contains(operation)) {
-      throw const ProtocolCompatibilityException(
-        'operation',
-        '必须是 birdbox-v1 定义的批量操作',
-      );
-    }
-    return <String, dynamic>{
-      'file_ids': ids,
-      'operation': operation,
-      if (source.containsKey('value')) 'value': source['value'],
-      'version': _requireVersion(source),
-    };
-  }
-
   Future<bool> acceptRemote(String operationId) async {
     final activeDeviceId = _deviceId()?.trim();
     final operation = _coordinator.operation(operationId);
@@ -218,6 +185,15 @@ class BirdSyncService {
     if (operation.type == PendingOperationType.updateReview && fileId != null && fileId.isNotEmpty && _acceptRemoteReview != null) {
       try {
         await _acceptRemoteReview(fileId);
+      } catch (_) {
+        return false;
+      }
+    }
+    if (operation.type == PendingOperationType.batchReview) {
+      final accept = _acceptRemoteBatch;
+      if (accept == null) return false;
+      try {
+        await accept(operation);
       } catch (_) {
         return false;
       }
@@ -239,13 +215,4 @@ const _decisionWireFields = <String>{
   'user_species_id',
   'user_species',
   'user_tags',
-};
-
-const _batchOperations = <String>{
-  'pending',
-  'keep',
-  'discard',
-  'featured',
-  'add_tags',
-  'remove_tags',
 };

@@ -50,51 +50,8 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       },
     );
     _requestFailureSubscription = connectionFailureDetails != null ? connectionFailureDetails.listen(reportUnreachable) : connectionFailures?.listen((_) => reportUnreachable());
-    _networkSubscription = _connectivityMonitor.onNetworkChanged.listen((available) {
-      if (isClosed || provisioningHandoffActive || _activeAttempt?.stage == 'direct_ap_restore') return;
-      // v10 返修问题 8：Wi-Fi 断开不能让首页/设备页继续显示"已连接"。
-      // 断网即刻进入重连态（保留设备身份），子页面据此显示断开/重连中；
-      // 网络恢复后由既有 verify 流程转回 connected。
-      if (!available) {
-        ++_transportGeneration;
-        if (state.device != null && (state.isConnected || state.isVerifying)) {
-          _recordTransport('network_changed', false);
-          _invalidateConnection();
-          emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '手机网络已断开，等待网络恢复后自动重连。'));
-        }
-        return;
-      }
-      if (!state.isConnected && state.device != null) unawaited(verifySavedSession(intent: 'network_recovered'));
-    });
-    _transportSubscription = transportChanges?.listen((_) async {
-      if (isClosed || provisioningHandoffActive || state.device == null || state.phase == DeviceSessionPhase.connecting || _activeAttempt?.stage == 'direct_ap_restore') return;
-      // v10 问题 8：移动数据仍开时关 Wi-Fi，onNetworkChanged 仍是 true；
-      // 必须按“Wi-Fi 是否还在”判断，盒子只可能经 Wi-Fi 访问。
-      final generation = ++_transportGeneration;
-      bool? wifiAvailable;
-      try {
-        wifiAvailable = await _connectivityMonitor.hasWifi;
-      } catch (_) {
-        /* 无法判定时退回既有验证流程，不误报断线。 */
-      }
-      if (isClosed || generation != _transportGeneration || provisioningHandoffActive || state.device == null || state.phase == DeviceSessionPhase.connecting) return;
-      if (wifiAvailable == null) {
-        _activeAttempt?.record('transport_check_unavailable');
-        unawaited(verifySavedSession(intent: 'transport_unknown'));
-        return;
-      }
-      final changed = _wifiAvailable != wifiAvailable;
-      _wifiAvailable = wifiAvailable;
-      _recordTransport('transport_changed', wifiAvailable);
-      if (!wifiAvailable) {
-        _invalidateConnection();
-        emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '手机 Wi-Fi 已断开，等待恢复后自动重连。'));
-        return;
-      }
-      // Do not coalesce a newly usable network with a socket/discovery read
-      // that was started on the old transport and may wait until its deadline.
-      unawaited(verifySavedSession(intent: 'transport_changed', restart: changed));
-    });
+    _networkSubscription = _connectivityMonitor.onNetworkChanged.listen(_onNetworkChanged);
+    _transportSubscription = transportChanges?.listen((_) => unawaited(_onTransportChanged()));
     _eventSubscription = _eventClient.connectionStates.listen((eventState) {
       if (isClosed || !state.isConnected) return;
       switch (eventState) {
@@ -117,7 +74,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
           diagnostic?.call({'event': 'connection_authentication_invalidated', ...diagnosticContext, 'final_trigger': 'authentication_failure'});
         } catch (_) {}
       }
-      _invalidateConnection();
+      _invalidateConnection(reason: 'authentication_failure');
       emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: '设备授权已失效，请重新配对。'));
     });
     _addressSubscription = sessionCoordinator?.addressChanges.listen((change) {
@@ -165,11 +122,79 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   int _connectionGeneration = 0;
   ConnectionAttempt? _activeAttempt;
   Future<bool>? _restoring;
+  _RecoveryBudget? _recoveryBudget;
   int _transportGeneration = 0;
   bool? _wifiAvailable;
+  bool? _networkAvailable;
 
-  void _recordTransport(String event, bool available) {
-    final fields = {'event': event, 'wifi_available': available, 'transport_generation': _transportGeneration, 'generation': _connectionGeneration, 'device_id': state.device?.id};
+  bool get _acceptsTransport => !isClosed && !provisioningHandoffActive && state.device != null && state.phase != DeviceSessionPhase.connecting && _activeAttempt?.stage != 'direct_ap_restore';
+
+  void _onNetworkChanged(bool available) {
+    if (!_acceptsTransport) return;
+    final changed = _networkAvailable != available;
+    _networkAvailable = available;
+    _recordTransport('network_changed', _wifiAvailable);
+    if (!available || !state.isConnected) {
+      _recoverAfterTransportChange('network_changed', changed: changed, unavailable: !available);
+    }
+  }
+
+  Future<void> _onTransportChanged() async {
+    if (!_acceptsTransport) return;
+    final generation = ++_transportGeneration;
+    final connectionGeneration = _connectionGeneration;
+    bool? available;
+    try {
+      available = await _connectivityMonitor.hasWifi.timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // A missing/stalled OS hint is not evidence that the local box is lost.
+    }
+    if (!_acceptsTransport || generation != _transportGeneration || connectionGeneration != _connectionGeneration) return;
+    final changed = available != null && _wifiAvailable != available;
+    _wifiAvailable = available;
+    _recordTransport(available == null ? 'transport_check_unavailable' : 'transport_changed', available);
+    _recoverAfterTransportChange('transport_changed', changed: changed, unavailable: available == false);
+  }
+
+  void _recoverAfterTransportChange(String source, {required bool changed, required bool unavailable}) {
+    // Repeated OS notifications neither reset a deadline nor restart an
+    // exhausted recovery. A real change or explicit user retry can try again.
+    if (!changed && (_restoring == null && !state.isConnected || unavailable && state.isConnected)) return;
+    if (unavailable) {
+      emit(state.copyWith(phase: DeviceSessionPhase.reconnecting, message: '手机网络状态已变化，正在验证盒子的本地连接。'));
+    }
+    unawaited(
+      _verifySavedSession(
+        timeout: const Duration(seconds: 20),
+        force: true,
+        intent: source,
+        restart: changed,
+        continueBudget: true,
+      ),
+    );
+  }
+
+  String get _networkRole => state.device?.networkMode.wireValue == 'direct_ap'
+      ? 'box_direct_ap'
+      : _wifiAvailable == true
+      ? 'wifi_client'
+      : _wifiAvailable == false
+      ? state.isConnected
+            ? 'local_link_verified_without_wifi_client'
+            : 'local_link_unconfirmed'
+      : 'unknown';
+
+  void _recordTransport(String event, bool? available) {
+    final fields = {
+      'event': event,
+      'wifi_available': available,
+      'has_network': _networkAvailable,
+      'network_role': _networkRole,
+      'network_mode': state.device?.networkMode.wireValue,
+      'transport_generation': _transportGeneration,
+      'generation': _connectionGeneration,
+      'device_id': state.device?.id,
+    };
     try {
       if (_activeAttempt != null) {
         _activeAttempt!.record(event, fields);
@@ -186,6 +211,8 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     'phase': _activeAttempt?.stage ?? state.verificationStage,
     'device_id': state.device?.id,
     'connection_state': state.phase.name,
+    'network_role': _networkRole,
+    'network_mode': state.device?.networkMode.wireValue,
   };
   @override
   void onChange(Change<DeviceSessionState> change) {
@@ -204,13 +231,13 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
 
   bool get provisioningHandoffActive => _legacyHandoffActive || _handoffOwners.isNotEmpty || _networkIntentPending;
   set provisioningHandoffActive(bool value) {
-    if (value && !_legacyHandoffActive) _invalidateConnection();
+    if (value && !_legacyHandoffActive) _invalidateConnection(reason: 'legacy_handoff', successorAction: 'network_handoff');
     _legacyHandoffActive = value;
   }
 
   void setHandoffActive(Object owner, bool value) {
     if (value) {
-      if (_handoffOwners.add(owner)) _invalidateConnection(preserveIntent: true);
+      if (_handoffOwners.add(owner)) _invalidateConnection(reason: 'handoff_claimed', successorAction: 'network_handoff', preserveIntent: true);
     } else {
       _handoffOwners.remove(owner);
     }
@@ -218,7 +245,7 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
 
   void beginNetworkIntent(String id) {
     if (isClosed || (_intentId == id && _networkIntentPending)) return;
-    _invalidateConnection();
+    _invalidateConnection(reason: 'network_intent_started', successorAction: 'network_handoff', successorAttemptId: id);
     _intentId = id;
     _networkIntentPending = true;
   }
@@ -227,23 +254,51 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     if (_intentId != id) return;
     _networkIntentPending = false;
     if (!state.isConnected && _handoffOwners.isEmpty) {
-      _invalidateConnection();
-      if (state.isVerifying) emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: '连接验证已结束。当前内容为手机缓存。'));
+      _invalidateConnection(reason: 'network_intent_ended');
     }
   }
 
   bool acceptsNetworkIntent(String id) => !isClosed && _intentId == id;
 
-  void _invalidateConnection({bool preserveIntent = false}) {
+  void _invalidateConnection({required String reason, String successorAction = 'disconnected', String? successorAttemptId, bool preserveIntent = false}) {
     _cancelReachabilityProbe();
-    _activeAttempt?.record('connection_superseded', {'final_trigger': 'new_intent_or_cancel'});
+    _apLossRetry?.cancel();
+    _apLossRetry = null;
+    final previous = _activeAttempt;
+    final fields = {
+      'final_trigger': reason,
+      'cancel_source': reason,
+      'successor_action': successorAction,
+      'previous_generation': _connectionGeneration,
+      'next_generation': _connectionGeneration + 1,
+      'successor_attempt_id': successorAttemptId,
+      'network_role': _networkRole,
+    };
+    if (previous != null) {
+      previous.record('connection_superseded', fields);
+    } else {
+      try {
+        diagnostic?.call({'event': 'connection_invalidated', ...diagnosticContext, ...fields});
+      } catch (_) {}
+    }
     ++_connectionGeneration;
-    _activeAttempt?.token.cancel('Connection intent superseded');
+    ++_transportGeneration;
+    previous?.token.cancel(reason);
     _activeAttempt = null;
     _restoring = null;
+    _recoveryBudget = null;
     if (!preserveIntent) {
       _intentId = null;
       _networkIntentPending = false;
+    }
+    if (!isClosed && state.isVerifying && !{'verify_saved_session', 'connected', 'closed'}.contains(successorAction)) {
+      emit(
+        state.copyWith(
+          phase: DeviceSessionPhase.disconnected,
+          clearVerification: true,
+          message: successorAction == 'network_handoff' ? '正在切换网络，连接验证由配网流程接管。' : '连接验证已结束。可重试原设备，当前内容为手机缓存。',
+        ),
+      );
     }
   }
 
@@ -260,9 +315,9 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
 
   ConnectionAttempt _beginAttempt(String intent, {String? attemptId, String? deviceId, String? operationId, CancelToken? token}) {
     token?.throwIfCancellationRequested();
-    _invalidateConnection(preserveIntent: attemptId != null);
-    final generation = _connectionGeneration;
     final id = attemptId ?? SecureRequestIdFactory().create();
+    _invalidateConnection(reason: intent, successorAction: 'verify_saved_session', successorAttemptId: id, preserveIntent: attemptId != null);
+    final generation = _connectionGeneration;
     _intentId = id;
     final attempt = ConnectionAttempt(
       id: id,
@@ -302,18 +357,20 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   }
 
   void connecting() {
-    if (!isClosed) emit(state.copyWith(phase: DeviceSessionPhase.connecting, clearMessage: true));
+    if (isClosed) return;
+    _invalidateConnection(reason: 'manual_connection_started', successorAction: 'network_handoff');
+    emit(state.copyWith(phase: DeviceSessionPhase.connecting, clearMessage: true, clearVerification: true));
   }
 
   Future<void> connected(DeviceSessionState next) async {
     if (isClosed) return;
-    _invalidateConnection();
+    _invalidateConnection(reason: 'verified_status_received', successorAction: 'connected');
     emit(next);
     _refreshCoordinator.requestRefresh();
     unawaited(_synchronizeAfterConnection());
   }
 
-  Future<void> setConnectedFromStatus(dynamic status, {ConnectionAttempt? attempt}) async {
+  Future<void> setConnectedFromStatus(DeviceStatus status, {ConnectionAttempt? attempt}) async {
     if (attempt == null) {
       await connected(DeviceSessionState(phase: DeviceSessionPhase.connected, device: status.connection, lastUpdatedAt: DateTime.now()));
       return;
@@ -322,8 +379,18 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     if (attempt.deviceId != null && status.connection.id != attempt.deviceId) throw StateError('Verified device identity mismatch');
     attempt.committed = true;
     _restoring = null;
+    _recoveryBudget = null;
     _networkIntentPending = false;
-    attempt.record('connection_committed', {'http_result': 'protected_read_ok', 'ws_state': _eventClient.currentState.name, 'final_trigger': 'verified_session'});
+    attempt.record('connection_committed', {
+      'http_result': 'protected_read_ok',
+      'ws_state': _eventClient.currentState.name,
+      'final_trigger': 'verified_session',
+      'network_role': status.connection.networkMode.wireValue == 'direct_ap'
+          ? 'box_direct_ap'
+          : _wifiAvailable == false
+          ? 'local_link_verified_without_wifi_client'
+          : _networkRole,
+    });
     emit(DeviceSessionState(phase: DeviceSessionPhase.connected, device: status.connection, lastUpdatedAt: DateTime.now(), attemptId: attempt.id, operationId: attempt.operationId, verificationStage: 'connected'));
     _refreshCoordinator.requestRefresh();
     unawaited(_synchronizeAfterConnection());
@@ -340,59 +407,69 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
   }
 
   Future<bool> verifySavedSession({Duration timeout = const Duration(seconds: 20), String? expectedDeviceId, String intent = 'explicit_reconnect', bool restart = false}) {
-    if (restart && !isClosed && !provisioningHandoffActive) _invalidateConnection();
-    return _verifySavedSession(timeout: timeout, force: true, expectedDeviceId: expectedDeviceId, intent: intent);
+    return _verifySavedSession(timeout: timeout, force: true, expectedDeviceId: expectedDeviceId, intent: intent, restart: restart);
   }
 
-  Future<bool> _verifySavedSession({required Duration timeout, required bool force, required String intent, String? expectedDeviceId}) {
+  Future<bool> _verifySavedSession({required Duration timeout, required bool force, required String intent, String? expectedDeviceId, bool restart = false, bool continueBudget = false}) {
     if (isClosed || provisioningHandoffActive) return Future<bool>.value(false);
     if (!force && state.isConnected) return Future<bool>.value(true);
-    if (_restoring != null && (expectedDeviceId == null || _activeAttempt?.deviceId == expectedDeviceId)) {
+    if (!restart && _restoring != null && (expectedDeviceId == null || _activeAttempt?.deviceId == expectedDeviceId)) {
       _activeAttempt?.record('connection_request_coalesced', {'intent': intent});
       return _restoring!;
     }
+    final budget = continueBudget && _restoring != null ? _recoveryBudget ?? _RecoveryBudget(timeout) : _RecoveryBudget(timeout);
     final attempt = _beginAttempt(intent, deviceId: expectedDeviceId);
-    final future = _restoreSavedSession(attempt, timeout: timeout, expectedDeviceId: expectedDeviceId);
+    _recoveryBudget = budget;
+    final future = _restoreSavedSession(attempt, budget: budget, expectedDeviceId: expectedDeviceId);
     _restoring = future;
     unawaited(
       future.whenComplete(() {
-        if (identical(_restoring, future)) _restoring = null;
+        if (identical(_restoring, future)) {
+          _restoring = null;
+          _recoveryBudget = null;
+        }
       }),
     );
     return future;
   }
 
-  Future<bool> _restoreSavedSession(ConnectionAttempt attempt, {required Duration timeout, String? expectedDeviceId}) async {
-    attempt.record('connection_budget', {'deadline_ms': timeout.inMilliseconds});
-    final elapsed = Stopwatch()..start();
+  Future<bool> _restoreSavedSession(ConnectionAttempt attempt, {required _RecoveryBudget budget, String? expectedDeviceId}) async {
+    attempt.record('connection_budget', {'deadline_ms': budget.limit.inMilliseconds, 'recovery_elapsed_ms': budget.elapsed.elapsedMilliseconds});
     Timer? timer;
-    void schedule(Duration budget) {
+    void schedule() {
       timer?.cancel();
-      timer = Timer(budget > elapsed.elapsed ? budget - elapsed.elapsed : Duration.zero, () {
+      final remaining = budget.limit - budget.elapsed.elapsed;
+      timer = Timer(remaining > Duration.zero ? remaining : Duration.zero, () {
         if (attempt.isCurrent() && !attempt.committed) {
-          attempt.record('connection_deadline', {'timeout_ms': timeout.inMilliseconds, 'final_trigger': 'deadline'});
+          attempt.record('connection_deadline', {'timeout_ms': budget.limit.inMilliseconds, 'recovery_elapsed_ms': budget.elapsed.elapsedMilliseconds, 'final_trigger': 'deadline', 'successor_action': 'disconnected'});
           attempt.token.cancel(TimeoutException('Connection verification deadline'));
         }
       });
     }
 
-    schedule(timeout);
+    schedule();
     try {
       return await Future.any<bool>([
         _runSavedVerification(
           attempt,
           expectedDeviceId: expectedDeviceId,
           onApPreparation: () {
-            final budget = timeout < const Duration(seconds: 90) ? const Duration(seconds: 90) : timeout;
-            attempt.record('direct_ap_restore_budget', {'deadline_ms': budget.inMilliseconds});
-            schedule(budget);
+            if (budget.limit < const Duration(seconds: 90)) budget.limit = const Duration(seconds: 90);
+            attempt.record('direct_ap_restore_budget', {'deadline_ms': budget.limit.inMilliseconds});
+            schedule();
           },
         ),
         attempt.token.whenCancel.then<bool>((error) => throw error),
       ]);
     } catch (error) {
       if (!isClosed && attempt.isCurrent() && !attempt.committed) {
-        attempt.record('connection_failed', {'final_trigger': 'verification_failed', ...ConnectionAttempt.errorFields(error)});
+        attempt.record('connection_failed', {
+          'final_trigger': 'verification_failed',
+          'cancel_source': attempt.token.isCancelled ? 'current_attempt_token' : 'verification_error',
+          'successor_action': 'disconnected',
+          'recovery_elapsed_ms': budget.elapsed.elapsedMilliseconds,
+          ...ConnectionAttempt.errorFields(error),
+        });
         final message = error is DirectApRestoreSuspended
             ? '自动直连已停止。可在确认后重试原设备，不会反复弹出系统连接请求。'
             : error is PairingRequiredException || error is ApiException && {401, 403}.contains(error.statusCode)
@@ -407,6 +484,18 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       return false;
     } finally {
       timer?.cancel();
+      if (attempt.isCurrent() && !attempt.committed) {
+        _activeAttempt = null;
+        _intentId = null;
+        if (!attempt.token.isCancelled) attempt.token.cancel('Saved session verification finished');
+        emit(
+          state.copyWith(
+            phase: DeviceSessionPhase.disconnected,
+            clearVerification: true,
+            message: state.isVerifying ? '暂时无法验证盒子连接，可重试原设备。当前内容为手机缓存。' : state.message,
+          ),
+        );
+      }
     }
   }
 
@@ -425,18 +514,27 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
       onApPreparation?.call();
       await attempt.run('direct_ap_restore', () => prepareSavedNetwork!(device, attempt));
     }
-    var hasNetwork = localAp || await attempt.run('connectivity', () => _connectivityMonitor.hasNetwork);
+    Future<bool?> networkHint() async {
+      try {
+        return await _connectivityMonitor.hasNetwork.timeout(const Duration(seconds: 2));
+      } catch (error) {
+        attempt.check();
+        attempt.record('network_hint_unavailable', ConnectionAttempt.errorFields(error));
+        return null;
+      }
+    }
+
+    var hasNetwork = localAp ? true : await attempt.run('connectivity', networkHint);
     attempt.record('network_checked', {'has_network': hasNetwork});
-    if (!hasNetwork) {
+    if (hasNetwork == false) {
       // The OS may briefly report none while Wi-Fi is settling after startup.
       await Future<void>.delayed(retryDelay);
       attempt.check();
-      hasNetwork = await attempt.run('connectivity', () => _connectivityMonitor.hasNetwork);
-      if (!hasNetwork) {
-        if (!wasConnected) emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: '等待手机网络恢复。当前相册为手机缓存。'));
-        attempt.record('connection_deferred', {'has_network': false, 'final_trigger': 'network_unavailable'});
-        return false;
-      }
+      hasNetwork = await attempt.run('connectivity', networkHint);
+      // A phone hosting the box's Wi-Fi may expose only cellular/none. The
+      // saved local endpoint still gets authenticated verification within the
+      // same budget; OS connectivity alone never establishes a session.
+      attempt.record('local_link_verification', {'has_network': hasNetwork, 'network_role': _networkRole});
     }
     var retries = 0;
     while (true) {
@@ -570,14 +668,14 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     unawaited(verifySavedSession(intent: 'page_reported_unreachable'));
   }
 
-  void disconnected([String? message, bool clearDevice = false]) {
-    _invalidateConnection(preserveIntent: provisioningHandoffActive);
-    if (!isClosed) emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: message, clearDevice: clearDevice));
+  void disconnected([String? message, bool clearDevice = false, String source = 'explicit_disconnect']) {
+    _invalidateConnection(reason: source, preserveIntent: provisioningHandoffActive);
+    if (!isClosed) emit(state.copyWith(phase: DeviceSessionPhase.disconnected, message: message, clearMessage: message == null, clearDevice: clearDevice, clearVerification: true));
   }
 
   @override
   Future<void> close() async {
-    _invalidateConnection();
+    _invalidateConnection(reason: 'session_closed', successorAction: 'closed');
     _apLossRetry?.cancel();
     await _directApLossSubscription?.cancel();
     await _networkSubscription.cancel();
@@ -588,4 +686,12 @@ class DeviceSessionCubit extends Cubit<DeviceSessionState> {
     await _addressSubscription?.cancel();
     return super.close();
   }
+}
+
+/// Transport replacements during an active recovery share this clock. AP
+/// preparation retains its existing 90-second system window.
+class _RecoveryBudget {
+  _RecoveryBudget(this.limit);
+  Duration limit;
+  final elapsed = Stopwatch()..start();
 }

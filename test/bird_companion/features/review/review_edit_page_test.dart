@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('识别修改页支持候选鸟种和人工标签', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       const MaterialApp(
         home: ReviewEditPage(
@@ -31,8 +33,8 @@ void main() {
 
     expect(find.text('普通翠鸟'), findsWidgets);
     expect(find.text('白鹭'), findsOneWidget);
-    expect(find.text('AI 候选概率：92%'), findsOneWidget);
-    expect(find.text('AI 候选概率：73%'), findsOneWidget);
+    expect(find.text('AI 候选概率：92.0%'), findsOneWidget);
+    expect(find.text('AI 候选概率：73.0%'), findsOneWidget);
     expect(find.text('很有把握'), findsNothing);
     expect(find.text('比较有把握'), findsNothing);
     expect(find.text('湿地'), findsOneWidget);
@@ -45,9 +47,11 @@ void main() {
       findsOneWidget,
     );
 
+    await tester.ensureVisible(find.text('添加标签'));
     await tester.tap(find.text('添加标签'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '飞行');
+    await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '添加'));
     await tester.pumpAndSettle();
 

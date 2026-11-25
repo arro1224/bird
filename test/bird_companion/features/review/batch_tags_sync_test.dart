@@ -30,7 +30,7 @@ void main() {
     String deviceId() => 'box-1';
     final photos = PhotoRepositoryImpl(PhotoApi(client), connectivity, pending, cache, deviceId, deviceId);
     final reviews = ReviewRepositoryImpl(ReviewApi(client), connectivity, pending, cache, deviceId, deviceId);
-    final sync = BirdSyncService(connectivity, SyncCoordinator(pending), client, null, deviceId, null, null, photos.acceptSyncedBatchTags);
+    final sync = BirdSyncService(connectivity, SyncCoordinator(pending), client, null, deviceId, null, null, photos.replayBatchReview, photos.acceptRemoteBatch);
     addTearDown(sync.dispose);
     const batch = 'mock-batch-current';
     const first = 'photo-0001';
@@ -39,8 +39,9 @@ void main() {
     await photos.page(batch, const PhotoQuery());
     final beforeFirst = await reviews.detail(first);
     final beforeSecond = await reviews.detail(second);
-    final version = beforeFirst.decision!.version!;
-    expect(beforeSecond.decision!.version, version);
+    final photoVersion = beforeFirst.decision!.version!;
+    expect(beforeSecond.decision!.version, photoVersion);
+    final version = await photos.readProjectVersion(batch);
 
     connectivity.online = false;
     client.disconnected = true;
@@ -54,8 +55,9 @@ void main() {
     client.disconnected = false;
     client.rejectPhoto = second;
     final firstSync = await sync.synchronize();
-    expect(firstSync.failedOperations.single.status, PendingOperationStatus.failed);
-    expect(firstSync.remainingOperations.single.payload['file_ids'], [second]);
+    expect(firstSync.failedOperations.single.status, PendingOperationStatus.conflict);
+    expect(firstSync.remainingOperations.single.payload['file_ids'], [first, second]);
+    expect(firstSync.remainingOperations.single.remainingFileIds, [second]);
     expect(client.batchRequests.single.ids, [first, second]);
 
     client.disconnected = true;
@@ -67,17 +69,19 @@ void main() {
 
     client.disconnected = false;
     client.rejectPhoto = null;
-    final retry = await sync.synchronize();
-    expect(retry.syncedCount, 1);
-    expect(retry.remainingOperations, isEmpty);
+    final blocked = await sync.synchronize();
+    expect(blocked.conflictCount, 1);
+    expect(client.batchRequests, hasLength(1));
+    expect(await sync.acceptRemote(firstSync.remainingOperations.single.id), true);
+    expect((await photos.reviewBatch(batch, [second], 'add_tags', value: [tag])).failed, isEmpty);
     expect(client.batchRequests.last.ids, [second]);
     expect(client.batchRequests.last.key, isNot(client.batchRequests.first.key));
     final afterFirst = await reviews.detail(first);
     final afterSecond = await reviews.detail(second);
     expect(afterFirst.userTags, [...beforeFirst.userTags, tag]);
-    expect(afterFirst.decision!.version, version + 1);
+    expect(afterFirst.decision!.version, photoVersion + 1);
     expect(afterSecond.userTags, [...beforeSecond.userTags, tag]);
-    expect(afterSecond.decision!.version, version + 1);
+    expect(afterSecond.decision!.version, photoVersion + 1);
   });
 
   for (final saveFirst in [false, true]) {
@@ -114,7 +118,7 @@ void main() {
       final original = (await repository.detail('photo-0001')).decision!;
       final untouched = await repository.detail('photo-0002');
       final api = PhotoApi(client);
-      final added = await api.batchOperation('mock-batch-current', ['photo-0001'], 'add_tags', version: original.version!, value: ['水鸟']);
+      final added = await api.batchOperation('mock-batch-current', ['photo-0001'], 'add_tags', version: await api.projectVersion('mock-batch-current'), value: ['水鸟']);
       expect(added.succeededIds, ['photo-0001']);
       final detail = await repository.detail('photo-0001');
       expect(detail.decision!.userTags, [...original.userTags, '水鸟']);
@@ -133,7 +137,7 @@ void main() {
       );
       final saved = await repository.detail('photo-0001');
       expect(saved.decision!.userTags, contains('水鸟'));
-      final removed = await api.batchOperation('mock-batch-current', ['photo-0001'], 'remove_tags', version: saved.decision!.version!, value: ['水鸟']);
+      final removed = await api.batchOperation('mock-batch-current', ['photo-0001'], 'remove_tags', version: await api.projectVersion('mock-batch-current'), value: ['水鸟']);
       expect(removed.succeededIds, ['photo-0001']);
       final after = await repository.detail('photo-0001');
       expect(after.decision!.userTags, original.userTags);

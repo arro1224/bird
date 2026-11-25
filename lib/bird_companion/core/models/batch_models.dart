@@ -24,6 +24,7 @@ class BatchSummary extends Equatable {
     this.countsUpdatedAt,
     this.countsFromCache = false,
     this.countsDeviceId,
+    this.projectVersion,
   });
 
   final String id;
@@ -46,6 +47,9 @@ class BatchSummary extends Equatable {
   final DateTime? countsUpdatedAt;
   final bool countsFromCache;
   final String? countsDeviceId;
+
+  /// Project CAS used only by files/actions, never a photo decision version.
+  final int? projectVersion;
 
   factory BatchSummary.fromJson(Map<String, dynamic> json) => BatchSummary(
     id: ProtocolValidation.requiredId(json, 'project_id'),
@@ -82,6 +86,7 @@ class BatchSummary extends Equatable {
     countsUpdatedAt: ProtocolValidation.optionalDateTime(json, '_app_counts_updated_at'),
     countsFromCache: json['_app_counts_from_cache'] == true,
     countsDeviceId: json['_app_counts_device_id'] as String?,
+    projectVersion: ProtocolValidation.optionalNonNegativeInt(json, 'version'),
   );
 
   Map<String, dynamic> toJson() => {
@@ -107,6 +112,7 @@ class BatchSummary extends Equatable {
     if (countsUpdatedAt != null) '_app_counts_updated_at': countsUpdatedAt!.toUtc().toIso8601String(),
     if (countsFromCache) '_app_counts_from_cache': true,
     if (countsDeviceId != null) '_app_counts_device_id': countsDeviceId,
+    if (projectVersion != null) 'version': projectVersion,
   };
 
   BatchSummary copyWith({
@@ -118,6 +124,7 @@ class BatchSummary extends Equatable {
     DateTime? countsUpdatedAt,
     bool? countsFromCache,
     String? countsDeviceId,
+    int? projectVersion,
   }) => BatchSummary(
     id: id,
     name: name,
@@ -139,6 +146,7 @@ class BatchSummary extends Equatable {
     countsUpdatedAt: countsUpdatedAt ?? this.countsUpdatedAt,
     countsFromCache: countsFromCache ?? this.countsFromCache,
     countsDeviceId: countsDeviceId ?? this.countsDeviceId,
+    projectVersion: projectVersion ?? this.projectVersion,
   );
 
   @override
@@ -163,6 +171,7 @@ class BatchSummary extends Equatable {
     countsUpdatedAt,
     countsFromCache,
     countsDeviceId,
+    projectVersion,
   ];
 }
 

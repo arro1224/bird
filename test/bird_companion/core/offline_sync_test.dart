@@ -118,7 +118,7 @@ void main() {
     expect(store.read('auth-second')?.status, PendingOperationStatus.pending);
   });
 
-  test('legacy batch_id is read compatibly but never sent on the wire', () async {
+  test('legacy routing is read but ambiguous batch versions are never sent', () async {
     final store = PendingOperationStore.memory();
     await store.save(
       PendingOperation(
@@ -146,15 +146,11 @@ void main() {
 
     final result = await service.synchronize();
 
-    expect(result.syncedCount, 1);
-    expect(client.paths, ['/api/v1/projects/project-7/files/actions']);
-    expect(client.payloads.single, {
-      'file_ids': ['photo-1', 'photo-2'],
-      'operation': 'keep',
-      'value': null,
-      'version': 3,
-    });
-    expect((client.payloads.single as Map).containsKey('batch_id'), isFalse);
+    expect(result.syncedCount, 0);
+    expect(result.conflictCount, 1);
+    expect(client.paths, isEmpty);
+    expect(store.read('legacy-batch-review')?.projectId, 'project-7');
+    expect(store.read('legacy-batch-review')?.payload['version'], 3);
   });
 
   test('batch replay without a version is retained locally and never sent', () async {
@@ -188,10 +184,10 @@ void main() {
     expect(result.syncedCount, 0);
     expect(result.failedOperations, hasLength(1));
     expect(client.paths, isEmpty);
-    expect(store.read('invalid-batch-review')?.status, PendingOperationStatus.failed);
+    expect(store.read('invalid-batch-review')?.status, PendingOperationStatus.conflict);
   });
 
-  test('all four retained batch states replay with their original wire operation', () async {
+  test('all four legacy batch states retain their original intent for confirmation', () async {
     final store = PendingOperationStore.memory();
     const operations = ['pending', 'keep', 'discard', 'featured'];
     for (final operation in operations) {
@@ -223,12 +219,10 @@ void main() {
 
     final result = await service.synchronize();
 
-    expect(result.syncedCount, 4);
-    expect(
-      client.payloads.map((payload) => (payload as Map)['operation']),
-      operations,
-    );
-    expect(store.readAll(), isEmpty);
+    expect(result.syncedCount, 0);
+    expect(result.conflictCount, 4);
+    expect(store.readAll().map((operation) => operation.payload['operation']), operations);
+    expect(client.payloads, isEmpty);
   });
 
   test('B6 coalesces concurrent reconnect synchronization requests', () async {

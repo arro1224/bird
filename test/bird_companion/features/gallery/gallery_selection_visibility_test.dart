@@ -424,13 +424,13 @@ void main() {
         'operation': 'add_tags',
         'ids': ['photo-0'],
         'tags': ['晨拍'],
-        'version': 3,
+        'version': 20,
       },
       {
         'operation': 'add_tags',
         'ids': ['photo-1'],
         'tags': ['水鸟', '晨拍'],
-        'version': 3,
+        'version': 21,
       },
     ]);
     expect(photos.tagsFor('photo-1'), ['湿地', '水鸟', '晨拍']);
@@ -442,13 +442,13 @@ void main() {
         'operation': 'remove_tags',
         'ids': ['photo-0'],
         'tags': ['晨拍'],
-        'version': 4,
+        'version': 22,
       },
       {
         'operation': 'remove_tags',
         'ids': ['photo-1'],
         'tags': ['水鸟', '晨拍'],
-        'version': 4,
+        'version': 23,
       },
     ]);
     expect(photos.tagsFor('photo-0'), ['湿地', '水鸟']);
@@ -496,9 +496,10 @@ void main() {
         'operation': 'remove_tags',
         'ids': ['photo-0'],
         'tags': ['水鸟'],
-        'version': 3,
+        'version': 20,
       },
     ]);
+    expect(find.text('撤销'), findsOneWidget, reason: '${photos.lastError}\n${tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).join(' | ')}');
     await tester.tap(find.text('撤销'));
     await tester.pumpAndSettle();
     expect(photos.operations.last['operation'], 'add_tags');
@@ -557,6 +558,67 @@ void main() {
     expect(find.widgetWithText(Chip, '晨拍'), findsOneWidget);
     expect(find.widgetWithText(Chip, '水鸟'), findsOneWidget);
     expect(tester.widget<EditableText>(find.byType(EditableText)).controller.text, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final unavailable in [false, true]) {
+    testWidgets('批量标签${unavailable ? '无法读取项目版本' : '项目冲突'}时停止后续标签组并保留选择', (tester) async {
+      final dependencies = _Dependencies(2, connected: true);
+      final photos = dependencies.photoRepository..projectFailure = unavailable ? 'PROJECT_VERSION_UNAVAILABLE' : 'VERSION_CONFLICT';
+      await _pumpAlbum(tester, dependencies);
+      await tester.pumpAndSettle();
+      final first = find.byKey(const ValueKey('photo-0'));
+      final second = find.byKey(const ValueKey('photo-1'));
+      await tester.longPress(first);
+      await tester.pumpAndSettle();
+      await tester.tap(second);
+      await tester.pump();
+      await tester.tap(find.text('添加标签'));
+      await tester.pumpAndSettle();
+      // Each photo needs a different tag delta, hence two business groups.
+      await tester.enterText(find.byType(TextField), '水鸟，晨拍');
+      await tester.pump();
+      await tester.tap(find.text('应用'));
+      await tester.pumpAndSettle();
+      expect(photos.operations, hasLength(1));
+      expect(photos.tagsFor('photo-0'), ['湿地', '水鸟']);
+      expect(photos.tagsFor('photo-1'), ['湿地']);
+      expect(tester.widget<PhotoTile>(first).selected, isTrue);
+      expect(tester.widget<PhotoTile>(second).selected, isTrue);
+      expect(find.text(unavailable ? '无法核实批次最新状态，其余标签未提交；请连接盒子刷新后再试' : '批次已有其他修改，未继续提交其余标签；请处理同步冲突后重新确认'), findsOneWidget);
+      expect(find.text('撤销'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  testWidgets('没有单张文件入口的批量冲突可以进入同步冲突处理页', (tester) async {
+    final dependencies = _Dependencies(2, connected: true);
+    await dependencies.pendingOperationStore.save(
+      PendingOperation(
+        id: 'project-conflict',
+        type: PendingOperationType.batchReview,
+        deviceId: _Dependencies._box.id,
+        projectId: 'project-1',
+        payload: const {
+          'file_ids': ['photo-0', 'photo-1'],
+          'operation': 'keep',
+          'version': 20,
+        },
+        version: 20,
+        createdAt: DateTime(2026, 11, 25),
+        schemaVersion: 2,
+        versionScope: 'project',
+        status: PendingOperationStatus.conflict,
+      ),
+    );
+    await _pumpAlbum(tester, dependencies);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('gallery-conflict-open-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('同步冲突处理路由'), findsOneWidget);
+    expect(dependencies.pendingOperationStore.read('project-conflict'), isNotNull);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -660,6 +722,7 @@ Future<void> _pumpAlbum(WidgetTester tester, _Dependencies dependencies, {PhotoQ
         routes: {
           BirdRoutes.settingsDeviceDetails: (_) => const Scaffold(body: Text('设备详情路由')),
           BirdRoutes.connection: (_) => const Scaffold(body: Text('重连路由')),
+          BirdRoutes.diagnostics: (_) => const Scaffold(body: Text('同步冲突处理路由')),
           BirdRoutes.photoDetail: (context) {
             final args = ModalRoute.of(context)!.settings.arguments as PhotoDetailArgs;
             return Scaffold(body: Text('冲突照片 ${args.fileId}'));
@@ -805,7 +868,7 @@ class _MemoryCache implements LocalCache {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class _Photos implements PhotoRepository {
+class _Photos implements PhotoRepository, ProjectBatchReviewRepository {
   _Photos(int count)
     : photos = List.generate(
         count,
@@ -825,13 +888,38 @@ class _Photos implements PhotoRepository {
   final tagsById = <String, List<String>>{};
   final versionsById = <String, int>{};
   final rejectIds = <String>{};
+  String? projectFailure;
+  int projectVersion = 20;
+  Object? lastError;
   Future<PhotoPage> Function(PhotoQuery query)? pageOverride;
 
   List<String> tagsFor(String id) => tagsById[id] ?? ['湿地', if (id == 'photo-0') '水鸟'];
 
   @override
+  Future<int> readProjectVersion(String id) async => projectVersion;
+  @override
+  Future<BatchOperationOutcome> reviewBatch(String id, List<String> ids, String operation, {Object? value}) async {
+    try {
+      return await batchOperation(id, ids, operation, version: projectVersion, value: value);
+    } catch (error, stack) {
+      lastError = '$error\n$stack';
+      rethrow;
+    }
+  }
+
+  @override
   Future<BatchOperationOutcome> batchOperation(String batchId, List<String> ids, String operation, {required int version, Object? value}) async {
     operations.add({'operation': operation, 'ids': ids, 'tags': value, 'version': version});
+    if (projectFailure != null) {
+      return BatchOperationOutcome(
+        succeededIds: const [],
+        failed: {for (final id in ids) id: '需要核对批次状态'},
+        conflict: projectFailure == 'VERSION_CONFLICT',
+        currentProjectVersion: projectFailure == 'VERSION_CONFLICT' ? version + 1 : null,
+        errorCode: projectFailure,
+      );
+    }
+    if (version != projectVersion) throw StateError('Expected project CAS $projectVersion, received $version');
     final succeeded = ids.where((id) => !rejectIds.contains(id)).toList();
     for (final id in succeeded) {
       final tags = tagsFor(id).toSet();
@@ -842,12 +930,13 @@ class _Photos implements PhotoRepository {
         tags.removeAll(changed);
       }
       tagsById[id] = tags.toList();
-      versionsById[id] = version + 1;
+      versionsById[id] = (versionsById[id] ?? 3) + 1;
       final index = photos.indexWhere((photo) => photo.id == id);
       photos[index] = PhotoSummary.fromJson({...photos[index].toJson(), 'version': versionsById[id]});
     }
     return BatchOperationOutcome(
       succeededIds: succeeded,
+      projectVersion: succeeded.isEmpty ? projectVersion : ++projectVersion,
       failed: {
         for (final id in ids)
           if (rejectIds.contains(id)) id: '暂时无法写入',

@@ -30,10 +30,13 @@ void main() {
   });
 
   test('导入完成回填 total_files，current 批次门控可通过', () async {
-    final project = await client.post('/api/v1/projects', data: const {
-      'name': '2026.11.18 拍摄批次',
-      'card_id': 'card-mock-001',
-    });
+    final project = await client.post(
+      '/api/v1/projects',
+      data: const {
+        'name': '2026.11.18 拍摄批次',
+        'card_id': 'card-mock-001',
+      },
+    );
     final projectId = project['project_id'].toString();
     expect(project['total_files'], 0);
 
@@ -51,10 +54,13 @@ void main() {
   });
 
   test('分析完成回填审阅计数，批量保留后计数随之变化', () async {
-    final project = await client.post('/api/v1/projects', data: const {
-      'name': '2026.11.18 拍摄批次',
-      'card_id': 'card-mock-001',
-    });
+    final project = await client.post(
+      '/api/v1/projects',
+      data: const {
+        'name': '2026.11.18 拍摄批次',
+        'card_id': 'card-mock-001',
+      },
+    );
     final projectId = project['project_id'].toString();
     final importJob = await client.post(
       '/api/v1/projects/$projectId/imports',
@@ -78,10 +84,14 @@ void main() {
     );
 
     final ids = [for (var i = 1; i <= 60; i++) 'photo-${i.toString().padLeft(4, '0')}'];
-    await client.post('/api/v1/projects/$projectId/files/actions', data: {
-      'file_ids': ids,
-      'operation': 'discard',
-    });
+    await client.post(
+      '/api/v1/projects/$projectId/files/actions',
+      data: {
+        'file_ids': ids,
+        'operation': 'discard',
+        'version': batch['version'],
+      },
+    );
 
     batch = Map<String, dynamic>.from((await client.get('/api/v1/projects/current'))['batch'] as Map);
     expect(batch['discard_count'], 60, reason: '全量弃选后已弃选计数应等于批次照片数');
