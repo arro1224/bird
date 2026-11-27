@@ -101,7 +101,7 @@ class TaskSummary {
   final bool photoPreparation;
   final bool pendingCancellation;
   bool get waitingForImport => workflowStage == 'waiting_import' && state == TaskRunState.queued;
-  bool get isFinishing => state == TaskRunState.running && progressPercent >= 100;
+  bool get isFinishing => state == TaskRunState.running && (progressPercent >= 100 || workflowStage == 'finalizing');
   String get etaLabel => waitingForImport
       ? '导入完成后由盒子自动开始识别'
       : isFinishing

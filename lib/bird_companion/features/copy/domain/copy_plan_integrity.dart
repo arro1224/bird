@@ -105,6 +105,7 @@ class CopyPlanVerifier {
           token: preview.previewToken,
           items: List.unmodifiable(items),
           signature: jsonEncode([
+            preview.pendingReviewCount,
             preview.logicalPhotoCount,
             preview.plannedFileCount,
             preview.totalBytes,

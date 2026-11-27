@@ -5,6 +5,7 @@ import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
+import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
 import 'package:aves/bird_companion/features/copy/presentation/copy_config_cubit.dart';
 import 'package:aves/bird_companion/features/copy/presentation/widgets/copy_preview_items_sheet.dart';
@@ -245,6 +246,46 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> with WidgetsBindingObse
   CopyConfigCubit? _cubit;
   bool _inspectingPreview = false;
 
+  bool _confirmingReview = false;
+
+  Future<void> _confirmReviewBeforeCopy(BuildContext flowContext, CopyConfigState state) async {
+    if (_confirmingReview || state.submitting) return;
+    final cubit = flowContext.read<CopyConfigCubit>();
+    final count = state.preview?.pendingReviewCount;
+    if (count == 0) {
+      await cubit.submit();
+      return;
+    }
+    _confirmingReview = true;
+    try {
+      final copy = await showDialog<bool>(
+        context: flowContext,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(count == null ? '待确认数量暂不可用' : '其中 $count 个文件还没确认'),
+          content: Text(count == null
+              ? '当前盒子未提供待确认数量，请先核对照片。继续会复制当前范围内的全部文件。'
+              : 'AI 建议不等于人工确认。继续会复制当前范围内的全部文件；若启用审阅信息导出，建议先核对鸟种。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('先去确认')),
+            TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('仍然复制当前范围')),
+          ],
+        ),
+      );
+      if (!mounted || !flowContext.mounted || cubit.isClosed) return;
+      if (copy == true) {
+        _syncVisibility();
+        await cubit.submit();
+      } else if (copy == false && widget.batchId != null) {
+        _confirmingReview = false;
+        await Navigator.of(flowContext).pushNamed(BirdRoutes.gallery, arguments: GalleryArgs(widget.batchId!, initialQuery: const PhotoQuery(keepState: 'pending'), restoreSavedView: false));
+        if (!cubit.isClosed) await cubit.fetchPreview();
+      }
+    } finally {
+      _confirmingReview = false;
+      if (mounted) _syncVisibility();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -261,7 +302,7 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> with WidgetsBindingObse
   /// 只反映“页面是否被其他路由遮挡/是否处于跟随模式”。App 前后台由
   /// [CopyConfigCubit.setAppLifecycleActive] 单独处理，不能在这里把
   /// inactive/paused 当成路由压栈而失效预检（v10 问题 3）。
-  void _syncVisibility() => _cubit?.setPageActive(!_following && (_inspectingPreview || (ModalRoute.of(context)?.isCurrent ?? true)));
+  void _syncVisibility() => _cubit?.setPageActive(!_following && (_confirmingReview || _inspectingPreview || (ModalRoute.of(context)?.isCurrent ?? true)));
 
   void _selectMode(bool follow) {
     if (_following == follow) return;
@@ -355,7 +396,7 @@ class _CopyConfigFlowState extends State<CopyConfigFlow> with WidgetsBindingObse
               lowBatteryPercent: widget.lowBatteryPercent,
               onBack: state.loadingPreview || state.submitting ? null : () => setState(() => _step = _CopyFlowStep.content),
               onRefreshPreview: state.submitting ? null : () => context.read<CopyConfigCubit>().fetchPreview(),
-              onSubmit: context.read<CopyConfigCubit>().submit,
+              onSubmit: () => _confirmReviewBeforeCopy(context, state),
               onInspectChanged: (inspecting) {
                 _inspectingPreview = inspecting;
                 if (mounted) _syncVisibility();

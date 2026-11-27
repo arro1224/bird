@@ -125,8 +125,12 @@ class TaskDetailPage extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 13),
-            if (task.waitingForImport)
+            if (task.pendingCancellation)
+              const Text('取消待确认', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700))
+            else if (task.waitingForImport)
               const Text('等待导入完成', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700))
+            else if (task.isFinishing)
+              const Text('等待盒子确认完成', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700))
             else ...[
               RichText(
                 key: const Key('task-progress-emphasis'),

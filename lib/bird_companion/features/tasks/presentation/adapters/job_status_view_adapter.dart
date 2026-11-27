@@ -20,6 +20,10 @@ abstract final class JobStatusViewAdapter {
     'verifying',
     'exporting_xmp',
     'completed',
+    'indexing',
+    'thumbnailing',
+    'finalizing',
+    'import_not_completed',
   };
 
   static TaskSummary? toTaskSummary(
@@ -58,6 +62,8 @@ abstract final class JobStatusViewAdapter {
       currentFile: job.currentFile,
       speed: _speed(job.speedBytesPerSecond),
       failedCount: job.failedCount,
+      pendingReviewCount: job.pendingReviewCount,
+      pendingCancellation: job.pendingCancellation,
       failureReason: job.errorMessage == null && job.errorCode == null
           ? null
           : UserMessageMapper.fromJobFailure(

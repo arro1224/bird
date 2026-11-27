@@ -39,6 +39,14 @@ void main() {
 
   tearDown(() => server.close());
 
+  test('AI suggestions are not initialized as human species decisions', () async {
+    final page = await PhotoApi(client).page('mock-batch-current', const PhotoQuery(pageSize: 1));
+    final detail = await ReviewApi(client).detail(page.items.first.id);
+    expect(detail.decision?.userSpeciesId, isNull);
+    expect(detail.decision?.userSpecies, isNull);
+    expect(detail.photo.summary.recognition?.candidates, isNotEmpty);
+  });
+
   test('模拟盒子返回可分页照片，并将媒体地址解析为当前盒子地址', () async {
     final batchApi = BatchApi(client);
     final api = PhotoApi(client);

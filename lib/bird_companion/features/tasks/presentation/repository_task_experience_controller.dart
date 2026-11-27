@@ -878,7 +878,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
                 job,
                 connectionState: connectionState,
               )?.copyWith(
-                pendingCancellation: importAnalysis?.cancelPending(job.id) == true,
+                pendingCancellation: job.pendingCancellation || importAnalysis?.cancelPending(job.id) == true,
                 availableActions: job.type == BirdJobType.import && job.sourceProjectId != null && importAnalysis?.owns(job.sourceProjectId!) == true ? {TaskAction.exportLog} : null,
               ),
         )

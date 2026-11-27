@@ -32,6 +32,7 @@ class FakeCopyEnvironment with SyntheticCopyPlan implements CopyRepository {
   @override
   int get syntheticBytes => 100;
   List<StorageDeviceSummary> storage = [b3Device('source', source: true, target: false), b3Device('target'), b3Device('other-target')];
+  int? pendingReviewCount = 0;
   String sourceId = 'source', bindingToken = 'binding-1';
   bool verifiedReadOnly = true;
   Duration previewLifetime = const Duration(minutes: 10);
@@ -49,6 +50,7 @@ class FakeCopyEnvironment with SyntheticCopyPlan implements CopyRepository {
 
   SourceBinding binding() => SourceBinding(sourceMediaId: sourceId, displayName: sourceId, token: bindingToken, expiresAt: DateTime.now().add(const Duration(minutes: 2)), verifiedReadOnly: verifiedReadOnly);
   CopyPreview previewFor(CopyRequestDraft draft) => CopyPreview(
+    pendingReviewCount: pendingReviewCount,
     previewToken: 'preview-$previewCalls',
     expiresAt: DateTime.now().add(previewLifetime),
     source: storage.where((d) => d.mediaId == draft.sourceMediaId).first,

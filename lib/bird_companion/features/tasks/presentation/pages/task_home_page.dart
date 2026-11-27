@@ -149,8 +149,12 @@ class TaskHomePage extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 9),
-            if (task.waitingForImport)
+            if (task.pendingCancellation)
+              const Text('正在核对取消结果，请等待盒子确认。')
+            else if (task.waitingForImport)
               const Text('盒子正在导入照片，完成后自动开始识别。')
+            else if (task.isFinishing)
+              const Text('正在收尾，等待盒子确认完成。')
             else ...[
               Text(
                 '${_count(task.processed)} / ${_count(task.total)} 张',
@@ -179,10 +183,12 @@ class TaskHomePage extends StatelessWidget {
                 ),
               ),
             ],
-            if (task.currentFile != null || task.speed != null) ...[
+            if (!task.pendingCancellation && !task.isFinishing && (task.currentFile != null || task.speed != null)) ...[
               const SizedBox(height: 9),
               _currentTaskActivity(context, task),
             ],
+            if ((task.pendingReviewCount ?? 0) > 0)
+              Text('${task.pendingReviewCount} 个文件还没确认', style: const TextStyle(color: AppColors.pending, fontSize: 16)),
             const SizedBox(height: 9),
             Row(
               children: [
@@ -448,7 +454,11 @@ class TaskHomePage extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          task.state == TaskRunState.failed
+          task.pendingCancellation
+              ? '取消待确认'
+              : task.waitingForImport
+              ? '等待导入'
+              : task.state == TaskRunState.failed
               ? _failureLabel(task)
               : task.isFinishing
               ? '正在收尾'
@@ -551,6 +561,8 @@ class TaskHomePage extends StatelessWidget {
       ? '取消待确认'
       : task.waitingForImport
       ? '等待导入完成'
+      : task.isFinishing
+      ? '正在收尾'
       : switch (task.state) {
           TaskRunState.queued => '等待中',
           TaskRunState.running => '进行中',

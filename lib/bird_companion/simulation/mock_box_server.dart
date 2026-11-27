@@ -3514,14 +3514,13 @@ class MockBoxServer {
     if (acceptanceProfile != null) {
       return {'file_id': photo['file_id'], 'keep_state': photo['keep_state'], 'user_score': null, 'user_species_id': null, 'user_species': null, 'user_tags': photo['user_tags'], 'updated_at': null, 'version': photo['version'] ?? 0};
     }
-    final candidates = ((photo['recognition'] as Map)['species_topn'] as List? ?? const []);
-    final candidate = candidates.isEmpty ? null : Map<String, dynamic>.from(candidates.first as Map);
+    // AI candidates stay in recognition; user_species_* is reserved for manual edits.
     return {
       'file_id': photo['file_id'],
       'keep_state': photo['keep_state'],
-      'user_score': (photo['rating'] as Map)['total_score'],
-      'user_species_id': candidate?['species_id'],
-      'user_species': candidate?['name'],
+      'user_score': null,
+      'user_species_id': null,
+      'user_species': null,
       'user_tags': photo['user_tags'],
       'updated_at': '2026-07-16T08:00:00Z',
       'version': photo['version'] ?? 1,

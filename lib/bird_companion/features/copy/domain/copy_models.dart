@@ -395,6 +395,7 @@ class CopyPreview {
     this.unsupportedCount = 0,
     this.missingCount = 0,
     this.permissionErrorCount = 0,
+    this.pendingReviewCount,
   }) : plannedFileCount = actualFileCount;
 
   final String previewToken;
@@ -431,6 +432,9 @@ class CopyPreview {
   final int missingCount;
   final int permissionErrorCount;
 
+  /// Null means the connected backend has not supplied a review count.
+  final int? pendingReviewCount;
+
   bool get hasEnoughSpace => targetFreeBytes - safetyReserveBytes >= totalBytes;
 
   bool get isExpired => !DateTime.now().isBefore(expiresAt);
@@ -461,6 +465,7 @@ class CopyPreview {
       unsupportedCount: unsupportedCount,
       missingCount: missingCount,
       permissionErrorCount: permissionErrorCount,
+      pendingReviewCount: pendingReviewCount,
     );
   }
 
@@ -493,6 +498,7 @@ class CopyPreview {
       unsupportedCount: ProtocolValidation.nonNegativeInt(json, 'unsupported_count'),
       missingCount: ProtocolValidation.nonNegativeInt(json, 'missing_count'),
       permissionErrorCount: ProtocolValidation.nonNegativeInt(json, 'permission_error_count'),
+      pendingReviewCount: ProtocolValidation.optionalNonNegativeInt(json, 'pending_review_count'),
     );
   }
 }

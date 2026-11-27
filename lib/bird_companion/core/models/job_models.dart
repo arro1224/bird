@@ -91,8 +91,12 @@ class BirdJobStatus extends Equatable {
     this.errorMessage,
     this.version,
     this.smartFollowSessionId,
+    this.pendingReviewCount = 0,
+    this.pendingCancellation = false,
   });
 
+  final int pendingReviewCount;
+  final bool pendingCancellation;
   final String id;
   final BirdJobType type;
   final BirdJobState state;
@@ -196,10 +200,14 @@ class BirdJobStatus extends Equatable {
       errorMessage: json['error_message']?.toString(),
       version: ProtocolValidation.optionalNonNegativeInt(json, 'version'),
       smartFollowSessionId: json['smart_follow_session_id']?.toString(),
+      pendingReviewCount: ProtocolValidation.nonNegativeInt(json, 'pending_review_count'),
+      pendingCancellation: json['pending_cancellation'] == true,
     );
   }
 
   Map<String, dynamic> toJson() => {
+    'pending_review_count': pendingReviewCount,
+    'pending_cancellation': pendingCancellation,
     'job_id': id,
     'job_type': type.name,
     'job_state': state == BirdJobState.idle ? 'idle' : state.name,
@@ -227,6 +235,8 @@ class BirdJobStatus extends Equatable {
 
   @override
   List<Object?> get props => [
+    pendingReviewCount,
+    pendingCancellation,
     smartFollowSessionId,
     id,
     type,
