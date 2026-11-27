@@ -76,7 +76,7 @@ class _AppBuildIdentityLabelState extends State<AppBuildIdentityLabel> {
   @override
   Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>>(
     future: _future,
-    builder: (_, snapshot) => Text('应用 ${AppBuildIdentity.version(snapshot.data)} · BirdBox v1'),
+    builder: (_, snapshot) => Text('应用 ${AppBuildIdentity.version(snapshot.data)}'),
   );
 }
 

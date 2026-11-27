@@ -39,12 +39,18 @@ void main() {
     await tester.tap(find.text('设备'));
     await tester.pump();
     expect(find.byKey(const Key('settings-showcase-page')), findsOneWidget);
-    expect(find.text('崇明东滩 7月16日'), findsOneWidget);
-    expect(find.text('导入/索引'), findsOneWidget);
+    expect(find.text('当前工作'), findsNothing);
+    expect(find.byKey(const Key('device-section-preferences')), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('device-current-work-task')));
+    await tester.tap(
+      find.descendant(of: find.byType(NavigationBar), matching: find.text('任务')),
+    );
     await tester.pump();
     expect(find.byKey(const Key('task-home-page')), findsOneWidget);
+    expect(find.text('当前任务'), findsOneWidget);
+    await tester.drag(find.byType(CustomScrollView).first, const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(find.text('任务列表'), findsOneWidget);
     expect(controller.currentTask.state.name, 'paused');
   });
 
@@ -156,10 +162,7 @@ void main() {
       find.descendant(of: find.byType(NavigationBar), matching: find.text('设备')),
     );
     await tester.pump();
-    expect(
-      find.descendant(of: find.byKey(const Key('device-current-work-task')), matching: find.text('AI分析')),
-      findsOneWidget,
-    );
+    expect(find.text('当前工作'), findsNothing);
     await tester.tap(
       find.descendant(of: find.byType(NavigationBar), matching: find.text('任务')),
     );
@@ -184,10 +187,7 @@ void main() {
     );
     await tester.pump();
     expect(find.byKey(const Key('settings-showcase-page')), findsOneWidget);
-    expect(
-      find.descendant(of: find.byKey(const Key('device-current-work-task')), matching: find.text('复制照片')),
-      findsOneWidget,
-    );
+    expect(find.text('当前工作'), findsNothing);
     await tester.tap(
       find.descendant(of: find.byType(NavigationBar), matching: find.text('任务')),
     );
@@ -428,7 +428,9 @@ void main() {
     expect(find.byKey(const Key('task-progress-emphasis')), findsOneWidget);
     expect(find.byKey(const Key('task-timeline-connector')), findsNWidgets(3));
     expect(find.byKey(const Key('task-detail-info-icon')), findsNWidgets(4));
-    expect(tester.getBottomRight(find.text('取消任务')).dy, lessThan(800));
+    await tester.ensureVisible(find.text('取消任务'));
+    await tester.pumpAndSettle();
+    expect(find.text('取消任务').hitTestable(), findsOneWidget);
   });
 
   testWidgets('取消任务确认框关闭后保留任务详情页，并正确执行所选操作', (tester) async {

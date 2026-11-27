@@ -72,6 +72,9 @@ class TaskSummary {
     this.pendingReviewCount,
     this.connectionState,
     this.finishedAt,
+    this.updatedAt,
+    this.photoPreparation = false,
+    this.pendingCancellation = false,
     this.availableActions = const {},
   });
 
@@ -81,7 +84,7 @@ class TaskSummary {
   final int processed;
   final int total;
   final int progressPercent;
-  final int remainingMinutes;
+  final int? remainingMinutes;
   final TaskRunState state;
   final String? workflowStage;
   final String? sourceBatch;
@@ -94,6 +97,25 @@ class TaskSummary {
   final int? pendingReviewCount;
   final TaskConnectionState? connectionState;
   final DateTime? finishedAt;
+  final DateTime? updatedAt;
+  final bool photoPreparation;
+  final bool pendingCancellation;
+  bool get waitingForImport => workflowStage == 'waiting_import' && state == TaskRunState.queued;
+  bool get isFinishing => state == TaskRunState.running && progressPercent >= 100;
+  String get etaLabel => waitingForImport
+      ? '导入完成后由盒子自动开始识别'
+      : isFinishing
+      ? '正在收尾，等待盒子确认完成'
+      : remainingMinutes == null
+      ? '剩余时间暂不可用'
+      : '预计剩余 $remainingMinutes 分钟';
+  String get freshnessLabel => freshnessFor(connectionState);
+  String freshnessFor(TaskConnectionState? connection) {
+    final time = updatedAt?.toLocal();
+    final label = time == null ? '盒子未提供更新时间' : '更新于 ${time.month}月${time.day}日 ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:${time.second.toString().padLeft(2, '0')}';
+    return connection == TaskConnectionState.connected || connection == null ? label : '上次进度快照 · $label';
+  }
+
   final Set<TaskAction> availableActions;
 
   TaskGroup get group => switch (state) {
@@ -112,6 +134,7 @@ class TaskSummary {
     int? remainingMinutes,
     bool clearFailure = false,
     String? workflowStage,
+    bool? pendingCancellation,
   }) => TaskSummary(
     id: id,
     type: type,
@@ -132,6 +155,9 @@ class TaskSummary {
     pendingReviewCount: pendingReviewCount,
     connectionState: connectionState,
     finishedAt: finishedAt,
+    updatedAt: updatedAt,
+    photoPreparation: photoPreparation,
+    pendingCancellation: pendingCancellation ?? this.pendingCancellation,
     availableActions: availableActions ?? this.availableActions,
   );
 }

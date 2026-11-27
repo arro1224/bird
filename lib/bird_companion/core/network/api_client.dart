@@ -251,17 +251,29 @@ class ApiClient {
     reportAuthenticationFailure: false,
   );
 
+  /// Opt-in for import-analysis-v1, whose workflow siblings sit outside data.
+  /// All existing calls keep their normal data-unwrapping contract.
+  Future<Map<String, dynamic>> postEnvelope(String path, {required Object data, required String idempotencyKey}) => _request(
+    () => _dio.post<Map<String, dynamic>>(
+      path,
+      data: data,
+      options: Options(headers: {'X-Idempotency-Key': idempotencyKey, 'Idempotency-Key': idempotencyKey}),
+    ),
+    preserveEnvelope: true,
+  );
+
   Future<Map<String, dynamic>> delete(String path) => _request(() => _dio.delete<Map<String, dynamic>>(path));
 
   Future<Map<String, dynamic>> _request(
     Future<Response<Map<String, dynamic>>> Function() request, {
     bool reportAuthenticationFailure = true,
+    bool preserveEnvelope = false,
   }) async {
     final sessionGeneration = _sessionGeneration;
     final requestBase = _baseUri;
     try {
       final response = await request();
-      final payload = unwrapResponse(response.data);
+      final payload = preserveEnvelope ? response.data : unwrapResponse(response.data);
       final resolved = resolveMediaReferences(payload, baseUri: _baseUri);
       if (resolved is Map) return Map<String, dynamic>.from(resolved);
       throw const ProtocolCompatibilityException(

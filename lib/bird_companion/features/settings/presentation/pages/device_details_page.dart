@@ -1,6 +1,4 @@
-import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'package:aves/bird_companion/app/app_dependencies.dart';
-import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
@@ -12,9 +10,7 @@ import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_row.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_scaffold.dart';
-import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
 import 'package:flutter/material.dart';
-import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
 
 class DeviceDetailsPage extends StatefulWidget {
   const DeviceDetailsPage({super.key, required this.controller});
@@ -94,44 +90,6 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> {
                       _DeviceHealthBadge(
                         loading: loading,
                         available: status != null || legacy,
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      Wrap(
-                        spacing: AppSpacing.xxs,
-                        runSpacing: AppSpacing.xs,
-                        children: [
-                          const PhoneDiagnosticExportButton(key: Key('details-export-phone-diagnostics'), compact: true),
-                          TextButton.icon(
-                            key: const Key('device-reconnect'),
-                            onPressed: () => openReconnectConnection(context),
-                            icon: const BirdSettingsAssetIcon(
-                              BirdSettingsAssetCatalog.reconnect,
-                              label: '重新连接',
-                              size: 24,
-                            ),
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-                              minimumSize: const Size(0, AppSpacing.minimumControl),
-                            ),
-                            label: const Text('重新连接'),
-                          ),
-                          TextButton.icon(
-                            onPressed: () => guardBirdNavigation(
-                              context,
-                              () => Navigator.of(context).push<void>(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => const SystemLogsPage(),
-                                ),
-                              ),
-                            ),
-                            icon: const Icon(Icons.description_outlined),
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-                              minimumSize: const Size(0, AppSpacing.minimumControl),
-                            ),
-                            label: const Text('导出日志'),
-                          ),
-                        ],
                       ),
                     ],
                   ),
@@ -241,16 +199,6 @@ class _DeviceDetailsPageState extends State<DeviceDetailsPage> {
                   ),
                 ),
                 if (widget.controller.technicalDetailsExpanded) ...[
-                  _InfoRow(
-                    Icons.api_rounded,
-                    'API 版本',
-                    status?.connection.apiVersion ?? (legacy ? 'v1' : '盒子未提供'),
-                  ),
-                  _InfoRow(
-                    Icons.router_outlined,
-                    '设备地址',
-                    status?.connection.baseUri.authority ?? (legacy ? '192.168.4.1' : '未连接'),
-                  ),
                   _InfoRow(
                     Icons.security_outlined,
                     '连接安全',

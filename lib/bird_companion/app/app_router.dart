@@ -291,6 +291,8 @@ abstract final class BirdAppRouter {
             : NetworkSettingsPage(
                 repository: provisioningRepository,
                 onProvisioningCompleted: onProvisioningCompleted,
+                deviceId: settings.arguments is NetworkSettingsArgs ? (settings.arguments as NetworkSettingsArgs).deviceId : null,
+                recoverBleOnOpen: settings.arguments is NetworkSettingsArgs && (settings.arguments as NetworkSettingsArgs).recoverBleOnOpen,
               );
       case BirdRoutes.settingsSystemLogs:
         page = const SystemLogsPage();

@@ -14,21 +14,16 @@ void main() {
     expect(find.text('我的'), findsNothing);
     expect(find.byKey(const Key('v1-device-illustration')), findsOneWidget);
     expect(find.byKey(const Key('showcase-device-card')), findsOneWidget);
-    expect(find.byKey(const Key('device-current-work-card')), findsOneWidget);
     expect(find.byKey(const Key('device-section-connection')), findsOneWidget);
-    expect(find.byKey(const Key('device-section-photo')), findsOneWidget);
-    expect(find.byKey(const Key('device-section-copy')), findsOneWidget);
+    expect(find.byKey(const Key('device-section-storage')), findsOneWidget);
+    expect(find.byKey(const Key('device-section-preferences')), findsOneWidget);
     expect(find.byKey(const Key('device-section-support')), findsOneWidget);
+    expect(find.text('当前工作'), findsNothing);
 
     final deviceCardSize = tester.getSize(
       find.byKey(const Key('showcase-device-card')),
     );
-    final entrySize = tester.getSize(
-      find.byKey(const Key('showcase-device-management')),
-    );
     expect(deviceCardSize.height, lessThanOrEqualTo(130));
-    expect(entrySize.height, 56);
-    expect(_textStyle(tester, '设备与连接').fontSize, 16);
     expect(_textStyle(tester, '连接设备').fontSize, 16);
   });
 

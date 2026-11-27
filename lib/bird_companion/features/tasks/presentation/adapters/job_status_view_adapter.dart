@@ -9,6 +9,7 @@ abstract final class JobStatusViewAdapter {
 
   static const _knownWorkflowStages = {
     'scanning',
+    'waiting_import',
     'importing',
     'ready_for_analysis',
     'analyzing',
@@ -41,11 +42,15 @@ abstract final class JobStatusViewAdapter {
     return TaskSummary(
       id: job.id,
       type: type,
-      title: type == TaskType.sync ? '同步（含缩略图与预览，不是 U 盘复制）' : type.label,
+      title: job.workflowStage == 'waiting_import' && job.state == BirdJobState.queued
+          ? '等待导入完成'
+          : job.isPhotoPreparation
+          ? '准备浏览图片'
+          : type.label,
       processed: job.finishedCount,
       total: job.totalCount,
       progressPercent: progressPercent,
-      remainingMinutes: remainingMinutes ?? ((job.estimatedRemainingSeconds ?? 0) / 60).ceil(),
+      remainingMinutes: remainingMinutes ?? (job.estimatedRemainingSeconds == null ? null : (job.estimatedRemainingSeconds! / 60).ceil()),
       state: state,
       workflowStage: workflowStage,
       sourceBatch: _sourceName(job, sourceBatch),
@@ -61,6 +66,8 @@ abstract final class JobStatusViewAdapter {
             ).message,
       connectionState: connectionState,
       finishedAt: job.finishedAt,
+      updatedAt: job.updatedAt,
+      photoPreparation: job.isPhotoPreparation,
       availableActions: _actions(job),
     );
   }
@@ -94,7 +101,7 @@ abstract final class JobStatusViewAdapter {
   }
 
   static Set<TaskAction> _actions(BirdJobStatus job) => {
-    ...job.availableActions.map(_action).whereType<TaskAction>(),
+    if (!job.isPhotoPreparation) ...job.availableActions.map(_action).whereType<TaskAction>(),
     // Log export is a separate read-only diagnostics endpoint and is not part
     // of the box task-control available_actions contract.
     TaskAction.exportLog,

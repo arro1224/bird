@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
+import 'package:aves/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart';
+import 'package:aves/bird_companion/simulation/embedded_demo/demo_runtime.dart';
 import 'package:dio/dio.dart';
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/network_settings_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +13,75 @@ import 'package:flutter_test/flutter_test.dart';
 import '../features/connection/fakes/fake_provisioning_repository.dart';
 
 void main() {
+  testWidgets('an explicit recovery entry starts once and does not verify or change business networking', (tester) async {
+    final repository = _ColdControlRepository();
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: NetworkSettingsPage(repository: repository, deviceId: _deviceInfo.deviceId, recoverBleOnOpen: true),
+      ),
+    );
+    await tester.pump();
+    expect(repository.recoveries, 1);
+    repository.result.complete(_deviceInfo);
+    await tester.pumpAndSettle();
+    expect(repository.verifications, 0);
+    expect(repository.calls, isNot(contains('setStaConfig')));
+    expect(repository.calls, isNot(contains('startDirectAp')));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+  testWidgets('opening network settings alone does not automatically recover BLE', (tester) async {
+    final repository = _ColdControlRepository();
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NetworkSettingsPage(repository: repository, deviceId: _deviceInfo.deviceId),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.recoveries, 0);
+    expect(find.text('恢复当前盒子蓝牙控制'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+  for (final error in <Object>[
+    const ProvisioningException(code: ProvisioningErrorCode.bluetoothPermissionDenied, retryable: true),
+    const BleControlRecoveryException(BleControlRecoveryFailure.notFound),
+  ]) {
+    testWidgets('recovery presents the classified ${error.runtimeType} result', (tester) async {
+      final repository = _ColdControlRepository();
+      addTearDown(repository.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NetworkSettingsPage(repository: repository, deviceId: _deviceInfo.deviceId, recoverBleOnOpen: true),
+        ),
+      );
+      await tester.pump();
+      repository.result.completeError(error);
+      await tester.pumpAndSettle();
+      expect(find.textContaining(error is ProvisioningException ? '需要蓝牙权限' : '未找到当前盒子蓝牙'), findsOneWidget);
+      expect(repository.verifications, 0);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+  testWidgets('a stalled recovery exits with timeout text rather than a user-cancel claim', (tester) async {
+    final repository = _ColdControlRepository();
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NetworkSettingsPage(repository: repository, deviceId: _deviceInfo.deviceId, recoverBleOnOpen: true),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 31));
+    expect(find.textContaining('蓝牙恢复超时'), findsOneWidget);
+    expect(repository.token?.isCancelled, true);
+    expect(repository.token?.cancelError?.error, isA<BleControlRecoveryException>());
+    repository.result.complete(_deviceInfo);
+    await tester.pumpAndSettle();
+    expect(find.text('蓝牙控制已断开'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   testWidgets('requires BLE reconnect when there is no trusted BLE session', (
     tester,
   ) async {
@@ -27,8 +99,8 @@ void main() {
       find.byKey(const Key('network-settings-ble-reconnect')),
       findsOneWidget,
     );
-    expect(find.text('需要重新连接蓝牙'), findsOneWidget);
-    expect(find.textContaining('不会把蓝牙断开或热点消失当作成功'), findsOneWidget);
+    expect(find.text('状态待确认'), findsOneWidget);
+    expect(find.text('蓝牙控制已断开，恢复后才能读取盒子的网络状态。'), findsOneWidget);
   });
 
   testWidgets('loads Direct AP state and treats BLE loss as resumable', (
@@ -52,7 +124,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('盒子直连模式'), findsOneWidget);
+    expect(find.text('盒子热点'), findsOneWidget);
     expect(find.text('停止盒子直连'), findsOneWidget);
 
     await tester.tap(find.text('停止盒子直连'));
@@ -72,6 +144,99 @@ void main() {
     expect(find.text('蓝牙控制已断开'), findsOneWidget);
     expect(find.text('恢复当前盒子蓝牙控制'), findsOneWidget);
     expect(find.text('停止盒子直连'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('demo Wi-Fi methods show the next step and return to settings', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 850));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = B7SimulatedProvisioningRepository();
+    addTearDown(repository.dispose);
+    await tester.runAsync(() async {
+      await repository.connect(await repository.discoverDevices().first);
+      await repository.openPairing();
+      await repository.authorizePairing('123456');
+    });
+    ProvisioningCompletion? completion;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: NetworkSettingsPage(
+          repository: repository,
+          phoneWifi: const DemoPhoneWifiPlatform(),
+          demoMode: true,
+          onProvisioningCompleted: (value) async => completion = value,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Future<void> tap(String text) async {
+      await tester.ensureVisible(find.text(text));
+      await tester.tap(find.text(text));
+      await tester.pumpAndSettle();
+    }
+    Future<void> back() async {
+      await tester.tap(find.byKey(const Key('settings-back')));
+      await tester.pumpAndSettle();
+    }
+    List<String> formValues() => tester.widgetList<EditableText>(find.byType(EditableText)).map((field) => field.controller.text).toList();
+
+
+    expect(find.text('选择其他 Wi-Fi'), findsNothing);
+    await tap('连接手机当前 Wi-Fi');
+    expect(formValues(), ['BirdLab-5G', '']);
+    await back();
+
+
+
+    await tap('搜索附近 Wi-Fi');
+    await tap('BirdLab-5G');
+    expect(formValues(), ['BirdLab-5G', '']);
+    await back();
+    await tap('停止盒子直连');
+    expect(find.text('断开盒子直连？'), findsOneWidget);
+    await tap('取消');
+
+
+
+    await tap('手动输入 Wi-Fi');
+    expect(formValues(), ['', '']);
+    await back();
+
+
+    await tap('扫描 Wi-Fi 二维码');
+    await tap('识别演示二维码');
+    expect(find.text('确认目标网络'), findsOneWidget);
+    await tap('确认连接此 Wi-Fi');
+    expect(find.text('盒子已加入 Wi-Fi'), findsOneWidget);
+    await tap('完成');
+    expect(completion?.networkMode, ProvisioningNetworkMode.infrastructureSta);
+    expect(find.text('网络设置'), findsOneWidget);
+    expect(find.text('路由器 Wi-Fi'), findsOneWidget);
+    expect(find.text('停止盒子直连'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('keeps the network overview for router Wi-Fi and hides direct-AP actions', (tester) async {
+    final repository = FakeProvisioningRepository(
+      deviceInfo: _deviceInfo,
+      networkStatus: _staStatus,
+    );
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: NetworkSettingsPage(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('network-settings-direct-ap')), findsOneWidget);
+    expect(find.text('路由器 Wi-Fi'), findsOneWidget);
+    expect(find.text('网络方式已知，App 与盒子的业务连接尚未验证'), findsOneWidget);
+    expect(find.text('停止盒子直连'), findsNothing);
+    expect(find.text('搜索附近 Wi-Fi'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -97,7 +262,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(NetworkSettingsPage), findsOneWidget);
     expect(find.text('蓝牙控制已连接'), findsOneWidget);
-    expect(find.text('业务连接待验证；蓝牙控制与 Wi-Fi 业务状态分别显示。'), findsOneWidget);
+    expect(find.text('网络方式已知，App 与盒子的业务连接尚未验证'), findsOneWidget);
     expect(repository.verifications, 0);
     expect(repository.calls.where((c) => c == 'getNetworkStatus'), hasLength(2));
     await tester.pumpWidget(const SizedBox.shrink());
@@ -185,6 +350,11 @@ class _ControlRepository extends FakeProvisioningRepository implements BleContro
   }
 }
 
+class _ColdControlRepository extends _ControlRepository {
+  @override
+  ProvisioningDeviceInfo? get connectedDeviceInfo => null;
+}
+
 const _deviceInfo = ProvisioningDeviceInfo(
   protocolVersion: '1.0-rc4',
   minAppProtocolVersion: '1.0-rc4',
@@ -221,5 +391,17 @@ final _directApStatus = ProvisioningNetworkStatus(
   baseUri: Uri.parse('http://192.168.8.1:8080'),
   directAp: const DirectApSnapshot(ssid: 'BirdBox-Test'),
   infrastructureSta: const InfrastructureStaSnapshot(saved: true),
+  updatedAt: DateTime.utc(2026, 9, 2),
+);
+
+final _staStatus = ProvisioningNetworkStatus(
+  activeMode: ProvisioningNetworkMode.infrastructureSta,
+  desiredMode: ProvisioningNetworkMode.infrastructureSta,
+  operationState: NetworkOperationState.staConnected,
+  operationId: 'op_sta_settings',
+  busy: false,
+  baseUri: Uri.parse('http://192.168.1.20:8080'),
+  directAp: const DirectApSnapshot(),
+  infrastructureSta: const InfrastructureStaSnapshot(ssid: 'Home Wi-Fi', ipv4: '192.168.1.20', saved: true),
   updatedAt: DateTime.utc(2026, 9, 2),
 );

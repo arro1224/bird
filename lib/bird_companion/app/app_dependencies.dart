@@ -1,4 +1,5 @@
 import 'package:aves/bird_companion/features/connection/data/direct_ap_profile_store.dart';
+import 'package:aves/bird_companion/features/connection/data/ble_peer_hint_store.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:aves/bird_companion/core/diagnostics/app_build_identity.dart';
@@ -80,6 +81,8 @@ import 'package:aves/bird_companion/features/jobs/data/job_api.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_read_diagnostics.dart';
 import 'package:aves/bird_companion/features/jobs/data/job_repository_impl.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_repository.dart';
+import 'package:aves/bird_companion/features/jobs/domain/import_analysis_models.dart';
+import 'package:aves/bird_companion/features/jobs/data/import_analysis_service.dart';
 import 'package:aves/bird_companion/features/settings/data/settings_store.dart';
 import 'package:aves/bird_companion/features/storage/data/storage_api.dart';
 import 'package:aves/bird_companion/features/storage/data/storage_repository_impl.dart';
@@ -125,6 +128,8 @@ class BirdCompanionDependencies {
     required this.bleConnectionDiagnosticStore,
     required this.connectionAttempts,
     required this.phoneDiagnostics,
+    required this.phoneWifi,
+    required this.isEmbeddedDemo,
   }) {
     // R3：WebSocket 只当唤醒信号，仓储收到后重读会话（不拿 payload 数字改状态）。
     // 断线期间漏掉的通知由页面/前台的显式 refresh 补齐，不依赖这条订阅。
@@ -141,6 +146,15 @@ class BirdCompanionDependencies {
     jobs: jobRepository,
     follows: smartFollowRepository,
     cache: cache,
+    deviceId: () => deviceSessionCubit.state.device?.id,
+    contextKey: () => deviceSessionCubit.state.isConnected ? '${deviceSessionCubit.state.device?.id}|${apiClient.baseUri}|${smartFollowRepository.deviceGeneration}' : null,
+    boxOwnsBatch: (batch) => importAnalysisService.ensureOwner(batch),
+  );
+  late final importAnalysisService = ImportAnalysisService(
+    repository: jobRepository as ImportWorkflowRepository,
+    batches: batchRepository,
+    cache: cache,
+    readCapabilities: recognitionRepository.capabilities,
     deviceId: () => deviceSessionCubit.state.device?.id,
     contextKey: () => deviceSessionCubit.state.isConnected ? '${deviceSessionCubit.state.device?.id}|${apiClient.baseUri}|${smartFollowRepository.deviceGeneration}' : null,
   );
@@ -187,7 +201,8 @@ class BirdCompanionDependencies {
   final bleDiagnosticFilePlatform = const MethodChannelBirdBoxBleDiagnosticFilePlatform();
 
   /// Task-2 additions: phone Wi-Fi name prefill and gallery QR import. UI hints only.
-  final phoneWifi = const MethodChannelPhoneWifiPlatform();
+  final PhoneWifiPlatform phoneWifi;
+  final bool isEmbeddedDemo;
   final appBuildIdentity = AppBuildIdentity();
   final PhoneDiagnosticRecorder phoneDiagnostics;
   late final bleDiagnosticSnapshotService = BleDiagnosticSnapshotService(bleScanDiagnosticStore, bleConnectionDiagnosticStore, bleDiagnosticFilePlatform, phoneSnapshot: phoneDiagnostics.snapshot, buildIdentity: appBuildIdentity.read);
@@ -202,10 +217,13 @@ class BirdCompanionDependencies {
     bool restoreSavedSession = true,
     DirectApAuthorizationStore? directApAuthorizationStore,
     DirectApProfileStore? directApProfileStore,
+    BlePeerHintStore? blePeerHintStore,
     ClientIdentityStore? clientIdentityStore,
     ProvisioningRepository? provisioningRepositoryOverride,
     ConnectivityMonitor? connectivityMonitorOverride,
     SecureSessionStore? sessionStoreOverride,
+    PhoneWifiPlatform? phoneWifiOverride,
+    bool isEmbeddedDemo = false,
   }) async {
     final cache = await LocalCache.open();
     final apiClient = ApiClient();
@@ -244,6 +262,7 @@ class BirdCompanionDependencies {
           credentialStore: secureSessionStore,
           directApAuthorizationStore: directApAuthorizationStore ?? const EncryptedDirectApAuthorizationStore(),
           directApProfileStore: directApProfileStore ?? DirectApProfileStore(const EncryptedDirectApAuthorizationStore(namespace: 'direct-ap-profile:v1')),
+          blePeerHintStore: blePeerHintStore ?? BlePeerHintStore(const EncryptedDirectApAuthorizationStore(namespace: 'ble-peer-hint:v1')),
           healthApi: HealthApi(apiClient),
           pairingApi: pairingApi,
           sessionCoordinator: sessionCoordinator,
@@ -278,6 +297,7 @@ class BirdCompanionDependencies {
       activeDeviceNamespace,
       activeDeviceId,
       (ids) => reviewRepository.invalidateBatchVersions(ids),
+      () => deviceSessionCubit.state.isConnected,
     );
     final birdSyncService = BirdSyncService(
       connectivityMonitor,
@@ -395,6 +415,8 @@ class BirdCompanionDependencies {
       bleConnectionDiagnosticStore: bleConnectionDiagnosticStore,
       connectionAttempts: connectionAttempts,
       phoneDiagnostics: phoneDiagnostics,
+      phoneWifi: phoneWifiOverride ?? const MethodChannelPhoneWifiPlatform(),
+      isEmbeddedDemo: isEmbeddedDemo,
     );
     dependencies.birdSyncService.start();
     unawaited(dependencies.appBuildIdentity.read().then((build) => phoneDiagnostics.record({'event': 'phone_build_identified', ...build})));

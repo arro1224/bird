@@ -81,7 +81,7 @@ $androidSdkLine = Get-Content -LiteralPath $localPropertiesPath |
 if ([string]::IsNullOrWhiteSpace($androidSdkLine)) {
     throw "sdk.dir is not configured in android/local.properties."
 }
-$androidSdk = ($androidSdkLine -replace '^sdk\.dir=', '').Replace('\\', '\')
+$androidSdk = ($androidSdkLine -replace '^sdk\.dir=', '').Replace('\:', ':').Replace('\\', '\')
 $apksignerPath = Get-ChildItem -LiteralPath (Join-Path $androidSdk "build-tools") -Directory |
     Sort-Object Name -Descending |
     ForEach-Object { Join-Path $_.FullName "apksigner.bat" } |
@@ -138,7 +138,7 @@ if ([string]::IsNullOrWhiteSpace($flutterCommand)) {
     if ([string]::IsNullOrWhiteSpace($flutterSdkLine)) {
         throw "flutter.sdk is not configured in android/local.properties."
     }
-    $flutterSdk = ($flutterSdkLine -replace '^flutter\.sdk=', '').Replace('\\', '\')
+    $flutterSdk = ($flutterSdkLine -replace '^flutter\.sdk=', '').Replace('\:', ':').Replace('\\', '\')
     $flutterCommand = Join-Path $flutterSdk "bin\flutter.bat"
 }
 if (-not (Test-Path -LiteralPath $flutterCommand)) {

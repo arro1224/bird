@@ -1,31 +1,18 @@
-import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
-import 'dart:async';
-import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
-
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
-import 'package:aves/bird_companion/features/settings/presentation/pages/help_center_page.dart';
+import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_card.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_row.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_scaffold.dart';
 import 'package:flutter/material.dart';
 
-class DiagnosticRecordsPage extends StatefulWidget {
-  const DiagnosticRecordsPage({super.key, this.initialCrashTab = false});
-
-  final bool initialCrashTab;
-
-  @override
-  State<DiagnosticRecordsPage> createState() => _DiagnosticRecordsPageState();
-}
-
-class _DiagnosticRecordsPageState extends State<DiagnosticRecordsPage> {
-  late bool _crashTab = widget.initialCrashTab;
+class DiagnosticRecordsPage extends StatelessWidget {
+  const DiagnosticRecordsPage({super.key});
 
   @override
   Widget build(BuildContext context) => BirdSettingsScaffold(
-    title: '诊断记录',
+    title: '异常说明',
     body: ListView(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.settingsPageHorizontal,
@@ -33,57 +20,30 @@ class _DiagnosticRecordsPageState extends State<DiagnosticRecordsPage> {
         AppSpacing.settingsPageHorizontal,
         AppSpacing.xl,
       ),
-      children: [
-        SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(value: false, label: Text('错误记录')),
-            ButtonSegment(value: true, label: Text('崩溃记录')),
-          ],
-          selected: {_crashTab},
-          onSelectionChanged: (value) => setState(() => _crashTab = value.first),
-          style: BirdSettingsControlStyles.segmented,
-        ),
-        const SizedBox(height: AppSpacing.md),
+      children: const [
         BirdSettingsCard(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
-            child: Column(
-              children: [
-                const CircleAvatar(
-                  radius: 32,
-                  backgroundColor: AppColors.forestSoft,
-                  child: Icon(Icons.check_rounded, color: AppColors.forestPrimary, size: 34),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                Text(
-                  _crashTab ? '暂无崩溃记录' : '暂无错误记录',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: AppColors.forestDeep,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xxs),
-                const Text(
-                  '设备和应用运行正常\n新的异常会自动记录在这里',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.mutedInk),
-                ),
-              ],
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _ArticleSection('操作失败', '某项功能未能完成，但应用仍可继续使用。连接或配网失败时，可导出手机诊断包，查看本机保留的扫描和连接过程。'),
+              _ArticleSection('应用崩溃', '应用意外关闭或被系统终止。崩溃记录由手机系统管理，本应用不提供历史崩溃列表。', last: true),
+            ],
           ),
         ),
-        const SizedBox(height: AppSpacing.md),
+        SizedBox(height: AppSpacing.md),
         BirdSettingsCard(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: BirdSettingsRow(
-            title: '导出全部记录',
-            subtitle: '生成可供技术支持查看的诊断文件',
-            showDivider: false,
-            leading: const Icon(Icons.ios_share_rounded, color: AppColors.forestPrimary),
-            trailing: const BirdChevron(),
-            onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('诊断记录已准备导出')),
-            ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline_rounded, color: AppColors.forestPrimary),
+              SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  '手机诊断包不是错误/崩溃历史记录，也不包含盒子运行日志。盒子日志需单独从设备导出。',
+                  style: TextStyle(color: AppColors.mutedInk, height: 1.45),
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -158,7 +118,7 @@ class _StorageCachePageState extends State<StorageCachePage> {
           ),
         ),
         const SizedBox(height: AppSpacing.md),
-        const BirdSettingsCard(
+        BirdSettingsCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -207,27 +167,7 @@ class PrivacyNoticePage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _ArticleSection('本地优先', '拍鸟伴侣仅在当前局域网内与拍鸟盒子通信。原始照片默认保存在盒子或您选择的目标设备中。'),
-              _ArticleSection('我们使用的数据', '连接状态、设备版本和诊断日志仅用于完成设备管理、故障排查与体验优化。'),
-              _ArticleSection('您的控制权', '您可以随时清理应用缓存、导出诊断信息，或断开当前设备。', last: true),
-            ],
-          ),
-        ),
-        SizedBox(height: AppSpacing.md),
-        BirdSettingsCard(
-          padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: Column(
-            children: [
-              BirdSettingsRow(
-                title: '诊断信息说明',
-                subtitle: '查看导出文件包含的内容',
-                leading: Icon(Icons.description_outlined, color: AppColors.forestPrimary),
-              ),
-              BirdSettingsRow(
-                title: '本地存储说明',
-                subtitle: '查看照片与缓存的保存位置',
-                leading: Icon(Icons.storage_outlined, color: AppColors.forestPrimary),
-                showDivider: false,
-              ),
+              _ArticleSection('诊断信息', '手机诊断包包含本机保留的扫描、蓝牙连接和网络请求记录；只有您主动导出后才会生成文件。', last: true),
             ],
           ),
         ),
@@ -238,14 +178,6 @@ class PrivacyNoticePage extends StatelessWidget {
 
 class OpenSourceLicensesPage extends StatelessWidget {
   const OpenSourceLicensesPage({super.key});
-
-  static const packages = [
-    ('Flutter', 'BSD 3-Clause License · Google LLC'),
-    ('go_router', 'BSD 3-Clause License · Flutter Authors'),
-    ('flutter_bloc', 'MIT License · Felix Angelov'),
-    ('mobile_scanner', 'BSD 3-Clause License · Community'),
-    ('package_info_plus', 'BSD 3-Clause License · Flutter Community'),
-  ];
 
   @override
   Widget build(BuildContext context) => BirdSettingsScaffold(
@@ -259,34 +191,22 @@ class OpenSourceLicensesPage extends StatelessWidget {
       ),
       children: [
         BirdSettingsCard(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding: EdgeInsets.only(top: AppSpacing.md),
-                child: Text(
-                  '第三方组件',
-                  style: TextStyle(color: AppColors.forestDeep, fontWeight: FontWeight.w800),
+              const Text(
+                '本应用使用的开源组件及其许可文本由 Flutter 根据实际依赖生成。',
+                style: TextStyle(color: AppColors.mutedInk, height: 1.5),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              BirdSettingsOutlineButton(
+                label: '查看全部许可',
+                icon: Icons.code_rounded,
+                onPressed: () => showLicensePage(
+                  context: context,
+                  applicationName: '拍鸟伴侣',
                 ),
               ),
-              for (var i = 0; i < packages.length; i++)
-                BirdSettingsRow(
-                  title: packages[i].$1,
-                  subtitle: packages[i].$2,
-                  showDivider: i != packages.length - 1,
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        const BirdSettingsCard(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.info_outline_rounded, color: AppColors.forestPrimary),
-              SizedBox(width: AppSpacing.sm),
-              Expanded(child: Text('完整许可文本随应用发布，并保留各项目的版权与许可声明。')),
             ],
           ),
         ),
@@ -308,8 +228,8 @@ class AboutBirdAppPage extends StatelessWidget {
         AppSpacing.settingsPageHorizontal,
         AppSpacing.xl,
       ),
-      children: [
-        const BirdSettingsCard(
+      children: const [
+        BirdSettingsCard(
           child: Column(
             children: [
               CircleAvatar(
@@ -324,51 +244,14 @@ class AboutBirdAppPage extends StatelessWidget {
               Text('拍鸟伴侣', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
               AppBuildIdentityLabel(),
               SizedBox(height: AppSpacing.md),
-              BirdSettingsRow(title: '产品定位', trailing: Text('拍鸟盒子移动控制端')),
-              BirdSettingsRow(title: '设备支持', trailing: Text('拍鸟伴侣 K7')),
-              BirdSettingsRow(title: 'AI 模型', trailing: Text('BirdAI 3.0.2'), showDivider: false),
             ],
           ),
         ),
-        const SizedBox(height: AppSpacing.md),
-        BirdSettingsCard(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: Column(
-            children: [
-              BirdSettingsRow(
-                title: '隐私说明',
-                leading: const Icon(Icons.shield_outlined, color: AppColors.forestPrimary),
-                trailing: const BirdChevron(),
-                onTap: () => _open(context, const PrivacyNoticePage()),
-              ),
-              BirdSettingsRow(
-                title: '开源许可',
-                leading: const Icon(Icons.code_rounded, color: AppColors.forestPrimary),
-                trailing: const BirdChevron(),
-                onTap: () => _open(context, const OpenSourceLicensesPage()),
-              ),
-              BirdSettingsRow(
-                title: '帮助中心',
-                leading: const Icon(Icons.help_outline_rounded, color: AppColors.forestPrimary),
-                trailing: const BirdChevron(),
-                showDivider: false,
-                onTap: () => _open(context, const HelpCenterPage()),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        const Center(
+        SizedBox(height: AppSpacing.md),
+        Center(
           child: Text('© 2026 拍鸟伴侣', style: TextStyle(color: AppColors.mutedInk)),
         ),
       ],
-    ),
-  );
-
-  static void _open(BuildContext context, Widget page) => guardBirdNavigation(
-    context,
-    () => Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => page),
     ),
   );
 }

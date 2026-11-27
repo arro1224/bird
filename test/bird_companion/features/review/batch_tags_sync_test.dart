@@ -49,7 +49,7 @@ void main() {
     expect(queued.queued, isTrue);
     expect(client.batchRequests, isEmpty);
     expect((await reviews.detail(first)).userTags, beforeFirst.userTags);
-    expect((await photos.page(batch, const PhotoQuery())).items.firstWhere((photo) => photo.id == first).userTags, beforeFirst.userTags);
+    expect((await photos.page(batch, const PhotoQuery())).items.firstWhere((photo) => photo.id == first).userTags, [...beforeFirst.userTags, tag]);
 
     connectivity.online = true;
     client.disconnected = false;

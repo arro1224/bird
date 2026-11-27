@@ -37,7 +37,7 @@ enum NetworkProvisioningPhase {
 /// A failed attempt to join the target Wi-Fi must not be presented as a Bluetooth or
 /// direct-AP problem: the page labels it "加入失败" and reassures the user that the box
 /// keeps its last working network.
-enum NetworkProvisioningFailureOrigin { wifiJoin }
+enum NetworkProvisioningFailureOrigin { wifiJoin, wifiScan }
 
 final class NetworkProvisioningState {
   const NetworkProvisioningState({
@@ -98,6 +98,7 @@ final class NetworkProvisioningState {
     bool? canCancel,
     String? directApSsid,
     NetworkProvisioningFailureOrigin? failureOrigin,
+    bool clearFailureOrigin = false,
     bool clearOperation = false,
     bool clearOperationState = false,
     bool clearNetworks = false,
@@ -124,7 +125,7 @@ final class NetworkProvisioningState {
     error: clearError ? null : error ?? this.error,
     canCancel: canCancel ?? this.canCancel,
     directApSsid: directApSsid ?? this.directApSsid,
-    failureOrigin: failureOrigin ?? this.failureOrigin,
+    failureOrigin: clearFailureOrigin ? null : failureOrigin ?? this.failureOrigin,
   );
 }
 
@@ -139,6 +140,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     this.onIntentEnded,
     this.reconciliationWindow = const Duration(seconds: 60),
     this.pollInterval = const Duration(seconds: 2),
+    this.wifiScanTimeout = const Duration(seconds: 30),
   }) : super(const NetworkProvisioningState()) {
     _eventSubscription = _repository.events.listen(
       _onEvent,
@@ -147,6 +149,10 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   final ProvisioningRepository _repository;
+  InfrastructureStaSnapshot? get savedStaSnapshot => _repository is ProvisioningEndpointSnapshot ? (_repository as ProvisioningEndpointSnapshot).lastNetworkSnapshot?.infrastructureSta : null;
+  final Duration wifiScanTimeout;
+  Timer? _scanDeadline;
+  bool _scanCancelRequested = false;
   final bool reconcileStop;
   Timer? _stopPoll, _stopDeadline;
   bool _readingStop = false;
@@ -173,6 +179,10 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   @override
   void emit(NetworkProvisioningState state) {
+    if (state.phase != NetworkProvisioningPhase.scanningWifi) {
+      _scanDeadline?.cancel();
+      _scanDeadline = null;
+    }
     super.emit(state);
     if (reconcileStop && state.phase == NetworkProvisioningPhase.stopped && state.stoppedStaRestored == true && state.error == null) return;
     if (const {
@@ -607,6 +617,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   Future<void> scanWifi() async {
+    if (isClosed || state.phase == NetworkProvisioningPhase.scanningWifi || state.phase == NetworkProvisioningPhase.configuringSta || state.phase == NetworkProvisioningPhase.confirmingNetwork) return;
     final capabilities = state.capabilities;
     if (capabilities == null || !capabilities.infrastructureSta || !capabilities.wifiScan) {
       emit(
@@ -631,18 +642,29 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
         clearNetworks: true,
         clearError: true,
         canCancel: true,
+        failureOrigin: NetworkProvisioningFailureOrigin.wifiScan,
       ),
     );
+    _scanDeadline = Timer(wifiScanTimeout, () {
+      if (isClosed || state.phase != NetworkProvisioningPhase.scanningWifi) return;
+      _generation++;
+      emit(state.copyWith(phase: NetworkProvisioningPhase.failure, error: const NetworkOperationFailedException(), failureOrigin: NetworkProvisioningFailureOrigin.wifiScan, clearOperation: true, canCancel: false));
+    });
     try {
       final accepted = await _repository.scanWifi();
       if (isClosed || generation != _generation) return;
       emit(state.copyWith(activeOperationId: accepted.operationId));
+      if (_scanCancelRequested) {
+        emit(state.copyWith(canCancel: true));
+        await cancelActiveOperation();
+      }
     } catch (error) {
       if (isClosed || generation != _generation) return;
       emit(
         state.copyWith(
           phase: NetworkProvisioningPhase.failure,
           error: _safePresentationError(error),
+          failureOrigin: NetworkProvisioningFailureOrigin.wifiScan,
           clearOperation: true,
           canCancel: false,
         ),
@@ -651,6 +673,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   void showManualWifi() {
+    if (state.phase == NetworkProvisioningPhase.scanningWifi) return;
     if (state.capabilities?.wifiManual != true) {
       emit(state.copyWith(phase: NetworkProvisioningPhase.methodUnavailable));
       return;
@@ -659,6 +682,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
       state.copyWith(
         phase: NetworkProvisioningPhase.enteringWifiManually,
         clearError: true,
+        clearFailureOrigin: true,
       ),
     );
   }
@@ -676,6 +700,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
         clearConfirmedMode: true,
         clearRecoveredMode: true,
         clearError: true,
+        clearFailureOrigin: true,
         canCancel: false,
       ),
     );
@@ -703,6 +728,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     emit(
       state.copyWith(
         phase: NetworkProvisioningPhase.configuringSta,
+        failureOrigin: NetworkProvisioningFailureOrigin.wifiJoin,
         operationState: NetworkOperationState.credentialsReceived,
         clearOperation: true,
         clearBaseUri: true,
@@ -806,6 +832,18 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     }
   }
 
+  /// Cancellation is also available while the scan command is awaiting its ACK.
+  /// The operation ID must come from that ACK; no synthetic cancel is sent.
+  Future<void> cancelWifiScan() async {
+    if (state.phase != NetworkProvisioningPhase.scanningWifi || _scanCancelRequested) return;
+    _scanCancelRequested = true;
+    if (state.activeOperationId == null) {
+      emit(state.copyWith(canCancel: false));
+    } else {
+      await cancelActiveOperation();
+    }
+  }
+
   void _emitDppOutcome(Object error) {
     final safeError = _safePresentationError(error);
     final phase = switch (safeError) {
@@ -858,7 +896,11 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
             phase: NetworkProvisioningPhase.failure,
             operationState: payload.operationState,
             error: const NetworkOperationFailedException(),
-            failureOrigin: state.phase == NetworkProvisioningPhase.configuringSta ? NetworkProvisioningFailureOrigin.wifiJoin : null,
+            failureOrigin: state.phase == NetworkProvisioningPhase.configuringSta
+                ? NetworkProvisioningFailureOrigin.wifiJoin
+                : state.phase == NetworkProvisioningPhase.scanningWifi
+                ? NetworkProvisioningFailureOrigin.wifiScan
+                : null,
             canCancel: false,
           ),
         );
@@ -1041,7 +1083,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   void _onWifiScanBatch(WifiScanBatch batch) {
-    if (state.phase != NetworkProvisioningPhase.scanningWifi || state.activeOperationId == null) {
+    if (state.phase != NetworkProvisioningPhase.scanningWifi || state.activeOperationId == null || _scanCancelRequested) {
       return;
     }
     final expectedCount = _expectedScanBatchCount;
@@ -1088,6 +1130,9 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
   }
 
   void _clearScanAccumulator() {
+    _scanDeadline?.cancel();
+    _scanDeadline = null;
+    _scanCancelRequested = false;
     _scanBatches.clear();
     _expectedScanBatchCount = null;
     _scanCompleteSeen = false;
@@ -1192,6 +1237,7 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
 
   @override
   Future<void> close() async {
+    _clearScanAccumulator();
     _stopStopReconciliation();
     _endIntent();
     _stopStaReconciliation();

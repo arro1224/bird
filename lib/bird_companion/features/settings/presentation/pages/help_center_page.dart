@@ -110,7 +110,8 @@ class _HelpCenterPageState extends State<HelpCenterPage> {
                 ),
                 BirdSettingsRow(
                   key: const Key('help-send-diagnostics'),
-                  title: '发送诊断包给客服',
+                  title: '查看诊断信息',
+                  subtitle: '选择盒子运行日志或手机诊断包',
                   leading: const Icon(Icons.description_outlined, color: AppColors.forestPrimary),
                   trailing: const BirdChevron(),
                   onTap: _openSystemLogs,

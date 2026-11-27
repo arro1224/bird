@@ -27,12 +27,14 @@ void main() {
     expect(demoMain, contains('demo-only'));
   });
 
-  test('settings entrypoint routes device setup through production repository', () {
+  test('settings demo uses the embedded box instead of real hardware dependencies', () {
     final demoMain = File('lib/main_bird_settings.dart').readAsStringSync();
 
     expect(demoMain, isNot(contains('B7SimulatedDemoPage')));
-    expect(demoMain, contains('BirdRoutes.connection'));
-    expect(demoMain, contains('provisioningRepository: widget.dependencies.provisioningRepository'));
+    expect(demoMain, contains('DemoRuntime.start(autoConnect: false)'));
+    expect(demoMain, contains('onReconnect: _reconnectDemo'));
+    expect(demoMain, contains('onProvisioningCompleted: widget.runtime.connect'));
+    expect(demoMain, isNot(contains('BirdCompanionDependencies.create()')));
   });
 
   test('production task flow has no demo fallback or fixed task totals', () {

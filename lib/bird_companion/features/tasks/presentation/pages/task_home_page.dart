@@ -149,32 +149,36 @@ class TaskHomePage extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 9),
-            Text(
-              '${_count(task.processed)} / ${_count(task.total)} 张',
-              style: const TextStyle(
-                fontSize: 22,
-                color: AppColors.mutedInk,
-                fontWeight: FontWeight.w500,
+            if (task.waitingForImport)
+              const Text('盒子正在导入照片，完成后自动开始识别。')
+            else ...[
+              Text(
+                '${_count(task.processed)} / ${_count(task.total)} 张',
+                style: const TextStyle(
+                  fontSize: 22,
+                  color: AppColors.mutedInk,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
-            Text(
-              '${task.progressPercent}%',
-              style: const TextStyle(
-                fontSize: 40,
-                color: AppColors.forestPrimary,
-                fontWeight: FontWeight.w700,
+              Text(
+                '${task.progressPercent}%',
+                style: const TextStyle(
+                  fontSize: 40,
+                  color: AppColors.forestPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 5),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(5),
-              child: LinearProgressIndicator(
-                value: task.progressPercent / 100,
-                minHeight: 7,
-                color: AppColors.forestPrimary,
-                backgroundColor: AppColors.divider,
+              const SizedBox(height: 5),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(5),
+                child: LinearProgressIndicator(
+                  value: task.progressPercent / 100,
+                  minHeight: 7,
+                  color: AppColors.forestPrimary,
+                  backgroundColor: AppColors.divider,
+                ),
               ),
-            ),
+            ],
             if (task.currentFile != null || task.speed != null) ...[
               const SizedBox(height: 9),
               _currentTaskActivity(context, task),
@@ -184,7 +188,7 @@ class TaskHomePage extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    '预计剩余 ${task.remainingMinutes} 分钟',
+                    task.etaLabel,
                     style: const TextStyle(
                       color: AppColors.mutedInk,
                       fontSize: 16,
@@ -197,6 +201,12 @@ class TaskHomePage extends StatelessWidget {
                 ),
               ],
             ),
+            if (task.updatedAt != null || task.connectionState != null)
+              Text(
+                task.freshnessFor(controller.connectionState),
+                key: const Key('current-task-updated-at'),
+                style: const TextStyle(color: AppColors.mutedInk),
+              ),
           ],
         ),
       ),
@@ -425,7 +435,7 @@ class TaskHomePage extends StatelessWidget {
       child: Icon(_typeIcon(task.type), color: AppColors.forestPrimary),
     ),
     title: Text(
-      task.type.label,
+      task.photoPreparation ? task.title : task.type.label,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: const TextStyle(
@@ -438,7 +448,11 @@ class TaskHomePage extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          task.state == TaskRunState.failed ? _failureLabel(task) : '${task.progressPercent}%',
+          task.state == TaskRunState.failed
+              ? _failureLabel(task)
+              : task.isFinishing
+              ? '正在收尾'
+              : '${task.progressPercent}%',
           style: TextStyle(
             color: task.state == TaskRunState.failed ? AppColors.danger : AppColors.forestDeep,
             fontSize: task.state == TaskRunState.failed ? 14 : 18,
@@ -533,14 +547,18 @@ class TaskHomePage extends StatelessWidget {
     TaskRunState.cancelled => Icons.block_outlined,
   };
 
-  String _stateLabel(TaskSummary task) => switch (task.state) {
-    TaskRunState.queued => '等待中',
-    TaskRunState.running => '进行中',
-    TaskRunState.paused => '已暂停',
-    TaskRunState.failed => _failureLabel(task),
-    TaskRunState.completed => '已完成',
-    TaskRunState.cancelled => '已取消',
-  };
+  String _stateLabel(TaskSummary task) => task.pendingCancellation
+      ? '取消待确认'
+      : task.waitingForImport
+      ? '等待导入完成'
+      : switch (task.state) {
+          TaskRunState.queued => '等待中',
+          TaskRunState.running => '进行中',
+          TaskRunState.paused => '已暂停',
+          TaskRunState.failed => _failureLabel(task),
+          TaskRunState.completed => '已完成',
+          TaskRunState.cancelled => '已取消',
+        };
 
   /// 任务级失败可能没有任何逐文件失败项；不要显示误导性的“失败 0 项”。
   String _failureLabel(TaskSummary task) {

@@ -16,7 +16,8 @@ val embeddedDemoTestImport = Regex("""(?m)^import 'file:[^']*/integration_test/e
 val embeddedDemoIntegrationTest = configuredDartTarget.endsWith("integration_test/embedded_demo_app_test.dart") ||
     (integrationTestListener && rootProject.projectDir.parentFile.resolve(configuredDartTarget)
         .takeIf { it.isFile }?.useLines { lines -> lines.any { embeddedDemoTestImport.matches(it) } } == true)
-val embeddedDemoTarget = configuredDartTarget.endsWith("main_bird_demo.dart") || embeddedDemoIntegrationTest
+val embeddedDemoTarget = configuredDartTarget.endsWith("main_bird_demo.dart") ||
+    configuredDartTarget.endsWith("main_bird_settings.dart") || embeddedDemoIntegrationTest
 if (embeddedDemoIntegrationTest && gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }) {
     throw GradleException("Embedded integration tests are Debug-only; Release demos use lib/main_bird_demo.dart.")
 }

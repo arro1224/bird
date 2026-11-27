@@ -8,11 +8,11 @@ import 'package:aves/bird_companion/core/models/review_models.dart';
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/core/models/scene_models.dart';
 import 'package:aves/bird_companion/features/gallery/data/photo_api.dart';
+import 'package:aves/bird_companion/features/gallery/data/photo_cached_query.dart';
 import 'package:aves/bird_companion/features/gallery/data/photo_local_query_executor.dart';
 import 'package:aves/bird_companion/features/gallery/domain/gallery_timing.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_local_filter_engine.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
-import 'package:aves/bird_companion/features/gallery/domain/photo_query_plan.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
 import 'package:aves/bird_companion/core/network/api_exception.dart';
 import 'package:aves/bird_companion/core/network/connectivity_monitor.dart';
@@ -22,7 +22,7 @@ import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/core/sync/sync_coordinator.dart';
 import 'package:aves/bird_companion/features/connection/domain/request_id_factory.dart';
 
-class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionRepository, ProjectBatchReviewRepository {
+class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionRepository, ProjectBatchReviewRepository, PhotoCachedQueryRepository {
   PhotoRepositoryImpl(
     this._api,
     this._connectivity,
@@ -31,6 +31,7 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
     String Function()? cacheNamespace,
     String? Function()? deviceId,
     this._invalidateReviewVersions,
+    this._isDeviceConnected,
   ]) : _cacheNamespace = cacheNamespace ?? (() => 'default'),
        _deviceId = deviceId ?? (() => null);
   final PhotoApi _api;
@@ -40,6 +41,7 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
   final String Function() _cacheNamespace;
   final String? Function() _deviceId;
   final void Function(Iterable<String>)? _invalidateReviewVersions;
+  final bool Function()? _isDeviceConnected;
   final _batchWrites = <_PhotoScope, Future<void>>{};
   final _reads = <(_PhotoScope, String), _PhotoRead>{};
   final _invalidations = <_PhotoScope, Future<void>>{};
@@ -62,6 +64,11 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
 
   @override
   Future<PhotoPage> page(String id, PhotoQuery q) => pageWithProgress(id, q);
+
+  PhotoCachedQuery _cachedQuery(String id) => PhotoCachedQuery(_cache, _pending.readAll(), _cacheNamespace(), _activeDeviceId, id);
+
+  @override
+  PhotoPage? cachedPage(String projectId, PhotoQuery query) => _cachedQuery(projectId).page(query);
 
   @override
   Future<PhotoPage> pageWithProgress(
@@ -115,24 +122,39 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
     PhotoQueryCancellationToken cancellationToken,
   ) async {
     final (namespace, id) = scope;
-    final key = '$_photoPrefix$namespace:$id:${_queryKey(q)}';
+    final sessionOnline = _isDeviceConnected?.call();
+    if (q.cursor?.startsWith(PhotoCachedQuery.cursorPrefix) == true || sessionOnline == false || sessionOnline == null && !await _connectivity.hasNetwork) {
+      cancellationToken.throwIfCancelled();
+      final local = cachedPage(id, q);
+      if (local != null) return local;
+    }
     try {
       final page = await _localQueryExecutor.page(
         id,
         q,
-        onProgress: onProgress,
+        onProgress: (progress) {
+          final preview = progress.previewItems;
+          onProgress(
+            PhotoQueryProgress(
+              scannedCount: progress.scannedCount,
+              matchedCount: progress.matchedCount,
+              fromCache: progress.fromCache,
+              complete: progress.complete,
+              previewItems: preview == null ? null : const PhotoLocalFilterEngine().filterAndSort(_cachedQuery(id).project(preview), q),
+            ),
+          );
+        },
         cancellationToken: cancellationToken,
         cacheNamespace: namespace,
       );
       cancellationToken.throwIfCancelled();
+      if (_cachedQuery(id).scopedOperations.any((op) => op.remainingFileIds.isNotEmpty)) {
+        return cachedPage(id, q) ?? page;
+      }
       return page;
     } on ApiException {
       cancellationToken.throwIfCancelled();
-      // The exact wire key omits App-local conditions. A raw page cannot
-      // stand in for a complete filtered result when the box is unreachable.
-      final cached = PhotoQueryPlan(q).requiresLocalScan ? null : _cache.read<Map>(key);
-      if (cached != null) return _photoPageFromCache(cached, q);
-      final local = _localPageFromSnapshots(scope, q);
+      final local = cachedPage(id, q);
       if (local != null) return local;
       rethrow;
     }
@@ -150,6 +172,16 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
       return null;
     }
     final items = (raw['items'] as List? ?? const []).whereType<Map>().map((item) => PhotoSummary.fromJson(Map<String, dynamic>.from(item))).toList(growable: false);
+    final known = cachedPage(batchId, const PhotoQuery(pageSize: 2147483647))?.items ?? const <PhotoSummary>[];
+    final currentById = {for (final photo in known) photo.id: photo};
+    final candidateIds = items.map((photo) => photo.id).toSet();
+    final wireQuery = PhotoQuery.fromJson(serverQuery.parameters);
+    const filter = PhotoLocalFilterEngine();
+    // A completed candidate scan can predate a local review or its sync ACK.
+    // Reusing it would turn an old empty result into a false current result.
+    if (items.any((photo) => currentById[photo.id] != null && jsonEncode(currentById[photo.id]!.toJson()) != jsonEncode(photo.toJson())) || known.any((photo) => filter.matches(photo, wireQuery) && !candidateIds.contains(photo.id))) {
+      return null;
+    }
     return PhotoCandidateSnapshot(items: items, cachedAt: cachedAt);
   }
 
@@ -618,60 +650,6 @@ class PhotoRepositoryImpl implements PhotoRepository, PhotoQueryExecutionReposit
   String? get _activeDeviceId {
     final value = _deviceId()?.trim();
     return value == null || value.isEmpty ? null : value;
-  }
-
-  PhotoPage _photoPageFromCache(Map<dynamic, dynamic> raw, PhotoQuery query) {
-    final complete = query.cursor == null && raw['has_more'] != true;
-    return PhotoPage(
-      items: (raw['items'] as List? ?? const []).whereType<Map>().map((item) => PhotoSummary.fromJson(Map<String, dynamic>.from(item))).toList(),
-      hasMore: raw['has_more'] == true,
-      nextCursor: raw['next_cursor']?.toString(),
-      fromCache: true,
-      cachedAt: DateTime.tryParse(raw['cached_at']?.toString() ?? ''),
-      resultComplete: complete,
-      cacheScope: complete ? PhotoCacheScope.complete : PhotoCacheScope.partial,
-    );
-  }
-
-  PhotoPage? _localPageFromSnapshots(_PhotoScope scope, PhotoQuery query) {
-    final (namespace, batchId) = scope;
-    final prefix = '$_photoPrefix$namespace:$batchId:';
-    final byId = <String, PhotoSummary>{};
-    final savedAtById = <String, DateTime?>{};
-    DateTime? cachedAt;
-    for (final key in _cache.keysWithPrefix(prefix)) {
-      final raw = _cache.read<Map>(key);
-      if (raw == null) continue;
-      final savedAt = DateTime.tryParse(raw['cached_at']?.toString() ?? '');
-      if (savedAt != null && (cachedAt == null || savedAt.isAfter(cachedAt))) cachedAt = savedAt;
-      for (final item in (raw['items'] as List? ?? const [])) {
-        if (item is! Map) continue;
-        final photo = PhotoSummary.fromJson(Map<String, dynamic>.from(item));
-        if (photo.id.isEmpty) continue;
-        final previousSavedAt = savedAtById[photo.id];
-        if (previousSavedAt != null && (savedAt == null || savedAt.isBefore(previousSavedAt))) continue;
-        byId[photo.id] = photo;
-        savedAtById[photo.id] = savedAt;
-      }
-    }
-    if (byId.isEmpty) return null;
-
-    final items = const PhotoLocalFilterEngine().filterAndSort(byId.values, query);
-    final offset = int.tryParse(query.cursor ?? '') ?? 0;
-    final start = offset.clamp(0, items.length);
-    final end = (start + query.pageSize).clamp(start, items.length);
-    final pageItems = items.sublist(start, end);
-    return PhotoPage(
-      items: pageItems,
-      hasMore: end < items.length,
-      nextCursor: end < items.length ? '$end' : null,
-      fromCache: true,
-      cachedAt: cachedAt,
-      resultComplete: false,
-      cacheScope: PhotoCacheScope.partial,
-      scannedCount: byId.length,
-      matchedCount: items.length,
-    );
   }
 }
 

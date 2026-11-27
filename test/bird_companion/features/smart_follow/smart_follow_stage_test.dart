@@ -32,9 +32,9 @@ SmartFollowSession sessionJson({
 void main() {
   test('等待目标盘 / 等待源卡：等待色且说明识别仍在继续', () {
     final target = resolveSmartFollowStage(session: sessionJson(state: 'waiting_for_target'));
-    expect(target.label, '等待目标盘');
+    expect(target.label, '存储受阻，等待处理');
     expect(target.isWaiting, isTrue);
-    expect(target.hint, contains('识别仍在继续'));
+    expect(target.hint, contains('不据此判断目标盘已拔出'));
 
     final source = resolveSmartFollowStage(session: sessionJson(state: 'waiting_for_source'));
     expect(source.label, '等待源卡');
@@ -42,7 +42,9 @@ void main() {
   });
 
   test('失败显示后端原因，没有原因时给可操作文案', () {
-    final failing = resolveSmartFollowStage(session: sessionJson(state: 'failed', errorMessage: '盒子内部错误 500'));
+    final failing = resolveSmartFollowStage(
+      session: sessionJson(state: 'failed', errorMessage: '盒子内部错误 500'),
+    );
     expect(failing.label, '失败／需要处理');
     expect(failing.hint, '盒子内部错误 500');
     expect(failing.tone, SmartFollowStageTone.failure);
@@ -95,14 +97,20 @@ void main() {
 
   test('信息更新运行中优先于会话状态', () {
     final running = SmartFollowMetadataUpdate.fromJson({'update_id': 'u1', 'state': 'running'});
-    final stage = resolveSmartFollowStage(session: sessionJson(state: 'completed'), metadataUpdate: running);
+    final stage = resolveSmartFollowStage(
+      session: sessionJson(state: 'completed'),
+      metadataUpdate: running,
+    );
     expect(stage.label, '正在统一保存信息');
     expect(stage.hint, contains('不会重新复制'));
   });
 
   test('信息更新已结束时回到会话自身文案', () {
     final finished = SmartFollowMetadataUpdate.fromJson({'update_id': 'u1', 'state': 'completed_partial'});
-    final stage = resolveSmartFollowStage(session: sessionJson(state: 'completed'), metadataUpdate: finished);
+    final stage = resolveSmartFollowStage(
+      session: sessionJson(state: 'completed'),
+      metadataUpdate: finished,
+    );
     expect(stage.label, '已完成');
   });
 

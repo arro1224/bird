@@ -1,6 +1,4 @@
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
-import 'package:aves/bird_companion/app/app_router.dart';
-import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/features/settings/presentation/bird_settings_controller.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/device_details_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/device_management_page.dart';
@@ -34,7 +32,7 @@ void main() {
     expect(find.text('正在重新搜索附近设备…'), findsOneWidget);
   });
 
-  testWidgets('device details reconnect opens device discovery', (tester) async {
+  testWidgets('device details keeps connection action on the device home page', (tester) async {
     final controller = BirdSettingsController();
     RouteSettings? route;
     addTearDown(controller.dispose);
@@ -54,13 +52,8 @@ void main() {
 
     expect(find.text('设备详情'), findsOneWidget);
     expect(find.text('BirdAI 3.0.2'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('device-reconnect')));
-    await tester.pumpAndSettle();
-    expect(route?.name, BirdRoutes.connection);
-    expect(
-      (route?.arguments as ConnectionArgs).entryMode,
-      ConnectionEntryMode.addOrSwitch,
-    );
+    expect(find.byKey(const Key('device-reconnect')), findsNothing);
+    expect(route, isNull);
   });
 
   testWidgets('device details expands technical details', (tester) async {
@@ -75,6 +68,8 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('device-technical-details')));
     await tester.pump();
-    expect(find.text('API 版本'), findsOneWidget);
+    expect(find.text('连接安全'), findsOneWidget);
+    expect(find.text('API 版本'), findsNothing);
+    expect(find.text('设备地址'), findsNothing);
   });
 }

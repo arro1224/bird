@@ -129,10 +129,7 @@ class _BirdAppShellState extends State<BirdAppShell> with WidgetsBindingObserver
                         ),
                         onAnalysisCompleted: _openAlbumRoot,
                       ),
-                      _ => SettingsExperienceRoot(
-                        onOpenAlbum: () => _selectTab(0),
-                        onOpenTasks: () => _selectTab(1),
-                      ),
+                      _ => const SettingsExperienceRoot(),
                     },
                   ),
                 ),

@@ -9,36 +9,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('network diagnostic secondary entries open styled targets', (
+  testWidgets('network diagnostics avoids duplicate hotspot and switch entries', (
     tester,
   ) async {
     await _pump(tester, const NetworkDiagnosticsPage());
 
-    await tester.tap(find.text('查看热点信息'));
-    await tester.pumpAndSettle();
-    expect(find.text('热点信息'), findsOneWidget);
-    expect(find.text('安全类型'), findsOneWidget);
-    await tester.tap(find.byTooltip('关闭'));
-    await tester.pumpAndSettle();
+    expect(find.text('查看热点信息'), findsNothing);
+    expect(find.text('切换网络'), findsNothing);
+    expect(find.text('当前 IP'), findsNothing);
+    expect(find.text('设备名称'), findsNothing);
+    expect(find.byKey(const Key('network-recheck')), findsOneWidget);
+    expect(find.byKey(const Key('network-export-diagnostics')), findsOneWidget);
 
     await tester.tap(find.byTooltip('帮助'));
     await tester.pumpAndSettle();
     expect(find.text('帮助中心'), findsOneWidget);
-  });
-
-  testWidgets('network actions navigate in the isolated demo app', (
-    tester,
-  ) async {
-    await _pump(tester, const NetworkDiagnosticsPage());
-
-    await tester.tap(find.text('切换网络'));
-    await tester.pumpAndSettle();
-    expect(find.text('更换设备'), findsOneWidget);
-    await _tapSettingsBack(tester);
-
-    await tester.tap(find.text('导出手机诊断'));
-    await tester.pumpAndSettle();
-    expect(find.text('暂未能准备手机诊断，请重试。'), findsOneWidget, reason: 'isolated preview has no production diagnostic service');
   });
 
   testWidgets('system logs arrows open complete detail experiences', (
@@ -46,23 +31,15 @@ void main() {
   ) async {
     await _pump(tester, const SystemLogsPage());
 
-    await tester.tap(find.text('软件版本'));
+    await tester.tap(find.text('导出盒子运行日志'));
     await tester.pumpAndSettle();
-    expect(find.text('版本详情'), findsOneWidget);
-    expect(find.text('设备协议'), findsOneWidget);
-    await tester.tap(find.byTooltip('关闭'));
-    await tester.pumpAndSettle();
+    expect(find.text('请先连接拍鸟盒子后再导出诊断信息'), findsOneWidget);
 
-    await tester.tap(find.text('错误记录'));
+    await tester.tap(find.text('异常说明'));
     await tester.pumpAndSettle();
-    expect(find.text('诊断记录'), findsOneWidget);
-    expect(find.text('暂无错误记录'), findsOneWidget);
+    expect(find.text('操作失败'), findsOneWidget);
+    expect(find.textContaining('不提供历史崩溃列表'), findsOneWidget);
     await _tapSettingsBack(tester);
-
-    await tester.tap(find.text('清理缓存'));
-    await tester.pumpAndSettle();
-    expect(find.text('存储与缓存'), findsOneWidget);
-    expect(find.text('缓存明细'), findsOneWidget);
   });
 
   testWidgets('system support entries use styled in-module pages', (
@@ -71,33 +48,35 @@ void main() {
     await _pump(tester, const SystemLogsPage());
 
     await tester.scrollUntilVisible(
-      find.text('隐私说明'),
-      400,
+      find.byKey(const Key('logs-privacy')),
+      700,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('隐私说明'));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -180));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('logs-privacy')));
     await tester.pumpAndSettle();
     expect(find.text('本地优先'), findsOneWidget);
     await _tapSettingsBack(tester);
 
     await tester.scrollUntilVisible(
-      find.text('开源许可'),
-      400,
+      find.byKey(const Key('logs-licenses')),
+      700,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('开源许可'));
+    await tester.tap(find.byKey(const Key('logs-licenses')));
     await tester.pumpAndSettle();
-    expect(find.text('第三方组件'), findsOneWidget);
+    expect(find.text('本应用使用的开源组件及其许可文本由 Flutter 根据实际依赖生成。'), findsOneWidget);
     await _tapSettingsBack(tester);
 
     await tester.scrollUntilVisible(
-      find.text('关于应用'),
-      400,
+      find.byKey(const Key('logs-about')),
+      700,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('关于应用'));
+    await tester.tap(find.byKey(const Key('logs-about')));
     await tester.pumpAndSettle();
-    expect(find.text('产品定位'), findsOneWidget);
+    expect(find.text('拍鸟伴侣'), findsOneWidget);
   });
 
   testWidgets('help entries open FAQ feedback and guide pages', (tester) async {
@@ -111,7 +90,7 @@ void main() {
     await tester.tap(find.text('提交问题反馈'));
     await tester.pumpAndSettle();
     expect(find.text('问题描述'), findsOneWidget);
-    expect(find.text('提交反馈'), findsOneWidget);
+    expect(find.text('返回'), findsOneWidget);
     await _tapSettingsBack(tester);
 
     await tester.tap(find.text('查看用户指南'));

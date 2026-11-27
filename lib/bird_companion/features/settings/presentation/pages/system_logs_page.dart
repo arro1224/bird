@@ -1,18 +1,15 @@
 import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'dart:async';
-import 'package:aves/bird_companion/core/diagnostics/app_build_identity.dart';
 import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
-import 'package:aves/bird_companion/core/models/device_models.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_card.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_row.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_scaffold.dart';
-import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_sheet.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/device_information_pages.dart';
 import 'package:flutter/material.dart';
 
@@ -25,12 +22,8 @@ class SystemLogsPage extends StatefulWidget {
 
 class _SystemLogsPageState extends State<SystemLogsPage> {
   BirdCompanionDependencies? _dependencies;
-  DeviceStatus? _status;
-  Map<String, dynamic>? _buildIdentity;
-  String get _appVersion => AppBuildIdentity.version(_buildIdentity);
   String? _downloadedPath;
   var _initialized = false;
-  var _loading = false;
   var _exporting = false;
 
   @override
@@ -39,27 +32,6 @@ class _SystemLogsPageState extends State<SystemLogsPage> {
     if (_initialized) return;
     _initialized = true;
     _dependencies = context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>()?.dependencies;
-    unawaited(
-      (_dependencies?.appBuildIdentity ?? AppBuildIdentity()).read().then((build) {
-        if (mounted) setState(() => _buildIdentity = build);
-      }),
-    );
-    if (_dependencies != null) unawaited(_loadStatus());
-  }
-
-  Future<void> _loadStatus() async {
-    final dependencies = _dependencies;
-    if (dependencies == null || _loading) return;
-    setState(() => _loading = true);
-    try {
-      final status = await dependencies.deviceRepository.fetchStatus();
-      if (mounted) setState(() => _status = status);
-    } catch (_) {
-      // A disconnected box keeps the approved placeholders instead of
-      // replacing the page with an error panel.
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
   }
 
   Future<void> _exportLogs({String scope = 'device_and_jobs'}) async {
@@ -94,123 +66,88 @@ class _SystemLogsPageState extends State<SystemLogsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final status = _status;
     return BirdSettingsScaffold(
       title: '系统与日志',
-      titleFontSize: 20,
+      titleFontSize: 25,
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.settingsPageHorizontal,
           0,
           AppSpacing.settingsPageHorizontal,
-          AppSpacing.lg,
+          AppSpacing.xl,
         ),
         children: [
           _SectionCard(
-            label: '版本信息',
-            rows: [
-              _LogRow(
-                Icons.view_in_ar_outlined,
-                '软件版本',
-                '当前应用软件版本',
-                value: _appVersion,
-                onTap: _showVersionDetails,
-              ),
-              _LogRow(
-                Icons.memory_rounded,
-                '固件版本',
-                '设备固件版本',
-                value: status?.softwareVersion ?? '未读取',
-                onTap: _showVersionDetails,
-              ),
-              _LogRow(
-                Icons.psychology_outlined,
-                '模型版本',
-                'AI 模型版本',
-                value: status?.modelVersion ?? '未读取',
-                onTap: _showVersionDetails,
-                showDivider: false,
-              ),
-            ],
-          ),
-          if (_loading) const LinearProgressIndicator(minHeight: 2),
-          const SizedBox(height: AppSpacing.xs),
-          _SectionCard(
             label: '日志与诊断',
+            icon: Icons.receipt_long_outlined,
             rows: [
               _LogRow(
                 Icons.description_outlined,
-                '导出设备日志',
-                '导出设备运行日志',
+                '导出盒子运行日志',
+                subtitle: '从拍鸟盒子下载设备运行记录',
                 onTap: _exporting ? null : () => _exportLogs(scope: 'device'),
               ),
               _LogRow(
-                Icons.archive_outlined,
-                '导出诊断包',
-                '导出手机请求与连接记录，断联时也可使用',
+                Icons.phone_android_rounded,
+                '导出手机诊断包',
+                key: const Key('logs-export-package'),
+                subtitle: '扫描与连接过程；断联时也可导出',
                 onTap: () => showPhoneDiagnostics(context),
               ),
               _LogRow(
                 Icons.warning_amber_rounded,
-                '错误记录',
-                '查看历史错误记录',
+                '异常说明',
+                subtitle: '了解操作失败与应用崩溃的区别',
                 onTap: () => _openPage(const DiagnosticRecordsPage()),
-              ),
-              _LogRow(
-                Icons.file_present_outlined,
-                '最近崩溃记录',
-                '查看最近崩溃的详细信息',
-                onTap: () => _openPage(const DiagnosticRecordsPage(initialCrashTab: true)),
                 showDivider: false,
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.xs),
-          _SectionCard(
-            label: '存储与缓存',
-            rows: [
-              _LogRow(
-                Icons.cleaning_services_outlined,
-                '清理缓存',
-                '清理应用缓存数据，释放存储空间',
-                onTap: () => _openPage(const StorageCachePage()),
-              ),
-              _LogRow(
-                Icons.image_outlined,
-                '查看离线缩略图占用',
-                '查看离线缩略图占用的存储空间',
-                onTap: () => _openPage(const StorageCachePage()),
-                showDivider: false,
-              ),
-            ],
+          const SizedBox(height: AppSpacing.sm),
+          const BirdSettingsCard(
+            padding: EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline_rounded, color: AppColors.forestPrimary, size: 22),
+                SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    '盒子运行日志记录设备侧运行情况；手机连接诊断记录手机端蓝牙和网络过程。两类文件来源不同，按问题分别导出。',
+                    style: TextStyle(color: AppColors.mutedInk, fontSize: 13, height: 1.45),
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: AppSpacing.sm),
           _SectionCard(
-            label: '隐私与说明',
+            label: '应用信息',
+            icon: Icons.shield_outlined,
             rows: [
               _LogRow(
-                Icons.shield_outlined,
-                '隐私说明',
-                '查看隐私政策与数据使用说明',
-                onTap: () => _openPage(const PrivacyNoticePage()),
+                Icons.info_outline_rounded,
+                '关于应用',
+                key: const Key('logs-about'),
+                onTap: () => _openPage(const AboutBirdAppPage()),
               ),
               _LogRow(
                 Icons.code_rounded,
                 '开源许可',
-                '查看第三方开源组件许可信息',
+                key: const Key('logs-licenses'),
                 onTap: () => _openPage(const OpenSourceLicensesPage()),
               ),
               _LogRow(
-                Icons.info_outline_rounded,
-                '关于应用',
-                '应用介绍与开发者信息',
-                onTap: () => _openPage(const AboutBirdAppPage()),
+                Icons.shield_outlined,
+                '隐私说明',
+                key: const Key('logs-privacy'),
+                onTap: () => _openPage(const PrivacyNoticePage()),
                 showDivider: false,
               ),
             ],
           ),
           if (_downloadedPath != null) ...[
-            const SizedBox(height: AppSpacing.xs),
+            const SizedBox(height: AppSpacing.sm),
             BirdSettingsCard(
               child: SelectableText(
                 '本地文件位置：$_downloadedPath',
@@ -218,41 +155,6 @@ class _SystemLogsPageState extends State<SystemLogsPage> {
               ),
             ),
           ],
-          const SizedBox(height: AppSpacing.xs),
-          const BirdSettingsCard(
-            padding: EdgeInsets.symmetric(
-              horizontal: AppSpacing.xs,
-              vertical: AppSpacing.xxs,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  color: AppColors.forestPrimary,
-                  size: 20,
-                ),
-                SizedBox(width: AppSpacing.xs),
-                Expanded(
-                  child: Text(
-                    '导出的日志与诊断信息仅用于问题排查与优化，不会用于其他用途。',
-                    style: TextStyle(
-                      color: AppColors.mutedInk,
-                      fontSize: 9.5,
-                      height: 1.2,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xxs),
-          BirdSettingsPrimaryButton(
-            key: const Key('logs-export-package'),
-            label: _exporting ? '正在生成诊断包' : '导出诊断包',
-            icon: Icons.archive_outlined,
-            height: 44,
-            onPressed: () => showPhoneDiagnostics(context),
-          ),
         ],
       ),
     );
@@ -273,57 +175,36 @@ class _SystemLogsPageState extends State<SystemLogsPage> {
       ),
     );
   }
-
-  Future<void> _showVersionDetails() => showBirdSettingsSheet<void>(
-    context: context,
-    title: '版本详情',
-    child: BirdSettingsCard(
-      child: Column(
-        children: [
-          BirdSettingsValueRow(label: '应用版本', value: _appVersion),
-          BirdSettingsValueRow(
-            label: '固件版本',
-            value: _status?.softwareVersion ?? '未读取',
-          ),
-          BirdSettingsValueRow(
-            label: 'AI 模型',
-            value: _status?.modelVersion ?? '未读取',
-          ),
-          const BirdSettingsValueRow(label: '设备协议', value: 'BirdBox v1'),
-          const SizedBox(height: 12),
-          SelectableText('构建编号：${_buildIdentity?['build_id'] ?? '未提供'}'),
-          SelectableText('源码提交：${_buildIdentity?['git_commit'] ?? '未提供'}'),
-          SelectableText('安装包 SHA256：${_buildIdentity?['apk_sha256'] ?? '未提供'}'),
-        ],
-      ),
-    ),
-  );
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.label, required this.rows});
+  const _SectionCard({required this.label, required this.icon, required this.rows});
 
   final String label;
+  final IconData icon;
   final List<Widget> rows;
 
   @override
   Widget build(BuildContext context) => BirdSettingsCard(
-    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(
-            top: AppSpacing.xxs,
-            left: AppSpacing.xxs,
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.forestDeep,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-            ),
+          padding: const EdgeInsets.only(top: AppSpacing.md, bottom: AppSpacing.xs),
+          child: Row(
+            children: [
+              Icon(icon, color: AppColors.forestPrimary, size: 22),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppColors.forestDeep,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
         ),
         ...rows,
@@ -335,17 +216,16 @@ class _SectionCard extends StatelessWidget {
 class _LogRow extends StatelessWidget {
   const _LogRow(
     this.icon,
-    this.title,
-    this.subtitle, {
-    this.value,
+    this.title, {
+    super.key,
+    this.subtitle,
     this.onTap,
     this.showDivider = true,
   });
 
   final IconData icon;
   final String title;
-  final String subtitle;
-  final String? value;
+  final String? subtitle;
   final VoidCallback? onTap;
   final bool showDivider;
 
@@ -353,38 +233,14 @@ class _LogRow extends StatelessWidget {
   Widget build(BuildContext context) => BirdSettingsRow(
     title: title,
     subtitle: subtitle,
-    minHeight: 42,
-    titleFontSize: 12,
-    subtitleFontSize: 10,
+    minHeight: 64,
+    titleFontSize: 16,
     titleColor: AppColors.ink,
     titleFontWeight: FontWeight.w600,
-    leadingSize: 40,
-    leadingGap: AppSpacing.xs,
-    leading: CircleAvatar(
-      radius: 14,
-      backgroundColor: AppColors.forestSoft,
-      child: Icon(icon, color: AppColors.forestPrimary, size: 17),
-    ),
-    trailing: value == null
-        ? const BirdChevron(color: AppColors.forestPrimary)
-        : Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 92),
-                child: Text(
-                  value!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.mutedInk,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              const BirdChevron(color: AppColors.forestPrimary),
-            ],
-          ),
+    leadingSize: 44,
+    leadingGap: AppSpacing.md,
+    leading: Icon(icon, color: AppColors.forestPrimary, size: 23),
+    trailing: const BirdChevron(color: AppColors.forestPrimary),
     onTap: onTap,
     showDivider: showDivider,
   );

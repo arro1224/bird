@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
-import 'package:aves/bird_companion/core/models/job_models.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
 import 'package:aves/bird_companion/features/settings/presentation/settings_showcase_page.dart';
@@ -13,12 +12,7 @@ import 'package:flutter/material.dart';
 class SettingsExperienceRoot extends StatefulWidget {
   const SettingsExperienceRoot({
     super.key,
-    required this.onOpenAlbum,
-    required this.onOpenTasks,
   });
-
-  final VoidCallback onOpenAlbum;
-  final VoidCallback onOpenTasks;
 
   @override
   State<SettingsExperienceRoot> createState() => _SettingsExperienceRootState();
@@ -76,31 +70,15 @@ class _SettingsExperienceRootState extends State<SettingsExperienceRoot> {
       stream: deviceStatus.stream,
       initialData: deviceStatus.state,
       builder: (context, snapshot) {
-        final currentJob = snapshot.data?.status?.currentJob;
         return SettingsShowcasePage(
           embedded: true,
           deviceSession: dependencies.deviceSessionCubit,
           deviceStatus: deviceStatus,
           settingsController: _settingsController,
-          currentBatchTitle: currentJob?.sourceProjectName ?? '当前项目',
-          currentBatchSummary: currentJob == null
-              ? '暂无进行中的项目'
-              : currentJob.sourceProjectId == null
-              ? '由盒子任务 ${currentJob.id} 同步'
-              : '项目编号 ${currentJob.sourceProjectId}',
-          currentTaskTitle: currentJob?.type.label ?? '暂无当前任务',
-          currentTaskSummary: _taskSummary(currentJob),
           onReconnect: () => openReconnectConnection(context),
-          onOpenCurrentBatch: widget.onOpenAlbum,
-          onOpenCurrentTask: widget.onOpenTasks,
         );
       },
     );
   }
 
-  String _taskSummary(BirdJobStatus? job) {
-    if (job == null) return '任务状态由已连接盒子提供';
-    final progress = job.progress <= 1 ? job.progress * 100 : job.progress;
-    return '${job.state.label} · ${progress.round().clamp(0, 100)}%';
-  }
 }

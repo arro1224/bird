@@ -14,11 +14,7 @@ import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_pag
 import 'package:flutter/material.dart';
 
 typedef BirdDemoSettingsBuilder =
-    Widget Function(
-      BuildContext context,
-      VoidCallback onOpenTask,
-      VoidCallback onOpenAlbum,
-    );
+    Widget Function(BuildContext context);
 
 class BirdDemoShell extends StatefulWidget {
   const BirdDemoShell({
@@ -90,25 +86,10 @@ class _BirdDemoShellState extends State<BirdDemoShell> {
     ),
   );
 
-  Widget _settingsRoot() => ListenableBuilder(
-    listenable: widget.taskController,
-    builder: (context, _) {
-      final task = widget.taskController.currentTask;
-      void openTask() => setState(() => _selectedIndex = 1);
-      void openAlbum() => setState(() => _selectedIndex = 0);
-      return widget.settingsPageBuilder?.call(context, openTask, openAlbum) ??
-          widget.settingsPage ??
-          SettingsShowcasePage(
-            embedded: true,
-            currentBatchTitle: task.sourceBatch ?? '当前批次',
-            currentBatchSummary: '${task.total} 张照片 · ${task.pendingReviewCount ?? 0} 张待审',
-            currentTaskTitle: task.type.label,
-            currentTaskSummary: '${task.processed} / ${task.total} · ${task.progressPercent}%',
-            onOpenCurrentBatch: openAlbum,
-            onOpenCurrentTask: openTask,
-          );
-    },
-  );
+  Widget _settingsRoot() {
+    return widget.settingsPageBuilder?.call(context) ??
+        widget.settingsPage ?? const SettingsShowcasePage(embedded: true);
+  }
 }
 
 class _TaskTabNavigator extends StatelessWidget {

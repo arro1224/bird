@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:aves/bird_companion/features/recognition/recognition_repository.dart';
 import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_creation_service.dart';
 import 'package:aves/bird_companion/features/smart_follow/presentation/entry/smart_follow_configuration_controller.dart';
@@ -23,6 +24,9 @@ import 'package:aves/bird_companion/features/jobs/domain/job_create_requests.dar
 import 'package:aves/bird_companion/features/jobs/domain/job_report.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_page.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_repository.dart';
+import 'package:aves/bird_companion/features/jobs/data/import_analysis_service.dart';
+import 'package:aves/bird_companion/features/jobs/domain/import_analysis_models.dart';
+import 'package:aves/bird_companion/features/connection/domain/request_id_factory.dart';
 import 'package:aves/bird_companion/features/storage/domain/card_scan_result.dart';
 import 'package:aves/bird_companion/features/storage/domain/storage_repository.dart';
 import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
@@ -48,6 +52,8 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     RecognitionRepository? recognitionRepository,
     SmartFollowCreationService? smartFollowCreation,
     SmartFollowConfigurationReader Function(String)? smartFollowConfiguration,
+    ImportAnalysisService? importAnalysis,
+    SmartFollowConfigurationReader Function()? importSmartFollowConfiguration,
     // 历史参数：轮询周期曾是它，2026-11-18 起退化轮询统一 1.5s（见
     // _configurePolling）。保留入参避免既有测试/调用点破坏，值不再透传。
     @Deprecated('Polling cadence is fixed by _configurePolling; kept for call-site compatibility.') Duration pollInterval = const Duration(seconds: 4),
@@ -65,6 +71,8 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
          recognitionRepository: recognitionRepository,
          smartFollowCreation: smartFollowCreation,
          smartFollowConfiguration: smartFollowConfiguration,
+         importAnalysis: importAnalysis,
+         importSmartFollowConfiguration: importSmartFollowConfiguration,
        );
 
   RepositoryTaskExperienceController._({
@@ -81,6 +89,8 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     required this.recognitionRepository,
     required this.smartFollowCreation,
     required this.smartFollowConfiguration,
+    required this.importAnalysis,
+    required this.importSmartFollowConfiguration,
   }) : super(const ProductionTaskExperienceDataSource()) {
     setConnectionState(_mapConnection(_deviceSessionCubit.state.phase));
     _lastEventConnectionState = _eventClient.currentState;
@@ -99,6 +109,11 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   final RecognitionRepository? recognitionRepository;
   final SmartFollowCreationService? smartFollowCreation;
   final SmartFollowConfigurationReader Function(String)? smartFollowConfiguration;
+  final ImportAnalysisService? importAnalysis;
+  final SmartFollowConfigurationReader Function()? importSmartFollowConfiguration;
+  bool get pendingImportStart => importAnalysis?.hasPendingStart == true;
+  String? _importIntentId;
+  void beginImportConfiguration() => _importIntentId = SecureRequestIdFactory().create();
   final StorageRepository _storageRepository;
   final BatchRepository _batchRepository;
   final JobRepository _jobRepository;
@@ -113,14 +128,17 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   final PendingOperationStore _pendingOperationStore;
   final AppDataChangeBus? _dataChangeBus;
   final Map<String, BirdJobStatus> _jobs = {};
+
   /// loadMore 拉到的页；刷新第一页时不能把它们一起清掉。
   final Map<String, BirdJobStatus> _pagedJobs = {};
   String? _jobsDeviceId;
+
   /// 仅在「分析任务创建请求在途」时去重；是否已存在分析任务一律以盒子返回的
   /// 权威任务列表为准（见 [_createAnalysis]），避免陈旧标记把级联永久挡死。
   final Set<String> _analysisInFlight = {};
   final Map<String, Future<String>> _analysisRequests = {};
   final StreamController<String> _analysisCompleted = StreamController<String>.broadcast();
+  final StreamController<BirdJobStatus> _analysisCompletedJobs = StreamController<BirdJobStatus>.broadcast();
   final StreamController<String> _copyCompleted = StreamController<String>.broadcast();
 
   StreamSubscription<DeviceSessionState>? _sessionSubscription;
@@ -143,6 +161,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   EventConnectionState? _lastEventConnectionState;
 
   Stream<String> get analysisCompletedProjects => _analysisCompleted.stream;
+  Stream<BirdJobStatus> get analysisCompletedJobs => _analysisCompletedJobs.stream;
   Stream<String> get copyCompletedJobs => _copyCompleted.stream;
   String? get currentJobId => _currentJobId;
   List<BirdJobStatus> get jobs => List.unmodifiable(_jobs.values);
@@ -217,7 +236,10 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
         for (final job in jobPage.items) job.id: job,
       };
       final currentJob = deviceStatus.currentJob;
-      if (currentJob != null) authoritativeJobs[currentJob.id] = currentJob;
+      if (currentJob != null) {
+        final listed = authoritativeJobs[currentJob.id];
+        if (listed == null || currentJob.canReplace(listed)) authoritativeJobs[currentJob.id] = currentJob;
+      }
       // “加载更多”拉到的旧任务不在第一页里；刷新时保留它们，不能每 4 秒
       // 把用户已加载的历史页清空。若事件已带来更新版本，以更新版本为准。
       for (final paged in _pagedJobs.values) {
@@ -243,8 +265,16 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
         _applyScan(results[3]! as CardScanResult);
       }
       await _fetchCopyCapabilities();
+      if (_disposed || !_isCurrentDevice(requestedDeviceId)) return;
       await _refreshRecognition();
+      if (_disposed || !_isCurrentDevice(requestedDeviceId)) return;
+      if (currentProject != null) await importAnalysis?.ensureOwner(currentProject.id);
+      if (_disposed || !_isCurrentDevice(requestedDeviceId)) return;
+      await importAnalysis?.restoreActive();
+      if (_disposed || !_isCurrentDevice(requestedDeviceId)) return;
+      _mergeWorkflowSnapshots();
       await _createAnalysisForCompletedImports();
+      if (_disposed || !_isCurrentDevice(requestedDeviceId)) return;
       _authorityReady = true;
       _recomputeExecutableTaskTypes();
     } catch (caught) {
@@ -345,7 +375,14 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
         'Batch name cannot be empty',
       );
     }
+    final requestedDevice = _deviceSessionCubit.state.device?.id;
+    final requestedContext = importAnalysis?.contextKey();
+    void checkStartContext() {
+      if (_disposed || requestedDevice == null || !_isCurrentDevice(requestedDevice) || (importAnalysis != null && importAnalysis!.contextKey() != requestedContext)) throw StateError('盒子连接已变化，请重新确认开始参数');
+    }
+
     var scan = await _storageRepository.currentScan();
+    checkStartContext();
     _applyScan(scan);
     if (!scan.canCreateProject) {
       throw StateError('The current SD card is not ready');
@@ -355,6 +392,28 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
 
     setBusyState(acting: true, clearError: true);
     try {
+      final workflow = importAnalysis;
+      final workflowAvailable = workflow != null && (await workflow.capability()).available;
+      checkStartContext();
+      if (workflowAvailable) {
+        if (smartFollowIntent != null) {
+          if (smartFollow == null || jsonEncode(smartFollow) != jsonEncode(smartFollowIntent.request.toJson())) throw StateError('复制选择与已确认配置不一致');
+          final reader = importSmartFollowConfiguration;
+          if (reader == null) throw StateError('请重新确认复制配置');
+          await smartFollowCreation!.validateForImport(smartFollowIntent, reader());
+          checkStartContext();
+        }
+        final result = await workflow.start(
+          name: normalizedName,
+          cardId: cardId,
+          analysis: AutoAnalysisRequest(smartFollow: smartFollowIntent?.request),
+          intentId: _importIntentId ??= SecureRequestIdFactory().create(),
+        );
+        checkStartContext();
+        _applyStartedWorkflow(result);
+        await refreshFromBox(includeScan: true);
+        return result.workflow.projectId;
+      }
       final project = await _batchRepository.create(
         ProjectCreateRequest(name: normalizedName, cardId: cardId),
       );
@@ -387,7 +446,41 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       setBusyState(error: caught);
       rethrow;
     } finally {
+      _mergeWorkflowSnapshots();
       setBusyState(acting: false);
+    }
+  }
+
+  Future<void> resumePendingImport() async {
+    final workflow = importAnalysis;
+    if (workflow == null || acting || !_deviceSessionCubit.state.isConnected) return;
+    setBusyState(acting: true, clearError: true);
+    try {
+      _applyStartedWorkflow(await workflow.resumePending());
+    } catch (error) {
+      setBusyState(error: error);
+      rethrow;
+    } finally {
+      _mergeWorkflowSnapshots();
+      setBusyState(acting: false);
+    }
+  }
+
+  void _applyStartedWorkflow(ImportStartResult result) {
+    if (_disposed) return;
+    activeBatchId = result.workflow.projectId;
+    _mergeJob(result.importJob);
+    _mergeJob(result.analysisJob);
+    _currentJobId = result.analysisJob.id;
+    selectGroup(TaskGroup.active);
+    _dataChangeBus?.publish({AppDataResource.batches, AppDataResource.photos, AppDataResource.jobs, AppDataResource.device}, reason: 'import_workflow_started');
+  }
+
+  void _mergeWorkflowSnapshots() {
+    if (_disposed) return;
+    for (final result in importAnalysis?.snapshots ?? <ImportStartResult>[]) {
+      _mergeJob(result.importJob);
+      _mergeJob(result.analysisJob);
     }
   }
 
@@ -405,6 +498,12 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     }
     _guardProductionId(projectId, 'project_id');
 
+    if (importAnalysis != null && await importAnalysis!.ensureOwner(projectId)) {
+      _mergeWorkflowSnapshots();
+      final owned = importAnalysis!.snapshot(projectId);
+      if (owned == null) throw const ImportAnalysisPending();
+      return owned.analysisJob.id;
+    }
     final inFlight = _analysisRequests[projectId];
     if (smartFollowCreation?.hasPending(projectId) == true || smartFollowCreation?.hasStaged(projectId) == true) throw const SmartFollowCreationPending();
     if (inFlight != null) return inFlight;
@@ -475,7 +574,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       await _jobRepository.exportLogs(scope: 'jobs', jobId: taskId);
       return;
     }
-    if (!jobControlActions.contains(wireAction) || !current.availableActions.contains(wireAction)) {
+    if (!jobControlActions.contains(wireAction) || (!current.allowsControl(wireAction) && !(wireAction == 'cancel' && importAnalysis?.cancelPending(current.id) == true))) {
       throw StateError('$wireAction is unavailable for $taskId');
     }
     final version = current.version;
@@ -485,11 +584,16 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
 
     setBusyState(acting: true, clearError: true);
     try {
-      final updated = await _jobRepository.control(
-        taskId,
-        wireAction,
-        version: version,
-      );
+      final project = current.sourceProjectId;
+      if (project != null) await importAnalysis?.ensureOwner(project);
+      if (project != null && importAnalysis?.owns(project) == true && current.type == BirdJobType.import) throw StateError('请通过原识别任务取消后续识别');
+      final updated = project != null && importAnalysis?.owns(project) == true && current.type == BirdJobType.analysis
+          ? await importAnalysis!.controlAnalysis(project, wireAction, version)
+          : await _jobRepository.control(
+              taskId,
+              wireAction,
+              version: version,
+            );
       _mergeJob(updated);
     } catch (caught) {
       if (caught is ApiException && caught.statusCode == 409) {
@@ -503,6 +607,8 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       setBusyState(error: caught);
       rethrow;
     } finally {
+      _mergeWorkflowSnapshots();
+      _syncTaskSnapshots();
       setBusyState(acting: false);
     }
   }
@@ -512,10 +618,12 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       throw StateError('The box is not connected');
     }
     _guardProductionId(jobId, 'job_id');
+    final deviceId = _deviceSessionCubit.state.device?.id.trim();
     try {
       final job = await _jobRepository.detail(jobId);
+      if (_disposed || deviceId == null || !_isCurrentDevice(deviceId)) throw StateError('盒子连接已变化，请重新打开任务');
       _mergeJob(job);
-      return job;
+      return _jobs[job.id] ?? job;
     } catch (caught) {
       // 盒子重启或项目被删后，本地缓存里的任务会 404；剔掉它，避免幽灵任务继续
       // 出现在任务列表里，也被当成“该项目已有分析任务”而挡掉级联。
@@ -566,13 +674,19 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       return;
     }
     if (!event.type.contains('job')) return;
+    if (!_authorityReady) {
+      // Reconnect first reconciles REST; an event arriving during that read
+      // requests another snapshot instead of reviving the pre-offline view.
+      unawaited(refreshFromBox());
+      return;
+    }
     try {
       final raw = event.payload['job'];
       final payload = raw is Map ? Map<String, dynamic>.from(raw) : event.payload;
       final job = BirdJobStatus.fromJson(payload);
       _guardProductionId(job.id, 'job_id');
       final previousState = _jobs[job.id]?.state;
-      _mergeJob(job);
+      if (!_mergeJob(job)) return;
       if (job.state == BirdJobState.completed && previousState != BirdJobState.completed) {
         unawaited(_afterJobUpdate(job));
       }
@@ -598,6 +712,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
           );
         }
         _analysisCompleted.add(projectId);
+        _analysisCompletedJobs.add(job);
       }
     } else if (job.type == BirdJobType.copy && job.state == BirdJobState.completed && !_disposed) {
       _copyCompleted.add(job.id);
@@ -628,6 +743,16 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
   Future<void> _createAnalysis(String? projectId) async {
     if (_disposed || projectId == null || projectId.trim().isEmpty) return;
     _guardProductionId(projectId, 'project_id');
+    final workflow = importAnalysis;
+    if (workflow?.owns(projectId) == true) {
+      try {
+        await workflow!.refresh(projectId);
+        _mergeWorkflowSnapshots();
+      } catch (error) {
+        if (!_disposed) setBusyState(error: error);
+      }
+      return;
+    }
     // 去重只看盒子返回的权威任务：该项目只要已有分析任务（任何状态）就不再建。
     //
     // 旧实现用一个只增不减的 `_analysisRequestedProjects` 集合去重，盒子重启后
@@ -636,6 +761,10 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     if (_jobs.values.any((job) => job.type == BirdJobType.analysis && job.sourceProjectId == projectId)) return;
     if (!_analysisInFlight.add(projectId)) return;
     try {
+      if (workflow != null && await workflow.ensureOwner(projectId)) {
+        _mergeWorkflowSnapshots();
+        return;
+      }
       if (smartFollowCreation?.hasPending(projectId) == true && smartFollowCreation?.hasCreationRecord(projectId) != true) return;
       final service = smartFollowCreation;
       final configuration = smartFollowConfiguration;
@@ -662,6 +791,15 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       _currentJobId = job.id;
       _mergeJob(job);
     } catch (caught) {
+      if (caught is ApiException && caught.code == 'import_analysis_owned' && workflow != null) {
+        try {
+          await workflow.reconcileOwned(projectId);
+          _mergeWorkflowSnapshots();
+          return;
+        } catch (_) {
+          /* Preserve ownership; never issue a second analysis. */
+        }
+      }
       if (!_disposed) setBusyState(error: caught);
     } finally {
       _analysisInFlight.remove(projectId);
@@ -674,9 +812,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     try {
       final caps = await repo.capabilities();
       if ((caps['incremental_recognition_results'] as Map?)?['available'] != true) return;
-      final ids = jobId == null
-          ? _jobs.values.where((j) => j.type == BirdJobType.analysis).map((j) => j.id).toList(growable: false)
-          : <String>[jobId];
+      final ids = jobId == null ? _jobs.values.where((j) => j.type == BirdJobType.analysis).map((j) => j.id).toList(growable: false) : <String>[jobId];
       for (final id in ids) {
         try {
           await repo.sync(id);
@@ -698,7 +834,8 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       ..addEntries(
         jobs.map((job) {
           _guardProductionId(job.id, 'job_id');
-          return MapEntry(job.id, job);
+          final current = previous[job.id];
+          return MapEntry(job.id, current != null && !job.canReplace(current) ? current : job);
         }),
       );
     _syncTaskSnapshots();
@@ -710,11 +847,11 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     }
   }
 
-  void _mergeJob(BirdJobStatus job) {
+  bool _mergeJob(BirdJobStatus job) {
     _guardProductionId(job.id, 'job_id');
     final current = _jobs[job.id];
-    if (current?.version != null && job.version != null && job.version! < current!.version!) {
-      return;
+    if (current != null && !job.canReplace(current)) {
+      return false;
     }
     if (_jobs.containsKey(job.id)) {
       _jobs[job.id] = job;
@@ -730,19 +867,25 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     _syncTaskSnapshots();
     _recomputeExecutableTaskTypes();
     _configurePolling();
+    return true;
   }
 
   void _syncTaskSnapshots() {
     final snapshots = _jobs.values
         .map(
-          (job) => JobStatusViewAdapter.toTaskSummary(
-            job,
-            connectionState: connectionState,
-          ),
+          (job) =>
+              JobStatusViewAdapter.toTaskSummary(
+                job,
+                connectionState: connectionState,
+              )?.copyWith(
+                pendingCancellation: importAnalysis?.cancelPending(job.id) == true,
+                availableActions: job.type == BirdJobType.import && job.sourceProjectId != null && importAnalysis?.owns(job.sourceProjectId!) == true ? {TaskAction.exportLog} : null,
+              ),
         )
         .whereType<TaskSummary>()
         .toList();
-    replaceRepositoryTasks(snapshots);
+    final owned = activeBatchId == null ? null : importAnalysis?.snapshot(activeBatchId!);
+    replaceRepositoryTasks(snapshots, preferredTaskId: owned != null && !owned.analysisJob.isTerminal ? owned.analysisJob.id : null);
   }
 
   void _applyScan(CardScanResult scan) {
@@ -839,6 +982,7 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     unawaited(_eventConnectionSubscription?.cancel());
     unawaited(_pendingOperationSubscription?.cancel());
     unawaited(_analysisCompleted.close());
+    unawaited(_analysisCompletedJobs.close());
     unawaited(_copyCompleted.close());
     super.dispose();
   }

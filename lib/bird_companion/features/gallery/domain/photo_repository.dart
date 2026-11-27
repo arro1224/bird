@@ -62,6 +62,7 @@ class PhotoPage {
     this.cacheScope = PhotoCacheScope.none,
     this.scannedCount = 0,
     this.matchedCount,
+    this.cachedCounts,
   });
   final List<PhotoSummary> items;
   final bool hasMore;
@@ -72,6 +73,17 @@ class PhotoPage {
   final PhotoCacheScope cacheScope;
   final int scannedCount;
   final int? matchedCount;
+  final PhotoCachedCounts? cachedCounts;
+}
+
+/// Counts of known cached photos, never authoritative whole-project totals.
+class PhotoCachedCounts {
+  const PhotoCachedCounts({required this.recognized, required this.needsReview, required this.filtered, required this.kept, required this.discarded});
+  final int recognized, needsReview, filtered, kept, discarded;
+}
+
+abstract interface class PhotoCachedQueryRepository {
+  PhotoPage? cachedPage(String projectId, PhotoQuery query);
 }
 
 class BatchOperationOutcome {

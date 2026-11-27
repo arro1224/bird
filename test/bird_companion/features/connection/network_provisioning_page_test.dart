@@ -184,6 +184,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(find.text('Studio'), 200, scrollable: find.byType(Scrollable).first);
     expect(find.text('Studio'), findsOneWidget);
     expect(find.text('-42 dBm'), findsOneWidget);
   });
@@ -487,7 +488,8 @@ void main() {
       tester.widget<TextField>(find.byKey(const ValueKey('wifi-password'))).obscureText,
       isTrue,
     );
-    expect(find.byKey(const ValueKey('wifi-prefill-hint')), findsNothing);
+    expect(find.byKey(const ValueKey('wifi-prefill-hint')), findsOneWidget);
+    expect(find.textContaining('来源：手机 Wi-Fi 读取'), findsOneWidget);
     // A pre-filled name must never turn into an automatic submission.
     expect(repository.calls, isNot(contains('setStaConfig')));
   });
@@ -636,7 +638,7 @@ void main() {
       tester.widget<TextField>(find.byKey(const ValueKey('wifi-ssid'))).controller?.text,
       'Home-5G',
     );
-    expect(find.byKey(const ValueKey('wifi-prefill-hint')), findsNothing);
+    expect(find.byKey(const ValueKey('wifi-prefill-hint')), findsOneWidget);
   });
 
   testWidgets('a denied location request is asked once and keeps the manual fallback', (tester) async {
@@ -772,9 +774,7 @@ final class _FakePhoneWifi implements PhoneWifiPlatform {
   final PhoneWifiReadFailure? failure;
 
   @override
-  Future<PhoneWifiSsid> currentSsid() async => ssid != null
-      ? PhoneWifiSsid.readable(ssid!)
-      : PhoneWifiSsid.unreadable(failure ?? PhoneWifiReadFailure.unavailable);
+  Future<PhoneWifiSsid> currentSsid() async => ssid != null ? PhoneWifiSsid.readable(ssid!) : PhoneWifiSsid.unreadable(failure ?? PhoneWifiReadFailure.unavailable);
 
   @override
   Future<String?> pickQrImage() async => null;

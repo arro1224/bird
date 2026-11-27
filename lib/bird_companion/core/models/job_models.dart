@@ -37,7 +37,7 @@ extension BirdJobTypeWireValue on BirdJobType {
     BirdJobType.import => '读取照片',
     BirdJobType.analysis => '识别照片',
     BirdJobType.copy => '保存照片',
-    BirdJobType.sync => '更新修改',
+    BirdJobType.sync => '准备浏览图片',
     BirdJobType.unknown => '其他处理',
   };
 }
@@ -117,13 +117,30 @@ class BirdJobStatus extends Equatable {
   final String? errorMessage;
   final int? version;
 
-  bool get canPause => availableActions.contains('pause');
-  bool get canResume => state != BirdJobState.cancelled && availableActions.contains('resume');
-  bool get canRetry => availableActions.contains('retry_failed');
-  bool get canCancel => availableActions.contains('cancel');
-  bool get canSkipFailed => availableActions.contains('skip_failed');
+  bool get isPhotoPreparation => type == BirdJobType.sync;
+  bool get isTerminal => state == BirdJobState.completed || state == BirdJobState.failed || state == BirdJobState.cancelled;
+  bool get isFinishing => state == BirdJobState.running && progress >= 1;
+  bool allowsControl(String action) => !isPhotoPreparation && availableActions.contains(action);
+  bool get canPause => allowsControl('pause');
+  bool get canResume => state != BirdJobState.cancelled && allowsControl('resume');
+  bool get canRetry => allowsControl('retry_failed');
+  bool get canCancel => allowsControl('cancel');
+  bool get canSkipFailed => allowsControl('skip_failed');
   bool get canDelete => availableActions.contains('delete');
-  bool get canRestore => state == BirdJobState.cancelled && availableActions.contains('resume');
+  bool get canRestore => state == BirdJobState.cancelled && allowsControl('resume');
+
+  /// Same identity and version scope only. Equal-version or unversioned late
+  /// progress must not undo a terminal snapshot. Higher versions may be retries.
+  bool canReplace(BirdJobStatus current) {
+    if (id != current.id || type != current.type) return false;
+    if (current.sourceProjectId != null && sourceProjectId != current.sourceProjectId) return false;
+    if (current.version != null && (version == null || version! < current.version!)) return false;
+    if (version != null && current.version != null && version! > current.version!) return true;
+    if (current.isTerminal && state != current.state) return false;
+    if (updatedAt != null && current.updatedAt != null && updatedAt!.isBefore(current.updatedAt!)) return false;
+    if (state == current.state && progress < current.progress) return false;
+    return true;
+  }
 
   factory BirdJobStatus.fromJson(Map<String, dynamic> json) {
     final type = BirdJobTypeWireValue.fromWire(

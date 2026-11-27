@@ -92,25 +92,36 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('设置真实入口连点和交叉点击只开一页，底部栏保持隐藏至返回', (tester) async {
+  testWidgets('设备卡片和网络诊断入口导航正常，底部栏保持隐藏至返回', (tester) async {
     final observer = B4RouteObserver();
     final visibility = <bool>[];
+    var reconnectRequests = 0;
     await tester.pumpWidget(
       BirdShellNavigation(
         selectTab: (_) {},
         openTabRoute: (_, _, [_]) {},
         setBottomNavigationVisible: visibility.add,
-        child: MaterialApp(navigatorObservers: [observer], home: const SettingsShowcasePage(embedded: true)),
+        child: MaterialApp(
+          navigatorObservers: [observer],
+          home: SettingsShowcasePage(
+            embedded: true,
+            onReconnect: () => reconnectRequests++,
+          ),
+        ),
       ),
     );
-    final details = tester.widget<InkWell>(find.byKey(const Key('showcase-device-details'))).onTap!;
     final network = tester.widget<InkWell>(find.byKey(const Key('showcase-network-diagnostics'))).onTap!;
-    details();
-    details();
+    await tester.tap(find.byKey(const Key('showcase-device-card')));
+    await tester.pumpAndSettle();
+    expect(find.byType(DeviceDetailsPage), findsNothing);
+    expect(observer.count('/'), 1);
+    expect(observer.count('/device-details'), 0);
+    await tester.tap(find.byKey(const Key('showcase-device-primary-action')));
+    await tester.pumpAndSettle();
+    expect(reconnectRequests, 1);
     network();
     await tester.pumpAndSettle();
     expect(observer.pushes.length, 2);
-    expect(find.byType(DeviceDetailsPage), findsOneWidget);
     expect(visibility, [false]);
     await tester.tap(find.byKey(const Key('settings-back')));
     await tester.pumpAndSettle();
@@ -122,42 +133,23 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('设备详情导出日志入口只开一页，返回后可重开', (tester) async {
-    final observer = B4RouteObserver();
+  testWidgets('设备详情不重复提供系统与日志入口', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        navigatorObservers: [observer],
         home: DeviceDetailsPage(controller: BirdSettingsController()),
       ),
     );
-    final open = tester.widget<TextButton>(find.widgetWithText(TextButton, '导出日志')).onPressed!;
-    open();
-    open();
-    open();
-    await tester.pumpAndSettle();
-    expect(observer.pushes.length, 2);
-    await tester.tap(find.byKey(const Key('settings-back')));
-    await tester.pumpAndSettle();
-    open();
-    await tester.pumpAndSettle();
-    expect(observer.pushes.length, 3);
+    expect(find.text('系统与日志'), findsNothing);
+    expect(find.text('设备参数'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('网络诊断热点弹层连点只开一个，关闭后可重开', (tester) async {
-    final observer = B4RouteObserver();
-    await tester.pumpWidget(MaterialApp(navigatorObservers: [observer], home: const NetworkDiagnosticsPage()));
-    final open = tester.widget<BirdSettingsRow>(find.byKey(const Key('network-hotspot-details'))).onTap!;
-    open();
-    open();
-    open();
-    await tester.pumpAndSettle();
-    expect(observer.pushes.whereType<PopupRoute>(), hasLength(1));
-    await tester.tap(find.byTooltip('关闭'));
-    await tester.pumpAndSettle();
-    open();
-    await tester.pumpAndSettle();
-    expect(observer.pushes.whereType<PopupRoute>(), hasLength(2));
+  testWidgets('网络诊断不再保留重复热点和切换入口', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: const NetworkDiagnosticsPage()));
+    expect(find.byKey(const Key('network-hotspot-details')), findsNothing);
+    expect(find.text('切换网络'), findsNothing);
+    expect(find.byKey(const Key('network-recheck')), findsOneWidget);
+    expect(find.byKey(const Key('network-export-diagnostics')), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -265,30 +257,12 @@ void main() {
     });
   }
 
-  testWidgets('重新连接先核实期间及连接页存活期间不重复打开', (tester) async {
-    final deps = B4Dependencies();
-    addTearDown(deps.close);
-    final observer = B4RouteObserver();
-    deps.deviceSessionCubit.verification = Completer<bool>();
-    await pumpB4(
-      tester,
-      DeviceDetailsPage(controller: BirdSettingsController()),
-      deps,
-      observers: [observer],
-      routes: (settings) => MaterialPageRoute<void>(
-        settings: settings,
-        builder: (_) => const Scaffold(body: Text('connection')),
-      ),
+  testWidgets('设备详情页不重复提供重连入口', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(home: DeviceDetailsPage(controller: BirdSettingsController())),
     );
-    final reconnect = tester.widget<TextButton>(find.byKey(const Key('device-reconnect'))).onPressed!;
-    reconnect();
-    reconnect();
-    await tester.pump(const Duration(seconds: 3));
-    expect(deps.deviceSessionCubit.verificationCalls, 1);
-    deps.deviceSessionCubit.verification!.complete(false);
-    await tester.pumpAndSettle();
-    reconnect();
-    expect(observer.count(BirdRoutes.connection), 1);
+    expect(find.byKey(const Key('device-reconnect')), findsNothing);
+    expect(find.text('重新连接'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 }

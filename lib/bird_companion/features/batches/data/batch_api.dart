@@ -9,7 +9,7 @@ class BatchApi {
   final ApiClient _client;
 
   Future<BatchSummary> create(ProjectCreateRequest request) async => BatchSummary.fromJson(
-    await _client.post(ApiEndpoints.batches, data: request.toJson()),
+    await _client.post(ApiEndpoints.batches, data: request.toJson(), idempotencyKey: request.idempotencyKey),
   );
 
   Future<BatchPage> page({String? state, String? sort, String? cursor}) async {

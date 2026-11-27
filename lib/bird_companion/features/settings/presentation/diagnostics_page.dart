@@ -36,8 +36,7 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
     setState(() {
       _checkingApi = true;
       _results = [
-        DiagnosticResult(label: '盒子连接', passed: session.isConnected, detail: session.isConnected ? '已连接' : '尚未连接设备'),
-        const DiagnosticResult(label: '状态更新', passed: false, detail: '正在检查盒子的状态更新…'),
+        DiagnosticResult(label: '设备同步', passed: session.isConnected, detail: session.isConnected ? '当前设备已连接' : '尚未连接设备'),
         DiagnosticResult(
           label: '尚未传回盒子的修改',
           passed: pending.isEmpty,
@@ -46,30 +45,19 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
       ];
     });
     final eventState = dependencies.eventClient.currentState;
-    try {
-      final status = await dependencies.deviceRepository.fetchStatus().timeout(const Duration(seconds: 4));
-      if (!mounted) return;
-      setState(() {
-        _checkingApi = false;
-        _results = [
-          _results[0],
-          DiagnosticResult(label: '状态更新', passed: eventState == EventConnectionState.connected, detail: eventState == EventConnectionState.connected ? '盒子状态可以自动更新' : '盒子状态需要手动刷新'),
-          _results[2],
-          DiagnosticResult(label: '盒子软件', passed: true, detail: '盒子软件 ${status.softwareVersion ?? '未知'} · 兼容信息 ${status.connection.apiVersion ?? 'v1'}'),
-        ];
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _checkingApi = false;
-        _results = [
-          _results[0],
-          DiagnosticResult(label: '状态更新', passed: eventState == EventConnectionState.connected, detail: eventState == EventConnectionState.connected ? '盒子状态可以自动更新' : '盒子状态需要手动刷新'),
-          _results[2],
-          const DiagnosticResult(label: '盒子软件', passed: false, detail: '暂时无法读取盒子信息，请重新连接后再试'),
-        ];
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      _checkingApi = false;
+      _results = [
+        _results[0],
+        _results[1],
+        DiagnosticResult(
+          label: '同步状态',
+          passed: eventState == EventConnectionState.connected,
+          detail: eventState == EventConnectionState.connected ? '修改可以自动传回盒子' : '连接后可重新同步',
+        ),
+      ];
+    });
   }
 
   Future<void> _retryPending() async {
@@ -137,7 +125,7 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
       backgroundColor: AppColors.brand,
       appBar: AppBar(
         leading: const BirdPageBackButton(),
-        title: const Text('连接检查'),
+        title: const Text('待同步修改'),
         actions: [IconButton(onPressed: _checkingApi ? null : _run, icon: const Icon(Icons.refresh))],
       ),
       body: BirdDarkTheme(
@@ -148,9 +136,9 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                 children: [
                   const BirdConnectionLine(),
                   const SizedBox(height: 28),
-                  Text('连接检查', style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w900)),
+                  Text('待同步修改', style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w900)),
                   const SizedBox(height: 8),
-                  Text('检查手机与盒子的连接，以及尚未传回盒子的修改', style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  Text('查看尚未传回盒子的修改，连接后可重新同步或处理冲突', style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 24),
                   for (final result in _results)
                     Card(
@@ -232,21 +220,8 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
                       ),
                     ),
                   const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: () async {
-                      final dependencies = BirdCompanionScope.of(context);
-                      try {
-                        final log = await dependencies.logDownloadService.downloadWithRefresh(
-                          dependencies.jobRepository.exportLogs,
-                        );
-                        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('日志已下载到：${log.file.path}')));
-                      } catch (error) {
-                        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('日志导出失败：$error')));
-                      }
-                    },
-                    icon: const Icon(Icons.file_download_outlined),
-                    label: const Text('导出问题报告'),
-                  ),
+                  const SizedBox(height: 4),
+                  Text('网络状态、盒子运行日志和手机连接诊断请在“网络诊断”与“系统与日志”中查看。', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 ],
               ),
       ),

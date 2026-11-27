@@ -50,14 +50,16 @@ void main() {
     await _pumpPhone(tester, const NetworkDiagnosticsPage());
     _expectInFirstScreen(
       tester,
-      find.byKey(const Key('network-transfer-note')),
+      find.byKey(const Key('network-recheck')),
     );
 
     await _pumpPhone(tester, const SystemLogsPage());
-    _expectInFirstScreen(
-      tester,
+    await tester.scrollUntilVisible(
       find.byKey(const Key('logs-export-package')),
+      500,
+      scrollable: find.byType(Scrollable).first,
     );
+    expect(find.byKey(const Key('logs-export-package')), findsOneWidget);
 
     await _pumpPhone(tester, const HelpCenterPage());
     _expectInFirstScreen(tester, find.byKey(const Key('help-support-hours')));

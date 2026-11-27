@@ -70,6 +70,7 @@ class GalleryState {
     this.matchedCount = 0,
     this.resultComplete = true,
     this.cacheScope = PhotoCacheScope.none,
+    this.countsFromLocalCache = false,
   });
   final bool loading, hasMore;
   final bool fromCache;
@@ -94,6 +95,7 @@ class GalleryState {
   final int matchedCount;
   final bool resultComplete;
   final PhotoCacheScope cacheScope;
+  final bool countsFromLocalCache;
   GalleryState copyWith({
     bool? loading,
     List<PhotoSummary>? items,
@@ -122,6 +124,7 @@ class GalleryState {
     int? matchedCount,
     bool? resultComplete,
     PhotoCacheScope? cacheScope,
+    bool? countsFromLocalCache,
   }) => GalleryState(
     loading: loading ?? this.loading,
     items: items ?? this.items,
@@ -148,6 +151,7 @@ class GalleryState {
     matchedCount: matchedCount ?? this.matchedCount,
     resultComplete: resultComplete ?? this.resultComplete,
     cacheScope: cacheScope ?? this.cacheScope,
+    countsFromLocalCache: countsFromLocalCache ?? this.countsFromLocalCache,
   );
 
   String? get firstConflictFileId => conflictFileIds.isEmpty ? null : conflictFileIds.first;
@@ -269,6 +273,7 @@ class GalleryCubit extends Cubit<GalleryState> {
 
   void applyBatchSummary(BatchSummary summary, {required String? deviceId}) {
     if (_closing || isClosed || summary.id != batchId || deviceId != _currentDevice || summary.countsDeviceId != null && summary.countsDeviceId != deviceId) return;
+    if (state.countsFromLocalCache) return;
     final previousTime = state.countsUpdatedAt;
     if (previousTime != null && (summary.countsUpdatedAt == null || summary.countsUpdatedAt!.isBefore(previousTime))) return;
     final hasPending = _operationCounts().pending > 0;
@@ -339,11 +344,52 @@ class GalleryCubit extends Cubit<GalleryState> {
     _searchDebounce?.cancel();
     _cancelActiveQuery(invalidateGeneration: true);
     final query = state.query.copyWith(search: value.trim(), clearCursor: true);
-    emit(state.copyWith(query: query, filtering: false, loading: false));
+    emit(_queryStartState(query, loading: false, filtering: false));
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       _searchDebounce = null;
       unawaited(refresh(query: query));
     });
+  }
+
+  GalleryState _queryStartState(PhotoQuery query, {required bool loading, required bool filtering}) {
+    final repository = _repo;
+    final cached = repository is PhotoCachedQueryRepository ? (repository as PhotoCachedQueryRepository).cachedPage(batchId, query) : null;
+    final changed = jsonEncode(query.toJson()) != jsonEncode(state.query.copyWith(clearCursor: true).toJson());
+    final operations = _operationCounts();
+    return _withCachedCounts(
+      state.copyWith(
+        query: query,
+        loading: loading,
+        filtering: filtering,
+        items: cached?.items ?? (changed ? const [] : state.items),
+        hasMore: false,
+        fromCache: cached?.fromCache ?? (changed ? false : state.fromCache),
+        cachedAt: cached?.cachedAt,
+        scannedCount: cached?.scannedCount ?? 0,
+        matchedCount: cached?.matchedCount ?? 0,
+        resultComplete: false,
+        cacheScope: cached?.cacheScope ?? PhotoCacheScope.none,
+        pendingOperationCount: operations.pending,
+        conflictOperationCount: operations.conflict,
+        conflictFileIds: operations.conflictFileIds,
+        clearError: true,
+      ),
+      cached,
+    );
+  }
+
+  GalleryState _withCachedCounts(GalleryState source, PhotoPage? page) {
+    final counts = page?.cachedCounts;
+    if (counts == null) return source.copyWith(countsFromLocalCache: false);
+    return source.copyWith(
+      countsFromLocalCache: true,
+      countsStatus: GalleryCountsStatus.stale,
+      recognizedCount: counts.recognized,
+      pendingCount: counts.needsReview,
+      filteredCount: counts.filtered,
+      keepCount: counts.kept,
+      discardCount: counts.discarded,
+    );
   }
 
   Future<void> refresh({PhotoQuery? query, GalleryTiming? timing}) {
@@ -385,18 +431,7 @@ class GalleryCubit extends Cubit<GalleryState> {
     });
     final cancellationToken = PhotoQueryCancellationToken(isCurrent: () => _isCurrent(generation, device));
     _activeCancellation = cancellationToken;
-    emit(
-      state.copyWith(
-        loading: true,
-        filtering: filtering,
-        scannedCount: 0,
-        matchedCount: 0,
-        resultComplete: !filtering,
-        cacheScope: PhotoCacheScope.none,
-        query: q,
-        clearError: true,
-      ),
-    );
+    emit(_queryStartState(q, loading: true, filtering: filtering));
     try {
       Future<PhotoPage> load() => _repo is PhotoQueryExecutionRepository
           ? (_repo as PhotoQueryExecutionRepository).pageWithProgress(
@@ -422,6 +457,7 @@ class GalleryCubit extends Cubit<GalleryState> {
         _lastCompleteRefresh = DateTime.now();
       }
       final operationCounts = _operationCounts();
+      final hadCachedCounts = state.countsFromLocalCache;
       _visibleTiming = trace;
       if (trace != null) {
         trace.event('result_ready', {
@@ -435,23 +471,27 @@ class GalleryCubit extends Cubit<GalleryState> {
         });
       }
       emit(
-        state.copyWith(
-          loading: false,
-          filtering: false,
-          items: p.items,
-          query: q.next(p.nextCursor),
-          hasMore: p.hasMore && p.nextCursor != null,
-          fromCache: p.fromCache,
-          cachedAt: p.cachedAt,
-          scannedCount: p.scannedCount,
-          matchedCount: p.matchedCount ?? p.items.length,
-          resultComplete: p.resultComplete && _pendingChanges.isEmpty,
-          cacheScope: p.cacheScope,
-          pendingOperationCount: operationCounts.pending,
-          conflictOperationCount: operationCounts.conflict,
-          conflictFileIds: operationCounts.conflictFileIds,
+        _withCachedCounts(
+          state.copyWith(
+            loading: false,
+            filtering: false,
+            items: p.items,
+            query: q.next(p.nextCursor),
+            hasMore: p.hasMore && p.nextCursor != null,
+            fromCache: p.fromCache,
+            cachedAt: p.cachedAt,
+            scannedCount: p.scannedCount,
+            matchedCount: p.matchedCount ?? p.items.length,
+            resultComplete: p.resultComplete && _pendingChanges.isEmpty,
+            cacheScope: p.cacheScope,
+            pendingOperationCount: operationCounts.pending,
+            conflictOperationCount: operationCounts.conflict,
+            conflictFileIds: operationCounts.conflictFileIds,
+          ),
+          p,
         ),
       );
+      if (hadCachedCounts && p.cachedCounts == null) unawaited(refreshSummary(force: true));
       await _cache?.write(albumViewCacheKey(deviceNamespace: device, projectId: batchId), {...q.toJson(), 'view_schema_version': 2});
       if (_isCurrent(generation, device) && device != null && device.isNotEmpty) {
         try {
@@ -761,21 +801,24 @@ class GalleryCubit extends Cubit<GalleryState> {
       final hasMore = p.hasMore && cursorAdvanced;
       final operationCounts = _operationCounts();
       emit(
-        state.copyWith(
-          loading: false,
-          query: state.query.next(p.nextCursor),
-          items: merged,
-          hasMore: hasMore,
-          fromCache: p.fromCache,
-          cachedAt: p.cachedAt,
-          scannedCount: p.scannedCount,
-          matchedCount: p.matchedCount ?? merged.length,
-          resultComplete: p.resultComplete && _pendingChanges.isEmpty,
-          cacheScope: p.cacheScope,
-          pendingOperationCount: operationCounts.pending,
-          conflictOperationCount: operationCounts.conflict,
-          conflictFileIds: operationCounts.conflictFileIds,
-          clearError: true,
+        _withCachedCounts(
+          state.copyWith(
+            loading: false,
+            query: state.query.next(p.nextCursor),
+            items: merged,
+            hasMore: hasMore,
+            fromCache: p.fromCache,
+            cachedAt: p.cachedAt,
+            scannedCount: p.scannedCount,
+            matchedCount: p.matchedCount ?? merged.length,
+            resultComplete: p.resultComplete && _pendingChanges.isEmpty,
+            cacheScope: p.cacheScope,
+            pendingOperationCount: operationCounts.pending,
+            conflictOperationCount: operationCounts.conflict,
+            conflictFileIds: operationCounts.conflictFileIds,
+            clearError: true,
+          ),
+          p,
         ),
       );
     } on PhotoQueryCancelled {
