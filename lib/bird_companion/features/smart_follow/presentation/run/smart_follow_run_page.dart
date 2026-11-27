@@ -270,6 +270,7 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
           children: [
             if (_loadError != null) const Text('暂时无法获取最新状态，以下为上次读取结果；正在等待重新读取。', key: Key('smart-follow-stale')),
             _StageCard(stage: stage, session: session),
+            if (!session.isFinished && session.blockage != null) _StorageSnapshotCard(session: session),
             const SizedBox(height: 12),
             if (_recognition != null || (widget.readRecognition == null && widget.recognitionTotal != null && widget.recognitionProcessed != null)) ...[
               _RecognitionProgress(processed: _recognition?.finishedCount ?? widget.recognitionProcessed!, total: _recognition?.totalCount ?? widget.recognitionTotal!),
@@ -284,27 +285,39 @@ class _SmartFollowRunPageState extends State<SmartFollowRunPage> with WidgetsBin
                   if (_openingFiles) return;
                   _openingFiles = true;
                   try {
-                    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => SmartFollowFilesPage(repository: widget.repository, sessionId: session.sessionId)));
+                    await Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => SmartFollowFilesPage(repository: widget.repository, sessionId: session.sessionId),
+                      ),
+                    );
                   } finally {
                     _openingFiles = false;
                   }
                   if (mounted && _current) unawaited(_refresh());
                 },
-                icon: const Icon(Icons.list_alt), label: const Text('查看复制文件明细'),
+                icon: const Icon(Icons.list_alt),
+                label: const Text('查看复制文件明细'),
               )
             else if (_children == null)
               _ChildJobsCard(session: session, onOpen: widget.onOpenChildJobs)
             else
-              Card(child: ExpansionTile(title: TextButton(key: const Key('smart-follow-child-jobs'), onPressed: widget.onOpenChildJobs, child: Text('已创建 ${session.childJobCount} 批 · 查看复制详情')), children: [
-                for (final child in _children!.items)
-                  ListTile(
-                    title: Text('复制批次 ${child.copyJobId}'),
-                    subtitle: Text('${child.state.label} · 已复制 ${child.displayCount("copied", child.copiedFileCount)} · 同名跳过 ${child.displayCount("skipped", child.skippedFileCount)} · 失败 ${child.displayCount("failed", child.failedFileCount)}'),
-                    onTap: widget.onOpenChildJobs,
-                  ),
-                if (_children!.hasMore) TextButton(onPressed: widget.onOpenChildJobs, child: const Text('查看全部复制批次')),
-                TextButton(onPressed: widget.onOpenChildJobs, child: const Text('查看复制批次详情')),
-              ])),
+              Card(
+                child: ExpansionTile(
+                  title: TextButton(key: const Key('smart-follow-child-jobs'), onPressed: widget.onOpenChildJobs, child: Text('已创建 ${session.childJobCount} 批 · 查看复制详情')),
+                  children: [
+                    for (final child in _children!.items)
+                      ListTile(
+                        title: Text('复制批次 ${child.copyJobId}'),
+                        subtitle: Text(
+                          '${child.state.label} · 已复制 ${child.displayCount("copied", child.copiedFileCount)} · 同名跳过 ${child.displayCount("skipped", child.skippedFileCount)} · 失败 ${child.displayCount("failed", child.failedFileCount)}',
+                        ),
+                        onTap: widget.onOpenChildJobs,
+                      ),
+                    if (_children!.hasMore) TextButton(onPressed: widget.onOpenChildJobs, child: const Text('查看全部复制批次')),
+                    TextButton(onPressed: widget.onOpenChildJobs, child: const Text('查看复制批次详情')),
+                  ],
+                ),
+              ),
             if (widget.metadataSection != null)
               widget.metadataSection!
             else if (session.metadataUpdateAvailable) ...[
@@ -391,6 +404,32 @@ class _StageCard extends StatelessWidget {
   }
 }
 
+class _StorageSnapshotCard extends StatelessWidget {
+  const _StorageSnapshotCard({required this.session});
+  final SmartFollowSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final blockage = session.blockage!;
+    final time = blockage.observedAt?.toLocal();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          key: const Key('smart-follow-storage-snapshot'),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(time == null ? '受阻快照时间：盒子未提供' : '受阻快照时间：${time.toIso8601String().split('.').first.replaceFirst('T', ' ')}'),
+            const Text('以下为盒子受阻时的快照，不代表当前可用空间。'),
+            for (final entry in const {'free_bytes': '可用空间', 'required_bytes': '所需空间', 'reserved_bytes': '预留空间', 'missing_bytes': '空间缺口'}.entries)
+              if (blockage.bytes(entry.key) != null) Text('${entry.value}：${blockage.bytes(entry.key)} 字节', key: ValueKey('blocked-${entry.key}')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _RecognitionProgress extends StatelessWidget {
   const _RecognitionProgress({required this.processed, required this.total});
 
@@ -426,45 +465,53 @@ class _CountsCard extends StatelessWidget {
     if (session.isContinuous) {
       final summary = session.summary;
       const labels = {
-        'queued': '排队中', 'copying': '复制中', 'retry_wait': '等待重试',
-        'blocked': '受阻待处理', 'copied': '已复制', 'skipped_conflict': '同名跳过',
-        'failed': '复制失败', 'not_applicable': '不适用', 'stopped': '已停止未复制',
+        'queued': '排队中',
+        'copying': '复制中',
+        'retry_wait': '等待重试',
+        'blocked': '受阻待处理',
+        'copied': '已复制',
+        'skipped_conflict': '同名跳过',
+        'failed': '复制失败',
+        'not_applicable': '不适用',
+        'stopped': '已停止未复制',
       };
-      return Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('持续复制进度', style: TextStyle(fontWeight: FontWeight.w700)),
-          Text(summary?.recognitionProcessed == null || summary?.recognitionTotal == null
-              ? '识别进度正在读取'
-              : '识别 ${summary!.recognitionProcessed} / ${summary.recognitionTotal}'),
-          Text(summary?.eligibleAssetCount == null ? '合格索引项正在读取' : '合格索引项 ${summary!.eligibleAssetCount} 个'),
-          const Text('按索引文件记账，未合并 RAW/JPEG 照片。'),
-          Text(summary?.plannedFileCount == null ? '文件队列正在准备' : '当前计划 ${summary!.plannedFileCount} 个文件'),
-          for (final entry in labels.entries)
-            _row(entry.value, summary?.fileCounts.containsKey(entry.key) == true ? '${summary!.fileCounts[entry.key]} 个' : '正在读取', Key('continuous-count-${entry.key}'), danger: entry.key == 'failed'),
-        ],
-      )));
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('持续复制进度', style: TextStyle(fontWeight: FontWeight.w700)),
+              Text(summary?.recognitionProcessed == null || summary?.recognitionTotal == null ? '识别进度正在读取' : '识别 ${summary!.recognitionProcessed} / ${summary.recognitionTotal}'),
+              Text(summary?.eligibleAssetCount == null ? '合格索引项正在读取' : '合格索引项 ${summary!.eligibleAssetCount} 个'),
+              const Text('按索引文件记账，未合并 RAW/JPEG 照片。'),
+              Text(summary?.plannedFileCount == null ? '文件队列正在准备' : '当前计划 ${summary!.plannedFileCount} 个文件'),
+              for (final entry in labels.entries) _row(entry.value, summary?.fileCounts.containsKey(entry.key) == true ? '${summary!.fileCounts[entry.key]} 个' : '正在读取', Key('continuous-count-${entry.key}'), danger: entry.key == 'failed'),
+            ],
+          ),
+        ),
+      );
     }
     return Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('进度', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 12),
-          _row('合格照片', session.displayCount('eligible_count'), const Key('smart-follow-eligible')),
-          _row('待复制', session.displayCount('pending_count'), const Key('smart-follow-pending')),
-          _row('已复制照片', session.displayCount('copied_asset_count'), const Key('smart-follow-copied-assets')),
-          _row('已复制文件', session.displayCount('copied_file_count', unit: '个'), const Key('smart-follow-copied-files')),
-          if (session.raw['skipped_file_count'] is int) _row('同名跳过', '${session.raw['skipped_file_count']} 个', const Key('smart-follow-skipped-files')),
-          if (session.raw['legacy_unprocessed_files'] is int) _row('未处理文件', session.displayCount('legacy_unprocessed_files', unit: '个'), const Key('smart-follow-unprocessed-files')),
-          if (session.notCopiedStoppedCount != null) _row('停止后未复制', '${session.notCopiedStoppedCount} 张', const Key('smart-follow-stopped-count')),
-          if (session.notApplicableAssetCount != null) _row('不适用', '${session.notApplicableAssetCount} 张', const Key('smart-follow-not-applicable-count')),
-          if (session.failedAssetCount > 0) _row('复制失败', '${session.failedAssetCount} 张', const Key('smart-follow-failed'), danger: true),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('进度', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            _row('合格照片', session.displayCount('eligible_count'), const Key('smart-follow-eligible')),
+            _row('待复制', session.displayCount('pending_count'), const Key('smart-follow-pending')),
+            _row('已复制照片', session.displayCount('copied_asset_count'), const Key('smart-follow-copied-assets')),
+            _row('已复制文件', session.displayCount('copied_file_count', unit: '个'), const Key('smart-follow-copied-files')),
+            if (session.raw['skipped_file_count'] is int) _row('同名跳过', '${session.raw['skipped_file_count']} 个', const Key('smart-follow-skipped-files')),
+            if (session.raw['legacy_unprocessed_files'] is int) _row('未处理文件', session.displayCount('legacy_unprocessed_files', unit: '个'), const Key('smart-follow-unprocessed-files')),
+            if (session.notCopiedStoppedCount != null) _row('停止后未复制', '${session.notCopiedStoppedCount} 张', const Key('smart-follow-stopped-count')),
+            if (session.notApplicableAssetCount != null) _row('不适用', '${session.notApplicableAssetCount} 张', const Key('smart-follow-not-applicable-count')),
+            if (session.failedAssetCount > 0) _row('复制失败', '${session.failedAssetCount} 张', const Key('smart-follow-failed'), danger: true),
+          ],
+        ),
       ),
-    ),
     );
   }
 
@@ -550,7 +597,7 @@ class _ActionsRow extends StatelessWidget {
             child: OutlinedButton(
               key: Key('smart-follow-action-${action.wire}'),
               onPressed: busy ? null : () => onAct(action),
-              child: Text(action.label),
+              child: Text(action == SmartFollowAction.retry && session.blockage != null ? '重试原任务' : action.label),
             ),
           ),
       ],

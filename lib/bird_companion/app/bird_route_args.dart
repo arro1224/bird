@@ -321,6 +321,12 @@ class ShellArgs {
 
 enum ConnectionEntryMode { initialSetup, addOrSwitch }
 
+class NetworkSettingsArgs {
+  const NetworkSettingsArgs({required this.deviceId, this.recoverBleOnOpen = false});
+  final String deviceId;
+  final bool recoverBleOnOpen;
+}
+
 class ConnectionArgs {
   const ConnectionArgs({this.entryMode = ConnectionEntryMode.initialSetup});
 

@@ -19,6 +19,7 @@ import 'package:aves/bird_companion/core/sync/pending_operation.dart';
 import 'package:aves/bird_companion/features/device/domain/device_repository.dart';
 import 'package:aves/bird_companion/features/device/presentation/widgets/device_status_sheet.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
+import 'package:aves/bird_companion/features/gallery/domain/photo_local_filter_engine.dart';
 import 'package:aves/bird_companion/features/batches/domain/batch_repository.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_cubit.dart';
@@ -35,6 +36,44 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('离线分类、筛选条和结果共用投影，并标明缓存统计范围', (tester) async {
+    final dependencies = _Dependencies(2);
+    final photos = dependencies.photoRepository;
+    final known = [photos.photos.first.copyWith(keepState: 'keep'), photos.photos.last];
+    PhotoPage project(PhotoQuery query) => PhotoPage(
+      items: const PhotoLocalFilterEngine().filterAndSort(known, query),
+      hasMore: false,
+      fromCache: true,
+      resultComplete: false,
+      cacheScope: PhotoCacheScope.partial,
+      cachedCounts: const PhotoCachedCounts(recognized: 0, needsReview: 2, filtered: 0, kept: 1, discarded: 0),
+    );
+    photos.cachedProjection = project;
+    photos.pageOverride = (query) async => project(query);
+    await _pumpAlbum(tester, dependencies);
+    await tester.pumpAndSettle();
+    expect(find.text('手机缓存内统计'), findsOneWidget);
+    final kept = find.byKey(const ValueKey('gallery-category-keep'));
+    await tester.ensureVisible(kept);
+    await tester.tap(kept);
+    await tester.pumpAndSettle();
+    expect(tester.widget<ChoiceChip>(kept).selected, true);
+    expect(find.text('照片状态：已保留'), findsWidgets);
+    expect(find.byKey(const ValueKey('photo-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('photo-1')), findsNothing);
+    final discarded = find.byKey(const ValueKey('gallery-category-discard'));
+    await tester.ensureVisible(discarded);
+    await tester.tap(discarded);
+    await tester.pumpAndSettle();
+    expect(tester.widget<ChoiceChip>(discarded).selected, true);
+    expect(find.text('照片状态：已弃选'), findsWidgets);
+    expect(find.byKey(const ValueKey('photo-0')), findsNothing);
+    expect(find.text('手机缓存中没有符合当前条件的照片'), findsOneWidget);
+    expect(find.text('手机缓存内统计'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('分类快捷入口清除互斥条件，统计更新保留滚动和选中集合', (tester) async {
     final dependencies = _Dependencies(49, connected: true);
     addTearDown(dependencies.deviceSessionCubit.close);
@@ -237,7 +276,7 @@ void main() {
 
     dependencies.deviceSessionCubit.setPhase(DeviceSessionPhase.disconnected);
     await tester.pumpAndSettle();
-    expect(find.text('离线时没有符合当前条件的照片'), findsOneWidget);
+    expect(find.text('手机缓存中没有符合当前条件的照片'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, '重新连接'), findsOneWidget);
     expect(find.byKey(const Key('gallery-candidate-notice')), findsNothing);
 
@@ -255,15 +294,14 @@ void main() {
     expect(gallery.state.filtering, isTrue);
     await tester.pump();
     await tester.pump();
-    expect(photo, findsOneWidget);
+    expect(photo, findsNothing);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     await tester.tap(find.widgetWithText(TextButton, '取消'));
     await tester.pumpAndSettle();
-    expect(photo, findsOneWidget);
-    expect(find.text('照片结果不完整'), findsOneWidget);
+    expect(photo, findsNothing);
     delayedFilter.complete(const PhotoPage(items: [], hasMore: false));
     await tester.pumpAndSettle();
-    expect(photo, findsOneWidget);
+    expect(photo, findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -868,7 +906,7 @@ class _MemoryCache implements LocalCache {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class _Photos implements PhotoRepository, ProjectBatchReviewRepository {
+class _Photos implements PhotoRepository, ProjectBatchReviewRepository, PhotoCachedQueryRepository {
   _Photos(int count)
     : photos = List.generate(
         count,
@@ -892,6 +930,10 @@ class _Photos implements PhotoRepository, ProjectBatchReviewRepository {
   int projectVersion = 20;
   Object? lastError;
   Future<PhotoPage> Function(PhotoQuery query)? pageOverride;
+  PhotoPage? Function(PhotoQuery query)? cachedProjection;
+
+  @override
+  PhotoPage? cachedPage(String projectId, PhotoQuery query) => cachedProjection?.call(query);
 
   List<String> tagsFor(String id) => tagsById[id] ?? ['湿地', if (id == 'photo-0') '水鸟'];
 

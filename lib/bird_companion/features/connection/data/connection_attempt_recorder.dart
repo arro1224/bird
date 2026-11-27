@@ -63,6 +63,8 @@ final class ConnectionAttemptRecorder {
         'transient',
         'first_error',
         'attempt',
+        'candidate_source',
+        'candidate_count',
         'network_mode',
         'device_id_verified',
         'elapsed_ms',

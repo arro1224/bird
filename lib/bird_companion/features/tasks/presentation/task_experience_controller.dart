@@ -130,7 +130,7 @@ class TaskExperienceController extends ChangeNotifier {
   ///
   /// Production callers deliberately reject demo identifiers so a fallback
   /// fixture can never leak into the connected application.
-  void replaceRepositoryTasks(Iterable<TaskSummary> tasks) {
+  void replaceRepositoryTasks(Iterable<TaskSummary> tasks, {String? preferredTaskId}) {
     final next = List<TaskSummary>.unmodifiable(tasks);
     TaskSummary? demoTask;
     for (final task in next) {
@@ -145,7 +145,7 @@ class TaskExperienceController extends ChangeNotifier {
       );
     }
     _tasks = List.of(next);
-    _currentTaskId = _preferredCurrentTask()?.id;
+    _currentTaskId = preferredTaskId != null && next.any((task) => task.id == preferredTaskId) ? preferredTaskId : _preferredCurrentTask()?.id;
     notifyListeners();
   }
 

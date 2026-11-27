@@ -1,5 +1,6 @@
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_metadata.dart';
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_models.dart';
+import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_blockage.dart';
 
 /// 运行页阶段（App 修改任务书 §6 的九条文案，另加"已暂停"）。
 ///
@@ -45,6 +46,16 @@ SmartFollowStage resolveSmartFollowStage({
       hint: '正在按原复制批次更新副本的识别与审阅信息，不会重新复制照片。',
       tone: SmartFollowStageTone.running,
     );
+  }
+
+  final blockage = session.blockage;
+  if (!session.isFinished && blockage != null) {
+    final id = switch (blockage.kind) {
+      SmartFollowBlockedKind.targetMissing => 'waiting_target',
+      SmartFollowBlockedKind.sourceUnavailable => 'waiting_source',
+      _ => session.summary?.phase == 'waiting_for_storage' ? 'waiting_for_storage' : 'storage_${blockage.kind.name}',
+    };
+    return SmartFollowStage(id: id, label: blockage.label, hint: blockage.hint, tone: SmartFollowStageTone.waiting);
   }
 
   if (session.isContinuous) {

@@ -2,29 +2,31 @@ import 'package:flutter/services.dart';
 
 /// Why the phone's own Wi-Fi name could not be read. Only used to explain a missing prefill,
 /// so the provisioning form never silently pretends the field was filled.
-enum PhoneWifiReadFailure { permissionDenied, approximateLocation, locationDisabled, unavailable, unsupported }
+enum PhoneWifiReadFailure { permissionDenied, approximateLocation, locationDisabled, notConnected, unavailable, unsupported }
 
 /// Hint for the provisioning form: the phone's current Wi-Fi name, or the reason it is unusable.
 ///
 /// The value is a UI hint only. It is not persisted, not forwarded to diagnostics and never
 /// treated as the target network — the user still confirms the name and types the password.
 final class PhoneWifiSsid {
-  const PhoneWifiSsid({this.ssid, this.failure});
+  const PhoneWifiSsid({this.ssid, this.failure, this.readAt});
 
-  const PhoneWifiSsid.readable(String value) : ssid = value, failure = null;
-  const PhoneWifiSsid.unreadable(PhoneWifiReadFailure reason) : ssid = null, failure = reason;
+  const PhoneWifiSsid.readable(String value, {this.readAt}) : ssid = value, failure = null;
+  const PhoneWifiSsid.unreadable(PhoneWifiReadFailure reason, {this.readAt}) : ssid = null, failure = reason;
 
   final String? ssid;
   final PhoneWifiReadFailure? failure;
+  final DateTime? readAt;
 
   bool get isReadable => ssid != null && ssid!.isNotEmpty;
 
   /// Copy shown under the entry card; intentionally says nothing about passwords.
   String get hint => switch (failure) {
-    null => '已填入当前 Wi-Fi 名称，请输入密码',
+    null => '手机当前连接的 Wi-Fi 名称，仅供填写参考，请确认目标并输入密码',
     PhoneWifiReadFailure.permissionDenied => '未授予定位权限，读不到当前 Wi-Fi 名称，可手动填写',
     PhoneWifiReadFailure.approximateLocation => '定位权限只有大致位置，读不到 Wi-Fi 名称；可在系统设置改为精确位置，或手动填写',
     PhoneWifiReadFailure.locationDisabled => '系统定位已关闭，读不到当前 Wi-Fi 名称，可手动填写',
+    PhoneWifiReadFailure.notConnected => '手机当前未连接 Wi-Fi；如要使用本机热点，请在网络类型中选择本机热点并填写热点设置中的名称和密码',
     PhoneWifiReadFailure.unsupported => '此设备不支持读取当前 Wi-Fi 名称，请手动填写',
     PhoneWifiReadFailure.unavailable => '读不到当前 Wi-Fi 名称，可手动填写或选择网络',
   };
@@ -68,19 +70,21 @@ final class MethodChannelPhoneWifiPlatform implements PhoneWifiPlatform {
 
   @override
   Future<PhoneWifiSsid> currentSsid() async {
+    final readAt = DateTime.now();
     try {
       final raw = await channel.invokeMapMethod<String, Object?>('currentSsid');
       if (raw == null) return const PhoneWifiSsid.unreadable(PhoneWifiReadFailure.unavailable);
       final ssid = raw['ssid'];
       if (ssid is String && ssid.trim().isNotEmpty) {
-        return PhoneWifiSsid.readable(ssid.trim());
+        return PhoneWifiSsid.readable(ssid.trim(), readAt: readAt);
       }
       return PhoneWifiSsid.unreadable(switch (raw['reason']) {
         'permission_denied' => PhoneWifiReadFailure.permissionDenied,
         'permission_approximate' => PhoneWifiReadFailure.approximateLocation,
         'location_disabled' => PhoneWifiReadFailure.locationDisabled,
+        'not_connected' => PhoneWifiReadFailure.notConnected,
         _ => PhoneWifiReadFailure.unavailable,
-      });
+      }, readAt: readAt);
     } on PlatformException {
       return const PhoneWifiSsid.unreadable(PhoneWifiReadFailure.unsupported);
     } on MissingPluginException {

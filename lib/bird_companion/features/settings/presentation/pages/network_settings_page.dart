@@ -4,8 +4,10 @@ import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/core/models/device_models.dart';
+import 'package:aves/bird_companion/core/errors/user_message_mapper.dart';
 import 'package:aves/bird_companion/features/connection/domain/connection_cancellation.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
 import 'package:aves/bird_companion/features/connection/presentation/direct_ap_handoff_cubit.dart';
 import 'package:aves/bird_companion/features/connection/presentation/network_provisioning_cubit.dart';
@@ -20,11 +22,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class NetworkSettingsPage extends StatefulWidget {
-  const NetworkSettingsPage({super.key, required this.repository, this.onProvisioningCompleted, this.phoneWifi, this.demoMode = false});
+  const NetworkSettingsPage({super.key, required this.repository, this.onProvisioningCompleted, this.phoneWifi, this.demoMode = false, this.deviceId, this.recoverBleOnOpen = false});
   final ProvisioningRepository repository;
   final ProvisioningCompletionHandler? onProvisioningCompleted;
   final PhoneWifiPlatform? phoneWifi;
   final bool demoMode;
+  final String? deviceId;
+  final bool recoverBleOnOpen;
   @override
   State<NetworkSettingsPage> createState() => _NetworkSettingsPageState();
 }
@@ -76,7 +80,9 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
     final repository = widget.repository;
     final sessionRepository = repository is ProvisioningSessionRepository ? repository as ProvisioningSessionRepository : null;
     _deviceInfo = sessionRepository?.connectedDeviceInfo;
-    _deviceId = _deviceInfo?.deviceId ?? dependencies?.deviceSessionCubit.state.device?.id;
+    _deviceId = widget.deviceId ?? dependencies?.deviceSessionCubit.state.device?.id ?? _deviceInfo?.deviceId;
+    _deviceChanged = widget.deviceId != null && dependencies != null && dependencies.deviceSessionCubit.state.device?.id != widget.deviceId;
+    if (_deviceInfo?.deviceId != _deviceId) _deviceInfo = null;
     _bleDisconnected = _deviceInfo == null;
     _wasDirect = dependencies?.deviceSessionCubit.state.device?.networkMode == NetworkMode.directAp;
     _subscriptions.add(
@@ -127,6 +133,10 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
     final info = _deviceInfo;
     if (info != null) {
       unawaited(_cubit.resumeAfterBleReconnect(info, handoffDirectAp: false, verifyBusiness: false));
+    } else if (widget.recoverBleOnOpen && !_deviceChanged) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_recoverControl());
+      });
     }
   }
 
@@ -154,7 +164,7 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
     final token = _controlToken = CancelToken();
     final deadline = Timer(const Duration(seconds: 30), () {
       if (mounted && generation == _controlGeneration) {
-        _cancelControl();
+        _cancelControl(timedOut: true);
       }
     });
     setState(() {
@@ -171,8 +181,11 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
       await _cubit.resumeAfterBleReconnect(info, handoffDirectAp: false, verifyBusiness: false, cancelToken: token);
       if (!mounted || generation != _controlGeneration || _deviceChanged) return;
       if (_cubit.state.error != null) _controlError = '蓝牙已连接，网络状态读取未完成，请重试刷新。';
-    } catch (_) {
-      if (mounted && generation == _controlGeneration && !token.isCancelled) _controlError = '蓝牙控制恢复未完成，请检查盒子与蓝牙权限后重试。';
+    } catch (error) {
+      if (mounted && generation == _controlGeneration && !token.isCancelled) {
+        final message = UserMessageMapper.fromError(error);
+        _controlError = '蓝牙控制恢复未完成：${message.title}。${message.message}';
+      }
     } finally {
       deadline.cancel();
       if (mounted && generation == _controlGeneration) {
@@ -184,14 +197,14 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
     }
   }
 
-  void _cancelControl() {
+  void _cancelControl({bool timedOut = false}) {
     ++_controlGeneration;
-    _controlToken?.cancel('User cancelled control recovery');
+    _controlToken?.cancel(timedOut ? const BleControlRecoveryException(BleControlRecoveryFailure.timeout) : 'User cancelled control recovery');
     _controlToken = null;
     if (mounted) {
       setState(() {
         _recovering = false;
-        _controlError = '已取消蓝牙恢复，当前网络连接保持原状。';
+        _controlError = timedOut ? '蓝牙恢复超时，当前网络连接保持原状，请重试。' : '已取消蓝牙恢复，当前网络连接保持原状。';
       });
     }
   }

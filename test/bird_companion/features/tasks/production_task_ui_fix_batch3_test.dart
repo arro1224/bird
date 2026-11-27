@@ -52,6 +52,8 @@ void main() {
       );
       expect(tester.takeException(), isNull);
 
+      await tester.ensureVisible(importAction);
+      await tester.pumpAndSettle();
       await tester.tap(importAction);
       expect(sdCardOpenCount, 1);
     });

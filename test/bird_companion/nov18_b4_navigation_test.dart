@@ -144,20 +144,12 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('网络诊断热点弹层连点只开一个，关闭后可重开', (tester) async {
-    final observer = B4RouteObserver();
-    await tester.pumpWidget(MaterialApp(navigatorObservers: [observer], home: const NetworkDiagnosticsPage()));
-    final open = tester.widget<BirdSettingsRow>(find.byKey(const Key('network-hotspot-details'))).onTap!;
-    open();
-    open();
-    open();
-    await tester.pumpAndSettle();
-    expect(observer.pushes.whereType<PopupRoute>(), hasLength(1));
-    await tester.tap(find.byTooltip('关闭'));
-    await tester.pumpAndSettle();
-    open();
-    await tester.pumpAndSettle();
-    expect(observer.pushes.whereType<PopupRoute>(), hasLength(2));
+  testWidgets('网络诊断不再保留重复热点和切换入口', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: const NetworkDiagnosticsPage()));
+    expect(find.byKey(const Key('network-hotspot-details')), findsNothing);
+    expect(find.text('切换网络'), findsNothing);
+    expect(find.byKey(const Key('network-recheck')), findsOneWidget);
+    expect(find.byKey(const Key('network-export-diagnostics')), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 

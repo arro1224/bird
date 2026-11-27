@@ -5,8 +5,9 @@ import 'package:aves/bird_companion/features/jobs/domain/job_failure.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_create_requests.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_report.dart';
 import 'package:aves/bird_companion/features/jobs/domain/job_page.dart';
+import 'package:aves/bird_companion/features/jobs/domain/import_analysis_models.dart';
 
-class JobRepositoryImpl implements JobRepository {
+class JobRepositoryImpl implements JobRepository, ImportWorkflowRepository {
   JobRepositoryImpl(this._a);
   final JobApi _a;
   @override
@@ -34,6 +35,12 @@ class JobRepositoryImpl implements JobRepository {
     String projectId,
     ImportJobRequest request,
   ) => _a.createImport(projectId, request);
+  @override
+  Future<ImportStartResult> startImportWorkflow(String projectId, Map<String, dynamic> request, String key) => _a.startImportWorkflow(projectId, request, key);
+  @override
+  Future<ImportStartResult> importWorkflow(String projectId) => _a.importWorkflow(projectId);
+  @override
+  Future<BirdJobStatus> controlWorkflowJob(String jobId, String action, int version, String key) => _a.controlWorkflowJob(jobId, action, version, key);
   @override
   Future<BirdJobStatus> createAnalysis(
     String projectId,

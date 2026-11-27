@@ -28,6 +28,8 @@ class MockBoxServer {
     this.emitAssetReadyEvents = true,
     this.workflowAutoAdvance = false,
     this.autoSmartFollow = false,
+    this.importAnalysisWorkflow = false,
+    this.importAnalysisNoCandidates = false,
     this.stateFile,
     this.networkModeProvider,
     bool embeddedDemo = false,
@@ -120,6 +122,9 @@ class MockBoxServer {
   ///
   /// 默认关闭：测试钩子与契约测试的行为保持零变化。
   final bool autoSmartFollow;
+  final bool importAnalysisWorkflow, importAnalysisNoCandidates;
+  String importSourceCardId = 'card-mock-001';
+  final Map<String, Map<String, dynamic>> _importWorkflows = {};
   final File? stateFile;
   final void Function(String message) requestLogSink;
   late final DateTime Function() _clock;
@@ -277,6 +282,7 @@ class MockBoxServer {
         _createdProjects[analysisProjectId]?['state'] = 'ready_to_review';
       }
     }
+    await _dispatchImportWorkflows();
     await _persistState();
     if (emitEvent) await _emitJob(job);
   }
@@ -304,6 +310,7 @@ class MockBoxServer {
       ]
       ..['version'] = (job['version'] as int) + 1
       ..['updated_at'] = _clock().toUtc().toIso8601String();
+    await _dispatchImportWorkflows();
     await _persistState();
     if (emitEvent) await _emitJob(job);
   }
@@ -764,6 +771,18 @@ class MockBoxServer {
       await _createWorkflowJob(request, importJob.group(1)!, 'import');
       return;
     }
+    final importStatus = RegExp(r'^/api/v1/projects/([^/]+)/import-analysis$').firstMatch(path);
+    if (method == 'GET' && importStatus != null && importAnalysisWorkflow) {
+      final project = importStatus.group(1)!;
+      await _dispatchImportWorkflows();
+      final flow = _importWorkflows[project];
+      if (flow == null) {
+        await _json(request, 404, {'error_code': 'import_analysis_not_found', 'error_message': 'No box-owned workflow'}, envelope: false);
+      } else {
+        await _json(request, 200, {...flow, 'import_job': _jobs[flow['import_job_id']], 'analysis_job': _jobs[flow['analysis_job_id']]});
+      }
+      return;
+    }
     final analysisJob = RegExp(
       r'^/api/v1/projects/([^/]+)/analysis-jobs$',
     ).firstMatch(path);
@@ -793,6 +812,18 @@ class MockBoxServer {
       return;
     }
     final jobDetail = RegExp(r'^/api/v1/jobs/([^/]+)$').firstMatch(path);
+    if (method == 'DELETE' && jobDetail != null && importAnalysisWorkflow) {
+      final id = jobDetail.group(1)!;
+      final active = _importWorkflows.values.any((flow) => (flow['import_job_id'] == id || flow['analysis_job_id'] == id) && !const {'completed', 'failed', 'cancelled'}.contains(_jobs[flow['analysis_job_id']]?['job_state']));
+      if (active) {
+        await _json(request, 409, {'error_code': 'import_analysis_active', 'error_message': 'Active workflow cannot be deleted'}, envelope: false);
+      } else {
+        _jobs.remove(id);
+        await _persistState();
+        await _json(request, 200, <String, dynamic>{});
+      }
+      return;
+    }
     if (method == 'GET' && jobDetail != null) {
       final job = _jobs[jobDetail.group(1)!];
       if (job == null) {
@@ -1848,6 +1879,7 @@ class MockBoxServer {
   }
 
   Future<void> _tickAcceptanceWorkflow({int recognitionCount = 5, bool completeWrites = true}) async {
+    if (_importWorkflows.values.any((flow) => flow['analysis_job_id'] == _smartFollowJobId && flow['dispatch_state'] == 'waiting')) return;
     final workflow = _acceptanceWorkflow!;
     final before = workflow.version;
     workflow.tick(recognitionCount: recognitionCount, completeWrites: completeWrites, recognitionRunning: _jobs[_smartFollowJobId]?['job_state'] == 'running');
@@ -2040,7 +2072,7 @@ class MockBoxServer {
     final body = await _requestJson(request);
     final name = body['name']?.toString().trim() ?? '';
     final cardId = body['card_id']?.toString();
-    if (name.isEmpty || cardId != 'card-mock-001') {
+    if (name.isEmpty || cardId != (importAnalysisWorkflow ? importSourceCardId : 'card-mock-001')) {
       await _json(
         request,
         HttpStatus.unprocessableEntity,
@@ -2057,6 +2089,7 @@ class MockBoxServer {
       'project_id': id,
       'version': 0,
       'name': name,
+      if (importAnalysisWorkflow) 'card_id': cardId,
       'created_at': _clock().toUtc().toIso8601String(),
       'state': 'created',
       'total_files': 0,
@@ -2084,6 +2117,14 @@ class MockBoxServer {
       return;
     }
     final body = await _requestJson(request);
+    if (importAnalysisWorkflow && type == 'analysis' && _importWorkflows.containsKey(projectId)) {
+      await _json(request, 409, {'error_code': 'import_analysis_owned', 'error_message': 'Box owns this workflow', 'details': _importWorkflows[projectId]}, envelope: false);
+      return;
+    }
+    if (importAnalysisWorkflow && type == 'import' && body.containsKey('auto_analysis')) {
+      await _createImportAnalysis(request, projectId, body);
+      return;
+    }
     final valid = type == 'import' ? body['source'] == 'card' && body['read_only'] == true : (body['mode'] == 'standard' || embeddedDemo && const {'all', 'unrecognized', 'filtered'}.contains(body['mode']));
     if (!valid) {
       await _json(
@@ -2139,6 +2180,98 @@ class MockBoxServer {
     }
     await _json(request, HttpStatus.accepted, job);
     await _emitJob(job);
+  }
+
+  Future<void> _createImportAnalysis(HttpRequest request, String project, Map<String, dynamic> body) async {
+    final automatic = body['auto_analysis'];
+    if (body['source'] != 'card' || body['read_only'] != true || automatic is! Map || automatic['mode'] != 'new_only' || automatic['existing_result_policy'] != 'skip' || automatic['include_grouping'] is! bool) {
+      await _json(request, 422, {'error_code': 'import_analysis_invalid', 'error_message': 'Invalid auto_analysis'}, envelope: false);
+      return;
+    }
+    if (_createdProjects[project]?['card_id'] != importSourceCardId) {
+      await _json(request, 409, {'error_code': 'source_card_changed', 'error_message': 'Source card changed'}, envelope: false);
+      return;
+    }
+    if (_importWorkflows.containsKey(project)) {
+      await _json(request, 409, {'error_code': 'import_analysis_conflict', 'error_message': 'Workflow already exists'}, envelope: false);
+      return;
+    }
+    final follow = automatic['smart_follow'];
+    if (follow != null &&
+        (follow is! Map ||
+            follow['target_media_id'] is! String ||
+            (follow['target_media_id'] as String).startsWith('/') ||
+            follow['eligibility_mode'] != 'recognized_only_v1' ||
+            !const {'raw_only', 'jpeg_only', 'both'}.contains(follow['pair_policy']) ||
+            !const {'skip', 'overwrite', 'keep_both'}.contains(follow['conflict_strategy']) ||
+            follow['review_export_enabled'] is! bool)) {
+      await _json(request, 422, {'error_code': 'smart_follow_invalid', 'error_message': 'Invalid confirmed copy configuration'}, envelope: false);
+      return;
+    }
+    final imported = _newJob('import', project, workflowStage: 'importing')..['available_actions'] = <String>[];
+    final analysis = _newJob('analysis', project, workflowStage: 'waiting_import')
+      ..['job_state'] = 'queued'
+      ..['total_count'] = 0
+      ..['estimated_remaining_seconds'] = null
+      ..['available_actions'] = <String>['cancel'];
+    String? session;
+    if (follow is Map) {
+      session = _startSmartFollowMock(analysis['job_id'] as String, Map<String, dynamic>.from(follow))!['session_id'] as String;
+      analysis['smart_follow_session_id'] = session;
+    }
+    final workflow = <String, dynamic>{
+      'contract_version': 'import-analysis-v1',
+      'owner': 'box',
+      'project_id': project,
+      'import_job_id': imported['job_id'],
+      'analysis_job_id': analysis['job_id'],
+      'smart_follow_session_id': session,
+      'dispatch_state': 'waiting',
+      'auto_analysis': automatic,
+    };
+    _importWorkflows[project] = workflow;
+    await _json(request, 202, {'data': imported, 'workflow': workflow, 'analysis_job': analysis}, envelope: false);
+    await _emitJob(imported);
+    await _emitJob(analysis);
+  }
+
+  Future<void> _dispatchImportWorkflows() async {
+    var changed = false;
+    for (final workflow in _importWorkflows.values) {
+      if (workflow['dispatch_state'] != 'waiting') continue;
+      final imported = _jobs[workflow['import_job_id']], analysis = _jobs[workflow['analysis_job_id']];
+      if (imported == null || analysis == null) continue;
+      if (analysis['job_state'] == 'cancelled') {
+        workflow['dispatch_state'] = 'stopped';
+      } else if (const {'failed', 'cancelled'}.contains(imported['job_state'])) {
+        workflow['dispatch_state'] = 'stopped';
+        analysis
+          ..['job_state'] = 'failed'
+          ..['error_code'] = imported['job_state'] == 'cancelled' ? 'source_import_cancelled' : 'source_import_failed'
+          ..['available_actions'] = <String>[];
+      } else if (imported['job_state'] == 'completed') {
+        workflow['dispatch_state'] = importAnalysisNoCandidates ? 'no_candidates' : 'dispatched';
+        analysis
+          ..['job_state'] = importAnalysisNoCandidates ? 'completed' : 'running'
+          ..['workflow_stage'] = importAnalysisNoCandidates ? 'completed' : 'analyzing'
+          ..['total_count'] = importAnalysisNoCandidates ? 0 : imported['total_count']
+          ..['progress'] = importAnalysisNoCandidates ? 1.0 : 0.0
+          ..['available_actions'] = importAnalysisNoCandidates ? <String>[] : <String>['cancel'];
+        _workflowLastTickAt[analysis['job_id'] as String] = _clock();
+      } else {
+        continue;
+      }
+      changed = true;
+      analysis
+        ..['version'] = (analysis['version'] as int) + 1
+        ..['updated_at'] = _clock().toUtc().toIso8601String();
+      if (workflow['dispatch_state'] != 'dispatched' && workflow['smart_follow_session_id'] == _smartFollowSessionId && _smartFollowSessionId != null) {
+        _smartFollowState = workflow['dispatch_state'] == 'no_candidates' ? 'completed' : 'completed_partial';
+        _smartFollowVersion++;
+      }
+      await _emitJob(analysis);
+    }
+    if (changed) await _persistState();
   }
 
   Map<String, dynamic> _newJob(
@@ -2238,6 +2371,7 @@ class MockBoxServer {
     job
       ..['version'] = (job['version'] as int) + 1
       ..['updated_at'] = _clock().toUtc().toIso8601String();
+    await _dispatchImportWorkflows();
     await _json(request, HttpStatus.ok, job);
     await _emitJob(job);
   }
@@ -3434,6 +3568,15 @@ class MockBoxServer {
   static const _smartFollowBatchSize = 8;
 
   Map<String, dynamic> _recognitionCapabilitiesMock() => {
+    if (importAnalysisWorkflow)
+      'import_analysis_workflow': {
+        'available': true,
+        'contract_version': 'import-analysis-v1',
+        'owner': 'box',
+        'request_field': 'auto_analysis',
+        'status_path': '/api/v1/projects/{project_id}/import-analysis',
+        'smart_follow_available': true,
+      },
     'incremental_recognition_results': {'available': true, 'schema_version': 'birdbox.pipeline_result.v1'},
     'smart_follow_copy': {
       'available': true,
@@ -3616,6 +3759,7 @@ class MockBoxServer {
   /// 因此不会出现"会话快照与任务进度撕裂"的情况——那正是推进器跳过这类任务
   /// 的原因。
   Future<void> _driveSmartFollow() async {
+    if (_importWorkflows.values.any((flow) => flow['analysis_job_id'] == _smartFollowJobId && flow['dispatch_state'] == 'waiting')) return;
     if (_smartFollowSessionId == null) return;
     if (_acceptanceWorkflow != null) {
       // The acceptance state machine owns pause acknowledgements, independent
@@ -3833,7 +3977,7 @@ class MockBoxServer {
       return true;
     }
     final cacheKey = '${request.method} ${request.uri.path} $key';
-    if (RegExp(r'^/api/v1/projects/[^/]+/files/actions$').hasMatch(request.uri.path)) {
+    if (RegExp(r'^/api/v1/projects/[^/]+/files/actions$').hasMatch(request.uri.path) || importAnalysisWorkflow && (request.uri.path == '/api/v1/projects' || RegExp(r'^/api/v1/projects/[^/]+/imports$').hasMatch(request.uri.path))) {
       final body = await _requestJson(request);
       _bufferedBatchBodies[request] = body;
       final fingerprint = jsonEncode(_canonicalBatchParameters(body));
@@ -3845,7 +3989,10 @@ class MockBoxServer {
       }
       if (previous != null && previous != fingerprint) {
         _bufferedBatchBodies.remove(request);
-        await _json(request, HttpStatus.conflict, {'error_code': 'IDEMPOTENCY_CONFLICT', 'error_message': 'The same key cannot change batch parameters.'}, envelope: false);
+        await _json(request, HttpStatus.conflict, {
+          'error_code': importAnalysisWorkflow && !request.uri.path.endsWith('/files/actions') ? 'import_analysis_conflict' : 'IDEMPOTENCY_CONFLICT',
+          'error_message': 'The same key cannot change request parameters.',
+        }, envelope: false);
         return true;
       }
       _batchIdempotentParameters[cacheKey] = fingerprint;
@@ -3915,6 +4062,23 @@ class MockBoxServer {
       entry.value['version'] = version;
     }
     _restoreMapOfMaps(state['jobs'], _jobs);
+    _restoreMapOfMaps(state['import_workflows'], _importWorkflows);
+    if (importAnalysisWorkflow) {
+      for (final flow in _importWorkflows.values) {
+        for (final id in [flow['import_job_id'], flow['analysis_job_id']]) {
+          final job = _jobs[id];
+          if (job != null && !const {'completed', 'cancelled', 'failed'}.contains(job['job_state'])) {
+            job
+              ..['job_state'] = 'failed'
+              ..['error_code'] = 'backend_restarted'
+              ..['available_actions'] = <String>[]
+              ..['version'] = (job['version'] as int) + 1
+              ..['updated_at'] = _clock().toUtc().toIso8601String();
+            flow['dispatch_state'] = 'stopped';
+          }
+        }
+      }
+    }
     _restoreMapOfMaps(state['copy_jobs'], _copyJobsV1);
     // JSON restores List<dynamic>; copy state transitions use typed item/event
     // lists, so restore those runtime types before serving history or actions.
@@ -4043,6 +4207,7 @@ class MockBoxServer {
       'current_created_project_id': _currentCreatedProjectId,
       'created_projects': _createdProjects,
       'jobs': _jobs,
+      'import_workflows': _importWorkflows,
       'copy_jobs': _copyJobsV1,
       'copy_pair_policy': _copyPairPolicy,
       'copy_preferences_version': _copyPreferencesVersion,

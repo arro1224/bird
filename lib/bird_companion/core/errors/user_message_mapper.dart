@@ -4,6 +4,7 @@ import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_models.dart';
+import 'package:aves/bird_companion/features/jobs/data/import_analysis_service.dart';
 import 'package:dio/dio.dart';
 
 class UserMessage {
@@ -25,6 +26,7 @@ abstract final class UserMessageMapper {
     if (error is ApiException && error.statusCode == 409) return const UserMessage(title: '任务状态已变化', message: '请重新读取当前任务状态后再操作。', actionLabel: '刷新任务');
     return fromError(error);
   }
+
   /// A missing copy endpoint/resource must not be described as a deleted photo.
   /// Explicit copy business errors retain their more specific explanations.
   static UserMessage fromCopyConfigurationError(Object error) {
@@ -59,6 +61,12 @@ abstract final class UserMessageMapper {
   }
 
   static UserMessage fromError(Object error) {
+    if (error is ImportAnalysisPending) return UserMessage(title: error.cancel ? '取消待确认' : '开始结果待确认', message: error.toString(), actionLabel: '查询原任务');
+    if (error is BleControlRecoveryException) {
+      return error.reason == BleControlRecoveryFailure.notFound
+          ? const UserMessage(title: '未找到当前盒子蓝牙', message: '请确认盒子已开机、正在广播并靠近手机，然后重新查找。当前业务连接保持原状。', actionLabel: '重新查找')
+          : const UserMessage(title: '蓝牙恢复超时', message: '未在时限内恢复当前盒子的蓝牙控制，请检查盒子和手机蓝牙后重试。当前业务连接保持原状。', actionLabel: '重试恢复');
+    }
     if (error is CopyCreationPending) return UserMessage(title: '上次复制创建结果待确认', message: error.toString(), actionLabel: '查看复制任务');
     if (error is SmartFollowOutcomeUnknown) {
       return const UserMessage(
@@ -127,6 +135,15 @@ abstract final class UserMessageMapper {
         }
       }
       return switch (error.code) {
+        'import_analysis_owned' => const UserMessage(title: '盒子已接管原流程', message: '请接回原识别任务，不要重复开始。', actionLabel: '刷新任务'),
+        'import_analysis_conflict' => const UserMessage(title: '开始请求发生冲突', message: '请查询原批次和原请求结果，不要换参数或换键重复提交。', actionLabel: '查询原任务'),
+        'source_card_changed' => const UserMessage(title: '源卡已变化', message: '请核对原相机卡后再操作，不会自动换卡或新建批次。', actionLabel: '核对源卡'),
+        'smart_follow_unavailable' || 'smart_follow_metadata_not_supported' => const UserMessage(title: '盒子不支持所选复制配置', message: '请核对能力和原复制选择；不会丢弃复制配置后降级开始。', actionLabel: '检查配置'),
+        'import_analysis_not_prepared' => const UserMessage(title: '导入识别尚未准备完成', message: '请先查看导入或盒子重启错误，再决定是否重新开始批次。', actionLabel: '查看原任务'),
+        'import_analysis_active' => const UserMessage(title: '活动流程不能删除', message: '该任务仍与自动导入识别流程关联，请先核对原流程。', actionLabel: '查看原任务'),
+        'source_import_failed' || 'source_import_cancelled' => const UserMessage(title: '识别未启动', message: '来源导入失败或已取消，请查看导入任务原因。', actionLabel: '查看导入'),
+        'backend_restarted' => const UserMessage(title: '盒子服务重启，任务已中断', message: '这不是手机离线造成的等待；请核对原任务，不会自动重建流程。', actionLabel: '查看原任务'),
+        'action_not_available' || 'ACTION_NOT_AVAILABLE' => const UserMessage(title: '当前任务不支持此操作', message: '图片准备由盒子自动执行；其他任务请刷新后按当前可用操作处理。', actionLabel: '刷新任务'),
         // birdbox-copy-v1 协议错误码（主协议 §15）。后端 message 必须是普通
         // 语言（如「目标 U 盘空间不足，还需要 12.4 GB」），直接作为正文展示。
         'COPY_CONFLICT_STRATEGY_REQUIRED' => _copyMessage(

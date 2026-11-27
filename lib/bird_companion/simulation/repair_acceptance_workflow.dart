@@ -168,6 +168,12 @@ final class RepairAcceptanceWorkflow {
     return {
       'execution_mode': 'continuous_queue',
       'phase': phase ?? (state == 'following' && queued.isEmpty ? 'awaiting_results' : state),
+      if (blocked)
+        'blocked_kind': switch (blocker) {
+          'waiting_for_target' => 'target_missing',
+          'waiting_for_source' => 'source_unavailable',
+          _ => 'storage_blocked',
+        },
       'recognition_total': profile.total,
       'recognition_processed': processed,
       'eligible_asset_count': accepted.length,

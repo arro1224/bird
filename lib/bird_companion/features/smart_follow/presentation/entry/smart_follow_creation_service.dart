@@ -26,11 +26,12 @@ class SmartFollowConfirmationRequired extends StateError {
 /// Durable App intent, not a local copy queue. All discovery uses existing REST
 /// jobs/events/session reads. An unresolved intent is never replaced by a new key.
 class SmartFollowCreationService {
-  SmartFollowCreationService({required this.jobs, required this.follows, required this.cache, required this.deviceId, required this.contextKey});
+  SmartFollowCreationService({required this.jobs, required this.follows, required this.cache, required this.deviceId, required this.contextKey, this.boxOwnsBatch});
   final JobRepository jobs;
   final SmartFollowRepository follows;
   final LocalCache cache;
   final String? Function() deviceId, contextKey;
+  final Future<bool> Function(String batch)? boxOwnsBatch;
   final Map<String, Future<SmartFollowSession>> _inFlight = {};
 
   String _slot(String batch) => 'smart-follow-create:${deviceId()}:$batch';
@@ -58,6 +59,7 @@ class SmartFollowCreationService {
   }
 
   Future<SmartFollowSession> startStaged(String batch, SmartFollowConfigurationReader reader) async {
+    if (await boxOwnsBatch?.call(batch) == true) throw const ApiException(message: '识别与复制已由盒子登记，请打开原流程', code: 'import_analysis_owned', statusCode: 409);
     final raw = cache.read<Map>('smart-follow-staged:${deviceId()}:$batch');
     if (raw == null) throw SmartFollowConfirmationRequired('请重新确认本批次的复制配置。');
     if (raw['auto_attempted'] == true) {
@@ -90,6 +92,7 @@ class SmartFollowCreationService {
   Future<SmartFollowSession> _start(SmartFollowConfiguredIntent intent, SmartFollowConfigurationReader reader) async {
     final batch = intent.batchId!, context = contextKey();
     _check(context);
+    if (await boxOwnsBatch?.call(batch) == true) throw const ApiException(message: '识别与复制已由盒子登记，请打开原流程', code: 'import_analysis_owned', statusCode: 409);
     var record = _record(batch);
     if (record != null) {
       if (record['resolved'] == true && (record['created_job'] ?? record['job']) != intent.recognitionJobId && intent.recognitionJobId != null) {
@@ -253,5 +256,38 @@ class SmartFollowCreationService {
     record.addAll({'session': session.sessionId, 'created_job': session.recognitionJobId, 'resolved': true});
     await cache.write(_slot(batch), Map<String, dynamic>.from(record));
     await cache.remove('smart-follow-staged:${deviceId()}:$batch');
+  }
+
+  /// Revalidates the existing user's confirmation without creating/staging any
+  /// recognition job or follow session. New workflows send this choice once.
+  Future<void> validateForImport(SmartFollowConfiguredIntent intent, SmartFollowConfigurationReader reader) async {
+    final context = contextKey();
+    _check(context);
+    if (intent.contextKey != context || reader.contextKey != context || intent.batchId != null || intent.recognitionJobId != null || !reader.isCurrent() || !DateTime.now().isBefore(intent.sourceBindingExpiresAt)) {
+      throw SmartFollowConfirmationRequired('复制确认已失效，请重新检测并确认配置。');
+    }
+    final validation = SmartFollowConfigurationController(reader, expectedRecognitionPhase: RecognitionEntryPhase.notStarted);
+    try {
+      if (!await validation.refresh()) throw SmartFollowConfirmationRequired('设备状态无法确认，请重新检测。');
+      _check(context);
+      validation.selectTarget(intent.request.targetMediaId);
+      validation.selectPairPolicy(PairPolicy.fromWire(intent.request.pairPolicy));
+      validation.selectConflict(ConflictStrategy.fromWire(intent.request.conflictStrategy));
+      validation.setReviewExport(intent.request.reviewExportEnabled);
+      final reason = validation.blockReason;
+      if (reason != null) throw SmartFollowConfirmationRequired(reason);
+      final data = validation.snapshot!, target = validation.target!;
+      if (data.binding.sourceMediaId != intent.sourceMediaId ||
+          data.preferences.version != intent.preferencesVersion ||
+          target.identityConfidence != intent.targetIdentityConfidence ||
+          target.capacityBytes != intent.targetCapacityBytes ||
+          target.freeBytes != intent.targetFreeBytes ||
+          validation.reviewExportEnabled != intent.request.reviewExportEnabled ||
+          data.entry.capabilities.copy.continuousQueueAvailable != intent.request.continuousQueue) {
+        throw SmartFollowConfirmationRequired('源卡、目标盘或策略已变化，请重新确认。');
+      }
+    } finally {
+      validation.dispose();
+    }
   }
 }

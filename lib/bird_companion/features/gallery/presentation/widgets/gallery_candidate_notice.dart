@@ -31,12 +31,19 @@ class GalleryCandidateNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!offline && resultComplete) return const SizedBox.shrink();
-    return Padding(padding: EdgeInsets.only(bottom: album ? 0 : 12), child: _warningNotice());
+    return Padding(
+      padding: EdgeInsets.only(bottom: album ? 0 : 12),
+      child: _warningNotice(),
+    );
   }
 
   /// 断线或候选不完整：单行短警示，动作内联，避免额外一行按钮。
   Widget _warningNotice() {
-    final action = offline ? reconnecting ? null : onReconnect : onRefresh;
+    final action = offline
+        ? reconnecting
+              ? null
+              : onReconnect
+        : onRefresh;
     final count = totalCount == null ? '$loadedCount' : '$loadedCount/$totalCount';
     final message = album
         ? _albumMessage()
@@ -55,7 +62,11 @@ class GalleryCandidateNotice extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-            reconnecting ? Icons.sync_rounded : offline ? Icons.link_off_rounded : Icons.warning_amber_rounded,
+            reconnecting
+                ? Icons.sync_rounded
+                : offline
+                ? Icons.link_off_rounded
+                : Icons.warning_amber_rounded,
             size: 18,
             color: AppColors.danger,
           ),
@@ -79,7 +90,14 @@ class GalleryCandidateNotice extends StatelessWidget {
                 minimumSize: const Size(0, 32),
               ),
               onPressed: action,
-              child: Text(offline ? '重新连接' : fromCache ? '刷新' : '重新筛选', style: const TextStyle(fontSize: 12)),
+              child: Text(
+                offline
+                    ? '重新连接'
+                    : fromCache
+                    ? '刷新'
+                    : '重新筛选',
+                style: const TextStyle(fontSize: 12),
+              ),
             ),
         ],
       ),
@@ -90,7 +108,9 @@ class GalleryCandidateNotice extends StatelessWidget {
     if (!offline) return fromCache ? '缓存结果不完整，仅显示 $loadedCount 张照片' : '照片结果不完整';
     final connection = reconnecting ? '正在恢复盒子连接' : '盒子未连接';
     final photos = resultComplete
-        ? fromCache ? '正在浏览手机缓存' : '正在浏览已加载照片'
+        ? fromCache
+              ? '正在浏览手机缓存'
+              : '正在浏览已加载照片'
         : fromCache
         ? '仅显示手机缓存的 $loadedCount 张照片'
         : '仅显示已加载的 $loadedCount 张照片';
@@ -125,7 +145,7 @@ class AlbumOfflineEmptyState extends StatelessWidget {
                 ? '正在恢复盒子连接'
                 : onClearFilters == null
                 ? '盒子未连接，手机上暂无可浏览的照片'
-                : '离线时没有符合当前条件的照片',
+                : '手机缓存中没有符合当前条件的照片',
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),

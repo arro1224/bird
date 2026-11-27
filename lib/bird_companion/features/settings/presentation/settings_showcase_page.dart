@@ -341,6 +341,8 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     _SettingsPage.networkSettings => NetworkSettingsPage(
       repository: BirdCompanionScope.of(context).provisioningRepository,
       onProvisioningCompleted: BirdCompanionScope.of(context).completeProvisioning,
+      deviceId: BirdCompanionScope.of(context).deviceSessionCubit.state.device?.id,
+      recoverBleOnOpen: true,
     ),
     _SettingsPage.networkDiagnostics => const NetworkDiagnosticsPage(),
     _SettingsPage.systemLogs => const SystemLogsPage(),

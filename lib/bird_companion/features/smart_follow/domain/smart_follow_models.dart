@@ -17,6 +17,7 @@ library;
 
 import 'package:aves/bird_companion/core/models/protocol_validation.dart';
 import 'package:aves/bird_companion/features/copy/domain/copy_job_models.dart';
+import 'package:aves/bird_companion/features/smart_follow/domain/smart_follow_blockage.dart';
 
 /// 联合任务书 §4 冻结的 SmartFollowSession 状态。
 ///
@@ -169,10 +170,7 @@ class SmartFollowStartRequest {
     'eligibility_mode': eligibilityMode,
     'pair_policy': pairPolicy,
     'conflict_strategy': conflictStrategy,
-    if (continuousQueue)
-      'review_export_enabled': reviewExportEnabled
-    else
-      'review_export': {'enabled': reviewExportEnabled, 'prefer_embedded': preferEmbedded},
+    if (continuousQueue) 'review_export_enabled': reviewExportEnabled else 'review_export': {'enabled': reviewExportEnabled, 'prefer_embedded': preferEmbedded},
   };
 }
 
@@ -284,13 +282,18 @@ class SmartFollowSession {
   /// 未契约化字段原样保留，避免"后端补了字段 App 就丢"。
   final Map<String, dynamic> raw;
   final SmartFollowSummary? summary;
+  SmartFollowBlockage? get blockage {
+    final facts = {...raw, ...?summary?.raw};
+    if (facts['blocked_kind'] == null && facts['blocked_reason'] == null && state != SmartFollowState.waitingForTarget && summary?.phase != 'waiting_for_storage' && (summary?.fileCounts['blocked'] ?? 0) == 0) return null;
+    return SmartFollowBlockage(facts, observedAt: updatedAt);
+  }
+
   bool get isContinuous => summary?.executionMode == 'continuous_queue' || raw['execution_mode'] == 'continuous_queue';
 
   bool get isFinished => state.isFinished;
   int? get notCopiedStoppedCount => raw['not_copied_stopped_count'] is int ? raw['not_copied_stopped_count'] as int : null;
   int? get notApplicableAssetCount => raw['not_applicable_asset_count'] is int ? raw['not_applicable_asset_count'] as int : null;
-  bool get canShowCompletion => state.isFinished &&
-      (!isContinuous || (summary != null && summary!.phase != 'created' && !summary!.hasOutstandingFiles));
+  bool get canShowCompletion => state.isFinished && (!isContinuous || (summary != null && summary!.phase != 'created' && !summary!.hasOutstandingFiles));
   bool get isWaiting => state.isWaiting;
 
   String displayCount(String key, {String unit = '张'}) {
@@ -348,9 +351,19 @@ class SmartFollowSession {
         // Legacy controllers may put the same counters under summary/stats.
         // Keep units distinct: a copied file is not necessarily one photo.
         final stats = summary.raw['stats'];
-        for (final key in ['recognized_count', 'eligible_count', 'pending_count', 'assigned_count',
-          'copied_asset_count', 'copied_file_count', 'failed_asset_count', 'child_job_count',
-          'skipped_file_count', 'not_copied_stopped_count', 'not_applicable_asset_count']) {
+        for (final key in [
+          'recognized_count',
+          'eligible_count',
+          'pending_count',
+          'assigned_count',
+          'copied_asset_count',
+          'copied_file_count',
+          'failed_asset_count',
+          'child_job_count',
+          'skipped_file_count',
+          'not_copied_stopped_count',
+          'not_applicable_asset_count',
+        ]) {
           json[key] ??= summary.raw[key] ?? (stats is Map ? stats[key] : null);
         }
         json['eligible_count'] ??= summary.eligibleAssetCount;
@@ -414,14 +427,13 @@ class SmartFollowSession {
 /// `phase=created` response before the worker has produced its first snapshot.
 class SmartFollowSummary {
   SmartFollowSummary.fromJson(Map<String, dynamic> json)
-      : raw = Map.unmodifiable(json),
-        executionMode = json['execution_mode'] as String?,
-        phase = json['phase'] as String?,
-        fileCounts = Map.unmodifiable({
-          if (json['file_counts'] is Map)
-            for (final entry in (json['file_counts'] as Map).entries)
-              entry.key.toString(): ProtocolValidation.nonNegativeInt({'value': entry.value}, 'value'),
-        });
+    : raw = Map.unmodifiable(json),
+      executionMode = json['execution_mode'] as String?,
+      phase = json['phase'] as String?,
+      fileCounts = Map.unmodifiable({
+        if (json['file_counts'] is Map)
+          for (final entry in (json['file_counts'] as Map).entries) entry.key.toString(): ProtocolValidation.nonNegativeInt({'value': entry.value}, 'value'),
+      });
 
   final Map<String, dynamic> raw;
   final String? executionMode;
@@ -484,21 +496,21 @@ class SmartFollowChildJob {
       'failed': ['failed_file_count', 'failed_files', 'failed_count'],
     };
     return SmartFollowChildJob(
-    copyJobId: ProtocolValidation.requiredId(json, 'copy_job_id'),
-    index: _intAlias(json, const ['index', 'ordinal', 'sequence', 'batch_number']),
-    state: CopyJobState.fromWire(_stringAlias(json, const ['state'])),
-    assetCount: _intAlias(json, keys['assets']!),
-    fileCount: _intAlias(json, keys['files']!),
-    totalBytes: _intAlias(json, const ['total_bytes', 'planned_bytes']),
-    copiedFileCount: _intAlias(json, keys['copied']!),
-    skippedFileCount: _intAlias(json, keys['skipped']!),
-    failedFileCount: _intAlias(json, keys['failed']!),
-    missingCounts: Set.unmodifiable({
-      for (final entry in keys.entries)
-        if (!entry.value.any((key) => json[key] is num)) entry.key,
-    }),
-    createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
-    finishedAt: ProtocolValidation.optionalDateTime(json, 'finished_at'),
+      copyJobId: ProtocolValidation.requiredId(json, 'copy_job_id'),
+      index: _intAlias(json, const ['index', 'ordinal', 'sequence', 'batch_number']),
+      state: CopyJobState.fromWire(_stringAlias(json, const ['state'])),
+      assetCount: _intAlias(json, keys['assets']!),
+      fileCount: _intAlias(json, keys['files']!),
+      totalBytes: _intAlias(json, const ['total_bytes', 'planned_bytes']),
+      copiedFileCount: _intAlias(json, keys['copied']!),
+      skippedFileCount: _intAlias(json, keys['skipped']!),
+      failedFileCount: _intAlias(json, keys['failed']!),
+      missingCounts: Set.unmodifiable({
+        for (final entry in keys.entries)
+          if (!entry.value.any((key) => json[key] is num)) entry.key,
+      }),
+      createdAt: ProtocolValidation.optionalDateTime(json, 'created_at'),
+      finishedAt: ProtocolValidation.optionalDateTime(json, 'finished_at'),
     );
   }
 }

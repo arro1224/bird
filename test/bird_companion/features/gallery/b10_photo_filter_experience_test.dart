@@ -228,7 +228,7 @@ void main() {
       expect(result.scannedCount, 1);
     });
 
-    test('keeps existing gallery items visible while filtering and cancels cleanly', () async {
+    test('clears the previous query while filtering and cancels cleanly', () async {
       final repository = _ControllableExecutionRepository();
       final cubit = GalleryCubit(repository, 'project-1');
       addTearDown(cubit.close);
@@ -240,7 +240,7 @@ void main() {
       await repository.filterStarted.future;
 
       expect(cubit.state.filtering, isTrue);
-      expect(cubit.state.items.map((item) => item.id), ['existing']);
+      expect(cubit.state.items, isEmpty);
       expect(cubit.state.scannedCount, 200);
 
       cubit.cancelFiltering();
@@ -248,7 +248,7 @@ void main() {
 
       expect(cubit.state.filtering, isFalse);
       expect(cubit.state.loading, isFalse);
-      expect(cubit.state.items.map((item) => item.id), ['existing']);
+      expect(cubit.state.items, isEmpty);
       expect(cubit.state.error, isNull);
     });
 

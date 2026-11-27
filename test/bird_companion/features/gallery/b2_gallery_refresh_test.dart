@@ -149,8 +149,7 @@ void main() {
   });
 }
 
-PhotoRepositoryImpl _repository(_PhotoApi api, _Cache cache, String Function() device) =>
-    PhotoRepositoryImpl(api, _UnusedConnectivity(), PendingOperationStore.memory(), cache, device, device);
+PhotoRepositoryImpl _repository(_PhotoApi api, _Cache cache, String Function() device) => PhotoRepositoryImpl(api, _UnusedConnectivity(), PendingOperationStore.memory(), cache, device, device);
 
 PhotoPage _page(List<String> ids, {int day = 10, String? next, bool recognized = true}) => PhotoPage(
   items: [
@@ -210,6 +209,8 @@ class _Cache implements LocalCache {
 }
 
 class _UnusedConnectivity implements ConnectivityMonitor {
+  @override
+  Future<bool> get hasNetwork async => true;
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
