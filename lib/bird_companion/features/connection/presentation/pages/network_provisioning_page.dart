@@ -18,25 +18,37 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+enum WifiSettingsAction { currentPhone, qr, scan, manual }
+
 class NetworkProvisioningPage extends StatefulWidget {
   const NetworkProvisioningPage({
     super.key,
     required this.onBack,
     this.onCompleted,
     this.onChangeWifi,
+    this.onMethodStarted,
+    this.inlineMethodPicker = false,
     this.onReauthorize,
     this.onExportDiagnostic,
     this.completing = false,
+    this.completionLabel = '正在进入首页…',
     this.phoneWifi,
     this.requestLocationPermission,
+    this.demoMode = false,
+    this.initialAction,
   });
 
   final VoidCallback onBack;
   final ValueChanged<Uri>? onCompleted;
   final VoidCallback? onChangeWifi;
+
+  /// Lets an embedding page switch from the compact method picker to the full flow.
+  final VoidCallback? onMethodStarted;
+  final bool inlineMethodPicker;
   final VoidCallback? onReauthorize;
   final VoidCallback? onExportDiagnostic;
   final bool completing;
+  final String completionLabel;
 
   /// Phone Wi-Fi name prefill and gallery QR import. Defaults to the production channel
   /// implementation resolved from the app scope, and is injected in tests.
@@ -45,6 +57,8 @@ class NetworkProvisioningPage extends StatefulWidget {
   /// Asks for the location access that Android still requires before an app may read the
   /// connected network's name. Injected in tests; defaults to a single runtime request.
   final Future<bool> Function()? requestLocationPermission;
+  final bool demoMode;
+  final WifiSettingsAction? initialAction;
 
   @override
   State<NetworkProvisioningPage> createState() => _NetworkProvisioningPageState();
@@ -57,6 +71,27 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
   String? _prefillHint;
   bool _readingPhoneWifi = false;
   bool _openingQrScanner = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final cubit = context.read<NetworkProvisioningCubit>();
+      switch (widget.initialAction) {
+        case WifiSettingsAction.currentPhone:
+          await _connectCurrentPhoneWifi(cubit);
+        case WifiSettingsAction.qr:
+          await _openWifiQrScanner(cubit);
+        case WifiSettingsAction.scan:
+          await cubit.scanWifi();
+        case WifiSettingsAction.manual:
+          cubit.showManualWifi();
+        case null:
+          break;
+      }
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -89,6 +124,7 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
   /// never blocks the user from typing a different name.
   Future<void> _connectCurrentPhoneWifi(NetworkProvisioningCubit cubit) async {
     if (_readingPhoneWifi) return;
+    widget.onMethodStarted?.call();
     setState(() => _readingPhoneWifi = true);
     var hint = await _readPhoneWifi();
     if (hint.failure == PhoneWifiReadFailure.permissionDenied || hint.failure == PhoneWifiReadFailure.approximateLocation) {
@@ -97,7 +133,7 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
       final granted = await (widget.requestLocationPermission ?? _requestLocationOnce)();
       if (granted) hint = await _readPhoneWifi();
     }
-    if (!mounted || cubit.isClosed) return;
+    if (!mounted || cubit.isClosed || cubit.state.phase != NetworkProvisioningPhase.choosingWifiMethod) return;
     setState(() {
       _readingPhoneWifi = false;
       _prefillSsid = hint.isReadable ? hint.ssid : null;
@@ -109,15 +145,18 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
   /// Opens the QR page (camera or gallery) and submits the confirmed target exactly once.
   Future<void> _openWifiQrScanner(NetworkProvisioningCubit cubit) async {
     if (_openingQrScanner) return;
+    widget.onMethodStarted?.call();
     _openingQrScanner = true;
     try {
       final credentials = await Navigator.of(context).push<WifiQrCredentials>(
         MaterialPageRoute<WifiQrCredentials>(
-          builder: (_) => WifiQrScannerPage(phoneWifi: _phoneWifi),
+          builder: (_) => WifiQrScannerPage(phoneWifi: _phoneWifi, demoMode: widget.demoMode),
         ),
       );
       if (credentials != null && !cubit.isClosed) {
         await cubit.submitWifiQrCredentials(credentials);
+      } else if (mounted && widget.initialAction == WifiSettingsAction.qr) {
+        widget.onBack();
       }
     } finally {
       _openingQrScanner = false;
@@ -140,6 +179,7 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
                 label: '搜索附近 Wi-Fi',
                 onPressed: capabilities.wifiScan
                     ? () {
+                        widget.onMethodStarted?.call();
                         Navigator.of(sheetContext).pop();
                         unawaited(cubit.scanWifi());
                       }
@@ -151,6 +191,7 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
                 label: '手动输入 Wi-Fi',
                 onPressed: capabilities.wifiManual
                     ? () {
+                        widget.onMethodStarted?.call();
                         Navigator.of(sheetContext).pop();
                         if (mounted) {
                           setState(() {
@@ -192,6 +233,7 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
           onConnectPhoneWifi: () => unawaited(_connectCurrentPhoneWifi(cubit)),
           onScanWifiQr: () => unawaited(_openWifiQrScanner(cubit)),
           onChooseNetwork: () => _showConventionalWifiOptions(state.capabilities, cubit),
+          compact: widget.inlineMethodPicker,
         ),
         NetworkProvisioningPhase.scanningWifi => const _ProgressView(
           icon: Icons.wifi_find_rounded,
@@ -217,6 +259,7 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
           baseUri: state.baseUri,
           onCompleted: widget.onCompleted,
           completing: widget.completing,
+          completionLabel: widget.completionLabel,
           onStopDirectAp: state.confirmedMode == ProvisioningNetworkMode.directAp ? () => unawaited(_confirmStopDirectAp(context, cubit)) : null,
           onChangeWifi: state.confirmedMode == ProvisioningNetworkMode.infrastructureSta ? widget.onChangeWifi : null,
         ),
@@ -258,6 +301,7 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
           onCancel: state.canCancel ? () => unawaited(cubit.cancelActiveOperation()) : null,
         ),
       };
+      if (widget.inlineMethodPicker && state.phase == NetworkProvisioningPhase.choosingWifiMethod) return content;
       return Column(
         children: [
           Expanded(child: content),
@@ -275,6 +319,7 @@ class _WifiMethodView extends StatelessWidget {
     required this.onConnectPhoneWifi,
     required this.onScanWifiQr,
     required this.onChooseNetwork,
+    this.compact = false,
   });
 
   final NetworkProvisioningState state;
@@ -282,12 +327,40 @@ class _WifiMethodView extends StatelessWidget {
   final VoidCallback onConnectPhoneWifi;
   final VoidCallback onScanWifiQr;
   final VoidCallback onChooseNetwork;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final capabilities = state.capabilities!;
     final manualSupported = capabilities.wifiManual;
     final conventionalSupported = capabilities.wifiScan || capabilities.wifiManual;
+    if (compact) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _InlineMethodRow(
+            icon: Icons.wifi_password_rounded,
+            title: '连接手机当前 Wi-Fi',
+            subtitle: '自动填入名称，密码需手动输入',
+            badge: '推荐',
+            onTap: manualSupported && !readingPhoneWifi ? onConnectPhoneWifi : null,
+          ),
+          _InlineMethodRow(
+            icon: Icons.qr_code_scanner_rounded,
+            title: '扫描 Wi-Fi 二维码',
+            subtitle: '使用相机或从相册选择',
+            onTap: onScanWifiQr,
+          ),
+          _InlineMethodRow(
+            icon: Icons.wifi_find_rounded,
+            title: '搜索或手动输入',
+            subtitle: '搜索附近网络，或直接填写信息',
+            onTap: conventionalSupported ? onChooseNetwork : null,
+            last: true,
+          ),
+        ],
+      );
+    }
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.pageHorizontal),
       children: [
@@ -306,9 +379,7 @@ class _WifiMethodView extends StatelessWidget {
           description: '可自动填入当前 Wi-Fi 名称，首次连接请填写密码。',
           badge: '推荐',
           onTap: manualSupported && !readingPhoneWifi ? onConnectPhoneWifi : null,
-          disabledReason: readingPhoneWifi
-              ? '正在读取手机当前 Wi-Fi…'
-              : (manualSupported ? null : '此盒子不支持手动配置 Wi-Fi'),
+          disabledReason: readingPhoneWifi ? '正在读取手机当前 Wi-Fi…' : (manualSupported ? null : '此盒子不支持手动配置 Wi-Fi'),
         ),
         const SizedBox(height: AppSpacing.sm),
         ProvisioningMethodCard(
@@ -328,6 +399,51 @@ class _WifiMethodView extends StatelessWidget {
       ],
     );
   }
+}
+
+class _InlineMethodRow extends StatelessWidget {
+  const _InlineMethodRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.badge,
+    this.last = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+  final String? badge;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        minLeadingWidth: 28,
+        leading: Icon(icon, color: onTap == null ? AppColors.inkMuted : AppColors.brand),
+        title: Row(
+          children: [
+            Flexible(child: Text(title)),
+            if (badge != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                badge!,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: AppColors.success, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ],
+        ),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: onTap,
+      ),
+      if (!last) const Divider(height: 1, indent: 36),
+    ],
+  );
 }
 
 class _WifiScanView extends StatelessWidget {
@@ -418,6 +534,7 @@ class _SuccessView extends StatelessWidget {
     required this.baseUri,
     required this.onCompleted,
     required this.completing,
+    required this.completionLabel,
     required this.onStopDirectAp,
     required this.onChangeWifi,
   });
@@ -426,6 +543,7 @@ class _SuccessView extends StatelessWidget {
   final Uri? baseUri;
   final ValueChanged<Uri>? onCompleted;
   final bool completing;
+  final String completionLabel;
   final VoidCallback? onStopDirectAp;
   final VoidCallback? onChangeWifi;
 
@@ -445,7 +563,7 @@ class _SuccessView extends StatelessWidget {
       const Text('网络状态已通过盒子再次确认。', textAlign: TextAlign.center),
       const SizedBox(height: AppSpacing.xl),
       BirdButton(
-        label: completing ? '正在进入首页…' : '完成',
+        label: completing ? completionLabel : '完成',
         onPressed: completing || baseUri == null || onCompleted == null ? null : () => onCompleted!(baseUri!),
       ),
       if (onStopDirectAp != null) ...[
@@ -712,4 +830,3 @@ Future<void> _confirmStopDirectAp(
     await cubit.stopDirectAp();
   }
 }
-

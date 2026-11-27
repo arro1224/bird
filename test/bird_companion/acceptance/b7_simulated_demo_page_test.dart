@@ -1,10 +1,31 @@
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/features/connection/presentation/pages/b7_simulated_demo_page.dart';
 import 'package:aves/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
+import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('network settings can refresh simulated BLE control for the selected box', () async {
+    final repository = B7SimulatedProvisioningRepository();
+    addTearDown(repository.dispose);
+    final BleControlRecovery control = repository;
+    final info = await repository.connect(await repository.discoverDevices().first);
+    await repository.openPairing();
+    await repository.authorizePairing('123456');
+    expect(await control.recoverBleControl(info.deviceId, CancelToken()), same(info));
+    expect(repository.takePairingSessionForHttp(), isNotEmpty);
+    await repository.disconnect();
+    await expectLater(control.recoverBleControl('another-box', CancelToken()), throwsA(isA<ProvisioningException>()));
+    await expectLater(control.recoverBleControl(info.deviceId, CancelToken()..cancel()), throwsA(isA<DioException>()));
+    expect(repository.connectedDeviceInfo, isNull);
+    expect(await control.recoverBleControl(info.deviceId, CancelToken()), same(info));
+    expect(repository.connectedDeviceInfo, same(info));
+    expect(repository.takePairingSessionForHttp, throwsA(isA<ProvisioningException>()));
+  });
+
   Future<void> settleSimulatedEvent(WidgetTester tester) async {
     await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 30));

@@ -1,21 +1,17 @@
 import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'dart:async';
-import 'package:aves/bird_companion/core/diagnostics/phone_diagnostic_widgets.dart';
 
 import 'package:aves/bird_companion/app/app_dependencies.dart';
 import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/app_shell.dart';
-import 'package:aves/bird_companion/app/bird_route_args.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
 import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/features/device/presentation/device_status_cubit.dart';
-import 'package:aves/bird_companion/features/connection/presentation/connection_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/adapters/device_overview_adapter.dart';
 import 'package:aves/bird_companion/features/settings/presentation/bird_settings_controller.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/copy_backup_settings_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/device_details_page.dart';
-import 'package:aves/bird_companion/features/settings/presentation/pages/device_management_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/display_settings_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/help_center_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/network_diagnostics_page.dart';
@@ -25,7 +21,6 @@ import 'package:aves/bird_companion/features/settings/presentation/pages/storage
 import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_atmosphere.dart';
-import 'package:aves/bird_companion/features/settings/presentation/widgets/device_current_work_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -36,29 +31,13 @@ class SettingsShowcasePage extends StatefulWidget {
     this.deviceStatus,
     this.onReconnect,
     this.embedded = false,
-    this.currentBatchTitle,
-    this.currentBatchSummary,
-    this.currentTaskTitle,
-    this.currentTaskSummary,
-    this.onOpenCurrentBatch,
-    this.onOpenCurrentTask,
     this.settingsController,
-  }) : assert(
-         (currentBatchTitle == null && currentBatchSummary == null && currentTaskTitle == null && currentTaskSummary == null) ||
-             (currentBatchTitle != null && currentBatchSummary != null && currentTaskTitle != null && currentTaskSummary != null),
-         'Current batch and task summaries must be injected together.',
-       );
+  });
 
   final StateStreamable<DeviceSessionState>? deviceSession;
   final StateStreamable<DeviceStatusState>? deviceStatus;
   final VoidCallback? onReconnect;
   final bool embedded;
-  final String? currentBatchTitle;
-  final String? currentBatchSummary;
-  final String? currentTaskTitle;
-  final String? currentTaskSummary;
-  final VoidCallback? onOpenCurrentBatch;
-  final VoidCallback? onOpenCurrentTask;
   final BirdSettingsController? settingsController;
 
   @override
@@ -110,33 +89,18 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
                 ),
                 sliver: SliverList.list(
                   children: [
-                    if (BirdCompanionScope.maybeOf(context) != null) const PhoneDiagnosticExportButton(key: Key('device-export-phone-diagnostics')),
-                    _buildCurrentWork(context),
-                    const SizedBox(height: AppSpacing.sm),
                     _buildSection(
                       context,
                       sectionKey: const Key('device-section-connection'),
-                      title: '设备与连接',
+                      title: '连接与网络',
                       items: [
-                        if (context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>() != null)
+                        if (BirdCompanionScope.maybeOf(context) != null)
                           _HomeItem(
                             key: const Key('showcase-network-settings'),
                             title: '网络设置',
                             icon: Icons.router_outlined,
                             onTap: () => _open(_SettingsPage.networkSettings),
                           ),
-                        _HomeItem(
-                          key: const Key('showcase-device-management'),
-                          title: '连接设备',
-                          icon: Icons.link_rounded,
-                          onTap: () => _open(_SettingsPage.deviceManagement),
-                        ),
-                        _HomeItem(
-                          key: const Key('showcase-device-details'),
-                          title: '设备详情',
-                          icon: Icons.info_outline_rounded,
-                          onTap: () => _open(_SettingsPage.deviceDetails),
-                        ),
                         _HomeItem(
                           key: const Key('showcase-network-diagnostics'),
                           title: '网络诊断',
@@ -148,8 +112,28 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
                     const SizedBox(height: AppSpacing.sm),
                     _buildSection(
                       context,
-                      sectionKey: const Key('device-section-photo'),
-                      title: '照片与审阅',
+                      sectionKey: const Key('device-section-storage'),
+                      title: '存储与备份',
+                      items: [
+                        _HomeItem(
+                          key: const Key('showcase-storage-target'),
+                          title: '存储设备',
+                          icon: Icons.storage_rounded,
+                          onTap: () => _open(_SettingsPage.storageTarget),
+                        ),
+                        _HomeItem(
+                          key: const Key('showcase-copy-settings'),
+                          title: '复制设置',
+                          icon: Icons.copy_all_rounded,
+                          onTap: () => _open(_SettingsPage.copyBackup),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    _buildSection(
+                      context,
+                      sectionKey: const Key('device-section-preferences'),
+                      title: '使用偏好',
                       items: [
                         _HomeItem(
                           key: const Key('showcase-display-settings'),
@@ -159,29 +143,9 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
                         ),
                         _HomeItem(
                           key: const Key('showcase-photo-settings'),
-                          title: '照片处理默认值',
+                          title: '照片处理',
                           icon: Icons.tune_rounded,
                           onTap: () => _open(_SettingsPage.photos),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    _buildSection(
-                      context,
-                      sectionKey: const Key('device-section-copy'),
-                      title: '复制与导出',
-                      items: [
-                        _HomeItem(
-                          key: const Key('showcase-copy-settings'),
-                          title: '复制默认设置',
-                          icon: Icons.copy_all_rounded,
-                          onTap: () => _open(_SettingsPage.copyBackup),
-                        ),
-                        _HomeItem(
-                          key: const Key('showcase-storage-target'),
-                          title: '存储设备',
-                          icon: Icons.storage_rounded,
-                          onTap: () => _open(_SettingsPage.storageTarget),
                         ),
                       ],
                     ),
@@ -262,35 +226,6 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
       status: status,
       onReconnect: onReconnect,
       onOpenDetails: () => _open(_SettingsPage.deviceDetails),
-    );
-  }
-
-  Widget _buildCurrentWork(BuildContext context) {
-    final isDemo = widget.currentBatchTitle == null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.only(left: AppSpacing.xs, bottom: AppSpacing.xs),
-          child: Text(
-            '当前工作',
-            style: TextStyle(
-              color: AppColors.forestDeep,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-        DeviceCurrentWorkCard(
-          batchTitle: widget.currentBatchTitle ?? '演示批次',
-          batchSummary: widget.currentBatchSummary ?? '湖畔清晨 · 328 张照片 · 24 张待审',
-          taskTitle: widget.currentTaskTitle ?? '演示任务',
-          taskSummary: widget.currentTaskSummary ?? 'AI 分析 · 65%',
-          isDemo: isDemo,
-          onOpenBatch: widget.onOpenCurrentBatch ?? () => _showMessage('演示批次详情'),
-          onOpenTask: widget.onOpenCurrentTask ?? () => _showMessage('演示任务详情'),
-        ),
-      ],
     );
   }
 
@@ -398,7 +333,6 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
   });
 
   Widget _buildPage(BuildContext context, _SettingsPage page) => switch (page) {
-    _SettingsPage.deviceManagement => _buildDeviceManagementPage(context),
     _SettingsPage.deviceDetails => DeviceDetailsPage(controller: _controller),
     _SettingsPage.display => DisplaySettingsPage(controller: _controller),
     _SettingsPage.photos => PhotoSettingsPage(controller: _controller),
@@ -412,29 +346,6 @@ class _SettingsShowcasePageState extends State<SettingsShowcasePage> {
     _SettingsPage.systemLogs => const SystemLogsPage(),
     _SettingsPage.help => const HelpCenterPage(),
   };
-
-  Widget _buildDeviceManagementPage(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<BirdCompanionScope>();
-    final dependencies = scope?.dependencies;
-    if (dependencies != null) {
-      return ConnectionPage(
-        entryMode: ConnectionEntryMode.addOrSwitch,
-        provisioningRepository: dependencies.provisioningRepository,
-        onProvisioningCompleted: dependencies.completeProvisioning,
-      );
-    }
-    return DeviceManagementPage(
-      controller: _controller,
-      onOpenDetails: () => guardBirdNavigation(
-        context,
-        () => Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
-            builder: (_) => DeviceDetailsPage(controller: _controller),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _LiveDeviceCard extends StatelessWidget {
@@ -499,7 +410,12 @@ class SettingsDeviceCard extends StatelessWidget {
     elevation: 3,
     shadowColor: const Color(0x241B2E20),
     child: InkWell(
-      onTap: _isConnecting ? null : _primaryAction,
+      // A disconnected card has no useful details to show. Keep the card
+      // informational and leave the explicit button as the only connection
+      // entry point until a live device session exists.
+      onTap: overview.primaryAction == DeviceOverviewPrimaryAction.details
+          ? onOpenDetails
+          : null,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.sm,
@@ -563,43 +479,45 @@ class SettingsDeviceCard extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: AppSpacing.xs),
-            OutlinedButton(
-              key: const Key('showcase-device-primary-action'),
-              onPressed: _isConnecting ? null : _primaryAction,
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(86, AppSpacing.minimumControl),
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                side: const BorderSide(
-                  color: AppColors.forestPrimary,
-                  width: 1.5,
+            if (overview.primaryAction != DeviceOverviewPrimaryAction.details) ...[
+              const SizedBox(width: AppSpacing.xs),
+              OutlinedButton(
+                key: const Key('showcase-device-primary-action'),
+                onPressed: _isConnecting ? null : _primaryAction,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(86, AppSpacing.minimumControl),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                  side: const BorderSide(
+                    color: AppColors.forestPrimary,
+                    width: 1.5,
+                  ),
+                  foregroundColor: AppColors.forestPrimary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusCompact),
+                  ),
                 ),
-                foregroundColor: AppColors.forestPrimary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusCompact),
-                ),
-              ),
-              child: _isConnecting
-                  ? Semantics(
-                      label: '正在连接设备',
-                      child: const ExcludeSemantics(
-                        child: SizedBox.square(
-                          dimension: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: AppColors.warning,
+                child: _isConnecting
+                    ? Semantics(
+                        label: '正在连接设备',
+                        child: const ExcludeSemantics(
+                          child: SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: AppColors.warning,
+                            ),
                           ),
                         ),
+                      )
+                    : Text(
+                        _primaryActionLabel,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    )
-                  : Text(
-                      _primaryActionLabel,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-            ),
+              ),
+            ],
           ],
         ),
       ),
@@ -616,7 +534,7 @@ class SettingsDeviceCard extends StatelessWidget {
   String get _primaryActionLabel => switch (overview.primaryAction) {
     DeviceOverviewPrimaryAction.connect => '连接设备',
     DeviceOverviewPrimaryAction.reconnect => '重新连接',
-    DeviceOverviewPrimaryAction.details => '设备详情',
+    DeviceOverviewPrimaryAction.details => '已连接',
   };
 
   static IconData _statusIcon(DeviceOverviewConnectionKind kind) => switch (kind) {
@@ -662,7 +580,6 @@ class _HomeItem {
 }
 
 enum _SettingsPage {
-  deviceManagement,
   deviceDetails,
   display,
   photos,

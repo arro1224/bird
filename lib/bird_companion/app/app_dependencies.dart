@@ -125,6 +125,8 @@ class BirdCompanionDependencies {
     required this.bleConnectionDiagnosticStore,
     required this.connectionAttempts,
     required this.phoneDiagnostics,
+    required this.phoneWifi,
+    required this.isEmbeddedDemo,
   }) {
     // R3：WebSocket 只当唤醒信号，仓储收到后重读会话（不拿 payload 数字改状态）。
     // 断线期间漏掉的通知由页面/前台的显式 refresh 补齐，不依赖这条订阅。
@@ -187,7 +189,8 @@ class BirdCompanionDependencies {
   final bleDiagnosticFilePlatform = const MethodChannelBirdBoxBleDiagnosticFilePlatform();
 
   /// Task-2 additions: phone Wi-Fi name prefill and gallery QR import. UI hints only.
-  final phoneWifi = const MethodChannelPhoneWifiPlatform();
+  final PhoneWifiPlatform phoneWifi;
+  final bool isEmbeddedDemo;
   final appBuildIdentity = AppBuildIdentity();
   final PhoneDiagnosticRecorder phoneDiagnostics;
   late final bleDiagnosticSnapshotService = BleDiagnosticSnapshotService(bleScanDiagnosticStore, bleConnectionDiagnosticStore, bleDiagnosticFilePlatform, phoneSnapshot: phoneDiagnostics.snapshot, buildIdentity: appBuildIdentity.read);
@@ -206,6 +209,8 @@ class BirdCompanionDependencies {
     ProvisioningRepository? provisioningRepositoryOverride,
     ConnectivityMonitor? connectivityMonitorOverride,
     SecureSessionStore? sessionStoreOverride,
+    PhoneWifiPlatform? phoneWifiOverride,
+    bool isEmbeddedDemo = false,
   }) async {
     final cache = await LocalCache.open();
     final apiClient = ApiClient();
@@ -395,6 +400,8 @@ class BirdCompanionDependencies {
       bleConnectionDiagnosticStore: bleConnectionDiagnosticStore,
       connectionAttempts: connectionAttempts,
       phoneDiagnostics: phoneDiagnostics,
+      phoneWifi: phoneWifiOverride ?? const MethodChannelPhoneWifiPlatform(),
+      isEmbeddedDemo: isEmbeddedDemo,
     );
     dependencies.birdSyncService.start();
     unawaited(dependencies.appBuildIdentity.read().then((build) => phoneDiagnostics.record({'event': 'phone_build_identified', ...build})));

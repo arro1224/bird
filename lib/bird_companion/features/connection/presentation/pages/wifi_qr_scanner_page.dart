@@ -14,7 +14,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class WifiQrScannerPage extends StatefulWidget {
-  const WifiQrScannerPage({super.key, this.phoneWifi, this.imageAnalyzer});
+  const WifiQrScannerPage({super.key, this.phoneWifi, this.imageAnalyzer, this.demoMode = false});
 
   /// Gallery import channel. Defaults to the app scope, and is injected in tests.
   final PhoneWifiPlatform? phoneWifi;
@@ -24,6 +24,7 @@ class WifiQrScannerPage extends StatefulWidget {
   /// Defaults to the live scanner controller; injected in tests so the gallery
   /// flow is verifiable without a camera or a platform channel.
   final Future<Iterable<String?>> Function(String path)? imageAnalyzer;
+  final bool demoMode;
 
   @override
   State<WifiQrScannerPage> createState() => _WifiQrScannerPageState();
@@ -126,6 +127,13 @@ class _WifiQrScannerPageState extends State<WifiQrScannerPage> {
   }
 
   Future<void> _rescan() async {
+    if (widget.demoMode) {
+      setState(() {
+        _candidate = null;
+        _handled = false;
+      });
+      return;
+    }
     await _controller.stop();
     if (!mounted) return;
     setState(() {
@@ -134,6 +142,20 @@ class _WifiQrScannerPageState extends State<WifiQrScannerPage> {
       _problem = null;
     });
     await _controller.start();
+  }
+
+  void _loadDemoQr() {
+    if (!widget.demoMode || _handled || _importing) return;
+    _handled = true;
+    setState(() {
+      _candidate = const WifiQrCredentials(
+        ssid: 'BirdLab-5G',
+        security: WifiSecurity.wpa2Personal,
+        password: 'demo-pass-1234',
+        networkKind: StaNetworkKind.router,
+      );
+      _problem = null;
+    });
   }
 
   void _confirm() {
@@ -155,20 +177,22 @@ class _WifiQrScannerPageState extends State<WifiQrScannerPage> {
           padding: const EdgeInsets.all(AppSpacing.pageHorizontal),
           children: [
             AspectRatio(
-              aspectRatio: 1,
+              aspectRatio: widget.demoMode ? 1.65 : 1,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(AppSpacing.radiusCard),
-                child: MobileScanner(
-                  controller: _controller,
-                  onDetect: _onDetect,
-                  fit: BoxFit.cover,
-                  tapToFocus: true,
-                  placeholderBuilder: (_) => const ColoredBox(
-                    color: AppColors.brandDark,
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                  errorBuilder: (_, error) => _WifiQrCameraFailure(error: error),
-                ),
+                child: widget.demoMode
+                    ? const _DemoQrPreview()
+                    : MobileScanner(
+                        controller: _controller,
+                        onDetect: _onDetect,
+                        fit: BoxFit.cover,
+                        tapToFocus: true,
+                        placeholderBuilder: (_) => const ColoredBox(
+                          color: AppColors.brandDark,
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                        errorBuilder: (_, error) => _WifiQrCameraFailure(error: error),
+                      ),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
@@ -186,21 +210,29 @@ class _WifiQrScannerPageState extends State<WifiQrScannerPage> {
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
-                        _problem ?? '请扫描路由器或另一台设备提供的标准 Wi-Fi 二维码，或从相册选择二维码图片。密码只用于本次 BLE 配网。',
+                        _problem ?? (widget.demoMode ? '模拟扫码，无需打开相机。' : '请扫描路由器或另一台设备提供的标准 Wi-Fi 二维码，或从相册选择二维码图片。密码只用于本次 BLE 配网。'),
                       ),
                     ),
                   ],
                 ),
               ),
             const SizedBox(height: AppSpacing.md),
-            BirdButton(
-              label: _importing ? '正在识别图片…' : '从相册选择',
+            if (widget.demoMode && candidate == null)
+              BirdButton(
+                key: const Key('wifi-qr-demo-sample'),
+                label: '识别演示二维码',
+                onPressed: _loadDemoQr,
+                icon: const Icon(Icons.qr_code_2_rounded),
+              ),
+            if (!widget.demoMode)
+              BirdButton(
+                label: _importing ? '正在识别图片…' : '从相册选择',
               onPressed: candidate == null && !_importing ? () => unawaited(_pickFromGallery()) : null,
               icon: const Icon(Icons.photo_library_outlined),
               variant: BirdButtonVariant.outlined,
             ),
             const SizedBox(height: AppSpacing.sm),
-            BirdButton(
+            if (!widget.demoMode || candidate != null) BirdButton(
               label: candidate == null ? (_problem == null ? '等待扫码' : '重新扫描') : '确认连接此 Wi-Fi',
               onPressed: candidate == null ? (_problem == null ? null : _rescan) : _confirm,
               icon: Icon(candidate == null ? Icons.qr_code_scanner_rounded : Icons.wifi_rounded),
@@ -220,6 +252,56 @@ class _WifiQrScannerPageState extends State<WifiQrScannerPage> {
   }
 }
 
+class _DemoQrPreview extends StatelessWidget {
+  const _DemoQrPreview();
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: AppColors.brandDark,
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        const Icon(Icons.qr_code_2_rounded, color: AppColors.cream, size: 118),
+        Positioned(
+          bottom: AppSpacing.lg,
+          child: Text(
+            '演示扫描画面',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.cream),
+          ),
+        ),
+        const Positioned(left: 22, top: 22, child: _ScannerCorner(topLeft: true)),
+        const Positioned(right: 22, top: 22, child: _ScannerCorner(topRight: true)),
+        const Positioned(left: 22, bottom: 22, child: _ScannerCorner(bottomLeft: true)),
+        const Positioned(right: 22, bottom: 22, child: _ScannerCorner(bottomRight: true)),
+      ],
+    ),
+  );
+}
+
+class _ScannerCorner extends StatelessWidget {
+  const _ScannerCorner({this.topLeft = false, this.topRight = false, this.bottomLeft = false, this.bottomRight = false});
+
+  final bool topLeft;
+  final bool topRight;
+  final bool bottomLeft;
+  final bool bottomRight;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 34,
+    height: 34,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(color: AppColors.cream, width: topLeft || bottomLeft ? 3 : 0),
+          right: BorderSide(color: AppColors.cream, width: topRight || bottomRight ? 3 : 0),
+          top: BorderSide(color: AppColors.cream, width: topLeft || topRight ? 3 : 0),
+          bottom: BorderSide(color: AppColors.cream, width: bottomLeft || bottomRight ? 3 : 0),
+        ),
+      ),
+    ),
+  );
+}
 class _WifiQrCandidateCard extends StatelessWidget {
   const _WifiQrCandidateCard({required this.credentials});
 

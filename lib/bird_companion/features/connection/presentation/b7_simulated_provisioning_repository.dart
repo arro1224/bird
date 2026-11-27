@@ -3,13 +3,15 @@ import 'dart:async';
 import 'package:aves/bird_companion/core/session/client_identity_store.dart';
 import 'package:aves/bird_companion/features/connection/data/ble/ble_protocol_constants.dart';
 import 'package:aves/bird_companion/features/connection/data/direct_ap_pending_store.dart';
+import 'package:aves/bird_companion/features/connection/domain/connection_cancellation.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_error.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_repository.dart';
+import 'package:dio/dio.dart';
 
 /// Deterministic repository used only by the B7 simulated acceptance page.
 /// It exercises the same presentation contract as a real BirdBox transport.
-final class B7SimulatedProvisioningRepository implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository {
+final class B7SimulatedProvisioningRepository implements ProvisioningRepository, DppAvailabilityRepository, ProvisioningSessionRepository, BleControlRecovery {
   B7SimulatedProvisioningRepository({
     Uri? baseUri,
     this.deviceId = simulatedBirdBoxDeviceId,
@@ -122,6 +124,16 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository,
     await Future<void>.delayed(const Duration(milliseconds: 20));
     _connectedDeviceInfo = _deviceInfo;
     return _deviceInfo;
+  }
+
+  @override
+  Future<ProvisioningDeviceInfo> recoverBleControl(String deviceId, CancelToken cancelToken) async {
+    cancelToken.throwIfCancellationRequested();
+    if (_disposed) throw const DirectApConfigurationUnavailable();
+    if (deviceId != _deviceInfo.deviceId) {
+      throw const ProvisioningException(code: ProvisioningErrorCode.deviceIdMismatch, retryable: false);
+    }
+    return _connectedDeviceInfo ??= _deviceInfo;
   }
 
   @override
@@ -262,6 +274,7 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository,
   Future<CommandAccepted> scanWifi() async {
     _requireAuthorization();
     calls.add('scanWifi');
+    final beforeScan = _networkStatus;
     final accepted = CommandAccepted(operationId: _operation('scan_wifi'), desiredMode: ProvisioningNetworkMode.infrastructureSta);
     _emitLater(
       ProvisioningEvent(
@@ -284,6 +297,7 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository,
           ],
         }),
       ),
+      restoreAfterScan: beforeScan,
     );
     return accepted;
   }
@@ -301,7 +315,7 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository,
         payload: StaConnected.fromJson({
           'operation_id': operationId,
           'active_mode': 'infrastructure_sta',
-          'ssid': 'BirdLab-5G',
+          'ssid': configuration.ssid,
           'bssid': '02:00:00:00:00:07',
           'ipv4': '192.0.2.20',
           'prefix_length': 24,
@@ -376,14 +390,15 @@ final class B7SimulatedProvisioningRepository implements ProvisioningRepository,
     return CommandAccepted(operationId: _operation('cancel'), desiredMode: ProvisioningNetworkMode.none);
   }
 
-  void _emitLater(ProvisioningEvent event) {
+  void _emitLater(ProvisioningEvent event, {ProvisioningNetworkStatus? restoreAfterScan}) {
     final epoch = _epoch;
     final operation = _activeOperation;
     Future<void>.delayed(const Duration(milliseconds: 1), () {
       if (_disposed || epoch != _epoch || operation != _activeOperation) return;
+      if (restoreAfterScan != null) _networkStatus = restoreAfterScan;
       if (event.payload is DirectApReady) _networkStatus = _directApStatusFor(baseUri, operationId: event.operationId!);
       if (event.payload case final StaConnected connected) {
-        _networkStatus = _staStatusFor(baseUri, provisioningMethod: connected.provisioningMethod, operationId: connected.operationId);
+        _networkStatus = _staStatusFor(baseUri, provisioningMethod: connected.provisioningMethod, operationId: connected.operationId, ssid: connected.ssid);
       }
       if (event.payload is DirectApStopped) {
         _networkStatus = ProvisioningNetworkStatus(
@@ -465,6 +480,7 @@ ProvisioningNetworkStatus _staStatusFor(
   Uri baseUri, {
   required ProvisioningMethod provisioningMethod,
   String operationId = 'op_b7_sta',
+  String? ssid,
 }) => ProvisioningNetworkStatus(
   activeMode: ProvisioningNetworkMode.infrastructureSta,
   desiredMode: ProvisioningNetworkMode.infrastructureSta,
@@ -474,7 +490,7 @@ ProvisioningNetworkStatus _staStatusFor(
   baseUri: baseUri,
   directAp: const DirectApSnapshot(),
   infrastructureSta: InfrastructureStaSnapshot(
-    ssid: provisioningMethod == ProvisioningMethod.androidDpp ? 'BirdLab-DPP' : 'BirdLab-5G',
+    ssid: ssid ?? (provisioningMethod == ProvisioningMethod.androidDpp ? 'BirdLab-DPP' : 'BirdLab-5G'),
     ipv4: '192.0.2.20',
     prefixLength: 24,
     gatewayIpv4: '192.0.2.1',

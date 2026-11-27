@@ -6,7 +6,6 @@ import 'package:aves/bird_companion/core/session/device_session.dart';
 import 'package:aves/bird_companion/core/session/device_session_cubit.dart';
 import 'package:aves/bird_companion/features/settings/presentation/settings_cubit.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/cache_management_card.dart';
-import 'package:aves/bird_companion/features/settings/presentation/widgets/privacy_card.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/version_info_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -87,9 +86,9 @@ class SettingsPage extends StatelessWidget {
                       _SettingsGroup(
                         children: [
                           _SettingsTile(
-                            icon: Icons.monitor_heart_outlined,
-                            title: '检查连接问题',
-                            subtitle: '检查盒子连接和尚未更新的修改',
+                            icon: Icons.sync_problem_outlined,
+                            title: '待同步修改',
+                            subtitle: '查看尚未传回盒子的修改并处理冲突',
                             onTap: () => Navigator.of(
                               context,
                             ).pushNamed(BirdRoutes.diagnostics),
@@ -105,12 +104,11 @@ class SettingsPage extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 18),
-                      const _SectionTitle('关于'),
+                      const _SectionTitle('应用信息'),
                       VersionInfoCard(
                         session: session,
                         appVersion: state.appVersion,
                       ),
-                      const PrivacyCard(),
                     ],
                   ),
                 ),

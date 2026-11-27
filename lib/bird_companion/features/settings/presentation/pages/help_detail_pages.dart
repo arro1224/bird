@@ -1,8 +1,6 @@
 import 'package:aves/bird_companion/core/widgets/navigation_guard.dart';
 import 'package:aves/bird_companion/app/theme/app_colors.dart';
 import 'package:aves/bird_companion/app/theme/app_spacing.dart';
-import 'package:aves/bird_companion/features/settings/presentation/pages/network_diagnostics_page.dart';
-import 'package:aves/bird_companion/features/settings/presentation/pages/system_logs_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_card.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_controls.dart';
 import 'package:aves/bird_companion/features/settings/presentation/widgets/bird_settings_row.dart';
@@ -36,46 +34,14 @@ class FaqDetailPage extends StatelessWidget {
               const SizedBox(height: AppSpacing.sm),
               Text(_answer(question), style: const TextStyle(color: AppColors.mutedInk, height: 1.65)),
               const SizedBox(height: AppSpacing.md),
-              const Text(
-                '仍然无法解决',
-                style: TextStyle(color: AppColors.forestDeep, fontSize: 18, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              const Text('返回设备页重新操作；如果问题持续出现，请提交反馈并附加诊断包。', style: TextStyle(color: AppColors.mutedInk, height: 1.55)),
             ],
           ),
         ),
         const SizedBox(height: AppSpacing.md),
-        BirdSettingsCard(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: Column(
-            children: [
-              BirdSettingsRow(
-                title: '运行网络诊断',
-                subtitle: '检查当前连接链路',
-                leading: const Icon(Icons.wifi_find_rounded, color: AppColors.forestPrimary),
-                trailing: const BirdChevron(),
-                onTap: () => guardBirdNavigation(
-                  context,
-                  () => Navigator.of(context).push<void>(
-                    MaterialPageRoute<void>(builder: (_) => const NetworkDiagnosticsPage()),
-                  ),
-                ),
-              ),
-              BirdSettingsRow(
-                title: '导出诊断包',
-                subtitle: '为技术支持准备诊断信息',
-                showDivider: false,
-                leading: const Icon(Icons.archive_outlined, color: AppColors.forestPrimary),
-                trailing: const BirdChevron(),
-                onTap: () => guardBirdNavigation(
-                  context,
-                  () => Navigator.of(context).push<void>(
-                    MaterialPageRoute<void>(builder: (_) => const SystemLogsPage()),
-                  ),
-                ),
-              ),
-            ],
+        const BirdSettingsCard(
+          child: Text(
+            '仍未解决？可在设备页打开“系统与日志”，按需导出盒子运行日志或手机诊断包。两类文件来源不同，需要分别导出。',
+            style: TextStyle(color: AppColors.mutedInk, height: 1.55),
           ),
         ),
       ],
@@ -103,7 +69,6 @@ class _FeedbackPageState extends State<FeedbackPage> {
   final _descriptionController = TextEditingController();
   final _contactController = TextEditingController();
   var _category = '设备连接问题';
-  var _includeDiagnostics = false;
 
   @override
   void dispose() {
@@ -161,50 +126,30 @@ class _FeedbackPageState extends State<FeedbackPage> {
           ),
         ),
         const SizedBox(height: AppSpacing.md),
-        BirdSettingsCard(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('附加诊断包'),
-            subtitle: const Text('包含设备状态与近期日志'),
-            secondary: const Icon(Icons.archive_outlined, color: AppColors.forestPrimary),
-            value: _includeDiagnostics,
-            onChanged: (value) => setState(() => _includeDiagnostics = value),
-          ),
-        ),
-        const SizedBox(height: AppSpacing.md),
         const BirdSettingsCard(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(Icons.info_outline_rounded, color: AppColors.forestPrimary),
               SizedBox(width: AppSpacing.sm),
-              Expanded(child: Text('请勿在问题描述中填写密码或其他敏感信息。')),
+              Expanded(
+                child: Text(
+                  '当前版本尚未接入在线反馈，填写内容不会发送。需要排查时，请到设备 > 系统与日志按问题导出盒子运行日志或手机诊断包。请勿在问题描述中填写密码或其他敏感信息。',
+                  style: TextStyle(color: AppColors.mutedInk, height: 1.5),
+                ),
+              ),
             ],
           ),
         ),
         const SizedBox(height: AppSpacing.md),
         BirdSettingsPrimaryButton(
-          label: '提交反馈',
-          icon: Icons.send_outlined,
-          onPressed: _submit,
+          label: '返回',
+          icon: Icons.arrow_back_rounded,
+          onPressed: () => Navigator.of(context).maybePop(),
         ),
       ],
     ),
   );
-
-  void _submit() {
-    final description = _descriptionController.text.trim();
-    if (description.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先填写问题描述')),
-      );
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('反馈已保存，待后端反馈接口接入后提交')),
-    );
-  }
 }
 
 class UserGuidePage extends StatelessWidget {

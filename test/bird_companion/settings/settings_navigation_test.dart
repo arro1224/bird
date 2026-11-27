@@ -2,6 +2,7 @@ import 'package:aves/bird_companion/app/app_router.dart';
 import 'package:aves/bird_companion/app/app_shell.dart';
 import 'package:aves/bird_companion/app/theme/app_theme.dart';
 import 'package:aves/bird_companion/features/settings/presentation/bird_settings_controller.dart';
+import 'package:aves/bird_companion/features/settings/presentation/adapters/device_overview_adapter.dart';
 import 'package:aves/bird_companion/features/settings/presentation/pages/storage_target_page.dart';
 import 'package:aves/bird_companion/features/settings/presentation/settings_showcase_page.dart';
 import 'package:flutter/material.dart';
@@ -51,25 +52,20 @@ void main() {
     expect(find.text('我的'), findsNothing);
     expect(find.byKey(const Key('showcase-device-card')), findsOneWidget);
 
-    for (final section in const ['当前工作', '设备与连接', '照片与审阅', '复制与导出', '系统支持']) {
+    for (final section in const ['连接与网络', '存储与备份', '使用偏好', '系统支持']) {
       expect(find.text(section), findsOneWidget);
     }
 
     for (final entry in const [
-      '连接设备',
-      '设备详情',
       '网络诊断',
-      '浏览与显示',
-      '照片处理默认值',
-      '复制默认设置',
       '存储设备',
+      '复制设置',
+      '浏览与显示',
+      '照片处理',
       '系统与日志',
       '帮助中心',
     ]) {
-      expect(
-        find.text(entry),
-        entry == '连接设备' ? findsNWidgets(2) : findsOneWidget,
-      );
+      expect(find.text(entry), findsOneWidget);
     }
 
     expect(find.text('更换设备'), findsNothing);
@@ -78,11 +74,9 @@ void main() {
     expect(find.byType(NavigationBar), findsOneWidget);
   });
 
-  testWidgets('all nine device entries open their existing secondary pages', (tester) async {
+  testWidgets('device entries open their existing secondary pages', (tester) async {
     _useTallViewport(tester);
     final expectations = <Key, String>{
-      const Key('showcase-device-management'): '更换设备',
-      const Key('showcase-device-details'): '设备详情',
       const Key('showcase-network-diagnostics'): '网络诊断',
       const Key('showcase-display-settings'): '显示设置',
       const Key('showcase-photo-settings'): '照片设置',
@@ -109,6 +103,52 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(entry.value), findsWidgets, reason: entry.key.toString());
     }
+  });
+
+  testWidgets('disconnected device card keeps connection as the only primary entry', (tester) async {
+    _useTallViewport(tester);
+    var reconnectCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: SettingsShowcasePage(
+          embedded: true,
+          onReconnect: () => reconnectCount++,
+        ),
+      ),
+    );
+
+    await tester.tapAt(tester.getCenter(find.byKey(const Key('showcase-device-card'))));
+    await tester.pumpAndSettle();
+    expect(find.text('设备详情'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('showcase-device-primary-action')));
+    await tester.pump();
+    expect(reconnectCount, 1);
+  });
+
+  testWidgets('connected device card body opens details', (tester) async {
+    _useTallViewport(tester);
+    var detailsCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: SettingsDeviceCard(
+          overview: const DeviceOverviewViewModel(
+            connectionKind: DeviceOverviewConnectionKind.connected,
+            deviceName: '拍鸟盒子',
+            statusLabel: '已连接',
+            metricsLabel: '80% · 20 GB 可用',
+            primaryAction: DeviceOverviewPrimaryAction.details,
+          ),
+          onReconnect: () {},
+          onOpenDetails: () => detailsCount++,
+        ),
+      ),
+    );
+    await tester.tapAt(tester.getCenter(find.byKey(const Key('showcase-device-card'))));
+    await tester.pump();
+    expect(detailsCount, 1);
   });
 
   testWidgets('storage device page renders a box-offline fallback without a session', (tester) async {
@@ -141,7 +181,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('showcase-device-details')));
+    await tester.tap(find.byKey(const Key('showcase-network-diagnostics')));
     await tester.pumpAndSettle();
     expect(visibility.last, isFalse);
 

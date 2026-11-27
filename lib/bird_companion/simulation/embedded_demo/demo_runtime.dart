@@ -8,6 +8,7 @@ import 'package:aves/bird_companion/core/session/client_identity_store.dart';
 import 'package:aves/bird_companion/core/session/secure_session_store.dart';
 import 'package:aves/bird_companion/features/connection/data/pairing_api.dart';
 import 'package:aves/bird_companion/features/connection/domain/provisioning_models.dart';
+import 'package:aves/bird_companion/features/connection/data/platform/phone_wifi_platform.dart';
 import 'package:aves/bird_companion/features/connection/presentation/b7_simulated_provisioning_repository.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -27,7 +28,7 @@ class DemoRuntime {
   final ClientIdentityStore clientIdentity;
   Future<void>? _closing;
 
-  static Future<DemoRuntime> start({RepairAcceptanceProfile? acceptanceProfile}) async {
+  static Future<DemoRuntime> start({RepairAcceptanceProfile? acceptanceProfile, bool autoConnect = true}) async {
     final profile = acceptanceProfile ?? RepairAcceptanceProfile.parse(const String.fromEnvironment('BIRDBOX_DEMO_PROFILE', defaultValue: 'demo'));
     final documents = await getApplicationDocumentsDirectory();
     final directory = Directory('${documents.path}/embedded_demo_box${profile == null ? '' : '/acceptance/${profile.id}'}');
@@ -69,12 +70,14 @@ class DemoRuntime {
         connectEnvironmentTestEndpoint: false,
         restoreSavedSession: false,
         provisioningRepositoryOverride: provisioning,
+        phoneWifiOverride: const DemoPhoneWifiPlatform(),
+        isEmbeddedDemo: true,
         connectivityMonitorOverride: DemoConnectivityMonitor(),
         sessionStoreOverride: MemorySecureSessionStore(),
         clientIdentityStore: identity,
       );
       final runtime = DemoRuntime._(server, dependencies, provisioning, identity);
-      await runtime.connect();
+      if (autoConnect) await runtime.connect();
       return runtime;
     } catch (_) {
       dependencies?.dispose();
@@ -129,4 +132,16 @@ class DemoConnectivityMonitor extends ConnectivityMonitor implements DiagnosticN
   Future<bool> get hasWifi async => true;
   @override
   Future<List<String>> get networkTypes async => const ['simulated_loopback'];
+}
+
+
+/// Supplies a predictable phone Wi-Fi name in the offline demo without Android location access.
+final class DemoPhoneWifiPlatform implements PhoneWifiPlatform {
+  const DemoPhoneWifiPlatform();
+
+  @override
+  Future<PhoneWifiSsid> currentSsid() async => const PhoneWifiSsid.readable('BirdLab-5G');
+
+  @override
+  Future<String?> pickQrImage() async => null;
 }

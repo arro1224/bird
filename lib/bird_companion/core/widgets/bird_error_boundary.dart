@@ -15,7 +15,7 @@ abstract final class BirdErrorBoundary {
                 SizedBox(height: 16),
                 Text('页面暂时无法显示', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 SizedBox(height: 8),
-                Text('请返回上一页重试；如果问题一直存在，请在“检查连接问题”中导出问题报告。', textAlign: TextAlign.center),
+                Text('请返回上一页重试；如果问题一直存在，请到设备 > 系统与日志导出盒子运行日志或手机诊断包。', textAlign: TextAlign.center),
               ],
             ),
           ),

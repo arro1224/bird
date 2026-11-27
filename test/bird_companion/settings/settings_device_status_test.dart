@@ -199,7 +199,7 @@ void main() {
     expect(find.text('拍鸟伴侣 K7 Pro'), findsOneWidget);
     expect(find.text('已连接'), findsOneWidget);
     expect(find.text('82% · 684 GB 可用'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, '设备详情'), findsOneWidget);
+    expect(find.byKey(const Key('showcase-device-primary-action')), findsNothing);
   });
 
   testWidgets('replacing state sources immediately shows their current state', (tester) async {
@@ -254,56 +254,16 @@ void main() {
     expect(find.text('旧盒子'), findsNothing);
   });
 
-  testWidgets('current work uses explicit demo fallback values', (tester) async {
+  testWidgets('device home leaves current work to the task module', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: SettingsShowcasePage(embedded: true),
-      ),
+      const MaterialApp(home: SettingsShowcasePage(embedded: true)),
     );
 
-    expect(find.text('演示数据'), findsOneWidget);
-    expect(find.text('演示批次'), findsOneWidget);
-    expect(find.text('湖畔清晨 · 328 张照片 · 24 张待审'), findsOneWidget);
-    expect(find.text('演示任务'), findsOneWidget);
-    expect(find.text('AI 分析 · 65%'), findsOneWidget);
-  });
-
-  testWidgets('current work accepts injected summaries and callbacks', (tester) async {
-    var batchOpenCount = 0;
-    var taskOpenCount = 0;
-    final page = SettingsShowcasePage(
-      embedded: true,
-      currentBatchTitle: '林地晨拍',
-      currentBatchSummary: '412 张照片 · 36 张待审',
-      currentTaskTitle: '导入/索引',
-      currentTaskSummary: '168 / 412 · 41%',
-      onOpenCurrentBatch: () => batchOpenCount++,
-      onOpenCurrentTask: () => taskOpenCount++,
-    );
-
-    await tester.pumpWidget(MaterialApp(home: page));
-
-    expect(find.text('演示数据'), findsNothing);
-    expect(find.text('林地晨拍'), findsOneWidget);
-    expect(find.text('412 张照片 · 36 张待审'), findsOneWidget);
-    expect(find.text('导入/索引'), findsOneWidget);
-    expect(find.text('168 / 412 · 41%'), findsOneWidget);
-    expect(tester.getSize(find.byKey(const Key('device-current-work-card'))).height, lessThanOrEqualTo(136));
-
-    for (final key in const [Key('device-current-work-batch'), Key('device-current-work-task')]) {
-      expect(tester.getSize(find.byKey(key)).height, greaterThanOrEqualTo(48));
-      await tester.tap(find.byKey(key));
-      await tester.pump();
-    }
-    expect(batchOpenCount, 1);
-    expect(taskOpenCount, 1);
-    expect(
-      find.ancestor(
-        of: find.byKey(const Key('device-current-work-card')),
-        matching: find.byType(Card),
-      ),
-      findsNothing,
-    );
+    expect(find.text('当前工作'), findsNothing);
+    expect(find.byKey(const Key('device-current-work-card')), findsNothing);
+    expect(find.text('使用偏好'), findsOneWidget);
+    expect(find.text('照片处理'), findsOneWidget);
+    expect(find.text('复制设置'), findsOneWidget);
   });
 }
 
