@@ -292,6 +292,7 @@ class _NetworkProvisioningPageState extends State<NetworkProvisioningPage> {
                 baseUri: state.baseUri,
                 onCompleted: widget.onCompleted,
                 completing: widget.completing,
+                completionLabel: widget.completionLabel,
                 onStopDirectAp: state.confirmedMode == ProvisioningNetworkMode.directAp ? () => unawaited(_confirmStopDirectAp(context, cubit)) : null,
                 onChangeWifi: state.confirmedMode == ProvisioningNetworkMode.infrastructureSta ? widget.onChangeWifi : null,
               ),
@@ -351,7 +352,6 @@ class _WifiMethodView extends StatelessWidget {
     required this.onConnectHotspot,
     required this.onScanWifiQr,
     required this.onChooseNetwork,
-    this.compact = false,
   });
 
   final NetworkProvisioningState state;
@@ -360,40 +360,12 @@ class _WifiMethodView extends StatelessWidget {
   final VoidCallback onConnectHotspot;
   final VoidCallback onScanWifiQr;
   final VoidCallback onChooseNetwork;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final capabilities = state.capabilities!;
     final manualSupported = capabilities.wifiManual;
     final conventionalSupported = capabilities.wifiScan || capabilities.wifiManual;
-    if (compact) {
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _InlineMethodRow(
-            icon: Icons.wifi_password_rounded,
-            title: '连接手机当前 Wi-Fi',
-            subtitle: '自动填入名称，密码需手动输入',
-            badge: '推荐',
-            onTap: manualSupported && !readingPhoneWifi ? onConnectPhoneWifi : null,
-          ),
-          _InlineMethodRow(
-            icon: Icons.qr_code_scanner_rounded,
-            title: '扫描 Wi-Fi 二维码',
-            subtitle: '使用相机或从相册选择',
-            onTap: onScanWifiQr,
-          ),
-          _InlineMethodRow(
-            icon: Icons.wifi_find_rounded,
-            title: '搜索或手动输入',
-            subtitle: '搜索附近网络，或直接填写信息',
-            onTap: conventionalSupported ? onChooseNetwork : null,
-            last: true,
-          ),
-        ],
-      );
-    }
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.pageHorizontal),
       children: [

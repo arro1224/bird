@@ -41,6 +41,8 @@ import 'nov18_repair_test_support.dart';
 /// Synthetic reads, real production pages/controllers and copy configuration.
 /// No physical box or file copying is represented by this fixture.
 class B4Dependencies extends Fake implements BirdCompanionDependencies {
+  @override
+  bool get isEmbeddedDemo => false;
   final creation = CreationEnvironment();
   @override
   final cache = RepairMemoryCache();
