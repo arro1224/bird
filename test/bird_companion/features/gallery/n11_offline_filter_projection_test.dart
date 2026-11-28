@@ -44,6 +44,43 @@ void main() {
   });
   tearDown(() => pending.dispose());
 
+  test('45 ordinary retained plus 2 featured stay 47 across refresh, filtering and offline cache', () async {
+    final facts = [
+      for (var i = 0; i < 48; i++)
+        PhotoSummary.fromJson({
+          ..._photo('p$i').toJson(),
+          'keep_state': i < 45
+              ? 'keep'
+              : i < 47
+              ? 'featured'
+              : 'discard',
+        }),
+    ];
+    await cache.write('album:photos:box-a:trip:page_size=60', {'items': facts.map((p) => p.toJson()).toList(), 'has_more': false});
+    const retained = PhotoQuery(keepState: 'keep');
+    final offline = repo.cachedPage('trip', retained)!;
+    expect(offline.items, hasLength(47));
+    expect(offline.cachedCounts!.kept, 47);
+    expect(offline.resultComplete, false);
+    expect(repo.cachedPage('trip', const PhotoQuery(keepState: 'featured'))!.items, hasLength(2));
+    expect(repo.cachedPage('trip', const PhotoQuery(keepState: 'discard'))!.items, hasLength(1));
+    network.online = true;
+    api.gate = Completer<PhotoPage>()..complete(PhotoPage(items: facts, hasMore: false));
+    final online = await repo.page('trip', retained);
+    expect(online.items, hasLength(47));
+    expect(online.resultComplete, true);
+    final cubit = GalleryCubit(repo, 'trip', null, null, cache, pending, () => device);
+    addTearDown(cubit.close);
+    cubit.seedReviewCounts(keepCount: 47);
+    await cubit.refresh(query: retained);
+    expect(cubit.state.keepCount, 47);
+    network.online = false;
+    await cubit.refresh(query: retained);
+    expect(cubit.state.keepCount, 47);
+    expect(cubit.state.items, hasLength(47));
+    expect(cubit.state.countsFromLocalCache, true);
+  });
+
   Future<void> save(Map<String, dynamic> payload, {String id = 'draft', String target = 'p0', String box = 'box-a', String project = 'trip', PendingOperationStatus status = PendingOperationStatus.pending}) => pending.save(
     PendingOperation(
       id: id,

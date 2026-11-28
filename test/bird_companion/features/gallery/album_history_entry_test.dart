@@ -91,7 +91,9 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byTooltip('拍摄记录'), findsOneWidget);
     expect(find.byTooltip('复制当前拍摄'), findsOneWidget);
-    expect(find.byTooltip('新增或切换设备'), findsOneWidget);
+    expect(find.byTooltip('查找或切换盒子'), findsOneWidget);
+    expect(find.byIcon(Icons.devices_other_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.add_rounded), findsNothing);
   });
 
   testWidgets('batch history keeps its scroll position after opening and returning', (

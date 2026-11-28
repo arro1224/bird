@@ -471,6 +471,8 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
     activeBatchId = result.workflow.projectId;
     _mergeJob(result.importJob);
     _mergeJob(result.analysisJob);
+    // Keep the stable workflow detail route on the analysis ID; its progress
+    // view displays the linked import until that task actually completes.
     _currentJobId = result.analysisJob.id;
     selectGroup(TaskGroup.active);
     _dataChangeBus?.publish({AppDataResource.batches, AppDataResource.photos, AppDataResource.jobs, AppDataResource.device}, reason: 'import_workflow_started');
@@ -482,6 +484,17 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
       _mergeJob(result.importJob);
       _mergeJob(result.analysisJob);
     }
+  }
+
+  @override
+  ImportAnalysisTaskProgress? importAnalysisProgress(String taskId) {
+    for (final result in importAnalysis?.snapshots ?? <ImportStartResult>[]) {
+      if (taskId != result.importJob.id && taskId != result.analysisJob.id) continue;
+      final importTask = taskByIdOrNull(result.importJob.id);
+      final analysisTask = taskByIdOrNull(result.analysisJob.id);
+      if (importTask != null && analysisTask != null) return ImportAnalysisTaskProgress(importTask: importTask, analysisTask: analysisTask);
+    }
+    return null;
   }
 
   Future<String> startAnalysisForActiveProject({Map<String, dynamic>? smartFollow}) async {
@@ -885,7 +898,16 @@ class RepositoryTaskExperienceController extends TaskExperienceController {
         .whereType<TaskSummary>()
         .toList();
     final owned = activeBatchId == null ? null : importAnalysis?.snapshot(activeBatchId!);
-    replaceRepositoryTasks(snapshots, preferredTaskId: owned != null && !owned.analysisJob.isTerminal ? owned.analysisJob.id : null);
+    final importJob = owned == null ? null : _jobs[owned.importJob.id];
+    final analysisJob = owned == null ? null : _jobs[owned.analysisJob.id];
+    replaceRepositoryTasks(
+      snapshots,
+      preferredTaskId: importJob != null && !importJob.isTerminal
+          ? importJob.id
+          : analysisJob != null && !analysisJob.isTerminal
+          ? analysisJob.id
+          : null,
+    );
   }
 
   void _applyScan(CardScanResult scan) {

@@ -14,7 +14,15 @@ class PhotoQueryPlan {
   final PhotoQuery query;
 
   bool get requiresLocalScan =>
-      _hasText(query.species) || _hasText(query.search) || query.minScore != null || query.minConfidence != null || query.tags.isNotEmpty || _hasText(query.clarityState) || _hasText(query.recognitionState) || query.recommendedOnly;
+      query.keepState == 'keep' ||
+      _hasText(query.species) ||
+      _hasText(query.search) ||
+      query.minScore != null ||
+      query.minConfidence != null ||
+      query.tags.isNotEmpty ||
+      _hasText(query.clarityState) ||
+      _hasText(query.recognitionState) ||
+      query.recommendedOnly;
 
   bool get hasLocalCursor => isLocalCursor(query.cursor);
 
@@ -22,6 +30,8 @@ class PhotoQueryPlan {
     cursor: cursor,
     clearCursor: cursor == null,
     pageSize: scanPageSize,
+    // Fetch both ordinary and featured facts without changing the frozen API.
+    clearKeepState: query.keepState == 'keep',
   );
 
   static bool isLocalCursor(String? cursor) => cursor?.startsWith(localCursorPrefix) == true;

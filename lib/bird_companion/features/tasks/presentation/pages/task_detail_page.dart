@@ -7,6 +7,7 @@ import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/task_experience_controller.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_design_components.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_page_frame.dart';
+import 'package:aves/bird_companion/features/tasks/presentation/widgets/import_analysis_progress.dart';
 import 'package:flutter/material.dart';
 
 class TaskDetailPage extends StatelessWidget {
@@ -48,6 +49,9 @@ class TaskDetailPage extends StatelessWidget {
           ),
         );
       }
+      final workflow = controller.importAnalysisProgress(task.id);
+      final progressTask = workflow?.displayTask ?? task;
+      final actionTask = workflow?.analysisTask ?? task;
       return TaskPageFrame(
         title: '任务详情',
         actions: [
@@ -76,23 +80,27 @@ class TaskDetailPage extends StatelessWidget {
               _reconnectingNotice(),
               const SizedBox(height: 12),
             ],
-            _summaryCard(task),
+            _summaryCard(progressTask),
+            if (workflow != null) ...[
+              const SizedBox(height: 12),
+              ImportAnalysisProgress(progress: workflow, connection: controller.connectionState),
+            ],
             const SizedBox(height: 12),
             const Text(
               '任务进度',
               style: TextStyle(color: AppColors.forestDeep, fontSize: 20, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
-            _timeline(task),
+            _timeline(progressTask),
             const SizedBox(height: 10),
-            _details(task),
+            _details(progressTask),
             ?incrementalPanel,
             if (task.failureReason != null) ...[
               const SizedBox(height: 10),
               _failureNotice(task),
             ],
             const SizedBox(height: 12),
-            _actions(context, task),
+            _actions(context, actionTask),
           ],
         ),
       );

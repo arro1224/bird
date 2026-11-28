@@ -162,6 +162,14 @@ class TaskSummary {
   );
 }
 
+/// Only a box-owned workflow may link these tasks; a shared batch is not enough.
+class ImportAnalysisTaskProgress {
+  const ImportAnalysisTaskProgress({required this.importTask, required this.analysisTask});
+  final TaskSummary importTask;
+  final TaskSummary analysisTask;
+  TaskSummary get displayTask => importTask.state == TaskRunState.completed ? analysisTask : importTask;
+}
+
 class SdCardSnapshot {
   const SdCardSnapshot({
     required this.state,

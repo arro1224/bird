@@ -13,6 +13,86 @@ import 'package:flutter_test/flutter_test.dart';
 import '../features/connection/fakes/fake_provisioning_repository.dart';
 
 void main() {
+  testWidgets('stop remains usable after an AP status refresh leaves the page idle and ten taps send once', (tester) async {
+    final repository = _StopRepository();
+    addTearDown(repository.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: NetworkSettingsPage(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+    repository.networkStatus = _idleApStatus;
+    await tester.tap(find.byTooltip('刷新蓝牙状态'));
+    await tester.pumpAndSettle();
+    expect(find.text('蓝牙控制已连接'), findsOneWidget);
+    final button = tester.widget<TextButton>(find.widgetWithText(TextButton, '停止盒子直连'));
+    expect(button.onPressed, isNotNull);
+    for (var i = 0; i < 10; i++) {
+      button.onPressed!();
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('断开盒子直连？'), findsOneWidget);
+    repository.statusGate = Completer<ProvisioningNetworkStatus>();
+    final confirm = tester.widget<TextButton>(find.widgetWithText(TextButton, '断开并恢复 Wi-Fi'));
+    confirm.onPressed!();
+    await tester.pumpAndSettle();
+    expect(repository.calls.where((c) => c == 'stopDirectAp'), isEmpty);
+    expect(tester.widget<TextButton>(find.widgetWithText(TextButton, '停止盒子直连')).onPressed, isNull);
+    repository.statusGate!.complete(_idleApStatus);
+    await tester.pump();
+    await tester.pump();
+    expect(repository.calls.where((c) => c == 'stopDirectAp'), hasLength(1));
+    expect(find.text('正在停止盒子直连'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final scenario in ['cancel', 'mode_changed', 'ble_lost', 'page_exit', 'busy', 'validation_timeout']) {
+    testWidgets('stop sends no command when $scenario occurs during confirmation or validation', (tester) async {
+      final repository = _StopRepository();
+      addTearDown(repository.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: NetworkSettingsPage(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('停止盒子直连'));
+      await tester.pumpAndSettle();
+      if (scenario == 'cancel') {
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+      } else {
+        repository.statusGate = Completer<ProvisioningNetworkStatus>();
+        await tester.tap(find.text('断开并恢复 Wi-Fi'));
+        await tester.pumpAndSettle();
+        if (scenario == 'ble_lost') {
+          repository.emitDisconnect();
+          await tester.pump();
+        }
+        if (scenario == 'page_exit') await tester.pumpWidget(const SizedBox.shrink());
+        if (scenario == 'validation_timeout') {
+          await tester.pump(const Duration(seconds: 16));
+          await tester.pump();
+          expect(tester.widget<TextButton>(find.widgetWithText(TextButton, '停止盒子直连')).onPressed, isNotNull);
+        }
+        repository.statusGate!.complete(
+          scenario == 'mode_changed'
+              ? _staStatus
+              : scenario == 'busy'
+              ? _busyApStatus
+              : _directApStatus,
+        );
+        await tester.pump();
+        await tester.pump();
+      }
+      expect(repository.calls.where((c) => c == 'stopDirectAp'), isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   testWidgets('an explicit recovery entry starts once and does not verify or change business networking', (tester) async {
     final repository = _ColdControlRepository();
     addTearDown(repository.dispose);
@@ -176,19 +256,18 @@ void main() {
       await tester.tap(find.text(text));
       await tester.pumpAndSettle();
     }
+
     Future<void> back() async {
       await tester.tap(find.byKey(const Key('settings-back')));
       await tester.pumpAndSettle();
     }
-    List<String> formValues() => tester.widgetList<EditableText>(find.byType(EditableText)).map((field) => field.controller.text).toList();
 
+    List<String> formValues() => tester.widgetList<EditableText>(find.byType(EditableText)).map((field) => field.controller.text).toList();
 
     expect(find.text('选择其他 Wi-Fi'), findsNothing);
     await tap('连接手机当前 Wi-Fi');
     expect(formValues(), ['BirdLab-5G', '']);
     await back();
-
-
 
     await tap('搜索附近 Wi-Fi');
     await tap('BirdLab-5G');
@@ -198,12 +277,9 @@ void main() {
     expect(find.text('断开盒子直连？'), findsOneWidget);
     await tap('取消');
 
-
-
     await tap('手动输入 Wi-Fi');
     expect(formValues(), ['', '']);
     await back();
-
 
     await tap('扫描 Wi-Fi 二维码');
     await tap('识别演示二维码');
@@ -329,6 +405,39 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 }
+
+class _StopRepository extends FakeProvisioningRepository implements BleControlRecovery {
+  _StopRepository()
+    : super(
+        deviceInfo: _deviceInfo,
+        networkStatus: _directApStatus,
+        stopDirectApResult: const CommandAccepted(operationId: 'op_stop_once', desiredMode: ProvisioningNetworkMode.infrastructureSta),
+      );
+  Completer<ProvisioningNetworkStatus>? statusGate;
+  @override
+  Future<ProvisioningDeviceInfo> recoverBleControl(String deviceId, CancelToken cancelToken) async => _deviceInfo;
+  @override
+  Future<ProvisioningNetworkStatus> getNetworkStatus() => statusGate?.future ?? super.getNetworkStatus();
+}
+
+final _idleApStatus = ProvisioningNetworkStatus(
+  activeMode: ProvisioningNetworkMode.directAp,
+  desiredMode: ProvisioningNetworkMode.directAp,
+  operationState: NetworkOperationState.idle,
+  busy: false,
+  directAp: const DirectApSnapshot(ssid: 'BirdBox-Test'),
+  infrastructureSta: const InfrastructureStaSnapshot(saved: true),
+  updatedAt: DateTime.utc(2026, 11, 28),
+);
+final _busyApStatus = ProvisioningNetworkStatus(
+  activeMode: ProvisioningNetworkMode.directAp,
+  desiredMode: ProvisioningNetworkMode.infrastructureSta,
+  operationState: NetworkOperationState.stoppingAp,
+  busy: true,
+  directAp: const DirectApSnapshot(ssid: 'BirdBox-Test'),
+  infrastructureSta: const InfrastructureStaSnapshot(saved: true),
+  updatedAt: DateTime.utc(2026, 11, 28),
+);
 
 class _ControlRepository extends FakeProvisioningRepository implements BleControlRecovery, ProvisioningNetworkStatusVerifier {
   _ControlRepository() : super(deviceInfo: _deviceInfo, networkStatus: _directApStatus);

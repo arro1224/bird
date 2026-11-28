@@ -405,7 +405,7 @@ void main() {
     await tester.tap(find.byTooltip('更多操作'));
     await tester.pumpAndSettle();
     expect(find.text('复制当前拍摄'), findsOneWidget);
-    expect(find.text('新增或切换设备'), findsOneWidget);
+    expect(find.text('查找或切换盒子'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

@@ -29,6 +29,7 @@ import 'package:aves/bird_companion/features/gallery/domain/photo_query.dart';
 import 'package:aves/bird_companion/features/gallery/domain/gallery_timing.dart';
 import 'package:aves/bird_companion/features/gallery/domain/batch_tag_change.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_repository.dart';
+import 'package:aves/bird_companion/features/gallery/domain/retained_copy_selection.dart';
 import 'package:aves/bird_companion/features/gallery/domain/photo_version_batch_coordinator.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/gallery_cubit.dart';
 import 'package:aves/bird_companion/features/gallery/presentation/selection_cubit.dart';
@@ -234,17 +235,47 @@ class _GalleryView extends StatelessWidget {
         BirdFeedback.error(context, decision.reason!);
         return;
       }
+      final arguments = await _copyArguments(context);
+      if (!context.mounted) return;
       await Navigator.of(context).pushNamed<void>(
         BirdRoutes.copyConfirmation,
-        arguments: CopyConfirmationArgs(
-          decision.batchId!,
-          filter: context.read<GalleryCubit>().state.query.toCopyFilterV1(),
-        ),
+        arguments: arguments,
       );
     } catch (error) {
       if (!context.mounted) return;
       final message = UserMessageMapper.fromError(error);
       BirdFeedback.error(context, '${message.title}：${message.message}');
+    }
+  });
+
+  Future<CopyConfirmationArgs> _copyArguments(BuildContext context) async {
+    final dependencies = BirdCompanionScope.of(context);
+    final gallery = context.read<GalleryCubit>();
+    final query = gallery.state.query;
+    if (query.keepState != 'keep') return CopyConfirmationArgs(batchId, filter: query.toCopyFilterV1());
+    final device = dependencies.deviceSessionCubit.state.device;
+    final signature = query.toJson().toString();
+    final selection = await createRetainedCopySelection(
+      batchId: batchId,
+      query: query,
+      photos: dependencies.photoRepository,
+      copies: dependencies.copyRepository,
+      isCurrent: () =>
+          context.mounted &&
+          dependencies.deviceSessionCubit.state.isConnected &&
+          dependencies.deviceSessionCubit.state.device?.id == device?.id &&
+          dependencies.deviceSessionCubit.state.device?.baseUri == device?.baseUri &&
+          gallery.state.query.toJson().toString() == signature,
+    );
+    return CopyConfirmationArgs(batchId, scope: 'selected_assets', selectionId: selection.selectionId, selectionPhotoCount: selection.assetCount, selectionDiscardedCount: 0);
+  }
+
+  Future<void> _openFilteredCopy(BuildContext context) => guardBirdNavigation<void>(context, () async {
+    try {
+      final arguments = await _copyArguments(context);
+      if (context.mounted) await Navigator.of(context).pushNamed<void>(BirdRoutes.copyConfirmation, arguments: arguments);
+    } catch (error) {
+      if (context.mounted) BirdFeedback.error(context, UserMessageMapper.fromError(error).message);
     }
   });
 
@@ -325,7 +356,7 @@ class _GalleryView extends StatelessWidget {
                                   },
                                   itemBuilder: (_) => [
                                     PopupMenuItem(value: true, enabled: canCopy, child: const Text('复制当前拍摄')),
-                                    const PopupMenuItem(value: false, child: Text('新增或切换设备')),
+                                    const PopupMenuItem(value: false, child: Text('查找或切换盒子')),
                                   ],
                                 );
                               }
@@ -400,16 +431,7 @@ class _GalleryView extends StatelessWidget {
                               } else if (value == 'copy') {
                                 final state = context.read<GalleryCubit>().state;
                                 if (!state.resultComplete) return;
-                                guardBirdNavigation(
-                                  context,
-                                  () => Navigator.of(context).pushNamed(
-                                    BirdRoutes.copyConfirmation,
-                                    arguments: CopyConfirmationArgs(
-                                      batchId,
-                                      filter: state.query.toCopyFilterV1(),
-                                    ),
-                                  ),
-                                );
+                                unawaited(_openFilteredCopy(context));
                               } else {
                                 guardBirdNavigation(
                                   context,

@@ -31,6 +31,8 @@ class TaskExperienceController extends ChangeNotifier {
 
   List<TaskSummary> get tasks => List.unmodifiable(_tasks);
 
+  ImportAnalysisTaskProgress? importAnalysisProgress(String taskId) => null;
+
   bool get canSubmitTaskWrites => connectionState == TaskConnectionState.connected && !loading && !acting;
   List<TaskHomeActionCapability> get taskHomeCapabilities => [
     // demo 能力列表与数据源的可执行类型保持一致，不枚举 TaskType.values。

@@ -3,6 +3,7 @@ import 'package:aves/bird_companion/features/tasks/domain/task_experience.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/task_experience_controller.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_design_components.dart';
 import 'package:aves/bird_companion/features/tasks/presentation/widgets/task_nature_background.dart';
+import 'package:aves/bird_companion/features/tasks/presentation/widgets/import_analysis_progress.dart';
 import 'package:flutter/material.dart';
 
 class TaskHomePage extends StatelessWidget {
@@ -139,6 +140,10 @@ class TaskHomePage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _currentTaskHeader(context, task),
+            if (controller.importAnalysisProgress(task.id) case final progress?) ...[
+              const SizedBox(height: 8),
+              ImportAnalysisProgress(progress: progress, connection: controller.connectionState),
+            ],
             if (task.sourceBatch case final sourceBatch?) ...[
               const SizedBox(height: 7),
               Text(
@@ -187,8 +192,7 @@ class TaskHomePage extends StatelessWidget {
               const SizedBox(height: 9),
               _currentTaskActivity(context, task),
             ],
-            if ((task.pendingReviewCount ?? 0) > 0)
-              Text('${task.pendingReviewCount} 个文件还没确认', style: const TextStyle(color: AppColors.pending, fontSize: 16)),
+            if ((task.pendingReviewCount ?? 0) > 0) Text('${task.pendingReviewCount} 个文件还没确认', style: const TextStyle(color: AppColors.pending, fontSize: 16)),
             const SizedBox(height: 9),
             Row(
               children: [

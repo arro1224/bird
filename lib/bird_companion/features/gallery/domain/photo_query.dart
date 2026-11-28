@@ -167,6 +167,7 @@ class PhotoQuery {
     String? groupId,
     String? sceneId,
     bool clearCursor = false,
+    bool clearKeepState = false,
   }) => PhotoQuery(
     cursor: clearCursor ? null : cursor ?? this.cursor,
     pageSize: pageSize ?? this.pageSize,
@@ -176,7 +177,7 @@ class PhotoQuery {
     minScore: minScore ?? this.minScore,
     minConfidence: minConfidence ?? this.minConfidence,
     tags: tags ?? this.tags,
-    keepState: keepState ?? this.keepState,
+    keepState: clearKeepState ? null : keepState ?? this.keepState,
     analysisState: analysisState ?? this.analysisState,
     clarityState: clarityState ?? this.clarityState,
     recognitionState: recognitionState ?? this.recognitionState,

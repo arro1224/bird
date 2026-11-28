@@ -8,10 +8,10 @@ class AlbumAddDeviceButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Tooltip(
-    message: '新增或切换设备',
+    message: '查找或切换盒子',
     child: Semantics(
       button: true,
-      label: '新增或切换设备',
+      label: '查找或切换盒子',
       child: SizedBox.square(
         dimension: 48,
         child: InkResponse(
@@ -22,7 +22,7 @@ class AlbumAddDeviceButton extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: const BoxDecoration(color: AppColors.brand, shape: BoxShape.circle),
-              child: const Icon(Icons.add_rounded, size: 22, color: Colors.white),
+              child: const Icon(Icons.devices_other_rounded, size: 22, color: Colors.white),
             ),
           ),
         ),

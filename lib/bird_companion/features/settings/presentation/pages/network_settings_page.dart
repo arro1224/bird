@@ -210,8 +210,8 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
   }
 
   Future<void> _stopDirectAp() async {
-    if (_confirmingStop || _bleDisconnected || _recovering || _deviceChanged || _cubit.state.phase == NetworkProvisioningPhase.stoppingDirectAp) return;
-    _confirmingStop = true;
+    if (_confirmingStop || _bleDisconnected || _recovering || _deviceChanged || _openingWifiProvisioning || _cubit.networkOperationBusy) return;
+    setState(() => _confirmingStop = true);
     try {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -224,19 +224,19 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
           ],
         ),
       );
-      if (!mounted || confirmed != true || _deviceChanged || _bleDisconnected) return;
+      if (!mounted || confirmed != true || _deviceChanged || _bleDisconnected || _recovering || _cubit.networkOperationBusy) return;
       setState(() {
         _stopRequested = true;
         _phoneRecovered = false;
       });
-      await _cubit.stopDirectAp();
+      await _cubit.stopDirectAp(confirmCurrentState: true, canProceed: () => mounted && !_deviceChanged && !_bleDisconnected && !_recovering);
     } finally {
-      _confirmingStop = false;
+      if (mounted) setState(() => _confirmingStop = false);
     }
   }
 
   Widget _controlControls() {
-    final canRefresh = !_recovering && !_deviceChanged && _deviceId != null;
+    final canRefresh = !_recovering && !_confirmingStop && !_cubit.networkOperationBusy && !_deviceChanged && _deviceId != null;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Column(
@@ -393,17 +393,12 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
             child: Column(
               children: [
                 if (!_bleDisconnected && !_recovering && state.phase != NetworkProvisioningPhase.stoppingDirectAp) ...[
-                  if (_deviceInfo?.capabilities.wifiManual == true)
-                    _action('连接手机当前 Wi-Fi', Icons.wifi_rounded, () => _openWifiProvisioning(WifiSettingsAction.currentPhone)),
-                  if (_deviceInfo?.capabilities.wifiManual == true)
-                    _action('扫描 Wi-Fi 二维码', Icons.qr_code_scanner_rounded, () => _openWifiProvisioning(WifiSettingsAction.qr)),
-                  if (_deviceInfo?.capabilities.wifiScan == true)
-                    _action('搜索附近 Wi-Fi', Icons.wifi_find_rounded, () => _openWifiProvisioning(WifiSettingsAction.scan)),
-                  if (_deviceInfo?.capabilities.wifiManual == true)
-                    _action('手动输入 Wi-Fi', Icons.edit_outlined, () => _openWifiProvisioning(WifiSettingsAction.manual), last: !terminal || _phoneRecovered),
+                  if (_deviceInfo?.capabilities.wifiManual == true) _action('连接手机当前 Wi-Fi', Icons.wifi_rounded, () => _openWifiProvisioning(WifiSettingsAction.currentPhone)),
+                  if (_deviceInfo?.capabilities.wifiManual == true) _action('扫描 Wi-Fi 二维码', Icons.qr_code_scanner_rounded, () => _openWifiProvisioning(WifiSettingsAction.qr)),
+                  if (_deviceInfo?.capabilities.wifiScan == true) _action('搜索附近 Wi-Fi', Icons.wifi_find_rounded, () => _openWifiProvisioning(WifiSettingsAction.scan)),
+                  if (_deviceInfo?.capabilities.wifiManual == true) _action('手动输入 Wi-Fi', Icons.edit_outlined, () => _openWifiProvisioning(WifiSettingsAction.manual), last: !terminal || _phoneRecovered),
                 ],
-                if (terminal && !_phoneRecovered)
-                  _action('重试验证旧网络', Icons.sync_rounded, _cubit.retryStoppedNetwork, last: true),
+                if (terminal && !_phoneRecovered) _action('重试验证旧网络', Icons.sync_rounded, _cubit.retryStoppedNetwork, last: true),
               ],
             ),
           ),
@@ -413,7 +408,7 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
               child: Align(
                 alignment: Alignment.center,
                 child: TextButton.icon(
-                  onPressed: _bleDisconnected || _recovering || state.phase != NetworkProvisioningPhase.success ? null : _stopDirectAp,
+                  onPressed: _bleDisconnected || _recovering || _confirmingStop || _openingWifiProvisioning || _cubit.networkOperationBusy ? null : _stopDirectAp,
                   icon: const Icon(Icons.link_off_rounded, size: 18),
                   label: const Text('停止盒子直连'),
                   style: TextButton.styleFrom(foregroundColor: AppColors.mutedInk, minimumSize: const Size(48, 48)),
@@ -424,6 +419,8 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
           if (_stopRequested && state.recoveredMode == ProvisioningNetworkMode.directAp) const Text('停止直连未完成，盒子已恢复直连模式。可刷新蓝牙状态后重试，或选择其他 Wi-Fi。'),
           if (_stopRequested && state.confirmedMode == ProvisioningNetworkMode.directAp) const Text('盒子仍处于直连模式，可重新确认后停止。'),
           if (!terminal && _bleDisconnected) const Text('停止直连需要蓝牙控制，请先恢复当前盒子的蓝牙。'),
+          if (!terminal && !_bleDisconnected && _recovering) const Text('正在读取盒子的网络状态，请稍候再停止直连。'),
+          if (!terminal && !_bleDisconnected && !_recovering && _cubit.networkOperationBusy && state.phase != NetworkProvisioningPhase.stoppingDirectAp) const Text('盒子网络操作正在进行，结束后可停止直连。'),
           if (state.error != null) const Text('网络操作尚未验证完成，请重试或检查原 Wi-Fi 是否可用。'),
         ],
       );
@@ -444,7 +441,7 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
 
   Future<void> _openWifiProvisioning(WifiSettingsAction action) async {
     final info = _deviceInfo;
-    if (info == null || _bleDisconnected || _recovering || _deviceChanged || _openingWifiProvisioning) return;
+    if (info == null || _bleDisconnected || _recovering || _deviceChanged || _openingWifiProvisioning || _confirmingStop || _cubit.networkOperationBusy) return;
     _openingWifiProvisioning = true;
     var completing = false;
     final handoff = _handoff;
@@ -500,13 +497,13 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
                       WifiSettingsAction.manual => '手动连接 Wi-Fi',
                     },
                     onBack: back,
-                    body: handoff == null ? provisioning : StreamBuilder<DirectApHandoffState>(
-                      stream: handoff.stream,
-                      initialData: handoff.state,
-                      builder: (_, snapshot) => snapshot.data?.active == true && snapshot.data?.phase != DirectApHandoffPhase.directApConnected
-                          ? DirectApHandoffPanel(cubit: handoff, onBack: back)
-                          : provisioning,
-                    ),
+                    body: handoff == null
+                        ? provisioning
+                        : StreamBuilder<DirectApHandoffState>(
+                            stream: handoff.stream,
+                            initialData: handoff.state,
+                            builder: (_, snapshot) => snapshot.data?.active == true && snapshot.data?.phase != DirectApHandoffPhase.directApConnected ? DirectApHandoffPanel(cubit: handoff, onBack: back) : provisioning,
+                          ),
                   ),
                 );
               },
@@ -526,5 +523,4 @@ class _NetworkSettingsPageState extends State<NetworkSettingsPage> with WidgetsB
       if (mounted) _openingWifiProvisioning = false;
     }
   }
-
 }

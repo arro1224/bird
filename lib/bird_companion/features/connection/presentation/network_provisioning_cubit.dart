@@ -288,9 +288,37 @@ final class NetworkProvisioningCubit extends Cubit<NetworkProvisioningState> {
     }
   }
 
-  Future<void> stopDirectAp() async {
-    if (state.phase != NetworkProvisioningPhase.success || state.confirmedMode != ProvisioningNetworkMode.directAp) {
-      return;
+  bool _stopValidationInFlight = false;
+
+  bool get networkOperationBusy => const {
+    NetworkProvisioningPhase.startingDirectAp,
+    NetworkProvisioningPhase.stoppingDirectAp,
+    NetworkProvisioningPhase.configuringSta,
+    NetworkProvisioningPhase.preparingDpp,
+    NetworkProvisioningPhase.confirmingNetwork,
+    NetworkProvisioningPhase.scanningWifi,
+  }.contains(state.phase);
+
+  Future<void> stopDirectAp({bool confirmCurrentState = false, bool Function()? canProceed}) async {
+    if (_stopValidationInFlight || networkOperationBusy) return;
+    if (!confirmCurrentState && (state.phase != NetworkProvisioningPhase.success || state.confirmedMode != ProvisioningNetworkMode.directAp)) return;
+    if (confirmCurrentState) {
+      final generation = _generation;
+      _stopValidationInFlight = true;
+      try {
+        final status = await _repository.getNetworkStatus().timeout(const Duration(seconds: 15));
+        if (isClosed || generation != _generation || canProceed?.call() == false) return;
+        _trace('stop_ap_status_checked', fields: {'active_mode': status.activeMode.wireValue, 'operation_state': status.operationState.wireValue, 'busy': status.busy});
+        if (status.activeMode != ProvisioningNetworkMode.directAp || status.busy) {
+          emit(state.copyWith(phase: NetworkProvisioningPhase.failure, error: const NetworkStatusConfirmationException()));
+          return;
+        }
+      } catch (error) {
+        if (!isClosed && generation == _generation) emit(state.copyWith(phase: NetworkProvisioningPhase.failure, error: _safePresentationError(error)));
+        return;
+      } finally {
+        _stopValidationInFlight = false;
+      }
     }
     final generation = ++_generation;
     if (reconcileStop) _beginIntent('stop_ap_intent_started');

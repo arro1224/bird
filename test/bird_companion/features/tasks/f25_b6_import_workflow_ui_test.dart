@@ -36,9 +36,9 @@ void main() {
     await mount(tester, deps);
     expect(deps.importAnalysisService.owns('project-1'), isTrue);
     expect(controller(tester).jobs, hasLength(2));
-    expect(controller(tester).currentTaskOrNull!.waitingForImport, isTrue);
-    expect(find.text('等待导入完成'), findsWidgets);
-    expect(find.text('盒子正在导入照片，完成后自动开始识别。'), findsOneWidget);
+    expect(controller(tester).currentTaskOrNull!.id, 'import-project-1');
+    expect(find.textContaining('AI 识别 · 等待导入完成'), findsOneWidget);
+    expect(find.textContaining('导入与索引 · 进行中'), findsOneWidget);
     expect(find.text('0 / 0 张'), findsNothing);
     deps.jobRepository.backend.current['project-1'] = fixture.result('project-1', version: 2, state: BirdJobState.running, dispatch: 'dispatched');
     deps.eventClient.send(deps.jobRepository.backend.current['project-1']!.importJob);
@@ -72,7 +72,7 @@ void main() {
     expect(deps.jobRepository.backend.submissions.single.$2['auto_analysis'], const AutoAnalysisRequest().toJson());
     expect(deps.jobRepository.legacyImport, 0);
     expect(deps.jobRepository.legacyAnalysis, 0);
-    expect(home.currentTaskOrNull!.id, 'analysis-project-1');
+    expect(home.currentTaskOrNull!.id, 'import-project-1');
     await tester.pumpWidget(const SizedBox.shrink());
   });
 

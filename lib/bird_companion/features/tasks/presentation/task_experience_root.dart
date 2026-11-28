@@ -405,7 +405,7 @@ class _TaskExperienceRootState extends State<TaskExperienceRoot> with WidgetsBin
                                         listenable: controller,
                                         builder: (_, _) => Column(
                                           children: [
-                                            const Text('导入与索引 → 生成缩略图与预览 → AI 分析；符合条件的结果会自动分批复制。'),
+                                            const Text('导入与索引完成后自动开始 AI 识别；浏览图片独立准备，符合条件的结果按已确认设置分批复制。'),
                                             for (final task in controller.tasks.where((task) => task.type == TaskType.aiAnalysis && task.sourceBatchId == controller.taskByIdOrNull(jobId)?.sourceBatchId))
                                               SmartFollowTaskTile(
                                                 key: ValueKey('import-follow-${task.id}'),

@@ -79,7 +79,13 @@ class PhotoLocalFilterEngine {
       final photoTags = photo.userTags.map(_normalize).toSet();
       if (!query.tags.map(_normalize).every(photoTags.contains)) return false;
     }
-    if (_hasText(query.keepState) && _normalize(photo.keepState) != _normalize(query.keepState)) return false;
+    // The album's retained category includes featured photos, just like the
+    // project's keep_count. The wire API's keep filter remains exact.
+    if (_hasText(query.keepState)) {
+      final wanted = _normalize(query.keepState);
+      final actual = _normalize(photo.keepState);
+      if (wanted == 'keep' ? actual != 'keep' && actual != 'featured' : actual != wanted) return false;
+    }
     if (_hasText(query.analysisState) && _normalize(photo.analysisState.wireValue) != _normalize(query.analysisState)) return false;
     if (_hasText(query.clarityState) && _normalize(photo.clarityState.wireValue) != _normalize(query.clarityState)) return false;
     if (query.recommendedOnly && !photo.isRecommended) return false;
